@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Iterable
+from typing import Iterable, TypedDict
 
 
 CAPTURE_DATE = date(2026, 8, 28)
@@ -17,6 +17,12 @@ STREAK_MILESTONE_DATES: dict[str, date] = {
     "streak_100": date(2025, 12, 6),
     "streak_365": CAPTURE_DATE,
 }
+
+
+class RepresentativeCollectionInventoryPlan(TypedDict):
+    garden_features: tuple[str, ...]
+    scenery: tuple[str, ...]
+    consumables: dict[str, int]
 
 
 def achievement_completion_schedule(
@@ -61,9 +67,46 @@ def validate_achievement_completion_schedule(
     )
 
 
+def representative_collection_inventory_plan() -> RepresentativeCollectionInventoryPlan:
+    """Return the real owned-item seed for the canonical 30-of-39 face.
+
+    The nine undiscovered entries are the six drop-only environment rewards
+    and the three Fertilizer tiers. Booster Potion and all three Growth Charge
+    definitions remain genuinely owned, so Collection derives the count from
+    state instead of receiving capture-only display copy.
+    """
+
+    from ..environment import (
+        GARDEN_FEATURE_CATALOG,
+        GROWTH_CHARGES,
+        SCENERY_CATALOG,
+    )
+
+    return {
+        "garden_features": tuple(
+            item_id
+            for item_id, item in GARDEN_FEATURE_CATALOG.items()
+            if not bool(item.drop_only)
+        ),
+        "scenery": tuple(
+            item_id
+            for item_id, item in SCENERY_CATALOG.items()
+            if not bool(item.drop_only)
+        ),
+        "consumables": {
+            "fertilizer_basic": 0,
+            "fertilizer_quality": 0,
+            "fertilizer_premium": 0,
+            "booster_potion": 1,
+            **{charge_id: 1 for charge_id in GROWTH_CHARGES},
+        },
+    }
+
+
 __all__ = [
     "CAPTURE_DATE",
     "STREAK_MILESTONE_DATES",
     "achievement_completion_schedule",
+    "representative_collection_inventory_plan",
     "validate_achievement_completion_schedule",
 ]

@@ -23,7 +23,7 @@ implementation disagree.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current UI architecture, routing,
   transaction, responsive, accessibility, and capture contract.
-- `ui-surface-inventory.md`: registry-derived v25 release inventory and the
+- `ui-surface-inventory.md`: registry-derived v26 release inventory and the
   automated/manual acceptance boundary.
 - `ui/final-ui-audit-2.1.0.md`: canonical automated/macOS Qt evidence and the
   explicitly unrun human/platform gates.
@@ -47,3 +47,12 @@ audit ledgers remain available through Git history or preserved raw local
 evidence. They are not active product or release evidence. Raw runs, manifests,
 archives, and lineage may remain under ignored `build/`; only the current full
 contact-sheet set is retained as the active presentation aid.
+
+The active UI evidence contract is v26, contract schema 2 and scenario schema
+3. It derives 18 representative surfaces on two sheets and 34 full surfaces on
+five sheets. Schema-25 Garden state remains unchanged; v25 capture evidence is
+frozen historical material and is never reused as v26 evidence. The
+[canonical UI audit](ui/final-ui-audit-2.1.0.md) records the exact package and
+capture bindings, validator result, and still-open human/platform gates. The
+retained presentation aid is the
+[final five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260830-103800/contact-sheet-set.json).

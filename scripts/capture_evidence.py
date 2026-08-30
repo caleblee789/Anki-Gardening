@@ -30,6 +30,27 @@ SCENARIO_REUSE_SCHEMA_VERSION = 3
 _LEGACY_SCENARIO_REUSE_SCHEMA_VERSIONS = frozenset({1, 2})
 RENDERER_OWNERSHIP_REUSE_SCHEMA_VERSION = 2
 _SCENARIO_UNKNOWN = object()
+DIALOG_SCROLL_FOUR_STATE_NAMES = (
+    "no-overflow-list",
+    "one-row-list",
+    "enough-rows-to-scroll",
+    "final-item-at-maximum-scroll",
+)
+LEGACY_CAPTURE_ACCEPTANCE_POLICY = "gross-failures-only"
+V26_CAPTURE_ACCEPTANCE_POLICY = "gross-and-semantic-fail-closed"
+_V26_DEPRECATED_VISIBLE_COPY_PATTERNS = (
+    r"\bstage [1-5] of 5\b",
+    r"\bgarden finds?\b",
+    r"\b1 find\b",
+    r"\bnew environments?\b",
+    r"\buse bonus\b",
+    r"\benvironment discoveries\b",
+    r"\benvironment discovery guarantees\b",
+    r"\bfuture growth will be shared or stored\b",
+    r"\btoday['’]s environment\b",
+    r"\bnursery weather scenery\b",
+    r"\bgarden item unlocked\b",
+)
 
 _DEFERRED_SPECIES_OVERVIEW_EDGE = (
     "GardenDashboard._refresh_collection_list",
@@ -2617,9 +2638,21 @@ def build_render_input_catalog(
         bucket = _label_bucket(label, family)
         scenario = dict(scenario_contracts[label])
         scenario_digest = str(scenario.get("digest", ""))
+        scenario_id = str(scenario.get("scenario_id", label))
+        fixture_id = str(scenario.get("fixture_id", f"{label}-v1"))
+        scenario_step = scenario.get("scenario_step", 1)
         if SHA256_RE.fullmatch(scenario_digest) is None:
             raise CaptureEvidenceError(
                 f"Scenario identity digest is invalid for {label}"
+            )
+        if (
+            not scenario_id
+            or not fixture_id
+            or type(scenario_step) is not int
+            or scenario_step < 1
+        ):
+            raise CaptureEvidenceError(
+                f"Scenario sequence identity is invalid for {label}"
             )
         symbols = (
             _DASHBOARD_FAMILY_SYMBOLS.get(family, frozenset())
@@ -2749,6 +2782,9 @@ def build_render_input_catalog(
             inputs["surface-spec"] = spec_digest
         surface_contract = {
             "renderer_family": family,
+            "scenario_id": scenario_id,
+            "fixture_id": fixture_id,
+            "scenario_step": scenario_step,
             "scenario_identity_digest": scenario_digest,
             "render_inputs": dict(sorted(inputs.items())),
         }
@@ -2761,6 +2797,9 @@ def build_render_input_catalog(
         catalog[label] = {
             "bucket": bucket,
             "renderer_family": family,
+            "scenario_id": scenario_id,
+            "fixture_id": fixture_id,
+            "scenario_step": scenario_step,
             "environment_digest": environment_digest,
             "input_count": len(inputs),
             "inputs": dict(sorted(inputs.items())),
@@ -2825,7 +2864,7 @@ def build_render_input_catalog(
         "run_level_inputs": run_level_inputs,
         "scenario_contract_digest": scenario_contract_digest,
         "scenario_reuse_schema_version": SCENARIO_REUSE_SCHEMA_VERSION,
-        "scenario_schema_version": 2 if surface_specs is not None else 1,
+        "scenario_schema_version": 3 if surface_specs is not None else 1,
         "surfaces": catalog,
     }
 
@@ -2872,6 +2911,185 @@ def _capture_records_by_label(
     return records
 
 
+def _v26_deprecated_visible_copy_issues(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently reject missing or contradictory painted-copy proof."""
+
+    if not isinstance(evidence, dict):
+        return ("deprecated visible copy evidence is missing",)
+    issues: list[str] = []
+    visible_copy = evidence.get("visible_copy")
+    if not isinstance(visible_copy, str):
+        issues.append("deprecated visible copy text is invalid")
+        normalized = ""
+    else:
+        normalized = " ".join(visible_copy.casefold().split())
+    recomputed_hits = tuple(
+        pattern
+        for pattern in _V26_DEPRECATED_VISIBLE_COPY_PATTERNS
+        if re.search(pattern, normalized)
+    )
+    reported_hits = evidence.get("hits")
+    if not (
+        isinstance(reported_hits, list)
+        and all(isinstance(hit, str) for hit in reported_hits)
+    ):
+        issues.append("deprecated visible copy hits are invalid")
+    else:
+        if tuple(reported_hits) != recomputed_hits:
+            issues.append("deprecated visible copy hits contradict the text")
+        if reported_hits:
+            issues.append("deprecated visible copy was detected")
+    if recomputed_hits:
+        issues.append("deprecated visible copy was detected")
+    if evidence.get("collection_issues") != []:
+        issues.append("deprecated visible copy collection did not pass")
+    if evidence.get("passed") is not True:
+        issues.append("deprecated visible copy audit did not pass")
+    return tuple(dict.fromkeys(issues))
+
+
+def _v26_surface_acceptance_issues(
+    record: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Return fail-closed v26 semantic evidence issues for one surface."""
+
+    issues: list[str] = []
+    fixture = record.get("fixture_validation")
+    if not isinstance(fixture, dict):
+        issues.append("v26 fixture validation is missing")
+    else:
+        if fixture.get("semantic_audit_passed") is not True:
+            issues.append("v26 fixture semantic audit did not pass")
+        postcondition = fixture.get("postcondition")
+        if (
+            not isinstance(postcondition, dict)
+            or postcondition.get("passed") is not True
+            or postcondition.get("issues") != []
+        ):
+            issues.append("v26 fixture postcondition did not pass")
+
+    acceptance = record.get("capture_acceptance")
+    if not isinstance(acceptance, dict):
+        issues.append("v26 capture acceptance is missing")
+    else:
+        if acceptance.get("policy") != V26_CAPTURE_ACCEPTANCE_POLICY:
+            issues.append("v26 capture acceptance policy did not match")
+        gross_checks = acceptance.get("gross_checks")
+        if (
+            not isinstance(gross_checks, dict)
+            or not gross_checks
+            or any(value is not True for value in gross_checks.values())
+            or acceptance.get("gross_passed") is not True
+        ):
+            issues.append("v26 gross capture result did not pass")
+        if acceptance.get("semantic_audit_passed") is not True:
+            issues.append("v26 semantic capture acceptance did not pass")
+        if acceptance.get("passed") is not True:
+            issues.append("v26 capture acceptance did not pass")
+
+    audit = record.get("audit")
+    if (
+        not isinstance(audit, dict)
+        or audit.get("semantic_audit_passed") is not True
+    ):
+        issues.append("v26 capture audit semantic result did not pass")
+    deprecated_copy = (
+        audit.get("deprecated_visible_copy")
+        if isinstance(audit, dict) else
+        None
+    )
+    issues.extend(
+        f"v26 {issue}"
+        for issue in _v26_deprecated_visible_copy_issues(deprecated_copy)
+    )
+    if str(record.get("label", "")) == "starter-nursery-plants":
+        selection = (
+            audit.get("first_run_selection")
+            if isinstance(audit, dict) else
+            None
+        )
+        selected = (
+            str(selection.get("selected_species", "") or "").casefold()
+            if isinstance(selection, dict) else
+            ""
+        )
+        pending = (
+            str(selection.get("pending_species", "") or "").casefold()
+            if isinstance(selection, dict) else
+            ""
+        )
+        if not (
+            isinstance(selection, dict)
+            and selection.get("passed") is True
+            and selection.get("issues") == []
+            and selection.get("nursery_entry_persisted") is True
+            and selection.get("step_before_selection") == "nursery"
+            and selection.get("selection_action") == "Choose"
+            and selection.get("selection_action_triggered") is True
+            and selection.get("selection_persisted") is True
+            and selection.get("step_after_selection") == "placement"
+            and bool(selected)
+            and selected == pending
+        ):
+            issues.append(
+                "v26 first-run selection transition did not pass"
+            )
+    if str(record.get("label", "")) == "nursery-plants":
+        counts = audit if isinstance(audit, dict) else {}
+        if not (
+            counts.get("passed") is True
+            and counts.get("fixture_state_passed") is True
+            and counts.get("species_copy")
+            == "10 of 10 species discovered"
+            and counts.get("collection_entries_copy")
+            == "30 of 39 collection entries discovered"
+            and counts.get("species_copy_visible") is True
+            and counts.get("collection_entries_copy_visible") is True
+        ):
+            issues.append(
+                "v26 Nursery collection counts are not canonical"
+            )
+
+    native_layout = record.get("native_layout_telemetry")
+    if (
+        not isinstance(native_layout, dict)
+        or native_layout.get("passed") is not True
+        or native_layout.get("issues") != []
+    ):
+        issues.append("v26 native layout telemetry did not pass")
+
+    visual_contract = record.get("visual_contract_audit")
+    if (
+        not isinstance(visual_contract, dict)
+        or visual_contract.get("passed") is not True
+        or visual_contract.get("issues") != []
+    ):
+        issues.append("v26 visual contract audit did not pass")
+
+    scroll_audit = record.get("dialog_scroll_audit")
+    if not isinstance(scroll_audit, dict):
+        issues.append("v26 dialog scroll audit is missing")
+    elif scroll_audit.get("applicable") is True:
+        if (
+            scroll_audit.get("passed") is not True
+            or scroll_audit.get("issues") != []
+        ):
+            issues.append("v26 dialog scroll audit did not pass")
+        four_state = scroll_audit.get("four_state_scroll_matrix")
+        if (
+            not isinstance(four_state, dict)
+            or four_state.get("passed") is not True
+            or four_state.get("issues") != []
+        ):
+            issues.append("v26 four-state scroll evidence did not pass")
+    elif scroll_audit.get("applicable") is not False:
+        issues.append("v26 dialog scroll applicability is invalid")
+
+    return tuple(dict.fromkeys(issues))
+
+
 def surface_validation_report(manifest_path: Path) -> dict[str, Any]:
     """Classify an attempt or assembled manifest without discarding good faces."""
 
@@ -2898,6 +3116,9 @@ def surface_validation_report(manifest_path: Path) -> dict[str, Any]:
         invalidated: tuple[str, ...] = ()
     else:
         invalidated = tuple(dict.fromkeys(raw_invalidated))
+    contract_version = int(
+        payload.get("capture_contract_version", 0) or 0
+    )
     profile = str(payload.get("capture_profile", ""))
     if profile not in {"representative", "full"}:
         issue = "capture profile is invalid"
@@ -3040,14 +3261,21 @@ def surface_validation_report(manifest_path: Path) -> dict[str, Any]:
             fixture = record.get("fixture_validation")
             if not isinstance(fixture, dict) or fixture.get("passed") is not True:
                 issues.append("fixture validation did not pass")
-            if int(payload.get("capture_contract_version", 0) or 0) >= 25:
+            if contract_version >= 25:
                 acceptance = record.get("capture_acceptance")
+                expected_acceptance_policy = (
+                    V26_CAPTURE_ACCEPTANCE_POLICY
+                    if contract_version >= 26 else
+                    LEGACY_CAPTURE_ACCEPTANCE_POLICY
+                )
                 if (
                     not isinstance(acceptance, dict)
-                    or acceptance.get("policy") != "gross-failures-only"
+                    or acceptance.get("policy") != expected_acceptance_policy
                     or acceptance.get("passed") is not True
                 ):
                     issues.append("gross capture acceptance did not pass")
+            if contract_version >= 26:
+                issues.extend(_v26_surface_acceptance_issues(record))
             audit = record.get("audit")
             if not isinstance(audit, dict) or audit.get("passed") is not True:
                 issues.append("capture audit did not pass")
@@ -3882,8 +4110,13 @@ def plan_incremental_capture(
         newer_pass_seen = False
         if not label_reasons:
             for source_path, payload, report, records in candidates:
-                if payload.get("capture_contract_version") != contract_version:
-                    observed_reasons.append("capture-contract-changed")
+                source_contract_version = payload.get("capture_contract_version")
+                if source_contract_version != contract_version:
+                    observed_reasons.append(
+                        "v25-reuse-forbidden"
+                        if contract_version == 26 and source_contract_version == 25 else
+                        "capture-contract-changed"
+                    )
                     continue
                 source_profile = str(payload.get("capture_profile", ""))
                 if source_profile not in {"representative", "full"}:
@@ -4355,6 +4588,17 @@ def _dialog_scroll_summary(
             "required": False,
             "required_count": 0,
             "records": [],
+            "four_state_scroll_matrix": {
+                "required": False,
+                "required_states": [],
+                "observations": [],
+                "witness_labels": {},
+                "canonical_scroll_value_before": 0,
+                "canonical_scroll_value_after": 0,
+                "canonical_scroll_restored": True,
+                "issues": [],
+                "passed": True,
+            },
             "passed": True,
         }
     metric_fields = (
@@ -4383,23 +4627,77 @@ def _dialog_scroll_summary(
                 issues.append("scroll-coverage-surface-mismatch")
             if audit.get("actual_page_semantic") != semantic:
                 issues.append("actual-scroll-page-semantic-mismatch")
+            state_matrix = audit.get("four_state_scroll_matrix")
+            if (
+                not isinstance(state_matrix, dict)
+                or state_matrix.get("passed") is not True
+                or state_matrix.get("issues") != []
+            ):
+                issues.append("four-state-scroll-evidence-not-passed")
             row = {
                 "label": label,
                 "surface": surface,
                 "expected_page_semantic": semantic,
                 "actual_page_semantic": audit.get("actual_page_semantic", ""),
                 **{field: audit.get(field) for field in metric_fields},
+                "four_state_scroll_matrix": copy.deepcopy(state_matrix),
                 "issues": list(dict.fromkeys(issues)),
                 "passed": not issues,
             }
             rows.append(row)
+    witness_observations: list[dict[str, Any]] = []
+    witness_labels: dict[str, str] = {}
+    for state in DIALOG_SCROLL_FOUR_STATE_NAMES:
+        for row in rows:
+            matrix = row.get("four_state_scroll_matrix")
+            if not isinstance(matrix, dict):
+                continue
+            observation = next((
+                item
+                for item in list(matrix.get("observations", ()) or ())
+                if isinstance(item, dict)
+                and item.get("state") == state
+                and item.get("passed") is True
+                and item.get("issues") == []
+            ), None)
+            if observation is None:
+                continue
+            witness = copy.deepcopy(observation)
+            witness["label"] = str(row.get("label", ""))
+            witness_observations.append(witness)
+            witness_labels[state] = witness["label"]
+            break
+    matrix_issues = [
+        f"missing-scroll-state:{state}"
+        for state in DIALOG_SCROLL_FOUR_STATE_NAMES
+        if state not in witness_labels
+    ]
+    aggregate_matrix = {
+        "required": True,
+        "required_states": list(DIALOG_SCROLL_FOUR_STATE_NAMES),
+        "observations": witness_observations,
+        "witness_labels": witness_labels,
+        "canonical_scroll_value_before": 0,
+        "canonical_scroll_value_after": 0,
+        "canonical_scroll_restored": True,
+        "issues": matrix_issues,
+        "passed": not matrix_issues,
+    }
+    expected_count = sum(len(values) for values in contract.values())
+    aggregate_complete = len(rows) == expected_count
     return {
         "required": True,
         "required_count": len(rows),
         "attempted_count": len(rows),
-        "aggregate_complete": len(rows) == sum(len(values) for values in contract.values()),
+        "aggregate_complete": aggregate_complete,
         "records": rows,
-        "passed": bool(rows) and all(row["passed"] for row in rows),
+        "four_state_scroll_matrix": aggregate_matrix,
+        "passed": bool(
+            rows
+            and aggregate_complete
+            and aggregate_matrix["passed"]
+            and all(row["passed"] for row in rows)
+        ),
     }
 
 

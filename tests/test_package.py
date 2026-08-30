@@ -220,7 +220,7 @@ def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
     assert capabilities["BUILD_MODE"] == CAPTURE_BUILD
     assert capabilities["CAPTURE_HARNESS_ENABLED"] is True
     assert capabilities["DEVELOPMENT_MUTATION_ENABLED"] is True
-    assert capabilities["CAPTURE_CONTRACT_VERSION"] == 25
+    assert capabilities["CAPTURE_CONTRACT_VERSION"] == 26
     assert capabilities["CAPTURE_RUNTIME_PACKAGE"] == "capture"
     assert derivative == {
         "capture_archive": str(output.resolve()),

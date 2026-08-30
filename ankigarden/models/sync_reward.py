@@ -7,6 +7,8 @@ from datetime import date
 from typing import Any, Iterable, Mapping
 import uuid
 
+from ..growth import GROWTH_STAGES, stage_presentation
+
 
 MAX_SYNC_SUMMARY_ROWS = 256
 MAX_SYNC_SUMMARY_DAYS = 366
@@ -88,6 +90,38 @@ class SyncPlantCheckpoint:
 
 
 @dataclass(frozen=True)
+class SyncPlantMilestone:
+    """The single highest-priority milestone for one synced plant result."""
+
+    kind: str
+    priority: int
+    event_id: str
+    display_text: str
+    checkpoint_percent: int = 0
+
+
+def _stage_id(value: Any) -> str:
+    normalized = str(value or "").replace("_", " ").strip().casefold()
+    return "rare" if normalized == "full bloom" else normalized
+
+
+def _stage_display_name(value: Any) -> str:
+    resolved = stage_presentation(value)
+    return (
+        resolved.display_name
+        if resolved is not None
+        else _text(value, limit=64).replace("_", " ").title()
+    )
+
+
+def _stage_rank(value: Any) -> int:
+    try:
+        return GROWTH_STAGES.index(_stage_id(value))
+    except ValueError:
+        return -1
+
+
+@dataclass(frozen=True)
 class SyncPlantResult:
     plant_id: str
     display_name: str
@@ -106,6 +140,110 @@ class SyncPlantResult:
     stage_event_text: str = ""
     full_bloom: bool = False
 
+    @property
+    def stage_changed(self) -> bool:
+        before = _stage_id(self.stage_before)
+        after = _stage_id(self.stage_after)
+        return bool(
+            self.stage_event_id
+            or (before and after and before != after)
+        )
+
+    @property
+    def reached_full_bloom(self) -> bool:
+        return bool(
+            self.full_bloom
+            or (self.fully_grown and _stage_id(self.stage_after) == "rare")
+        )
+
+    @property
+    def canonical_checkpoints(self) -> tuple[SyncPlantCheckpoint, ...]:
+        """Keep only the highest reached checkpoint in the current stage.
+
+        Full Bloom and stage changes supersede checkpoint copy. Checkpoints
+        aimed at a prior stage or beyond the committed progress are stale.
+        """
+
+        if self.reached_full_bloom or self.stage_changed:
+            return ()
+        expected_stage = _stage_id(self.next_stage)
+        after_rank = _stage_rank(self.stage_after)
+        candidates: dict[str, SyncPlantCheckpoint] = {}
+        for checkpoint in self.checkpoints:
+            target_stage = _stage_id(checkpoint.stage_name)
+            target_rank = _stage_rank(target_stage)
+            if expected_stage and target_stage != expected_stage:
+                continue
+            if (
+                not expected_stage
+                and self.stage_before
+                and after_rank >= 0
+                and 0 <= target_rank <= after_rank
+            ):
+                continue
+            if checkpoint.percent > max(0, int(self.stage_progress_after)):
+                continue
+            candidates[checkpoint.event_id] = checkpoint
+        if not candidates:
+            return ()
+        highest = sorted(
+            candidates.values(),
+            key=lambda item: (-int(item.percent), item.event_id),
+        )[0]
+        return (highest,)
+
+    @property
+    def primary_milestone(self) -> SyncPlantMilestone:
+        """Resolve Full Bloom, stage, checkpoint, then ordinary Growth."""
+
+        if self.reached_full_bloom:
+            return SyncPlantMilestone(
+                "full_bloom",
+                0,
+                self.stage_event_id or f"plant:{self.plant_id}:full_bloom",
+                self.stage_event_text
+                or f"{self.display_name or 'Plant'} reached Full Bloom",
+            )
+        if self.stage_changed:
+            return SyncPlantMilestone(
+                "stage_change",
+                1,
+                self.stage_event_id or (
+                    f"plant:{self.plant_id}:stage:{_stage_id(self.stage_after)}"
+                ),
+                self.stage_event_text
+                or f"Reached {_stage_display_name(self.stage_after)}",
+            )
+        checkpoints = self.canonical_checkpoints
+        if checkpoints:
+            checkpoint = checkpoints[0]
+            return SyncPlantMilestone(
+                "checkpoint",
+                2,
+                checkpoint.event_id,
+                checkpoint.display_text,
+                checkpoint.percent,
+            )
+        return SyncPlantMilestone(
+            "growth",
+            3,
+            f"plant:{self.plant_id}:growth",
+            "Growth added",
+        )
+
+    def canonicalized(self) -> "SyncPlantResult":
+        checkpoints = self.canonical_checkpoints
+        full_bloom = self.reached_full_bloom
+        return (
+            self
+            if checkpoints == self.checkpoints and full_bloom == self.full_bloom
+            else replace(
+                self,
+                checkpoints=checkpoints,
+                full_bloom=full_bloom,
+            )
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "plant_id": _text(self.plant_id, limit=96),
@@ -120,10 +258,13 @@ class SyncPlantResult:
             "next_stage": _text(self.next_stage, limit=64),
             "fully_grown": bool(self.fully_grown),
             "active": bool(self.active),
-            "checkpoints": [checkpoint.to_dict() for checkpoint in self.checkpoints],
+            "checkpoints": [
+                checkpoint.to_dict()
+                for checkpoint in self.canonical_checkpoints
+            ],
             "stage_event_id": _text(self.stage_event_id, limit=96),
             "stage_event_text": _text(self.stage_event_text),
-            "full_bloom": bool(self.full_bloom),
+            "full_bloom": self.reached_full_bloom,
         }
 
     @classmethod
@@ -166,7 +307,24 @@ class SyncPlantResult:
             stage_event_id=_text(raw.get("stage_event_id"), limit=96),
             stage_event_text=_text(raw.get("stage_event_text")),
             full_bloom=bool(raw.get("full_bloom", False)),
-        )
+        ).canonicalized()
+
+
+def prioritized_sync_plant_results(
+    results: Iterable[SyncPlantResult],
+) -> tuple[SyncPlantResult, ...]:
+    """Return a deterministic cross-plant milestone presentation order."""
+
+    canonical = tuple(result.canonicalized() for result in results)
+    return tuple(sorted(
+        canonical,
+        key=lambda result: (
+            result.primary_milestone.priority,
+            0 if result.active else 1,
+            result.display_name.casefold(),
+            result.plant_id,
+        ),
+    ))
 
 
 @dataclass(frozen=True)
@@ -234,10 +392,11 @@ class SyncRewardSummary:
     def grouped_plant_results(self) -> tuple[SyncPlantResult, ...]:
         """Return canonical plant-grouped presentation data for v1 or v2 receipts."""
 
-        return self.plant_results or _group_legacy_plant_results(
+        results = self.plant_results or _group_legacy_plant_results(
             self.plant_growth,
             self.progression_events,
         )
+        return prioritized_sync_plant_results(results)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -581,8 +740,11 @@ def _merge_plant_results(
             stage_event_id=item.stage_event_id or current.stage_event_id,
             stage_event_text=item.stage_event_text or current.stage_event_text,
             full_bloom=current.full_bloom or item.full_bloom,
-        )
-    return tuple(result[key] for key in order[:MAX_SYNC_SUMMARY_ROWS])
+        ).canonicalized()
+    return tuple(
+        result[key].canonicalized()
+        for key in order[:MAX_SYNC_SUMMARY_ROWS]
+    )
 
 
 def _unique_rows(

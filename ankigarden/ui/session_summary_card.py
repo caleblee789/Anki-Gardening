@@ -1092,6 +1092,10 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if show_progress:
             progress = QProgressBar(band)
             progress.setObjectName("ankiGardenSessionTodayProgress")
+            progress.setProperty(
+                "semanticId",
+                "reviewer.session-summary.today-progress",
+            )
             progress.setTextVisible(False)
             progress.setRange(0, progress_max)
             progress.setValue(
@@ -1296,11 +1300,11 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 str(getattr(source, "unlock_category", "") or "environment")
             )
             eyebrow = eyebrow or unlock_eyebrow
-            title = title or source.environment_name or "New environment"
+            title = title or source.environment_name or "Garden discovery"
             supporting = supporting or unlock_supporting
         elif isinstance(source, StandardFind):
-            eyebrow = eyebrow or "RARE GARDEN FIND"
-            title = title or source.find_name or "Garden Find"
+            eyebrow = eyebrow or "STANDARD FIND"
+            title = title or source.find_name or "Standard Find"
             supporting = supporting or source.reward_label
         return eyebrow, title, supporting, reward
 
@@ -1558,7 +1562,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             projected = tuple(
                 (
                     str(getattr(item, "find_id", "") or getattr(item, "item_id", "") or "find"),
-                    str(getattr(item, "find_name", "") or "Garden Find"),
+                    str(getattr(item, "find_name", "") or "Standard Find"),
                     str(getattr(item, "art_asset", "") or getattr(item, "item_id", "") or ""),
                     max(0, int(getattr(item, "quantity", 0) or 0)),
                 )
@@ -1585,7 +1589,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 first = values[0]
                 records.append((
                     identity,
-                    str(getattr(first, "find_name", "") or "Garden Find"),
+                    str(getattr(first, "find_name", "") or "Standard Find"),
                     str(
                         getattr(first, "art_asset", "")
                         or getattr(first, "item_id", "")

@@ -66,6 +66,7 @@ from .growth import (
     GrowthChargeRequest,
     GrowthChargeStatus,
     GrowthChargeTargetState,
+    project_growth_charge_application,
     stage_progress,
     StageRewardProjection,
 )
@@ -2243,8 +2244,10 @@ class GardenGameEngine:
                 # Stage/checkpoint currency helpers predate the batch feedback
                 # switch and can enqueue their own cards. A sync receipt is the
                 # only presentation for this transaction, so retain exactly the
-                # feedback that existed at the clean boundary.
+                # feedback and ordinary stage-transition queue that existed at
+                # the clean boundary.
                 self.state.pending_feedback = existing_feedback
+                self._pending_stage_transitions = transition_snapshot
             sync_receipts = tuple(
                 receipt
                 for receipt in self.state.recent_reward_receipts
@@ -3773,7 +3776,7 @@ class GardenGameEngine:
             event_key,
             source="garden_find",
             source_id=reward.reward_id,
-            reason=f"Garden Find: {reward.display_name}",
+            reason=f"Standard Find: {reward.display_name}",
             scheduler_day=scheduler_day,
             correlation_id=correlation_id,
             coins=reward.amount if reward.reward_kind == "coins" else 0,
@@ -3823,7 +3826,7 @@ class GardenGameEngine:
             amount=1,
             item_id=item_id,
             title=display_name,
-            description=f"{tier.replace('_', ' ').title()} Garden Find",
+            description=f"{tier.replace('_', ' ').title()} Garden discovery",
         )
         self._append_reward_event_key(event_key)
         return (receipt,)
@@ -4058,7 +4061,7 @@ class GardenGameEngine:
                     environment.item.display_name if environment.item else ""
                 ),
                 description=(
-                    "Added to Garden Decorations"
+                    "Added to Garden decorations"
                     if environment.item else ""
                 ),
                 tier=(environment.item.tier if environment.item else ""),
@@ -5456,7 +5459,7 @@ class GardenGameEngine:
             stacking="Another Potion adds more cards, up to five active doses.",
             replacement="Replaces nothing.",
             unlock_requirement=(
-                "Earn from a Garden Find or Scenery reward."
+                "Earn from a Standard Find or Scenery reward."
             ),
         )
 
@@ -5715,7 +5718,10 @@ class GardenGameEngine:
                 )
             descriptor = EffectDescriptor(
                 function="Adds Growth while you complete cards.",
-                buff=f"+{spec.growth_per_answer:,} Growth per card.",
+                buff=(
+                    f"+{spec.growth_per_answer:,} Growth per eligible "
+                    "card answer."
+                ),
                 activation_condition="Use on a nurtured plant that is still growing.",
                 duration=f"Lasts {self._duration_label(spec.duration_seconds)}.",
                 stacking="Same tier adds more time; a different tier waits its turn.",
@@ -5793,16 +5799,23 @@ class GardenGameEngine:
                 "This plant already has five Fertilizer doses."
                 if status is PurchaseStatus.TARGET_INVALID else ""
             )
-            displayed_period = current or tail
-            current_tier = (
-                str(displayed_period.tier)
-                if displayed_period is not None
+            # The next dose begins after the final live period, not necessarily
+            # after the period that is active right now. Bind every predecessor
+            # fact in the quote to that schedule tail so confirmation copy
+            # cannot name an earlier dose when another dose is already queued.
+            predecessor_period = tail
+            predecessor_tier = (
+                str(predecessor_period.tier)
+                if predecessor_period is not None
                 else ""
             )
-            current_spec = self.FERTILIZERS.get(current_tier)
-            active_seconds = (
-                max(0, int(math.ceil(float(current.expires_at) - now)))
-                if current is not None else 0
+            predecessor_spec = self.FERTILIZERS.get(predecessor_tier)
+            predecessor_seconds = (
+                max(
+                    0,
+                    int(math.ceil(float(predecessor_period.expires_at) - now)),
+                )
+                if predecessor_period is not None else 0
             )
             scheduled_seconds = max(
                 0,
@@ -5836,21 +5849,21 @@ class GardenGameEngine:
                 message=message,
                 replacement_required=False,
                 current_item_name=(
-                    str(getattr(current_spec, "name", "Fertilizer"))
-                    if tail is not None
+                    str(getattr(predecessor_spec, "name", "Fertilizer"))
+                    if predecessor_period is not None
                     else ""
                 ),
                 current_effect=(
-                    f"+{int(displayed_period.growth_per_answer):,} Growth per card"
-                    if displayed_period is not None
+                    f"+{int(predecessor_period.growth_per_answer):,} Growth per eligible card answer"
+                    if predecessor_period is not None
                     else ""
                 ),
                 current_duration=(
-                    f"{self._duration_label(active_seconds)} remaining"
-                    if current is not None
+                    f"{self._duration_label(predecessor_seconds)} remaining"
+                    if predecessor_period is not None
                     else ""
                 ),
-                current_seconds_remaining=active_seconds,
+                current_seconds_remaining=predecessor_seconds,
                 duration_seconds=spec.duration_seconds,
                 resulting_seconds_remaining=(
                     scheduled_seconds + spec.duration_seconds
@@ -5882,7 +5895,7 @@ class GardenGameEngine:
                     item_id=normalized_item,
                     item_name="Garden Decoration or Scenery",
                     category=(
-                        "Garden Decorations"
+                        "Garden decorations"
                         if purchase_kind is PurchaseKind.GARDEN_FEATURE
                         else "Scenery"
                     ),
@@ -5919,7 +5932,7 @@ class GardenGameEngine:
                 kind=purchase_kind,
                 item_id=item.item_id,
                 item_name=item.name,
-                category="Garden Decorations" if item.kind == "garden_feature" else "Scenery",
+                category="Garden decorations" if item.kind == "garden_feature" else "Scenery",
                 artwork_category="garden_features" if item.kind == "garden_feature" else "backgrounds",
                 artwork_key=item.item_id,
                 unit_price=int(item.price or 0),
@@ -6147,6 +6160,25 @@ class GardenGameEngine:
         quote: PurchaseQuote,
         event_key: str,
     ) -> PurchaseOutcome:
+        fertilizer_target: Plant | None = None
+        if (
+            quote.kind is PurchaseKind.FERTILIZER
+            and quote.disposition is not PurchaseDisposition.INVENTORY
+        ):
+            spec = self.FERTILIZERS[quote.item_id]
+            fertilizer_target = self.plant_story(str(quote.target_id or ""))
+            if (
+                fertilizer_target is None
+                or self.state.active_plant_id != fertilizer_target.plant_id
+                or not fertilizer_target.planted
+                or fertilizer_target.fully_grown
+            ):
+                return self._purchase_failure(
+                    quote,
+                    PurchaseStatus.TARGET_INVALID,
+                    f"This plant can’t use {spec.name}.",
+                    balance=self.state.currency_balance,
+                )
         presentation = purchase_presentation(quote, ignore_status=True)
         if not self._debit_currency(
             event_key,
@@ -6255,14 +6287,8 @@ class GardenGameEngine:
                     applied=False,
                     equipped=False,
                 )
-            plant = self.plant_story(str(quote.target_id or ""))
-            if plant is None:
-                return self._purchase_failure(
-                    quote,
-                    PurchaseStatus.TARGET_INVALID,
-                    f"This plant can’t use {spec.name}.",
-                    balance=self.state.currency_balance,
-                )
+            plant = fertilizer_target
+            assert plant is not None
             self._lock_scenery_loadout(event_ms=self._now_ms())
             now = self._now_seconds()
             action = self._activate_fertilizer_effect(
@@ -6335,9 +6361,9 @@ class GardenGameEngine:
         try:
             purchase_kind = PurchaseKind(normalized_kind)
         except ValueError:
-            return False, "Choose Garden Decorations or Scenery."
+            return False, "Choose garden decorations or scenery."
         if purchase_kind not in {PurchaseKind.GARDEN_FEATURE, PurchaseKind.SCENERY}:
-            return False, "Choose Garden Decorations or Scenery."
+            return False, "Choose garden decorations or scenery."
         outcome = self._compat_purchase(purchase_kind, str(item_id))
         return outcome.success, outcome.message
 
@@ -6429,7 +6455,7 @@ class GardenGameEngine:
         normalized_kind = str(kind)
         normalized_kind = "garden_feature" if normalized_kind == "weather" else normalized_kind
         if normalized_kind not in {"garden_feature", "scenery"}:
-            return False, "Choose Garden Decorations or Scenery."
+            return False, "Choose garden decorations or scenery."
         snapshot = self._state_snapshot()
         self.state.loadout.visibility[normalized_kind] = bool(enabled)
         try:
@@ -6536,16 +6562,17 @@ class GardenGameEngine:
         valid_target = target_state is GrowthChargeTargetState.ELIGIBLE
         current_growth = max(0, int(getattr(plant, "growth_points", 0) or 0))
         requested = max(0, int(getattr(spec, "growth", 0) or 0))
-        target_applied = (
-            min(requested, max(0, GROWTH_THRESHOLDS[-1] - current_growth))
-            if valid_target and spec is not None
-            else 0
+        charge_projection = project_growth_charge_application(
+            current_growth,
+            requested,
+            inventory,
+            target_state=target_state,
         )
-        granted = requested if valid_target and spec is not None else 0
-        projected = current_growth + target_applied
+        granted = charge_projection.granted_growth if spec is not None else 0
+        projected = charge_projection.projected_growth
         stage_rewards = (
             self._project_stage_rewards(current_growth, projected)
-            if valid_target
+            if charge_projection.ready
             else ()
         )
         rewards = tuple(item[2] for item in stage_rewards)
@@ -6608,7 +6635,7 @@ class GardenGameEngine:
             completed_stages=completed_stages,
             rewards=rewards,
             inventory_before=inventory,
-            inventory_after=max(0, inventory - (1 if inventory else 0)),
+            inventory_after=charge_projection.inventory_after,
             quote_token=quote_token,
             message=message,
         )
@@ -6946,7 +6973,11 @@ class GardenGameEngine:
             return False, "Couldn’t save your garden. Nothing was changed.", None, None
         change = StarterPlacementChange(
             plant_id=plant.plant_id,
-            _before=_StateSnapshot(deepcopy(snapshot), snapshot.ledger_checkpoint),
+            # ``storage.save()`` committed the placement and advanced the
+            # reward-ledger generation.  The pre-commit checkpoint is now
+            # intentionally stale, so the durable Undo is a new bounded-state
+            # commit rather than a rollback of already-committed ledger work.
+            _before=_StateSnapshot(deepcopy(snapshot), None),
             _after=deepcopy(self.state.to_dict()),
         )
         return (
@@ -7072,7 +7103,16 @@ class GardenGameEngine:
         if spec is None:
             return False, "That Fertilizer is no longer available."
         inventory_key = f"fertilizer_{normalized_tier}"
-        plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
+        # ``None`` retains the legacy "current nurtured plant" convenience.
+        # Any supplied value, including an empty or stale ID, is an immutable
+        # explicit target and must never be rebound to whichever plant is now
+        # active.
+        target_id = (
+            str(self.state.active_plant_id or "")
+            if plant_id is None
+            else str(plant_id)
+        )
+        plant = self.plant_story(target_id)
         if (
             plant is None
             or self.state.active_plant_id != plant.plant_id

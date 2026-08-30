@@ -15,7 +15,10 @@ control the normal profile.
    and proceed to the Starter Nursery. It must offer every release-ready species
    as a free starter and show no hard-coded collection denominator. Complete
    confirmation, placement, nurture, and completion; the other unlocked
-   direct-soil space remains empty.
+   direct-soil space remains empty. Across the sequential first-run flow, the
+   selected Nursery species, placement copy, and created plant must retain one
+   identity and one `plant_id`; a default Bonsai selection displays
+   **Bonsai Plant** without collapsing its species identity.
 4. Before choosing a starter, complete a real card and verify study totals and the
    Anki streak advance while plant Growth and recurring rewards stay at zero.
    Choose and nurture a starter; confirm that earlier Growth and recurring
@@ -33,7 +36,9 @@ control the normal profile.
    and **Garden Decorations and Scenery** tabs. Plant counts are data-driven;
    stage artwork is clear; Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove,
    Japanese Maple, Wisteria, and Dahlia are stocked by the current complete V6
-   lines, while seeded legacy-owned species remain visible and usable.
+   lines, while seeded legacy-owned species remain visible and usable. Audit all
+   60 species-stage assets for serialized `visual_scale_correction`, calibrated
+   thumbnail scaling, and valid placement in each of the six bed positions.
 8. Purchase, move to Collection, and plant in garden a species; unlock spaces
    three through six sequentially; purchase Small/Standard Growth Charges and
    use both; purchase a Garden Decoration and Scenery and confirm neither auto-activates.
@@ -44,7 +49,11 @@ control the normal profile.
    balance, persistence failure/retry, unavailable, already-owned, invalid
    target, stale price/balance, duplicate request, full garden, active-plant
    storage, and failed-save paths. No rejected operation may spend Garden Coins
-   or lose Growth, Story, Fertilizer, Booster, inventory, or bed state.
+   or lose Growth, Story, Fertilizer, Booster, inventory, or bed state. The
+   canonical Small Growth Charge case must paint 450→550 Growth,
+   Seed→Sprout, two charges→one, and 50/2,000 toward Young; separately
+   prove no-transition, no-stage-reward, Full Bloom rejection, and overflow
+   conservation states.
 9. Select plants at every scene edge and in intentional overlaps. Confirm one
    compact card, topmost-art hit testing, edge-safe placement, outside/Escape
     dismissal, and Nurture, Fertilize, Growth Charge, Move, Story in a stable
@@ -58,7 +67,11 @@ control the normal profile.
     Garden Coin cost, Growth per card, one/two/four-hour duration, and labeled
     item art. Extend the same tier’s remaining wall-clock time, then queue a
     different tier without discarding either duration. Confirm the active and
-    queued effects reflow cleanly at narrow and wide widths. Fill the five-dose
+    queued effects reflow cleanly at narrow and wide widths. The selected
+    source, engine quote, confirmation, and active or queued period must retain
+    the same immutable `plant_id`. Verify **Apply/Queue** and
+    **Buy and apply/Buy and queue** labels; **Extend** appears only for the
+    same-tier extension disposition. Fill the five-dose
     limit; the next rejected dose must remain in inventory. Verify Fertilizer
     time continues outside the reviewer and transfers at Full Bloom. Seed a
     Booster Potion, use and extend it, and verify +5 stacks with Fertilizer for
@@ -86,6 +99,9 @@ control the normal profile.
     can stack with predictable rewards, yet each stable card/pool identity is
     consumed once with no reroll. At Full Bloom, confirm overflow and remaining
     effects continue to the next planted unfinished plant or Stored Growth.
+    Across every renderer, confirm the six visible stages are Seed, Sprout,
+    Young, Mature, Flowering, and Full Bloom; persisted `rare` never leaks into
+    player copy, and the compact HUD uses `Sprout · 2 of 6 stages`.
 14. Exercise Today’s Cards with available New, Review, intraday
     learning/relearning, active filtered, suspended, and buried cards. Confirm
     exact inclusion, exclusions, new-to-learning continuity, repeated-answer
@@ -95,17 +111,20 @@ control the normal profile.
     scheduler-owned completed-card count. Waiting, ineligible, and unavailable engine states remain
     truthful and compact without exposing internal obligation names. In a
     maximized Anki window, verify the clean expanded right-docked HUD hugs its
-    content, keeps its sticky header and session footer visible, wraps a long
+    content at 296 px wide, starts 44 px from the top and 16 px from the right,
+    keeps measured clearance above Anki's answer controls with a 72 px fallback,
+    collapses at the narrow breakpoint, keeps its sticky header and session footer visible, wraps a long
     plant name, has no horizontal scroll, and leaves Anki’s review controls
     unobstructed. Commit six rewards from one answer and verify one integrated
-    hero bundle, at most three secondary chips, a clear remainder action, no
+    hero bundle, at most two secondary chips, a clear remainder action, no
     detached toast or X stack, and no replay after redraw, reload, or sync. Exit a continuous local session after at
     least one committed card and verify one upper-right, nonmodal **Session
     Summary** with `cards complete`, Today’s Cards start-to-exit state, exact
     local Growth, Garden Coins, Standard Finds, milestones/discoveries, and
     remaining effects. It must omit synced/background rewards, internal Find
     protection, zero rows, and any backdrop; the underlying Anki page remains
-    usable.
+    usable. The canonical count cases must reconcile `176 + 18 = 194` in the
+    HUD and `126 + 19 = 145` in Session Summary.
 15. Establish a clean desktop reconciliation boundary, then sync supported
     answers from both the current Anki day and earlier days. Include a delayed
     lower-ID answer after a higher one, distinct answer events for the same
@@ -120,6 +139,13 @@ control the normal profile.
     not replay. Disable **Show rewards after syncing** and
     confirm reward processing continues without showing the receipt. Initial
     setup and one-way replacement must baseline without replaying history.
+    Confirm deterministic milestone order: Full Bloom, stage change, the
+    highest valid checkpoint in the resulting stage, then ordinary Growth;
+    superseded checkpoints never paint or leak into Home banners. The canonical
+    receipt reconciles `420 + 80 + 20 = 520`. While Session Summary is open,
+    mount Sync Rewards and verify the shared coordinator enforces mutual
+    exclusion, one Escape owner, focus restoration, and safe upper-right
+    docking.
 16. In the cottage's **Collection** page, inspect every shared exact mechanic,
     textual Equipped state, how-to-earn entry, locked silhouette, ordered odds,
     and deterministic progress to each environment guarantee. Before any
@@ -130,6 +156,8 @@ control the normal profile.
     In a separate fresh-day case, use a Growth Charge or consumable before
     answering and confirm it locks only Scenery; the Garden Bonus remains ready
     to change until the first eligible answer.
+    Confirm completion copy says `10 of 10 species discovered` and separately
+    `30 of 39 collection entries discovered`; 30 is never labeled as plants.
     Toggle each visual layer and confirm its passive still applies. Verify static
     Decorations only in Home and the native 3:2 scene using covered 4:3 source
     art; do not create a 16:9 or standalone 4:3 release route.
@@ -144,6 +172,10 @@ control the normal profile.
     the core plant projection and committed session footer remain available.
     **Show rewards after syncing** is on by default and controls only the
     nonmodal Sync Rewards receipt.
+    Confirm the structured Garden appearance summary separately labels
+    **Scenery**, **Displayed decoration**, **Active garden bonus**, and
+    **Visual effects**, and that the Garden name enforces its shared length
+    limit without truncation or ambiguous validation.
     Confirm Garden Decoration/Scenery selection, art quality/detail/performance,
     decoration animation, and Fine
     tune controls are absent; reduced motion remains automatic.
@@ -172,3 +204,20 @@ control the normal profile.
 Automated tests cover progression, migration, catalog readiness, UI contracts,
 geometry, assets, packaging, and rollback. They do not replace this exact-package
 isolated-Anki acceptance pass.
+
+## v26 capture evidence boundary
+
+Capture contract v26 uses contract schema 2 and scenario schema 3. It registers
+18 representative surfaces and 34 full surfaces, yielding two and five sheets.
+All evidence layers require `scenario_id`, `fixture_id`, and one-based
+`scenario_step`; shared flows preserve fixture lineage, and reuse of v25
+evidence is rejected. Deprecated visible copy, root/DOM overflow, progress
+fractions, asset mappings, Reviewer exclusion rectangles, four-state scroll
+coverage, and lineage mismatches fail closed.
+
+Current run paths, archive and capture hashes, artifact sizes, and validation
+totals are recorded only in the
+[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md).
+`quality_status: review-required` and `release_ready: false` remain unchanged;
+manual macOS interaction, Windows/Linux, mixed-DPI, forced-colors,
+screen-reader, broader-keyboard, and human release approval remain open.

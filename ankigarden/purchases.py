@@ -65,6 +65,24 @@ class PurchaseAction(str, Enum):
     UNLOCK = "unlock"
 
 
+def fertilizer_action_label(
+    disposition: PurchaseDisposition,
+    *,
+    owned: bool,
+) -> str:
+    """Return the shared Apply/Queue/Extend Fertilizer action vocabulary."""
+
+    try:
+        resolved = PurchaseDisposition(disposition)
+    except (TypeError, ValueError):
+        resolved = PurchaseDisposition.APPLIED
+    if resolved is PurchaseDisposition.EXTENDED:
+        return "Extend"
+    if resolved is PurchaseDisposition.QUEUED:
+        return "Queue" if owned else "Buy and queue"
+    return "Apply" if owned else "Buy and apply"
+
+
 class PurchasePreviewStyle(str, Enum):
     SQUARE = "square"
     LANDSCAPE = "landscape"
@@ -258,6 +276,20 @@ def _compact_effect(value: str) -> str:
     return effect
 
 
+def _eligible_answer_effect(value: str) -> str:
+    """Normalize a Fertilizer buff to the canonical learner-facing unit."""
+
+    effect = _without_period(value)
+    effect = re.sub(
+        r"\s+per\s+(?:eligible\s+)?(?:Anki\s+)?(?:card\s+)?answer$",
+        "",
+        effect,
+        flags=re.IGNORECASE,
+    )
+    effect = re.sub(r"\s+per\s+card$", "", effect, flags=re.IGNORECASE)
+    return f"{effect or 'Growth'} per eligible card answer"
+
+
 def _effect_duration(value: str) -> str:
     """Return a duration that reads naturally after adds or queued."""
 
@@ -420,8 +452,9 @@ def purchase_presentation(
             action = PurchaseAction.PURCHASE_QUEUE
             title = f"Queue {item_name}?"
             outcome = (
-                f"Queued for {_effect_duration(quote.descriptor.duration)} after "
-                f"{quote.current_item_name or 'the active Fertilizer'}."
+                f"Starts after {quote.current_item_name or 'the active Fertilizer'} "
+                f"ends, then lasts {_effect_duration(quote.descriptor.duration)}. "
+                f"{_eligible_answer_effect(quote.descriptor.buff)}."
             )
             activity_label = f"Queued {item_name} on {fertilizer_target}"
             success_message = f"{item_name} queued."
@@ -447,7 +480,7 @@ def purchase_presentation(
             next_actions = ("View plant", "Keep browsing")
     elif quote.kind in {PurchaseKind.GARDEN_FEATURE, PurchaseKind.SCENERY}:
         title = f"Buy {item_name}?"
-        outcome = "Adds it to Garden Decorations and Scenery."
+        outcome = "Adds it to garden decorations and scenery."
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
         next_actions = ("View collection", "Keep browsing")

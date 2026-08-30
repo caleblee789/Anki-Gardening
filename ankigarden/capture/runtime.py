@@ -36,9 +36,12 @@ from .fixtures import (
 from .lifecycle import classify_failure
 from .registry import (
     REGISTRY,
+    capture_fixture_id,
     capture_scenario_checkpoint,
+    capture_scenario_id,
     capture_scenario_internal_setups,
     capture_scenario_prerequisites,
+    capture_scenario_step,
 )
 
 from aqt import mw
@@ -51,6 +54,7 @@ from aqt.qt import (
     QCursor,
     QDialog,
     QEvent,
+    QEventLoop,
     QFrame,
     QFont,
     QFontMetricsF,
@@ -61,9 +65,14 @@ from aqt.qt import (
     QLineEdit,
     QPainter,
     QPixmap,
+    QPoint,
+    QProgressBar,
     QPushButton,
     QScrollArea,
+    QStyleOptionProgressBar,
+    QTabBar,
     QTabWidget,
+    QTextEdit,
     QTimer,
     QToolTip,
     Qt,
@@ -89,7 +98,65 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 25
+CAPTURE_CONTRACT_VERSION = 26
+
+
+def capture_acceptance_passes_contract(
+    contract_version: int,
+    *,
+    gross_capture_passed: bool,
+    semantic_audit_passed: bool,
+) -> bool:
+    """Return the versioned per-surface capture acceptance decision."""
+
+    gross_passed = bool(gross_capture_passed)
+    if int(contract_version) < 26:
+        return gross_passed
+    return bool(gross_passed and semantic_audit_passed)
+
+
+def capture_acceptance_policy(contract_version: int) -> str:
+    """Return the metadata policy name enforced by one contract version."""
+
+    if int(contract_version) < 26:
+        return "gross-failures-only"
+    return "gross-and-semantic-fail-closed"
+
+
+def post_capture_contract_gate_semantic_passes(
+    contract_version: int,
+    *,
+    current_semantic_passed: bool,
+    gate_passed: bool,
+) -> bool:
+    """Apply a transition observed after pixels without changing v25 policy."""
+
+    if int(contract_version) < 26:
+        return bool(current_semantic_passed)
+    return bool(current_semantic_passed and gate_passed)
+
+
+def post_capture_surface_failure_is_advisory(
+    contract_version: int,
+    *,
+    classification: str,
+    capture_passed: bool,
+    lifecycle_failure: bool,
+    contract_gate: str,
+) -> bool:
+    """Return whether one late surface failure may remain informational."""
+
+    return bool(
+        str(classification) == "surface-local"
+        and capture_passed
+        and not lifecycle_failure
+        and not (
+            int(contract_version) >= 26
+            and bool(str(contract_gate).strip())
+        )
+    )
+
+
 EXHAUSTIVE_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -158,7 +225,7 @@ EXHAUSTIVE_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "nursery-plants",
             "nursery-fertilizer-booster",
             "nursery-garden-spaces",
-            "nursery-weather-scenery",
+            "nursery-garden-decorations-scenery",
         ),
     ),
     (
@@ -350,7 +417,7 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "nursery-plants",
             "nursery-fertilizer-booster",
             "nursery-garden-spaces",
-            "nursery-weather-scenery",
+            "nursery-garden-decorations-scenery",
         ),
     ),
     (
@@ -389,7 +456,7 @@ CAPTURE_PROFILE_FACE_GROUPS: dict[
 # source state profile, renderer family, and prerequisite closure.  A fixture
 # change therefore invalidates its own face instead of relying on a transient
 # old/new SHA allowlist, while an unknown harness change still fails closed.
-CAPTURE_SCENARIO_SCHEMA_VERSION = 2
+CAPTURE_SCENARIO_SCHEMA_VERSION = 3
 EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES: tuple[tuple[str, str], ...] = (
     ("starter-deck-browser-home", "_capture_starter_deck_browser"),
     ("starter-overview-home", "_capture_starter_overview"),
@@ -425,7 +492,10 @@ EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES: tuple[tuple[str, str], ...] = (
     ("nursery-plants", "_capture_nursery_plants"),
     ("nursery-fertilizer-booster", "_capture_nursery_fertilizer_booster"),
     ("nursery-garden-spaces", "_capture_nursery_garden_spaces"),
-    ("nursery-weather-scenery", "_capture_nursery_weather_scenery"),
+    (
+        "nursery-garden-decorations-scenery",
+        "_capture_nursery_garden_decorations_scenery",
+    ),
     ("settings-home-preview-disabled", "_capture_settings_home_preview_disabled"),
     ("settings-display", "_capture_settings_display"),
     ("settings-display-advanced-open", "_capture_settings_display_advanced"),
@@ -617,7 +687,7 @@ CAPTURE_RENDERER_DEPENDENCY_GROUPS: dict[str, tuple[str, ...]] = {
         "family:GrowthChargeConfirmationDialog",
     ),
     "nursery-environment": (
-        "label:nursery-weather-scenery",
+        "label:nursery-garden-decorations-scenery",
         "label:collection-environment-mechanics",
         "label:purchase-confirmation-environment",
     ),
@@ -1252,6 +1322,7 @@ CAPTURE_SCENARIO_FRESH_LABELS: tuple[str, ...] = (
     "starter-overview-home",
     "starter-garden-onboarding",
     "starter-nursery-plants",
+    "starter-placement",
     "starter-action-above-footer",
 )
 
@@ -1266,7 +1337,6 @@ CAPTURE_SCENARIO_DEVELOPMENT_STRESS_LABELS = frozenset({
     "fully-grown-plant-without-fertilize",
     "move-occupied-empty-destinations",
     "fertilizer-expiring-under-minute",
-    "purchase-confirmation-fertilizer-queue",
     "collection-several-discovered",
     "collection-no-filter-matches",
     "achievement-completed",
@@ -1311,6 +1381,8 @@ def capture_scenario_internal_setups(label: str) -> tuple[str, ...]:
 
     if label in CAPTURE_SCENARIO_FRESH_LABELS:
         return ("fresh-first-run",)
+    if label == "purchase-confirmation-fertilizer-queue":
+        return ("nurtured-active", "transaction-snapshot")
     if label.startswith("purchase-"):
         return ("development-stress", "transaction-snapshot")
     if label.startswith("growth-charge-"):
@@ -1366,7 +1438,7 @@ def capture_scenario_checkpoint(label: str) -> str:
 
 
 def capture_contract_digest(profile: str) -> str:
-    """Return the exact compiled v25 contract digest used by the runtime."""
+    """Return the exact compiled v26 contract digest used by the runtime."""
 
     normalized = str(profile).strip().lower()
     profiles = _COMPILED_CAPTURE_CONTRACT.get("profiles", {})
@@ -1413,7 +1485,7 @@ WATERING_CAN_HOME_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] =
     ),
 )
 
-# v25 runtime topology is compiled from one Qt-free SurfaceSpec registry.  The
+# v26 runtime topology is compiled from one Qt-free SurfaceSpec registry.  The
 # names below remain as read-only compatibility aliases for the frozen v24
 # evidence adapter; no runtime list is maintained independently.
 _COMPILED_CAPTURE_CONTRACT = load_compiled_contract()
@@ -2030,6 +2102,239 @@ DIALOG_SCROLL_CAPTURE_COVERAGE = {
 }
 del _scroll_groups, _scroll_label, _scroll_semantic, _scroll_root, _scroll_surface
 
+DIALOG_SCROLL_FOUR_STATE_NAMES: tuple[str, ...] = (
+    "no-overflow-list",
+    "one-row-list",
+    "enough-rows-to-scroll",
+    "final-item-at-maximum-scroll",
+)
+
+
+WEB_ROOT_OVERFLOW_EVIDENCE_SOURCE = (
+    "document-root-and-visible-addon-roots"
+)
+
+
+def capture_web_root_overflow_evidence(
+    dom_audit: Any,
+    *,
+    surface_kind: str,
+) -> dict[str, Any]:
+    """Normalize fail-closed WebEngine overflow telemetry for one surface."""
+
+    audit = dom_audit if isinstance(dom_audit, dict) else {}
+
+    def normalized_integer(value: Any) -> Any:
+        if (
+            not isinstance(value, bool)
+            and isinstance(value, (int, float))
+            and float(value).is_integer()
+        ):
+            return int(value)
+        return value
+
+    def measurement(raw: Any, *, document: bool) -> dict[str, Any]:
+        source = raw if isinstance(raw, dict) else {}
+        client_width = normalized_integer(source.get("clientWidth"))
+        scroll_width = normalized_integer(source.get("scrollWidth"))
+        horizontal_overflow = normalized_integer(
+            source.get("horizontalOverflow")
+        )
+        passed = bool(
+            type(client_width) is int
+            and client_width > 0
+            and type(scroll_width) is int
+            and scroll_width > 0
+            and type(horizontal_overflow) is int
+            and horizontal_overflow
+            == max(0, scroll_width - client_width)
+            and scroll_width <= client_width
+            and source.get("passed") is True
+        )
+        record = {
+            "identity": str(source.get("identity", "")),
+            "client_width": client_width,
+            "scroll_width": scroll_width,
+            "horizontal_overflow": horizontal_overflow,
+            "passed": passed,
+        }
+        if document:
+            record["source"] = str(source.get("source", ""))
+        else:
+            record.update({
+                "root_kind": str(source.get("rootKind", "")),
+                "selector": str(source.get("selector", "")),
+                "dom_ordinal": normalized_integer(source.get("domOrdinal")),
+                "kind_ordinal": normalized_integer(
+                    source.get("kindOrdinal")
+                ),
+                "visible": source.get("visible") is True,
+            })
+            record["passed"] = bool(
+                record["passed"] and record["visible"]
+            )
+        return record
+
+    document_root = measurement(
+        audit.get("documentRootOverflow"),
+        document=True,
+    )
+    raw_roots = audit.get("visibleAddonRootOverflows")
+    visible_roots = [
+        measurement(raw, document=False)
+        for raw in raw_roots
+    ] if isinstance(raw_roots, list) else []
+    candidate_count = normalized_integer(
+        audit.get("addonRootCandidateCount")
+    )
+    visible_count = normalized_integer(
+        audit.get("visibleAddonRootCount")
+    )
+    dom_audit_passed = audit.get("allRootOverflowPassed") is True
+    passed = bool(
+        document_root["passed"]
+        and type(candidate_count) is int
+        and candidate_count >= 0
+        and type(visible_count) is int
+        and visible_count == len(visible_roots)
+        and candidate_count >= visible_count
+        and all(record["passed"] for record in visible_roots)
+        and dom_audit_passed
+    )
+    return {
+        "source": WEB_ROOT_OVERFLOW_EVIDENCE_SOURCE,
+        "surface_kind": str(surface_kind),
+        "document_root": document_root,
+        "addon_root_candidate_count": candidate_count,
+        "visible_addon_root_count": visible_count,
+        "visible_addon_roots": visible_roots,
+        "dom_audit_passed": dom_audit_passed,
+        "passed": passed,
+    }
+
+
+def web_root_overflow_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Validate document and every visible add-on root overflow record."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-web-root-overflow",)
+    issues: list[str] = []
+    if evidence.get("source") != WEB_ROOT_OVERFLOW_EVIDENCE_SOURCE:
+        issues.append("unexpected-web-root-source")
+    surface_kind = evidence.get("surface_kind")
+    if surface_kind not in {"home", "reviewer"}:
+        issues.append("invalid-web-root-surface-kind")
+
+    def validate_measurement(
+        record: Any,
+        *,
+        prefix: str,
+    ) -> None:
+        if not isinstance(record, dict):
+            issues.append(f"missing-{prefix}-measurement")
+            return
+        client_width = record.get("client_width")
+        scroll_width = record.get("scroll_width")
+        overflow = record.get("horizontal_overflow")
+        if type(client_width) is not int or client_width <= 0:
+            issues.append(f"invalid-{prefix}-client-width")
+        if type(scroll_width) is not int or scroll_width <= 0:
+            issues.append(f"invalid-{prefix}-scroll-width")
+        if type(overflow) is not int or overflow < 0:
+            issues.append(f"invalid-{prefix}-overflow")
+        if (
+            type(client_width) is int
+            and type(scroll_width) is int
+            and type(overflow) is int
+            and overflow != max(0, scroll_width - client_width)
+        ):
+            issues.append(f"{prefix}-overflow-arithmetic-mismatch")
+        if (
+            type(client_width) is int
+            and type(scroll_width) is int
+            and scroll_width > client_width
+        ):
+            issues.append(f"{prefix}-horizontal-overflow")
+        if record.get("passed") is not True:
+            issues.append(f"{prefix}-overflow-not-passed")
+
+    document_root = evidence.get("document_root")
+    if isinstance(document_root, dict):
+        if document_root.get("identity") != "document.documentElement":
+            issues.append("unexpected-web-document-root-identity")
+        if document_root.get("source") != "document.documentElement":
+            issues.append("unexpected-web-document-root-source")
+    validate_measurement(document_root, prefix="web-document-root")
+
+    candidate_count = evidence.get("addon_root_candidate_count")
+    visible_count = evidence.get("visible_addon_root_count")
+    records = evidence.get("visible_addon_roots")
+    if type(candidate_count) is not int or candidate_count < 0:
+        issues.append("invalid-addon-root-candidate-count")
+    if type(visible_count) is not int or visible_count < 0:
+        issues.append("invalid-visible-addon-root-count")
+    if not isinstance(records, list):
+        issues.append("invalid-visible-addon-root-records")
+        records = []
+    if type(visible_count) is int and visible_count != len(records):
+        issues.append("visible-addon-root-count-mismatch")
+    if (
+        type(candidate_count) is int
+        and type(visible_count) is int
+        and candidate_count < visible_count
+    ):
+        issues.append("addon-root-candidate-count-mismatch")
+    if surface_kind == "home" and not records:
+        issues.append("home-visible-addon-root-missing")
+
+    identities: set[str] = set()
+    prior_dom_ordinal = 0
+    for index, record in enumerate(records, start=1):
+        prefix = f"visible-addon-root-{index}"
+        if not isinstance(record, dict):
+            issues.append(f"invalid-{prefix}-record")
+            continue
+        identity = record.get("identity")
+        root_kind = record.get("root_kind")
+        selector = record.get("selector")
+        dom_ordinal = record.get("dom_ordinal")
+        kind_ordinal = record.get("kind_ordinal")
+        if not isinstance(root_kind, str) or not root_kind:
+            issues.append(f"invalid-{prefix}-kind")
+        if type(kind_ordinal) is not int or kind_ordinal < 1:
+            issues.append(f"invalid-{prefix}-kind-ordinal")
+        expected_identity = (
+            f"anki-garden:{root_kind}:{kind_ordinal}"
+            if isinstance(root_kind, str)
+            and root_kind
+            and type(kind_ordinal) is int
+            and kind_ordinal >= 1
+            else None
+        )
+        if not isinstance(identity, str) or not identity:
+            issues.append(f"invalid-{prefix}-identity")
+        elif identity in identities:
+            issues.append("duplicate-visible-addon-root-identity")
+        elif expected_identity is not None and identity != expected_identity:
+            issues.append(f"unstable-{prefix}-identity")
+        if isinstance(identity, str):
+            identities.add(identity)
+        if not isinstance(selector, str) or not selector:
+            issues.append(f"invalid-{prefix}-selector")
+        if type(dom_ordinal) is not int or dom_ordinal <= prior_dom_ordinal:
+            issues.append(f"nondeterministic-{prefix}-dom-order")
+        else:
+            prior_dom_ordinal = dom_ordinal
+        if record.get("visible") is not True:
+            issues.append(f"{prefix}-not-visible")
+        validate_measurement(record, prefix=prefix)
+
+    if evidence.get("dom_audit_passed") is not True:
+        issues.append("web-root-dom-audit-not-passed")
+    if evidence.get("passed") is not True:
+        issues.append("web-root-overflow-not-passed")
+    return tuple(dict.fromkeys(issues))
+
 
 RESPONSIVE_STABILITY_PAIRS: tuple[tuple[str, str], ...] = (
     ("resize-dashboard-content-699", "resize-dashboard-content-701"),
@@ -2158,6 +2463,180 @@ def dialog_scroll_geometry_issue_codes(
     if reachable_content_height < required_content_height:
         issues.append("unreachable-scroll-content")
     return tuple(issues)
+
+
+def dialog_scroll_state_observation_issue_codes(
+    observation: Any,
+) -> tuple[str, ...]:
+    """Validate one painted member of the release scroll-state matrix."""
+
+    if not isinstance(observation, dict):
+        return ("invalid-scroll-state-observation",)
+    issues: list[str] = []
+    state = str(observation.get("state", ""))
+    if state not in DIALOG_SCROLL_FOUR_STATE_NAMES:
+        issues.append("unknown-scroll-state")
+    if observation.get("painted") is not True:
+        issues.append("scroll-state-not-painted")
+    digest = observation.get("paint_digest")
+    if not isinstance(digest, str) or len(digest) != 64:
+        issues.append("invalid-scroll-state-paint-digest")
+    paint_size = observation.get("paint_size")
+    if not (
+        isinstance(paint_size, list)
+        and len(paint_size) == 2
+        and all(type(value) is int and value > 0 for value in paint_size)
+    ):
+        issues.append("invalid-scroll-state-paint-size")
+
+    integer_fields = (
+        "row_count",
+        "scroll_minimum",
+        "scroll_maximum",
+        "scroll_value",
+        "horizontal_scroll_minimum",
+        "horizontal_scroll_maximum",
+        "content_width",
+        "viewport_width",
+        "viewport_height",
+    )
+    invalid = [
+        field
+        for field in integer_fields
+        if type(observation.get(field)) is not int
+    ]
+    issues.extend(f"invalid-scroll-state-metric:{field}" for field in invalid)
+    for field in (
+        "vertical_scrollbar_visible",
+        "horizontal_scrollbar_visible",
+    ):
+        if type(observation.get(field)) is not bool:
+            issues.append(f"invalid-scroll-state-metric:{field}")
+    intrusions = observation.get("fixed_region_intrusions")
+    if not isinstance(intrusions, list):
+        issues.append("invalid-fixed-region-intrusions")
+    elif intrusions:
+        issues.append("scrollbar-fixed-region-intrusion")
+    if invalid or any(
+        issue.startswith("invalid-scroll-state-metric:")
+        for issue in issues
+    ):
+        return tuple(dict.fromkeys(issues))
+
+    row_count = int(observation["row_count"])
+    scroll_minimum = int(observation["scroll_minimum"])
+    scroll_maximum = int(observation["scroll_maximum"])
+    scroll_value = int(observation["scroll_value"])
+    horizontal_minimum = int(observation["horizontal_scroll_minimum"])
+    horizontal_maximum = int(observation["horizontal_scroll_maximum"])
+    content_width = int(observation["content_width"])
+    viewport_width = int(observation["viewport_width"])
+    viewport_height = int(observation["viewport_height"])
+    scroll_span = scroll_maximum - scroll_minimum
+    if (
+        row_count < 0
+        or scroll_minimum < 0
+        or scroll_maximum < scroll_minimum
+        or not scroll_minimum <= scroll_value <= scroll_maximum
+        or viewport_width <= 0
+        or viewport_height <= 0
+        or content_width <= 0
+    ):
+        issues.append("invalid-scroll-state-geometry")
+    if (
+        horizontal_maximum != horizontal_minimum
+        or observation.get("horizontal_scrollbar_visible") is True
+        or content_width > viewport_width
+    ):
+        issues.append("horizontal-scroll-overflow")
+
+    if state == "no-overflow-list":
+        if scroll_span != 0:
+            issues.append("no-overflow-state-has-scroll-range")
+        if observation.get("vertical_scrollbar_visible") is True:
+            issues.append("scrollbar-shown-when-content-fits")
+    elif state == "one-row-list":
+        if row_count != 1:
+            issues.append("one-row-state-row-count")
+        if scroll_span != 0:
+            issues.append("one-row-state-has-scroll-range")
+        if observation.get("vertical_scrollbar_visible") is True:
+            issues.append("scrollbar-shown-when-content-fits")
+    elif state == "enough-rows-to-scroll":
+        if row_count < 2:
+            issues.append("scrolling-state-row-count")
+        if scroll_span <= 0:
+            issues.append("scrolling-state-missing-range")
+        if scroll_value != scroll_minimum:
+            issues.append("scrolling-state-not-at-start")
+    elif state == "final-item-at-maximum-scroll":
+        if row_count < 2:
+            issues.append("maximum-scroll-state-row-count")
+        if scroll_span <= 0:
+            issues.append("maximum-scroll-state-missing-range")
+        if scroll_value != scroll_maximum:
+            issues.append("maximum-scroll-value")
+        final_bounds = observation.get("final_item_bounds")
+        if not (
+            isinstance(final_bounds, list)
+            and len(final_bounds) == 4
+            and all(type(value) is int for value in final_bounds)
+            and int(final_bounds[2]) > 0
+            and int(final_bounds[3]) > 0
+        ):
+            issues.append("invalid-final-item-bounds")
+        else:
+            _left, top, _width, height = final_bounds
+            if top < 0 or top + height > viewport_height:
+                issues.append("clipped-final-row")
+        if observation.get("final_item_visible") is not True:
+            issues.append("final-item-not-visible")
+    return tuple(dict.fromkeys(issues))
+
+
+def dialog_scroll_state_matrix_issue_codes(
+    matrix: Any,
+    *,
+    require_complete: bool,
+) -> tuple[str, ...]:
+    """Validate local scroll observations or the aggregate four-state gate."""
+
+    if not isinstance(matrix, dict):
+        return ("missing-scroll-state-matrix",)
+    observations = matrix.get("observations")
+    if not isinstance(observations, list):
+        return ("invalid-scroll-state-observations",)
+    issues: list[str] = []
+    seen: set[str] = set()
+    for index, observation in enumerate(observations):
+        if not isinstance(observation, dict):
+            issues.append(f"invalid-scroll-state-observation:{index}")
+            continue
+        state = str(observation.get("state", ""))
+        if state in seen:
+            issues.append(f"duplicate-scroll-state:{state}")
+        seen.add(state)
+        issues.extend(
+            f"{state or index}:{issue}"
+            for issue in dialog_scroll_state_observation_issue_codes(
+                observation
+            )
+        )
+        if observation.get("issues") != []:
+            issues.append(f"{state or index}:reported-issues")
+        if observation.get("passed") is not True:
+            issues.append(f"{state or index}:did-not-pass")
+    if matrix.get("canonical_scroll_restored") is not True:
+        issues.append("canonical-scroll-not-restored")
+    before = matrix.get("canonical_scroll_value_before")
+    after = matrix.get("canonical_scroll_value_after")
+    if type(before) is not int or type(after) is not int or before != after:
+        issues.append("canonical-scroll-value-mismatch")
+    if require_complete:
+        for state in DIALOG_SCROLL_FOUR_STATE_NAMES:
+            if state not in seen:
+                issues.append(f"missing-scroll-state:{state}")
+    return tuple(dict.fromkeys(issues))
 
 
 def session_summary_capture_issue_codes(
@@ -2546,7 +3025,7 @@ _NURSERY_CAPTURE_LABELS = frozenset({
     "nursery-plants",
     "nursery-fertilizer-booster",
     "nursery-garden-spaces",
-    "nursery-weather-scenery",
+    "nursery-garden-decorations-scenery",
     "nursery-item-owned",
     "nursery-item-locked",
     "nursery-purchase-success",
@@ -2638,6 +3117,1310 @@ COMPACT_HOME_BANNED_COPY: tuple[str, ...] = (
     "closest",
     "planted starter",
 )
+
+CAPTURE_DEPRECATED_VISIBLE_COPY_PATTERNS: tuple[str, ...] = (
+    r"\bstage [1-5] of 5\b",
+    r"\bgarden finds?\b",
+    r"\b1 find\b",
+    r"\bnew environments?\b",
+    r"\buse bonus\b",
+    r"\benvironment discoveries\b",
+    r"\benvironment discovery guarantees\b",
+    r"\bfuture growth will be shared or stored\b",
+    r"\btoday['’]s environment\b",
+    r"\bnursery weather scenery\b",
+    r"\bgarden item unlocked\b",
+)
+
+
+def deprecated_visible_copy_hits(copy: str) -> tuple[str, ...]:
+    """Return deprecated learner-facing phrases found in painted copy."""
+
+    normalized = " ".join(str(copy or "").casefold().split())
+    return tuple(
+        pattern
+        for pattern in CAPTURE_DEPRECATED_VISIBLE_COPY_PATTERNS
+        if re.search(pattern, normalized)
+    )
+
+
+def capture_visible_qt_copy_evidence(
+    root: QWidget,
+    contract_version: int,
+) -> dict[str, Any]:
+    """Collect painted native copy without widening the frozen v25 gate."""
+
+    # Preserve the exact v25 collection order and failure behavior: title,
+    # labels, then buttons. Any error in this legacy path still escapes to the
+    # caller, where the whole capture fails closed as it did under v25.
+    parts = [str(root.windowTitle() or "")]
+    parts.extend(
+        str(candidate.text())
+        for candidate in root.findChildren(QLabel)
+        if candidate.isVisibleTo(root)
+        and str(candidate.text()).strip()
+    )
+    parts.extend(
+        _displayed_button_text(candidate)
+        for candidate in root.findChildren(QAbstractButton)
+        if candidate.isVisibleTo(root)
+        and _displayed_button_text(candidate).strip()
+    )
+    if int(contract_version) < 26:
+        return {
+            "parts": parts,
+            "issues": [],
+            "passed": True,
+        }
+
+    issues: list[str] = []
+
+    def collect(
+        widget_type: type[Any],
+        source: str,
+        reader: Callable[[Any], str],
+    ) -> None:
+        try:
+            candidates = tuple(root.findChildren(widget_type))
+        except Exception as exc:
+            issues.append(f"{source}-discovery:{type(exc).__name__}")
+            return
+        for index, candidate in enumerate(candidates):
+            try:
+                if not candidate.isVisibleTo(root):
+                    continue
+                text = str(reader(candidate) or "")
+                if text.strip():
+                    parts.append(text)
+            except Exception as exc:
+                issues.append(
+                    f"{source}-{index + 1}-read:{type(exc).__name__}"
+                )
+
+    def editable_text(candidate: Any, value: str) -> str:
+        if str(value).strip():
+            return str(value)
+        placeholder = getattr(candidate, "placeholderText", None)
+        return str(placeholder() or "") if callable(placeholder) else ""
+
+    collect(
+        QTextEdit,
+        "text-edit",
+        lambda candidate: editable_text(candidate, candidate.toPlainText()),
+    )
+    collect(
+        QComboBox,
+        "combo-box",
+        lambda candidate: editable_text(candidate, candidate.currentText()),
+    )
+    collect(
+        QLineEdit,
+        "line-edit",
+        lambda candidate: editable_text(candidate, candidate.text()),
+    )
+
+    try:
+        tab_bars = tuple(root.findChildren(QTabBar))
+    except Exception as exc:
+        issues.append(f"tab-bar-discovery:{type(exc).__name__}")
+        tab_bars = ()
+    for bar_index, tab_bar in enumerate(tab_bars):
+        try:
+            if not tab_bar.isVisibleTo(root):
+                continue
+            tab_count = int(tab_bar.count())
+        except Exception as exc:
+            issues.append(
+                f"tab-bar-{bar_index + 1}-read:{type(exc).__name__}"
+            )
+            continue
+        for tab_index in range(tab_count):
+            try:
+                visible_reader = getattr(tab_bar, "isTabVisible", None)
+                if callable(visible_reader) and not bool(
+                    visible_reader(tab_index)
+                ):
+                    continue
+                text = str(tab_bar.tabText(tab_index) or "").replace("&&", "&")
+                if text.strip():
+                    parts.append(text)
+            except Exception as exc:
+                issues.append(
+                    "tab-bar-"
+                    f"{bar_index + 1}-tab-{tab_index + 1}-read:"
+                    f"{type(exc).__name__}"
+                )
+
+    return {
+        "parts": parts,
+        "issues": list(dict.fromkeys(issues)),
+        "passed": not issues,
+    }
+
+
+def capture_progress_fraction(
+    current: int,
+    maximum: int,
+    *,
+    complete: bool = False,
+) -> float:
+    """Mirror the bounded Home fraction used by the painted progress track."""
+
+    if complete:
+        return 100.0
+    denominator = max(0, int(maximum))
+    if denominator <= 0:
+        return 0.0
+    return min(
+        100.0,
+        max(0.0, max(0, int(current)) / denominator * 100.0),
+    )
+
+
+def native_progress_fraction(
+    minimum: int,
+    value: int,
+    maximum: int,
+) -> float:
+    """Return the exact bounded fraction consumed by a native progress style."""
+
+    lower = int(minimum)
+    upper = int(maximum)
+    if upper <= lower:
+        return 0.0
+    clamped = min(upper, max(lower, int(value)))
+    return round((clamped - lower) / (upper - lower), 9)
+
+
+def native_progress_bar_evidence_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Fail closed on incomplete or inconsistent native progress paint input."""
+
+    if not isinstance(evidence, dict):
+        return ("native-progress-evidence-missing",)
+    issues: list[str] = []
+    if evidence.get("source") != "QProgressBar.initStyleOption":
+        issues.append("native-progress-source")
+    if evidence.get("scanned") is not True:
+        issues.append("native-progress-scan-missing")
+    root_semantic_id = evidence.get("root_semantic_id")
+    if not isinstance(root_semantic_id, str) or not root_semantic_id.strip():
+        issues.append("native-progress-root-semantic-id")
+    root_geometry = evidence.get("root_geometry")
+    if not (
+        isinstance(root_geometry, list)
+        and len(root_geometry) == 4
+        and all(type(number) is int for number in root_geometry)
+        and root_geometry[2] > 0
+        and root_geometry[3] > 0
+    ):
+        issues.append("native-progress-root-geometry")
+
+    records = evidence.get("bars")
+    candidate_count = evidence.get("candidate_count")
+    if not isinstance(records, list):
+        return tuple(dict.fromkeys((*issues, "native-progress-records")))
+    if type(candidate_count) is not int or candidate_count < 0:
+        issues.append("native-progress-candidate-count")
+    elif candidate_count != len(records):
+        issues.append("native-progress-candidate-count-mismatch")
+
+    semantic_ids: list[str] = []
+    for index, record in enumerate(records):
+        prefix = f"native-progress-{index}"
+        if not isinstance(record, dict):
+            issues.append(f"{prefix}-record")
+            continue
+        semantic_id = record.get("semantic_id")
+        if not isinstance(semantic_id, str) or not semantic_id.strip():
+            issues.append(f"{prefix}-semantic-id")
+        else:
+            semantic_ids.append(semantic_id)
+        if record.get("native_class") != "QProgressBar":
+            issues.append(f"{prefix}-native-class")
+        if (
+            record.get("visible") is not True
+            or record.get("visible_to_root") is not True
+            or record.get("visible_region_nonempty") is not True
+        ):
+            issues.append(f"{prefix}-visibility")
+
+        geometry = record.get("geometry")
+        visible_geometry = record.get("visible_geometry")
+        geometry_valid = bool(
+            isinstance(geometry, list)
+            and len(geometry) == 4
+            and all(type(number) is int for number in geometry)
+            and geometry[2] > 0
+            and geometry[3] > 0
+        )
+        visible_geometry_valid = bool(
+            isinstance(visible_geometry, list)
+            and len(visible_geometry) == 4
+            and all(type(number) is int for number in visible_geometry)
+            and visible_geometry[2] > 0
+            and visible_geometry[3] > 0
+        )
+        if not geometry_valid:
+            issues.append(f"{prefix}-geometry")
+        if not visible_geometry_valid:
+            issues.append(f"{prefix}-visible-geometry")
+        if geometry_valid and visible_geometry_valid and (
+            visible_geometry[0] < 0
+            or visible_geometry[1] < 0
+            or not isinstance(root_geometry, list)
+            or len(root_geometry) != 4
+            or visible_geometry[0] + visible_geometry[2] > root_geometry[2]
+            or visible_geometry[1] + visible_geometry[3] > root_geometry[3]
+        ):
+            issues.append(f"{prefix}-visible-geometry-containment")
+
+        minimum = record.get("logical_minimum")
+        value = record.get("logical_value")
+        maximum = record.get("logical_maximum")
+        logical_valid = bool(
+            type(minimum) is int
+            and type(value) is int
+            and type(maximum) is int
+            and maximum >= minimum
+        )
+        if not logical_valid:
+            issues.append(f"{prefix}-logical-range")
+            expected_fraction = None
+        else:
+            expected_fraction = native_progress_fraction(
+                minimum,
+                value,
+                maximum,
+            )
+            if record.get("clamped_logical_value") != min(
+                maximum,
+                max(minimum, value),
+            ):
+                issues.append(f"{prefix}-logical-clamp")
+            if record.get("denominator_zero") is not (maximum <= minimum):
+                issues.append(f"{prefix}-denominator-zero")
+            if record.get("denominator_zero_fallback") != "zero":
+                issues.append(f"{prefix}-denominator-zero-fallback")
+            if record.get("expected_fraction") != expected_fraction:
+                issues.append(f"{prefix}-expected-fraction")
+
+        paint = record.get("paint_input")
+        if not isinstance(paint, dict):
+            issues.append(f"{prefix}-paint-input")
+            continue
+        if (
+            paint.get("source") != "QStyleOptionProgressBar"
+            or paint.get("initialized") is not True
+        ):
+            issues.append(f"{prefix}-paint-source")
+        painted_minimum = paint.get("minimum")
+        painted_value = paint.get("value")
+        painted_maximum = paint.get("maximum")
+        if not (
+            type(painted_minimum) is int
+            and type(painted_value) is int
+            and type(painted_maximum) is int
+            and logical_valid
+            and painted_minimum == minimum
+            and painted_value == value
+            and painted_maximum == maximum
+        ):
+            issues.append(f"{prefix}-paint-range")
+        elif paint.get("fraction") != expected_fraction:
+            issues.append(f"{prefix}-paint-fraction")
+        paint_geometry = paint.get("geometry")
+        if not (
+            geometry_valid
+            and isinstance(paint_geometry, list)
+            and paint_geometry == [0, 0, geometry[2], geometry[3]]
+        ):
+            issues.append(f"{prefix}-paint-geometry")
+        if record.get("paint_input_consistent") is not True:
+            issues.append(f"{prefix}-paint-input-consistency")
+
+    if len(set(semantic_ids)) != len(semantic_ids):
+        issues.append("native-progress-semantic-id-collision")
+    if evidence.get("issues") != []:
+        issues.append("native-progress-runtime-issues")
+    if evidence.get("passed") is not True:
+        issues.append("native-progress-runtime-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def home_progress_fraction_issue_codes(
+    records: dict[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Validate the six release-critical Home progress calculations."""
+
+    expected = {
+        "zero": (0, 2_000, False, 0.0),
+        "near-zero": (1, 2_000, False, 0.05),
+        "partial": (750, 2_000, False, 37.5),
+        "checkpoint-carryover": (50, 2_000, False, 2.5),
+        "complete": (2_000, 2_000, True, 100.0),
+        "denominator-zero": (125, 0, False, 0.0),
+    }
+    issues: list[str] = []
+    for name, (current, maximum, complete, percent) in expected.items():
+        record = dict(records.get(name, {}) or {})
+        if (
+            record.get("current") != current
+            or record.get("maximum") != maximum
+            or record.get("complete") is not complete
+            or record.get("percent") != percent
+            or record.get("painted_attributes_match") is not True
+        ):
+            issues.append(f"home-progress-fraction:{name}")
+    return tuple(issues)
+
+
+def today_cards_painted_progress_issue_codes(
+    record: dict[str, Any],
+) -> tuple[str, ...]:
+    """Require the painted Today progress bar to retain its 176/194 basis."""
+
+    issues: list[str] = []
+    if record.get("progress_value") != 176:
+        issues.append("today-progress-value")
+    if record.get("progress_maximum") != 194:
+        issues.append("today-progress-maximum")
+    if record.get("actual_progress_percent") != 91.0:
+        issues.append("today-progress-actual-percent")
+    if record.get("displayed_progress_percent") != 91.0:
+        issues.append("today-progress-painted-percent")
+    if record.get("painted") is not True:
+        issues.append("today-progress-not-painted")
+    return tuple(issues)
+
+
+def growth_charge_transient_variant_issue_codes(
+    evidence: dict[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Validate the painted no-transition and reward-free success variants."""
+
+    expected = {
+        "ready-no-transition": {
+            "growth_value": "600 → 700",
+            "stage_value": "Remains Sprout",
+            "stage_badge_visible": False,
+            "stage_progress": "200 / 2,000 toward Young",
+            "current_growth": 600,
+            "projected_growth": 700,
+            "inventory_before": 2,
+            "inventory_after": 1,
+            "progress_minimum": 0,
+            "progress_maximum": 2_000,
+            "progress_value": 200,
+            "painted": True,
+        },
+        "success-no-stage-reward": {
+            "receipt_title": "Growth added to Bonsai Plant",
+            "receipt_copy": (
+                "+100 Growth · 1 growth charge remaining\n"
+                "Next-stage progress · 200 / 2,000 toward Young"
+            ),
+            "completed_stage_count": 0,
+            "reward_total": 0,
+            "stage_row_visible": False,
+            "reward_chips_visible": False,
+            "resulting_growth": 700,
+            "inventory_remaining": 1,
+            "progress_minimum": 0,
+            "progress_maximum": 2_000,
+            "progress_value": 200,
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    for variant, expected_values in expected.items():
+        actual = dict(evidence.get(variant, {}) or {})
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"growth-charge-{variant}:{key}")
+    return tuple(issues)
+
+
+def growth_stage_strip_issue_codes(
+    records: list[dict[str, Any]],
+) -> tuple[str, ...]:
+    """Require the canonical reached/current/next/locked Growth strip."""
+
+    expected = (
+        ("Seed", "reached", "Reached", False),
+        ("Sprout", "current", "Current", False),
+        ("Young", "next", "Next", True),
+        ("Mature", "locked", "Locked", True),
+        ("Flowering", "locked", "Locked", True),
+        ("Full Bloom", "locked", "Locked", True),
+    )
+    issues: list[str] = []
+    if not isinstance(records, list) or len(records) != len(expected):
+        return ("growth-stage-strip-count",)
+    for index, (record, expected_values) in enumerate(
+        zip(records, expected),
+        start=1,
+    ):
+        label, state, state_label, future = expected_values
+        prefix = f"growth-stage-strip-{index}"
+        if not isinstance(record, dict):
+            issues.append(f"{prefix}:record")
+            continue
+        if record.get("label") != label:
+            issues.append(f"{prefix}:label")
+        if record.get("state") != state:
+            issues.append(f"{prefix}:state")
+        if record.get("state_label") != state_label:
+            issues.append(f"{prefix}:state-label")
+        if record.get("preview_enabled") is not True:
+            issues.append(f"{prefix}:preview-enabled")
+        if record.get("label_enabled") is not True:
+            issues.append(f"{prefix}:label-enabled")
+        if record.get("preview_future_treatment") is not future:
+            issues.append(f"{prefix}:preview-treatment")
+        if record.get("label_future_treatment") is not future:
+            issues.append(f"{prefix}:label-treatment")
+        if record.get("extra_text") != []:
+            issues.append(f"{prefix}:extra-text")
+    return tuple(issues)
+
+
+def nursery_supplement_state_matrix_issue_codes(
+    evidence: dict[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Validate the four painted production states owned by Surface 22."""
+
+    expected: dict[str, dict[str, Any]] = {
+        "sufficient-balance": {
+            "balance": 500,
+            "balance_copy": "500",
+            "item_id": "premium",
+            "price_copy": "300 coins",
+            "action": "Buy and apply",
+            "action_disposition": "apply",
+            "action_enabled": True,
+            "painted": True,
+        },
+        "stored-multiple": {
+            "item_id": "fertilizer_basic",
+            "item_name": "Rich Compost",
+            "owned_copy": "3 owned",
+            "action": "Apply",
+            "action_disposition": "apply",
+            "meta_copy": (
+                "+1 Growth per eligible card answer · Lasts 1 hour"
+            ),
+            "artwork_ref": "rich_compost",
+            "artwork_source_matches": True,
+            "artwork_fallback": False,
+            "booster_item_id": "booster_potion",
+            "booster_owned_copy": "2 owned",
+            "booster_action": "Use",
+            "booster_painted": True,
+            "painted": True,
+        },
+        "active": {
+            "engine_tier": "basic",
+            "item_id": "fertilizer_basic",
+            "owned_copy": "2 owned",
+            "action": "Extend",
+            "action_disposition": "extend",
+            "status_phase": "active",
+            "status_copy": (
+                "Basic Fertilizer · +1 Growth per eligible card answer · "
+                "1 hour left"
+            ),
+            "painted": True,
+        },
+        "queued": {
+            "engine_tiers": ["quality"],
+            "item_id": "fertilizer_quality",
+            "owned_copy": "1 owned",
+            "queued_copy": "Queued",
+            # Quality is already the schedule tail in this state, so another
+            # Quality dose extends that queued same-tier period.
+            "action": "Extend",
+            "action_disposition": "extend",
+            # After Quality is queued, Basic is no longer the schedule tail
+            # and must offer a new queued period. Quality remains the tail and
+            # therefore retains the explicit same-tier extension action.
+            "final_basic_action": "Queue",
+            "final_basic_action_disposition": "queue",
+            "final_basic_painted": True,
+            "final_quality_action": "Extend",
+            "final_quality_action_disposition": "extend",
+            "final_quality_painted": True,
+            "meta_copy": (
+                "+2 Growth per eligible card answer · Lasts 2 hours"
+            ),
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    if set(evidence) != set(expected):
+        issues.append("nursery-supplement-state-set")
+    for state, expected_values in expected.items():
+        actual = dict(evidence.get(state, {}) or {})
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"nursery-supplement-{state}:{key}")
+    return tuple(issues)
+
+
+def sync_reward_discovery_state_matrix_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Require the two painted discovery variants owned by Surface 29."""
+
+    base_metrics = {
+        "sync_review_cards": {"label": "Card answers", "value": "42"},
+        "growth_resource": {"label": "Growth", "value": "+520"},
+        "garden_coin": {"label": "Garden Coins", "value": "+12"},
+    }
+    expected: dict[str, dict[str, Any]] = {
+        "no-discovery": {
+            "environment_count": 0,
+            "rewards_section_visible": False,
+            "rewards_heading_visible": False,
+            "visible_environment_rows": 0,
+            "visible_standard_find_rows": 0,
+            "visible_environment_ids": [],
+            "visible_environment_event_ids": [],
+            "visible_standard_find_ids": [],
+            "visible_standard_find_event_ids": [],
+            "metric_tile_count": 3,
+            "metric_projection": base_metrics,
+            "disclosure_visible": False,
+            "disclosure_text": "",
+            "expanded": False,
+            "painted": True,
+        },
+        "multi-discovery-collapsed": {
+            "environment_count": 5,
+            "rewards_section_visible": True,
+            "rewards_heading_visible": True,
+            "visible_environment_rows": 2,
+            "visible_standard_find_rows": 1,
+            "visible_environment_ids": ["firefly_lantern", "moon_arch"],
+            "visible_environment_event_ids": [
+                "capture-sync-discovery:firefly_lantern",
+                "capture-sync-discovery:moon_arch",
+            ],
+            "visible_standard_find_ids": ["growth_charge_small"],
+            "visible_standard_find_event_ids": [
+                "capture-sync-standard-find:growth_charge_small",
+            ],
+            "metric_tile_count": 5,
+            "metric_projection": {
+                **base_metrics,
+                "standard_find": {
+                    "label": "Standard Finds",
+                    "value": "+3",
+                },
+                "garden_discovery": {
+                    "label": "Garden discoveries",
+                    "value": "+5",
+                },
+            },
+            "disclosure_visible": True,
+            "disclosure_text": "Show 3 more",
+            "disclosure_accessible_name": (
+                "Show 3 more sync reward entries"
+            ),
+            "expanded": False,
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    records = dict(evidence.get("records", {}) or {})
+    if set(records) != set(expected):
+        issues.append("sync-reward-discovery-state-set")
+    for state, expected_values in expected.items():
+        actual = dict(records.get(state, {}) or {})
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"sync-reward-{state}:{key}")
+    restored = dict(evidence.get("restored", {}) or {})
+    restored_expected = {
+        "environment_count": 1,
+        "rewards_section_visible": True,
+        "visible_environment_rows": 1,
+        "visible_standard_find_rows": 0,
+        "visible_environment_ids": ["firefly_lantern"],
+        "visible_environment_event_ids": [
+            "capture-sync-environment-discovery:firefly_lantern",
+        ],
+        "visible_standard_find_ids": [],
+        "visible_standard_find_event_ids": [],
+        "metric_tile_count": 4,
+        "metric_projection": {
+            **base_metrics,
+            "garden_discovery": {
+                "label": "Garden discoveries",
+                "value": "+1",
+            },
+        },
+        "disclosure_visible": False,
+        "expanded": False,
+    }
+    for key, expected_value in restored_expected.items():
+        if restored.get(key) != expected_value:
+            issues.append(f"sync-reward-restored:{key}")
+    return tuple(issues)
+
+
+def collection_filter_roundtrip_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Validate Surface 18's filtered Species Overview round trip."""
+
+    expected_filtered_state = {
+        "query": "Bonsai",
+        "filter": "collected",
+        "category": "plants",
+        "sort": "name",
+    }
+    expected_result = {
+        "species_ids": ["bonsai"],
+        "species_names": ["Bonsai"],
+        "target_visible": True,
+        "painted": True,
+    }
+    expected_restored_state = {
+        "query": "",
+        "filter": "all",
+        "category": "all",
+        "sort": "catalog",
+    }
+    issues: list[str] = []
+    for phase in ("before_open", "after_close"):
+        state = dict(evidence.get(phase, {}) or {})
+        if state != expected_filtered_state:
+            issues.append(f"collection-filter-roundtrip-{phase}:state")
+        controls = dict(evidence.get(f"{phase}_controls", {}) or {})
+        if controls != expected_filtered_state:
+            issues.append(f"collection-filter-roundtrip-{phase}:controls")
+        result = dict(evidence.get(f"{phase}_result", {}) or {})
+        for key, expected_value in expected_result.items():
+            if result.get(key) != expected_value:
+                issues.append(
+                    f"collection-filter-roundtrip-{phase}:result-{key}"
+                )
+    dialog = dict(evidence.get("species_overview", {}) or {})
+    expected_dialog = {
+        "opened": True,
+        "window_family": "SpeciesOverviewDialog",
+        "species_id": "bonsai",
+        "title": "Bonsai collection",
+        "parent_window_family": "GardenProgressDialog",
+        "painted": True,
+    }
+    for key, expected_value in expected_dialog.items():
+        if dialog.get(key) != expected_value:
+            issues.append(f"collection-filter-roundtrip-dialog:{key}")
+    if evidence.get("production_route") != "collection-card-click":
+        issues.append("collection-filter-roundtrip-production-route")
+    if evidence.get("dialog_closed") is not True:
+        issues.append("collection-filter-roundtrip-dialog-close")
+    restored = dict(evidence.get("restored", {}) or {})
+    if restored != expected_restored_state:
+        issues.append("collection-filter-roundtrip-restored-state")
+    restored_controls = dict(
+        evidence.get("restored_controls", {}) or {}
+    )
+    if restored_controls != expected_restored_state:
+        issues.append("collection-filter-roundtrip-restored-controls")
+    if evidence.get("restored_painted") is not True:
+        issues.append("collection-filter-roundtrip-restored-paint")
+    return tuple(issues)
+
+
+def collection_loadout_state_matrix_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Validate Surface 19's structured appearance and draft lifecycle."""
+
+    issues: list[str] = []
+    values = dict(evidence.get("structured_values", {}) or {})
+    expected_keys = {
+        "scenery",
+        "displayed_decoration",
+        "active_bonus",
+        "visual_effects",
+    }
+    if set(values) != expected_keys:
+        issues.append("collection-loadout-structured-value-keys")
+    if any(not str(values.get(key, "")).strip() for key in expected_keys):
+        issues.append("collection-loadout-structured-value-copy")
+    if evidence.get("structured_values_visible") is not True:
+        issues.append("collection-loadout-structured-values-visible")
+    if evidence.get("initial_apply_enabled") is not False:
+        issues.append("collection-loadout-initial-apply-state")
+    if evidence.get("dirty_apply_enabled") is not True:
+        issues.append("collection-loadout-dirty-apply-state")
+    if evidence.get("restored_apply_enabled") is not False:
+        issues.append("collection-loadout-restored-apply-state")
+    if evidence.get("selection_preserved_across_tabs") is not True:
+        issues.append("collection-loadout-tab-selection")
+    if evidence.get("selected_tile_checked_after_tabs") is not True:
+        issues.append("collection-loadout-selected-tile")
+    if not str(evidence.get("selected_scenery_id", "")).strip():
+        issues.append("collection-loadout-selected-scenery-id")
+    preview_size = list(evidence.get("preview_size", ()) or ())
+    if (
+        len(preview_size) != 2
+        or any(type(value) is not int or value <= 0 for value in preview_size)
+        or preview_size[1] != round(preview_size[0] * 9 / 16)
+    ):
+        issues.append("collection-loadout-preview-aspect-ratio")
+    if evidence.get("dirty_state_painted") is not True:
+        issues.append("collection-loadout-dirty-not-painted")
+    if evidence.get("restored_state_painted") is not True:
+        issues.append("collection-loadout-restored-not-painted")
+    if evidence.get("restored_to_persisted_draft") is not True:
+        issues.append("collection-loadout-draft-not-restored")
+    return tuple(issues)
+
+
+def nursery_bed_incomplete_state_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Require the painted, affordable Bed 3 expansion owned by Surface 23."""
+
+    expected = {
+        "unlocked_beds": 2,
+        "summary": "2 of 6 beds unlocked",
+        "bed_number": 3,
+        "bed_title": "Unlock Bed 3",
+        "price": 150,
+        "price_copy": "150 Garden Coins",
+        "resulting_capacity": 3,
+        "capacity_copy": (
+            "Unlocks Bed 3 and increases Garden capacity to 3 plants."
+        ),
+        "action_copy": "Unlock for 150 Garden Coins",
+        "action_accessible_name": (
+            "Unlock Bed 3 for 150 Garden Coins"
+        ),
+        "action_enabled": True,
+        "painted": True,
+        "contained": True,
+    }
+    issues: list[str] = []
+    for key, expected_value in expected.items():
+        actual = evidence.get(key)
+        if key == "capacity_copy":
+            if expected_value not in str(actual or ""):
+                issues.append(f"nursery-bed-incomplete:{key}")
+        elif actual != expected_value:
+            issues.append(f"nursery-bed-incomplete:{key}")
+    return tuple(issues)
+
+
+def move_occupied_hover_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Require Surface 08 to paint one occupied destination hover."""
+
+    issues: list[str] = []
+    occupied_slot = evidence.get("occupied_destination_slot")
+    expected_label = str(evidence.get("expected_label", ""))
+    occupant_name = str(evidence.get("occupant_display_name", ""))
+    valid_destinations = list(evidence.get("valid_destinations", ()) or ())
+    if evidence.get("move_mode_active") is not True:
+        issues.append("move-hover:move-mode-inactive")
+    if not str(evidence.get("source_plant_id", "")).strip():
+        issues.append("move-hover:source-plant-id")
+    if not str(evidence.get("occupant_plant_id", "")).strip():
+        issues.append("move-hover:occupant-plant-id")
+    if evidence.get("source_plant_id") == evidence.get("occupant_plant_id"):
+        issues.append("move-hover:source-occupant-identity")
+    if type(occupied_slot) is not int or occupied_slot < 0:
+        issues.append("move-hover:occupied-slot")
+    elif occupied_slot not in valid_destinations:
+        issues.append("move-hover:occupied-slot-validity")
+    if evidence.get("hovered_slot") != occupied_slot:
+        issues.append("move-hover:hovered-slot")
+    if not occupant_name or expected_label != f"Swap with {occupant_name}":
+        issues.append("move-hover:expected-label")
+    if evidence.get("painted_label") != expected_label:
+        issues.append("move-hover:painted-label")
+    if evidence.get("pointer_reached_target") is not True:
+        issues.append("move-hover:pointer-target")
+    if evidence.get("source_slot_not_selectable") is not True:
+        issues.append("move-hover:source-selectable")
+    if evidence.get("unrelated_controls_disabled") is not True:
+        issues.append("move-hover:unrelated-controls")
+    if evidence.get("issues") != []:
+        issues.append("move-hover:runtime-issues")
+    if evidence.get("passed") is not True:
+        issues.append("move-hover:runtime-passed")
+    return tuple(issues)
+
+
+def diagnostics_state_matrix_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Validate all five painted production Diagnostics UI states."""
+
+    expected: dict[str, dict[str, Any]] = {
+        "success": {
+            "diagnostic_state": "success",
+            "result_state": "success",
+            "title": "All artwork is available",
+            "summary": "",
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "warning": {
+            "diagnostic_state": "warning",
+            "result_state": "warning",
+            "title": "3 artwork files are missing",
+            "summary": "Some plants, decorations, or scenery may not appear.",
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "failure": {
+            "diagnostic_state": "failure",
+            "result_state": "failure",
+            "title": "Display issues detected",
+            "summary": (
+                "Check again. Copy the current report if the issue continues."
+            ),
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "checking": {
+            "diagnostic_state": "checking",
+            "result_state": "success",
+            "title": "Checking display diagnostics",
+            "summary": "Scanning artwork and display telemetry.",
+            "check_enabled": False,
+            "check_label": "Checking…",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "copy-confirmation": {
+            "diagnostic_state": "copy-confirmation",
+            "result_state": "warning",
+            "title": "3 artwork files are missing",
+            "summary": "Some plants, decorations, or scenery may not appear.",
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": True,
+            "copy_confirmation": "Report copied to clipboard",
+            "painted": True,
+        },
+    }
+    records = dict(evidence.get("records", {}) or {})
+    issues: list[str] = []
+    if set(records) != set(expected):
+        issues.append("diagnostics-state-set")
+    for state, expected_values in expected.items():
+        actual = dict(records.get(state, {}) or {})
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"diagnostics-{state}:{key}")
+    topology = dict(evidence.get("topology", {}) or {})
+    if topology.get("visible_central_scroll_owners") != 1:
+        issues.append("diagnostics-central-scroll-owner")
+    if topology.get("diagnostics_scroll_is_owner") is not True:
+        issues.append("diagnostics-scroll-identity")
+    if topology.get("chrome_outside_scroll") is not True:
+        issues.append("diagnostics-pinned-chrome")
+    return tuple(issues)
+
+
+def nursery_environment_fixture_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Validate the exact reversible Surface 24 ownership/action fixture."""
+
+    expected = {
+        "displayed_decoration": {
+            "item_id": "seedling_sign",
+            "ownership_state": "owned",
+            "display_state": "displayed",
+            "display_action": "Displayed",
+            "bonus_action": "Select today’s bonus",
+            "painted": True,
+        },
+        "active_bonus": {
+            "item_id": "watering_station",
+            "ownership_state": "owned",
+            "bonus_state": "active",
+            "action": "Garden Bonus active today",
+            "painted": True,
+        },
+        "purchasable": {
+            "item_id": "wind_chime",
+            "ownership_state": "available",
+            "price": 100,
+            "action": "Buy",
+            "action_enabled": True,
+            "painted": True,
+        },
+        "locked": {
+            "item_id": "firefly_lantern",
+            "ownership_state": "locked",
+            "price": 0,
+            "action": "How to unlock",
+            "action_enabled": False,
+            "painted": True,
+        },
+        "scenery_heading": {
+            "text": "Scenery",
+            "reachable": True,
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    for state, expected_values in expected.items():
+        actual = dict(evidence.get(state, {}) or {})
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"nursery-environment-{state}:{key}")
+    if evidence.get("fixture_profiles") != ["full", "representative"]:
+        issues.append("nursery-environment-fixture-profiles")
+    if evidence.get("reversible") is not True:
+        issues.append("nursery-environment-fixture-reversible")
+    return tuple(issues)
+
+
+def appearance_state_matrix_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Validate Surface 25's shared projection and draft-safe On/Off states."""
+
+    expected_rows = [
+        ["Scenery", "Verdant Twilight"],
+        ["Displayed decoration", "Seedling Sign"],
+        ["Active garden bonus", "Watering Station"],
+    ]
+    issues: list[str] = []
+    records = dict(evidence.get("records", {}) or {})
+    if set(records) != {"on", "off"}:
+        issues.append("appearance-state-set")
+    for state, effects_value in (("on", "On"), ("off", "Off")):
+        record = dict(records.get(state, {}) or {})
+        if record.get("projection_rows") != [
+            *expected_rows,
+            ["Visual effects", effects_value],
+        ]:
+            issues.append(f"appearance-{state}:projection-rows")
+        if record.get("painted_rows") != [
+            *expected_rows,
+            ["Visual effects", effects_value],
+        ]:
+            issues.append(f"appearance-{state}:painted-rows")
+        if record.get("painted") is not True:
+            issues.append(f"appearance-{state}:painted")
+    if evidence.get("final_state") != "on":
+        issues.append("appearance-final-state")
+    if evidence.get("draft_dirty_before") is not False:
+        issues.append("appearance-draft-before")
+    if evidence.get("draft_dirty_after") is not False:
+        issues.append("appearance-draft-after")
+    if evidence.get("draft_payload_unchanged") is not True:
+        issues.append("appearance-draft-payload")
+    if evidence.get("garden_name_draft_unchanged") is not True:
+        issues.append("appearance-name-draft")
+    if evidence.get("reversible") is not True:
+        issues.append("appearance-fixture-reversible")
+    return tuple(issues)
+
+
+def settings_name_preview_absence_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Reject any duplicate Garden-name preview widget or nearby echo."""
+
+    issues: list[str] = []
+    if evidence.get("attribute_present") is not False:
+        issues.append("settings-name-preview-attribute-present")
+    if evidence.get("candidate_count") != 0:
+        issues.append("settings-name-preview-candidate-count")
+    if evidence.get("visible_candidate_count") != 0:
+        issues.append("settings-name-preview-visible-candidate")
+    if evidence.get("visible_copy") != []:
+        issues.append("settings-name-preview-visible-copy")
+    if evidence.get("draft_echo_count") != 0:
+        issues.append("settings-name-preview-draft-echo")
+    return tuple(issues)
+
+
+def species_stage_accessibility_issue_codes(
+    accessible_names: Any,
+) -> tuple[str, ...]:
+    """Require public Full Bloom terminology in the species artwork gallery."""
+
+    names = (
+        tuple(str(name).strip() for name in accessible_names)
+        if isinstance(accessible_names, (list, tuple))
+        else ()
+    )
+    issues: list[str] = []
+    if "Full Bloom stage. Hidden until unlocked." not in names:
+        issues.append("species-stage-accessibility:full-bloom-name")
+    if any(re.search(r"\brare\b", name, flags=re.IGNORECASE) for name in names):
+        issues.append("species-stage-accessibility:internal-rare-leak")
+    return tuple(issues)
+
+
+def purchase_growth_charge_state_issue_codes(
+    evidence: dict[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Require ready, disabled-loading, and shortage purchase presentations."""
+
+    expected = {
+        "ready": {
+            "purchase_state": "ready",
+            "action_state": "ready",
+            "primary_enabled": True,
+            "status_visible": False,
+            "purchase_kind": "growth_charge",
+            "item_id": "growth_charge_small",
+            "painted": True,
+        },
+        "loading": {
+            "purchase_state": "loading",
+            "action_state": "loading",
+            "busy": True,
+            "primary_enabled": False,
+            "cancel_enabled": False,
+            "purchase_kind": "growth_charge",
+            "item_id": "growth_charge_small",
+            "painted": True,
+        },
+        "insufficient": {
+            "purchase_state": "insufficient_coins",
+            "action_state": "blocked",
+            "primary_enabled": False,
+            "status_visible": True,
+            "status_copy": (
+                "You need 30 more coins to buy Small Growth Charge."
+            ),
+            "purchase_kind": "growth_charge",
+            "item_id": "growth_charge_small",
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    for variant, expected_values in expected.items():
+        actual = dict(evidence.get(variant, {}) or {})
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(
+                    f"purchase-growth-charge-{variant}:{key}"
+                )
+    return tuple(issues)
+
+
+def first_run_sequence_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Validate one persisted species through selection, instruction, and creation."""
+
+    selected = str(evidence.get("selected_species", "") or "").casefold()
+    pending = str(evidence.get("pending_species", "") or "").casefold()
+    created = str(evidence.get("created_species", "") or "").casefold()
+    display = str(evidence.get("display_species", "") or "")
+    instruction = str(evidence.get("instruction_copy", "") or "")
+    issues: list[str] = []
+    if not selected or selected != pending or selected != created:
+        issues.append("first-run-species-identity")
+    if not display or instruction != f"Choose a bed for {display}":
+        issues.append("first-run-placement-instruction")
+    if evidence.get("selection_persisted") is not True:
+        issues.append("first-run-selection-not-persisted")
+    if evidence.get("creation_undone") is not True:
+        issues.append("first-run-creation-not-reversible")
+    return tuple(issues)
+
+
+def first_run_selection_issue_codes(
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Validate the product Nursery entry and its persisted Choose action."""
+
+    selected = str(evidence.get("selected_species", "") or "").casefold()
+    pending = str(evidence.get("pending_species", "") or "").casefold()
+    issues: list[str] = []
+    if (
+        evidence.get("nursery_entry_persisted") is not True
+        or str(evidence.get("step_before_selection", "")) != "nursery"
+    ):
+        issues.append("first-run-nursery-entry-not-persisted")
+    if (
+        evidence.get("selection_action_triggered") is not True
+        or str(evidence.get("selection_action", "")) != "Choose"
+    ):
+        issues.append("first-run-selection-action-not-exercised")
+    if (
+        evidence.get("selection_persisted") is not True
+        or str(evidence.get("step_after_selection", "")) != "placement"
+    ):
+        issues.append("first-run-selection-not-persisted")
+    if not selected or selected != pending:
+        issues.append("first-run-species-identity")
+    return tuple(issues)
+
+
+def thirty_day_reward_surface_issue_codes(
+    evidence: dict[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Keep next/completed 30-day rewards tied to one canonical definition."""
+
+    expected_copy = "100 Garden Coins + 1 Small Growth Charge"
+    issues: list[str] = []
+    definition = dict(evidence.get("definition", {}) or {})
+    expected_definition = {
+        "achievement_id": "streak_30",
+        "coins": 100,
+        "small_growth_charges": 1,
+        "standard_growth_charges": 0,
+        "canonical_copy": expected_copy,
+    }
+    if definition != expected_definition:
+        issues.append("thirty-day-reward-definition")
+    for surface, role in (
+        ("streak-active", "next"),
+        ("progress-achievements", "completed"),
+    ):
+        record = dict(evidence.get(surface, {}) or {})
+        if (
+            record.get("role") != role
+            or record.get("achievement_id") != "streak_30"
+            or record.get("coins") != 100
+            or record.get("small_growth_charges") != 1
+            or record.get("standard_growth_charges") != 0
+            or record.get("canonical_copy") != expected_copy
+            or record.get("definition_identity") != "streak_30"
+            or record.get("painted") is not True
+        ):
+            issues.append(f"thirty-day-reward-surface:{surface}")
+    return tuple(issues)
+
+
+def fertilizer_flow_source_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Validate the canonical Rose state painted by Fertilizer flow step 1."""
+
+    if not isinstance(evidence, dict):
+        return ("fertilizer-flow-source:missing",)
+    issues: list[str] = []
+    plant_id = str(evidence.get("plant_id", "") or "")
+    plant_name = str(evidence.get("plant_name", "") or "")
+    species = str(evidence.get("species", "") or "").casefold()
+    stage = str(evidence.get("growth_stage", "") or "").casefold()
+    asset_id = str(evidence.get("artwork_asset_id", "") or "")
+    asset_source = "/" + str(
+        evidence.get("artwork_source", "") or ""
+    ).replace("\\", "/").lstrip("/")
+    if not plant_id:
+        issues.append("fertilizer-flow-source:plant-id")
+    if not plant_name:
+        issues.append("fertilizer-flow-source:plant-name")
+    if species != "rose":
+        issues.append("fertilizer-flow-source:species")
+    if evidence.get("growth_points") != 500:
+        issues.append("fertilizer-flow-source:growth-points")
+    if evidence.get("growth_remainder_units") != 0:
+        issues.append("fertilizer-flow-source:growth-remainder")
+    if stage != "sprout":
+        issues.append("fertilizer-flow-source:growth-stage")
+    if not asset_id.startswith(f"plant_{species}_{stage}_"):
+        issues.append("fertilizer-flow-source:artwork-asset")
+    if f"/{species}/{stage}/" not in asset_source:
+        issues.append("fertilizer-flow-source:artwork-source")
+    if evidence.get("artwork_resolved") is not True:
+        issues.append("fertilizer-flow-source:artwork-resolved")
+    if evidence.get("artwork_painted") is not True:
+        issues.append("fertilizer-flow-source:artwork-painted")
+    return tuple(dict.fromkeys(issues))
+
+
+def fertilizer_flow_continuity_issue_codes(records: Any) -> tuple[str, ...]:
+    """Bind one plant and its Growth artwork through queue confirmation."""
+
+    if not isinstance(records, dict):
+        return ("fertilizer-flow:missing-records",)
+    roles = ("source", "fixture", "quote", "request", "confirmation")
+    issues: list[str] = []
+    source = records.get("source")
+    issues.extend(fertilizer_flow_source_issue_codes(source))
+    if not isinstance(source, dict):
+        return tuple(dict.fromkeys(issues))
+    continuity_fields = (
+        "plant_id",
+        "plant_name",
+        "species",
+        "growth_points",
+        "growth_remainder_units",
+        "growth_stage",
+        "artwork_asset_id",
+        "artwork_source",
+    )
+    for role in roles[1:]:
+        record = records.get(role)
+        if not isinstance(record, dict):
+            issues.append(f"fertilizer-flow:{role}:missing")
+            continue
+        for field in continuity_fields:
+            if record.get(field) != source.get(field):
+                issues.append(f"fertilizer-flow:{role}:{field.replace('_', '-')}")
+        if record.get("artwork_resolved") is not True:
+            issues.append(f"fertilizer-flow:{role}:artwork-resolved")
+    confirmation = records.get("confirmation")
+    if (
+        isinstance(confirmation, dict)
+        and confirmation.get("artwork_painted") is not True
+    ):
+        issues.append("fertilizer-flow:confirmation:artwork-painted")
+    return tuple(dict.fromkeys(issues))
+
+
+def achievement_filter_capture_pair(
+    candidate_ids: list[str],
+    progress_targets: dict[str, int],
+) -> tuple[str, ...]:
+    """Choose a genuinely in-progress achievement and a distinct locked one.
+
+    A 50 percent fixture rounds back to zero for one-step achievements.  The
+    painted filter matrix therefore needs an in-progress definition with more
+    than one target unit, while the locked card may use any other definition.
+    """
+
+    ordered_ids = sorted(dict.fromkeys(str(item) for item in candidate_ids))
+    in_progress_id = next(
+        (
+            achievement_id
+            for achievement_id in ordered_ids
+            if int(progress_targets.get(achievement_id, 0) or 0) > 1
+        ),
+        "",
+    )
+    locked_id = next(
+        (
+            achievement_id
+            for achievement_id in ordered_ids
+            if achievement_id != in_progress_id
+        ),
+        "",
+    )
+    if not in_progress_id or not locked_id:
+        return ()
+    return in_progress_id, locked_id
 
 # Native Qt layout evidence is produced by ``DialogShell`` and consumed by the
 # existing manifest/validator stream. Keep the thresholds source-owned so the
@@ -2897,7 +4680,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "nursery-plants": 0,
             "nursery-fertilizer-booster": 1,
             "nursery-garden-spaces": 2,
-            "nursery-weather-scenery": 3,
+            "nursery-garden-decorations-scenery": 3,
             "nursery-item-owned": 0,
             "nursery-item-locked": 1,
             "nursery-purchase-success": 3,
@@ -3175,6 +4958,11 @@ class _UiFaceCaptureRunner:
         self._active_home_fixture_state = ""
         self._active_home_dom_audit: dict[str, Any] = {}
         self._active_reviewer_dom_audit: dict[str, Any] = {}
+        self._first_run_sequence_evidence: dict[str, Any] = {}
+        self._fertilizer_flow_source_plant_id = ""
+        self._fertilizer_flow_source_plant_name = ""
+        self._fertilizer_flow_source_snapshot: dict[str, Any] = {}
+        self._thirty_day_reward_evidence: dict[str, dict[str, Any]] = {}
         self._text_layout_warnings: list[dict[str, Any]] = []
         self._capture_advisories: list[dict[str, Any]] = []
         self._failures: list[dict[str, str]] = []
@@ -3364,6 +5152,9 @@ class _UiFaceCaptureRunner:
             label: {
                 "capture_id": index,
                 "label": label,
+                "scenario_id": capture_scenario_id(label),
+                "fixture_id": capture_fixture_id(label),
+                "scenario_step": capture_scenario_step(label),
                 "phase": "starter" if index <= starter_count else "release",
                 "renderer_family": expected_capture_window_family(label),
                 "readiness_policy": (
@@ -3485,6 +5276,9 @@ class _UiFaceCaptureRunner:
             ],
             "scenario_setup_closures": {
                 label: {
+                    "scenario_id": capture_scenario_id(label),
+                    "fixture_id": capture_fixture_id(label),
+                    "scenario_step": capture_scenario_step(label),
                     "capture_prerequisites": list(
                         capture_scenario_prerequisites(label)
                     ),
@@ -3576,10 +5370,12 @@ class _UiFaceCaptureRunner:
             )
             record["failure_classification"] = classification
             record.setdefault("blocked_by", "")
-            if (
-                classification == "surface-local"
-                and captured.get(label) is True
-                and not self._post_capture_lifecycle_failure(reason)
+            if post_capture_surface_failure_is_advisory(
+                CAPTURE_CONTRACT_VERSION,
+                classification=classification,
+                capture_passed=captured.get(label) is True,
+                lifecycle_failure=self._post_capture_lifecycle_failure(reason),
+                contract_gate=str(record.get("contract_gate", "") or ""),
             ):
                 record["severity"] = "advisory"
                 advisories.append(record)
@@ -3590,6 +5386,27 @@ class _UiFaceCaptureRunner:
                 checkpoint_failures.append(label)
         existing = {str(record.get("label", "")) for record in records}
         requested = set(getattr(self, "_requested_face_labels", ()))
+        if CAPTURE_CONTRACT_VERSION >= 26:
+            for capture_record in getattr(self, "_capture_records", ()):
+                label = str(capture_record.get("label", ""))
+                acceptance = capture_record.get("capture_acceptance")
+                acceptance_passed = bool(
+                    isinstance(acceptance, dict)
+                    and acceptance.get("passed") is True
+                )
+                if (
+                    label in requested
+                    and label not in existing
+                    and not acceptance_passed
+                ):
+                    records.append({
+                        "label": label,
+                        "reason": "v26 capture acceptance did not pass",
+                        "failure_classification": "surface-local",
+                        "blocked_by": "",
+                        "severity": "gross",
+                    })
+                    existing.add(label)
         for blocker in checkpoint_failures:
             cohort = REGISTRY[blocker].checkpoint_cohort
             for surface in REGISTRY.active_surfaces:
@@ -4300,6 +6117,73 @@ class _UiFaceCaptureRunner:
             ),
         )
 
+    def _home_progress_fraction_matrix(self) -> dict[str, Any]:
+        """Render the six bounded Home fractions through production projection."""
+
+        from ..ui.home_widget import (
+            HomeWidgetSnapshot,
+            home_surface_view_model,
+            render_home_widget,
+        )
+
+        controller = getattr(self.app, "_home_widget_controller", None)
+        snapshot = getattr(controller, "snapshot", None)
+        data = getattr(snapshot, "data", None)
+        if data is None:
+            return {
+                "records": {},
+                "issues": ["home-progress-source-data-unavailable"],
+                "passed": False,
+            }
+        cases = {
+            "zero": (0, 2_000, False),
+            "near-zero": (1, 2_000, False),
+            "partial": (750, 2_000, False),
+            "checkpoint-carryover": (50, 2_000, False),
+            "complete": (2_000, 2_000, True),
+            "denominator-zero": (125, 0, False),
+        }
+        records: dict[str, dict[str, Any]] = {}
+        for name, (current, maximum, complete) in cases.items():
+            variant = replace(
+                data,
+                starter_selected=True,
+                active_plant_name="Capture Bonsai",
+                planted_starter_name="",
+                active_growth_points=current,
+                active_stage_points=current,
+                active_stage_goal=maximum,
+                active_fully_grown=complete,
+                preview_snapshot=None,
+            )
+            projection = home_surface_view_model(variant)
+            rendered = render_home_widget(
+                HomeWidgetSnapshot(0, "success", variant)
+            )
+            expected_percent = capture_progress_fraction(
+                current,
+                maximum,
+                complete=complete,
+            )
+            attributes_match = bool(
+                f'data-progress-current="{current}"' in rendered
+                and f'data-progress-maximum="{maximum}"' in rendered
+                and f'data-progress-percent="{expected_percent:.2f}"' in rendered
+            )
+            records[name] = {
+                "current": int(projection.progress_current),
+                "maximum": int(projection.progress_maximum),
+                "complete": bool(complete),
+                "percent": float(projection.progress_percent),
+                "painted_attributes_match": attributes_match,
+            }
+        issues = home_progress_fraction_issue_codes(records)
+        return {
+            "records": records,
+            "issues": list(issues),
+            "passed": not issues,
+        }
+
     def _wait_for_home_surface(
         self,
         state: str,
@@ -4439,27 +6323,85 @@ class _UiFaceCaptureRunner:
               const root = visibleRoots.length
                 ? visibleRoots[visibleRoots.length - 1]
                 : null;
+              const visibleAddonRoot = candidate => {
+                if (!candidate) return false;
+                const bounds = candidate.getBoundingClientRect();
+                const style = window.getComputedStyle(candidate);
+                return bounds.width > 0 && bounds.height > 0
+                  && style.display !== 'none'
+                  && style.visibility !== 'hidden'
+                  && Number.parseFloat(style.opacity || '1') > 0;
+              };
+              const measureHorizontalOverflow = candidate => {
+                const clientWidth = candidate
+                  ? Math.floor(candidate.clientWidth) : 0;
+                const scrollWidth = candidate
+                  ? Math.ceil(candidate.scrollWidth) : 0;
+                const horizontalOverflow = Math.max(
+                  0,
+                  scrollWidth - clientWidth
+                );
+                return {
+                  clientWidth,
+                  scrollWidth,
+                  horizontalOverflow,
+                  passed: clientWidth > 0 && scrollWidth <= clientWidth,
+                };
+              };
               const documentRoot = document.documentElement;
-              const rootClientWidth = documentRoot
-                ? Math.floor(documentRoot.clientWidth) : 0;
-              const rootScrollWidth = documentRoot
-                ? Math.ceil(documentRoot.scrollWidth) : 0;
-              const rootHorizontalOverflow = Math.max(
-                0,
-                rootScrollWidth - rootClientWidth
-              );
-              const rootOverflowPassed = rootClientWidth > 0
-                && rootScrollWidth <= rootClientWidth;
+              const documentRootOverflow = {
+                identity: 'document.documentElement',
+                source: 'document.documentElement',
+                ...measureHorizontalOverflow(documentRoot),
+              };
+              const addonRootCandidates = [...document.querySelectorAll(
+                '#ag-home-root, [data-anki-garden-root]'
+              )];
+              const rootKindCounts = new Map();
+              const visibleAddonRootOverflows = [];
+              addonRootCandidates.forEach((candidate, domIndex) => {
+                const declaredKind = (
+                  candidate.getAttribute('data-anki-garden-root') || ''
+                ).trim();
+                const rawKind = declaredKind
+                  || (candidate.id === 'ag-home-root' ? 'home' : candidate.id)
+                  || candidate.tagName.toLocaleLowerCase('en-US');
+                const rootKind = rawKind
+                  .toLocaleLowerCase('en-US')
+                  .replace(/[^a-z0-9_-]+/g, '-')
+                  .replace(/^-+|-+$/g, '') || 'root';
+                const kindOrdinal = (rootKindCounts.get(rootKind) || 0) + 1;
+                rootKindCounts.set(rootKind, kindOrdinal);
+                if (!visibleAddonRoot(candidate)) return;
+                visibleAddonRootOverflows.push({
+                  identity: `anki-garden:${rootKind}:${kindOrdinal}`,
+                  rootKind,
+                  selector: candidate.id
+                    ? `#${candidate.id}`
+                    : `[data-anki-garden-root="${declaredKind}"]`,
+                  domOrdinal: domIndex + 1,
+                  kindOrdinal,
+                  visible: true,
+                  ...measureHorizontalOverflow(candidate),
+                });
+              });
+              const visibleAddonRootCount = visibleAddonRootOverflows.length;
+              const visibleAddonRootsOverflowPassed =
+                visibleAddonRootOverflows.every(record => record.passed);
+              const allRootOverflowPassed = documentRootOverflow.passed
+                && visibleAddonRootsOverflowPassed;
               if (!root) {
                 return {
                   ready: false,
                   reason: 'no-visible-root',
                   rootCount: roots.length,
                   visibleRootCount: visibleRoots.length,
-                  rootClientWidth,
-                  rootScrollWidth,
-                  rootHorizontalOverflow,
-                  rootOverflowPassed,
+                  documentRootOverflow,
+                  addonRootCandidateCount: addonRootCandidates.length,
+                  visibleAddonRootCount,
+                  visibleAddonRootOverflows,
+                  visibleAddonRootsOverflowPassed,
+                  allRootOverflowPassed,
                 };
               }
               const rect = root.getBoundingClientRect();
@@ -4483,6 +6425,32 @@ class _UiFaceCaptureRunner:
                 ? growth.getBoundingClientRect() : null;
               const growthTrackRect = growthTrack
                 ? growthTrack.getBoundingClientRect() : null;
+              const progressCurrent = Number(root.dataset.progressCurrent || '0');
+              const progressMaximum = Number(root.dataset.progressMaximum || '0');
+              const progressPercent = Number(root.dataset.progressPercent || '0');
+              const progressComplete = root.dataset.homeMode === 'active-complete';
+              const calculatedProgressPercent = progressComplete
+                ? 100
+                : progressMaximum > 0
+                  ? Math.min(100, Math.max(0, progressCurrent / progressMaximum * 100))
+                  : 0;
+              const paintedProgressCurrent = growthTrack
+                ? Number(growthTrack.getAttribute('aria-valuenow') || '0') : null;
+              const paintedProgressMaximum = growthTrack
+                ? Number(growthTrack.getAttribute('aria-valuemax') || '0') : null;
+              const paintedProgressPercent = growthTrack
+                ? Number.parseFloat(
+                    growthTrack.style.getPropertyValue('--ag-growth-percent') || '0'
+                  ) : null;
+              const progressFractionPassed = Number.isFinite(progressCurrent)
+                && Number.isFinite(progressMaximum)
+                && Number.isFinite(progressPercent)
+                && Math.abs(progressPercent - calculatedProgressPercent) <= 0.011
+                && (!growthTrack || (
+                  paintedProgressCurrent === progressCurrent
+                  && paintedProgressMaximum === Math.max(1, progressMaximum)
+                  && Math.abs(paintedProgressPercent - progressPercent) <= 0.011
+                ));
               const identity = root.querySelector('.ag-home__identity');
               const identityRect = identity
                 ? identity.getBoundingClientRect() : null;
@@ -4659,13 +6627,17 @@ class _UiFaceCaptureRunner:
                 ready: paintedState && imagesComplete && canonicalSettled
                   && fixtureMatches && bannedTerms.length === 0
                   && homeActionGeometryPassed && conciseInformationModelPassed
-                  && growthTrackGeometryPassed && rootOverflowPassed,
+                  && growthTrackGeometryPassed && progressFractionPassed
+                  && allRootOverflowPassed,
                 reason: !paintedState ? 'unpainted-state'
                   : !imagesComplete ? 'images-pending'
                   : !canonicalSettled ? 'canonical-preview-unsettled'
                   : !fixtureMatches ? 'fixture-mismatch'
                   : !growthTrackGeometryPassed ? 'growth-progress-clipped'
-                  : !rootOverflowPassed ? 'root-horizontal-overflow'
+                  : !documentRootOverflow.passed
+                    ? 'document-root-horizontal-overflow'
+                  : !visibleAddonRootsOverflowPassed
+                    ? 'addon-root-horizontal-overflow'
                   : 'ready',
                 rootCount: roots.length,
                 visibleRootCount: visibleRoots.length,
@@ -4734,12 +6706,23 @@ class _UiFaceCaptureRunner:
                 growthTrackContained,
                 growthTrackAlignedToIdentity,
                 growthTrackGeometryPassed,
+                progressCurrent,
+                progressMaximum,
+                progressPercent,
+                calculatedProgressPercent,
+                paintedProgressCurrent,
+                paintedProgressMaximum,
+                paintedProgressPercent,
+                progressComplete,
+                progressFractionPassed,
                 fixtureState,
                 expectedActiveSlot,
-                rootClientWidth,
-                rootScrollWidth,
-                rootHorizontalOverflow,
-                rootOverflowPassed,
+                documentRootOverflow,
+                addonRootCandidateCount: addonRootCandidates.length,
+                visibleAddonRootCount,
+                visibleAddonRootOverflows,
+                visibleAddonRootsOverflowPassed,
+                allRootOverflowPassed,
                 width: Math.round(rect.width),
                 height: Math.round(rect.height),
               };
@@ -4965,23 +6948,70 @@ class _UiFaceCaptureRunner:
               const qaVisible = visible(qa);
               const visibleHomeRootCount = homeRoots.filter(visible).length;
               const visibleDeckBrowserMarkerCount = deckMarkers.filter(visible).length;
+              const measureHorizontalOverflow = candidate => {
+                const clientWidth = candidate
+                  ? Math.floor(candidate.clientWidth) : 0;
+                const scrollWidth = candidate
+                  ? Math.ceil(candidate.scrollWidth) : 0;
+                const horizontalOverflow = Math.max(
+                  0,
+                  scrollWidth - clientWidth
+                );
+                return {
+                  clientWidth,
+                  scrollWidth,
+                  horizontalOverflow,
+                  passed: clientWidth > 0 && scrollWidth <= clientWidth,
+                };
+              };
               const documentRoot = document.documentElement;
-              const rootClientWidth = documentRoot
-                ? Math.floor(documentRoot.clientWidth) : 0;
-              const rootScrollWidth = documentRoot
-                ? Math.ceil(documentRoot.scrollWidth) : 0;
-              const rootHorizontalOverflow = Math.max(
-                0,
-                rootScrollWidth - rootClientWidth
-              );
-              const rootOverflowPassed = rootClientWidth > 0
-                && rootScrollWidth <= rootClientWidth;
+              const documentRootOverflow = {
+                identity: 'document.documentElement',
+                source: 'document.documentElement',
+                ...measureHorizontalOverflow(documentRoot),
+              };
+              const addonRootCandidates = [...document.querySelectorAll(
+                '#ag-home-root, [data-anki-garden-root]'
+              )];
+              const rootKindCounts = new Map();
+              const visibleAddonRootOverflows = [];
+              addonRootCandidates.forEach((candidate, domIndex) => {
+                const declaredKind = (
+                  candidate.getAttribute('data-anki-garden-root') || ''
+                ).trim();
+                const rawKind = declaredKind
+                  || (candidate.id === 'ag-home-root' ? 'home' : candidate.id)
+                  || candidate.tagName.toLocaleLowerCase('en-US');
+                const rootKind = rawKind
+                  .toLocaleLowerCase('en-US')
+                  .replace(/[^a-z0-9_-]+/g, '-')
+                  .replace(/^-+|-+$/g, '') || 'root';
+                const kindOrdinal = (rootKindCounts.get(rootKind) || 0) + 1;
+                rootKindCounts.set(rootKind, kindOrdinal);
+                if (!visible(candidate)) return;
+                visibleAddonRootOverflows.push({
+                  identity: `anki-garden:${rootKind}:${kindOrdinal}`,
+                  rootKind,
+                  selector: candidate.id
+                    ? `#${candidate.id}`
+                    : `[data-anki-garden-root="${declaredKind}"]`,
+                  domOrdinal: domIndex + 1,
+                  kindOrdinal,
+                  visible: true,
+                  ...measureHorizontalOverflow(candidate),
+                });
+              });
+              const visibleAddonRootCount = visibleAddonRootOverflows.length;
+              const visibleAddonRootsOverflowPassed =
+                visibleAddonRootOverflows.every(record => record.passed);
+              const allRootOverflowPassed = documentRootOverflow.passed
+                && visibleAddonRootsOverflowPassed;
               return {
                 ready: !!qa && qaVisible && bodyText.length > 0
                   && canonicalQuestionPresent
                   && visibleHomeRootCount === 0
                   && visibleDeckBrowserMarkerCount === 0
-                  && rootOverflowPassed,
+                  && allRootOverflowPassed,
                 qaPresent: !!qa,
                 qaVisible,
                 canonicalQuestionPresent,
@@ -4989,10 +7019,12 @@ class _UiFaceCaptureRunner:
                 visibleHomeRootCount,
                 deckBrowserMarkerCount: deckMarkers.length,
                 visibleDeckBrowserMarkerCount,
-                rootClientWidth,
-                rootScrollWidth,
-                rootHorizontalOverflow,
-                rootOverflowPassed,
+                documentRootOverflow,
+                addonRootCandidateCount: addonRootCandidates.length,
+                visibleAddonRootCount,
+                visibleAddonRootOverflows,
+                visibleAddonRootsOverflowPassed,
+                allRootOverflowPassed,
                 bodyText: bodyText.slice(0, 500),
               };
             })()
@@ -7336,7 +9368,7 @@ class _UiFaceCaptureRunner:
         if label == "selected-plant-nurtured":
             card = getattr(root, "plant_card", None)
             expected_actions = [
-                ("growth_charge", "Use growth charge"),
+                ("growth_charge", "Get growth charges"),
                 ("fertilize", "Apply fertilizer"),
                 ("move", "Move"),
                 ("story", "Plant story"),
@@ -7639,6 +9671,12 @@ class _UiFaceCaptureRunner:
             "passed": True,
         }
         if label == "starter-nursery-plants":
+            starter_scroll = getattr(root, "scroll", None)
+            starter_viewport = (
+                starter_scroll.viewport()
+                if starter_scroll is not None else
+                None
+            )
             starter_cards = [
                 candidate
                 for candidate in root.findChildren(QFrame)
@@ -7679,6 +9717,10 @@ class _UiFaceCaptureRunner:
                     detail_actions[0] if len(detail_actions) == 1 else None,
                     card,
                 )
+                viewport_evidence = self._widget_bounds_evidence(
+                    card,
+                    starter_viewport,
+                )
                 badge_bounds = list(badge_evidence.get("bounds", ()) or ())
                 choose_bounds = list(choose_evidence.get("bounds", ()) or ())
                 record_passed = bool(
@@ -7691,6 +9733,8 @@ class _UiFaceCaptureRunner:
                     and 34 <= choose_bounds[3] <= 36
                     and choose_evidence.get("contained") is True
                     and details_evidence.get("contained") is True
+                    and viewport_evidence.get("visible") is True
+                    and viewport_evidence.get("contained") is True
                     and 88 <= int(card.height()) <= 92
                 )
                 starter_records.append({
@@ -7700,6 +9744,12 @@ class _UiFaceCaptureRunner:
                     "choose_bounds": choose_bounds,
                     "details_bounds": list(
                         details_evidence.get("bounds", ()) or ()
+                    ),
+                    "viewport_bounds": list(
+                        viewport_evidence.get("bounds", ()) or ()
+                    ),
+                    "contained_in_catalog_viewport": bool(
+                        viewport_evidence.get("contained", False)
                     ),
                     "passed": record_passed,
                 })
@@ -7718,10 +9768,27 @@ class _UiFaceCaptureRunner:
                 "action_bounds": list(close_evidence.get("bounds", ()) or ()),
                 "action_contained": bool(close_evidence.get("contained", False)),
             }
+            catalog_scroll_maximum = (
+                int(starter_scroll.verticalScrollBar().maximum())
+                if starter_scroll is not None else
+                -1
+            )
+            catalog_viewport_size = (
+                [int(starter_viewport.width()), int(starter_viewport.height())]
+                if starter_viewport is not None else
+                []
+            )
+            partial_card_ids = [
+                str(record.get("item_id", ""))
+                for record in starter_records
+                if record.get("contained_in_catalog_viewport") is not True
+            ]
             starter_passed = bool(
                 len(starter_records) == 4
                 and all(record.get("passed") is True for record in starter_records)
-                and 340 <= int(root.height()) <= 360
+                and 370 <= int(root.height()) <= 410
+                and catalog_scroll_maximum == 0
+                and not partial_card_ids
                 and footer["contained"] is True
                 and len(footer["bounds"]) == 4
                 and 36 <= footer["bounds"][3] <= 48
@@ -7731,6 +9798,9 @@ class _UiFaceCaptureRunner:
             starter_card_geometry = {
                 "applicable": True,
                 "dialog_height": int(root.height()),
+                "catalog_viewport_size": catalog_viewport_size,
+                "catalog_scroll_maximum": catalog_scroll_maximum,
+                "partial_card_ids": partial_card_ids,
                 "records": starter_records,
                 "footer": footer,
                 "passed": starter_passed,
@@ -7796,7 +9866,10 @@ class _UiFaceCaptureRunner:
                 and target_text == "Applying to Rose Plant"
                 and title_text == "Basic Fertilizer"
                 and summary_text
-                == "+1 Growth per card · 1 hour remaining"
+                == (
+                    "+1 Growth per eligible card answer · "
+                    "1 hour remaining"
+                )
                 and balance_evidence.get("contained") is True
                 and balance_text == "Balance: 500"
                 and balance_icon_present
@@ -8150,12 +10223,283 @@ class _UiFaceCaptureRunner:
             })
         return warnings
 
+    def _reviewer_answer_controls_exclusion_audit(
+        self,
+        hud: Any,
+        parent: Any,
+        hud_bounds: list[int],
+        viewport: list[int],
+        *,
+        measured_required: bool,
+    ) -> dict[str, Any]:
+        """Bind WebEngine answer geometry to the native HUD exclusion area."""
+
+        from ..hooks.reviewer import (
+            REVIEWER_ANSWER_CONTROLS_FALLBACK_CLEARANCE,
+            REVIEWER_ANSWER_CONTROLS_SCHEMA_VERSION,
+            REVIEWER_ANSWER_CONTROLS_SOURCE,
+        )
+
+        def property_value(name: str, default: Any = None) -> Any:
+            try:
+                return parent.property(name) if parent is not None else default
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return default
+
+        def integer_list(value: Any, count: int) -> list[int]:
+            if not isinstance(value, (list, tuple)) or len(value) != count:
+                return []
+            try:
+                return [int(component) for component in value]
+            except (TypeError, ValueError, OverflowError):
+                return []
+
+        controls_rect = integer_list(
+            property_value("reviewerAnswerControlsRect"),
+            4,
+        )
+        measured_viewport = integer_list(
+            property_value("reviewerAnswerControlsViewport"),
+            2,
+        )
+        try:
+            controls_top = int(
+                property_value("reviewerAnswerControlsTop", -1)
+            )
+            measured_clearance = int(
+                property_value("reviewerAnswerControlsClearance", -1)
+            )
+            schema_version = int(
+                property_value("reviewerAnswerControlsSchemaVersion", 0)
+            )
+            matched_nodes = int(
+                property_value("reviewerAnswerControlsMatchedNodes", 0)
+            )
+        except (TypeError, ValueError, OverflowError):
+            controls_top = measured_clearance = schema_version = matched_nodes = -1
+        source = str(
+            property_value("reviewerAnswerControlsSource", "") or ""
+        )
+        telemetry_state = str(
+            property_value("reviewerAnswerControlsTelemetryState", "") or ""
+        )
+        measured_claimed = bool(
+            property_value("reviewerAnswerControlsMeasured", False)
+        )
+        try:
+            hud_top = int(hud.property("hudAnswerControlsTop"))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            hud_top = -1
+        try:
+            hud_source = str(hud.property("hudAnswerControlsSource") or "")
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            hud_source = ""
+
+        viewport_matches = bool(
+            len(viewport) == 2
+            and len(measured_viewport) == 2
+            and all(
+                abs(int(actual) - int(expected)) <= 2
+                for actual, expected in zip(measured_viewport, viewport)
+            )
+        )
+        rect_in_viewport = bool(
+            len(controls_rect) == 4
+            and len(viewport) == 2
+            and controls_rect[0] >= 0
+            and controls_rect[1] > 0
+            and controls_rect[2] > 0
+            and controls_rect[3] > 0
+            and controls_rect[0] + controls_rect[2] <= viewport[0] + 2
+            and controls_rect[1] + controls_rect[3] <= viewport[1] + 2
+        )
+        hud_bottom = (
+            int(hud_bounds[1]) + int(hud_bounds[3])
+            if len(hud_bounds) == 4 else
+            -1
+        )
+        rectangles_intersect = True
+        if len(hud_bounds) == 4 and len(controls_rect) == 4:
+            hud_left, hud_y, hud_width, hud_height = hud_bounds
+            control_left, control_y, control_width, control_height = controls_rect
+            rectangles_intersect = bool(
+                hud_left < control_left + control_width
+                and control_left < hud_left + hud_width
+                and hud_y < control_y + control_height
+                and control_y < hud_y + hud_height
+            )
+        measured_passed = bool(
+            measured_claimed
+            and telemetry_state == "measured"
+            and schema_version == REVIEWER_ANSWER_CONTROLS_SCHEMA_VERSION
+            and source == REVIEWER_ANSWER_CONTROLS_SOURCE
+            and matched_nodes >= 1
+            and viewport_matches
+            and rect_in_viewport
+            and controls_top == controls_rect[1]
+            and measured_clearance == viewport[1] - controls_top
+            and hud_top == controls_top
+            # The HUD preserves the authoritative host property's provenance.
+            # A measured bridge therefore mirrors ``webengine-dom`` rather
+            # than replacing it with a generic transport label.
+            and hud_source == REVIEWER_ANSWER_CONTROLS_SOURCE
+            and hud_bottom <= controls_top
+            and not rectangles_intersect
+        )
+        fallback_bottom_clearance = (
+            int(viewport[1]) - hud_bottom
+            if len(viewport) == 2 and hud_bottom >= 0 else
+            -1
+        )
+        fallback_passed = bool(
+            not measured_passed
+            and not measured_required
+            and fallback_bottom_clearance
+            >= REVIEWER_ANSWER_CONTROLS_FALLBACK_CLEARANCE
+        )
+        return {
+            "schema_version": schema_version,
+            "source": source,
+            "telemetry_state": telemetry_state,
+            "measured": measured_claimed,
+            "measured_required": bool(measured_required),
+            "matched_nodes": matched_nodes,
+            "viewport": measured_viewport,
+            "viewport_matches": viewport_matches,
+            "control_rectangles": ([{
+                "name": "reviewer-answer-controls",
+                "bounds": controls_rect,
+                "source": source,
+            }] if controls_rect else []),
+            "controls_top": controls_top,
+            "reported_clearance": measured_clearance,
+            "hud_answer_controls_top": hud_top,
+            "hud_answer_controls_source": hud_source,
+            "hud_bounds": list(hud_bounds),
+            "hud_bottom": hud_bottom,
+            "rect_in_viewport": rect_in_viewport,
+            "rectangles_intersect": rectangles_intersect,
+            "minimum_rectangle_clearance": (
+                self._rectangle_clearance(hud_bounds, controls_rect)
+                if len(hud_bounds) == 4 and len(controls_rect) == 4 else
+                -1
+            ),
+            "fallback_clearance": (
+                REVIEWER_ANSWER_CONTROLS_FALLBACK_CLEARANCE
+            ),
+            "fallback_bottom_clearance": fallback_bottom_clearance,
+            "measured_passed": measured_passed,
+            "fallback_passed": fallback_passed,
+            "passed": bool(measured_passed or fallback_passed),
+        }
+
+    @staticmethod
+    def _reviewer_answer_controls_measurement_is_current(parent: Any) -> bool:
+        """Return whether host telemetry belongs to the live HUD viewport."""
+
+        if parent is None:
+            return False
+
+        def property_value(name: str, default: Any = None) -> Any:
+            try:
+                return parent.property(name)
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return default
+
+        try:
+            width = max(1, int(parent.width()))
+            height = max(1, int(parent.height()))
+            viewport = [
+                int(value)
+                for value in tuple(
+                    property_value("reviewerAnswerControlsViewport", ()) or ()
+                )
+            ]
+            rect = [
+                int(value)
+                for value in tuple(
+                    property_value("reviewerAnswerControlsRect", ()) or ()
+                )
+            ]
+            top = int(property_value("reviewerAnswerControlsTop", -1))
+            clearance = int(
+                property_value("reviewerAnswerControlsClearance", -1)
+            )
+            schema_version = int(
+                property_value("reviewerAnswerControlsSchemaVersion", 0)
+            )
+            matched_nodes = int(
+                property_value("reviewerAnswerControlsMatchedNodes", 0)
+            )
+        except (TypeError, ValueError, OverflowError):
+            return False
+        return bool(
+            property_value("reviewerAnswerControlsMeasured", False) is True
+            and property_value("reviewerAnswerControlsTelemetryState", "")
+            == "measured"
+            and property_value("reviewerAnswerControlsSource", "")
+            == "webengine-dom"
+            and schema_version == 1
+            and matched_nodes >= 1
+            and len(viewport) == 2
+            and abs(viewport[0] - width) <= 2
+            and abs(viewport[1] - height) <= 2
+            and len(rect) == 4
+            and rect[0] >= 0
+            and rect[1] > 0
+            and rect[2] > 0
+            and rect[3] > 0
+            and rect[0] + rect[2] <= width + 2
+            and rect[1] + rect[3] <= height + 2
+            and top == rect[1]
+            and clearance == height - top
+        )
+
+    def _wait_for_current_reviewer_answer_controls(
+        self,
+        handler: Any,
+        *,
+        timeout_ms: int = 1_600,
+    ) -> bool:
+        """Bound a capture-only wait around the production async bridge."""
+
+        reviewer = getattr(mw, "reviewer", None)
+        parent = getattr(reviewer, "web", None)
+        request = getattr(
+            handler,
+            "_request_reviewer_answer_control_geometry",
+            None,
+        )
+        app = QApplication.instance()
+        if parent is None or app is None or not callable(request):
+            return False
+        deadline = time.monotonic() + max(1, int(timeout_ms)) / 1_000
+        next_request_at = 0.0
+        while time.monotonic() < deadline:
+            if self._reviewer_answer_controls_measurement_is_current(parent):
+                return True
+            now = time.monotonic()
+            if now >= next_request_at:
+                request(parent)
+                next_request_at = now + 0.25
+            event_loop = QEventLoop()
+            QTimer.singleShot(40, event_loop.quit)
+            event_loop.exec()
+        return self._reviewer_answer_controls_measurement_is_current(parent)
+
     def _reviewer_hud_geometry_audit(
         self,
         label: str,
         hud: Any,
     ) -> dict[str, Any]:
         """Prove the expanded HUD is content-driven, readable, and bounded."""
+
+        from ..ui.reviewer_hud import (
+            HUD_CONTROLS_CLEARANCE,
+            HUD_EDGE_MARGIN,
+            HUD_EXPANDED_WIDTH,
+            HUD_TOP_MARGIN,
+        )
 
         reviewer = getattr(mw, "reviewer", None)
         parent = getattr(reviewer, "web", None)
@@ -8167,6 +10511,11 @@ class _UiFaceCaptureRunner:
         width = int(bounds[2]) if len(bounds) == 4 else 0
         height = int(bounds[3]) if len(bounds) == 4 else 0
         top = int(bounds[1]) if len(bounds) == 4 else -1
+        right_clearance = (
+            int(viewport[0]) - (int(bounds[0]) + width)
+            if len(bounds) == 4 and len(viewport) == 2 else
+            -1
+        )
         bottom_clearance = (
             int(viewport[1]) - (int(bounds[1]) + height)
             if len(bounds) == 4 and len(viewport) == 2 else
@@ -8238,7 +10587,7 @@ class _UiFaceCaptureRunner:
             for term in (
                 "all decks",
                 "currently nurturing",
-                "garden finds ·",
+                "standard finds ·",
                 "daily limit reached",
                 "next card",
                 "shared growth",
@@ -8346,10 +10695,18 @@ class _UiFaceCaptureRunner:
             and int(header_actions.width())
             == int(hud.property("hudHeaderBalanceReservedWidth") or 0)
         )
-        width_in_range = 312 <= width <= 328
+        width_in_range = width == HUD_EXPANDED_WIDTH
+        answer_controls = self._reviewer_answer_controls_exclusion_audit(
+            hud,
+            parent,
+            bounds,
+            viewport,
+            measured_required=True,
+        )
         safe_area_passed = bool(
-            top >= 12
-            and bottom_clearance >= 112
+            top == HUD_TOP_MARGIN
+            and right_clearance == HUD_EDGE_MARGIN
+            and answer_controls.get("passed", False)
         )
         window_mode = self._home_fullscreen_window_evidence()
         return {
@@ -8360,9 +10717,16 @@ class _UiFaceCaptureRunner:
             "width": width,
             "height": height,
             "width_in_range": width_in_range,
+            "expected_width": HUD_EXPANDED_WIDTH,
+            "top": top,
+            "expected_top": HUD_TOP_MARGIN,
+            "right_clearance": right_clearance,
+            "expected_right_clearance": HUD_EDGE_MARGIN,
+            "fallback_controls_clearance": HUD_CONTROLS_CLEARANCE,
             "content_height": content_height,
             "content_hugging": content_hugging,
             "bottom_clearance": bottom_clearance,
+            "answer_controls_exclusion": answer_controls,
             "safe_area_passed": safe_area_passed,
             "parent_is_reviewer_webview": actual_parent is parent,
             "mounted": bool(
@@ -8435,6 +10799,10 @@ class _UiFaceCaptureRunner:
         from ..ui.reviewer_hud import (
             HUD_COLLAPSED_HEIGHT,
             HUD_COLLAPSED_WIDTH,
+            HUD_CONTROLS_CLEARANCE,
+            HUD_EDGE_MARGIN,
+            HUD_EXPANDED_WIDTH,
+            HUD_TOP_MARGIN,
             reviewer_hud_width,
         )
 
@@ -8498,10 +10866,22 @@ class _UiFaceCaptureRunner:
         )
         expected_height = HUD_COLLAPSED_HEIGHT if expected_collapsed else 0
         top = int(bounds[1]) if len(bounds) == 4 else -1
+        right_clearance = (
+            int(viewport[0]) - (int(bounds[0]) + actual_width)
+            if len(bounds) == 4 and len(viewport) == 2 else
+            -1
+        )
         bottom_clearance = (
             int(viewport[1]) - (int(bounds[1]) + actual_height)
             if len(bounds) == 4 and len(viewport) == 2 else
             -1
+        )
+        answer_controls = self._reviewer_answer_controls_exclusion_audit(
+            hud,
+            parent,
+            bounds,
+            viewport,
+            measured_required=not bool(expected_collapsed),
         )
         dock_visible = bool(
             dock is not None and dock.isVisibleTo(hud)
@@ -8597,8 +10977,12 @@ class _UiFaceCaptureRunner:
             and bounds_evidence.get("contained", False)
             and host_size_passed
             and size_passed
-            and top >= 12
-            and bottom_clearance >= 112
+            and expected_width == (
+                HUD_COLLAPSED_WIDTH if expected_collapsed else HUD_EXPANDED_WIDTH
+            )
+            and top == HUD_TOP_MARGIN
+            and right_clearance == HUD_EDGE_MARGIN
+            and answer_controls.get("passed", False)
             and scroll_passed
             and mode_passed
             and minimum_art_preserved
@@ -8623,13 +11007,20 @@ class _UiFaceCaptureRunner:
             "height": actual_height,
             "size_passed": size_passed,
             "top": top,
+            "expected_top": HUD_TOP_MARGIN,
+            "right_clearance": right_clearance,
+            "expected_right_clearance": HUD_EDGE_MARGIN,
+            "fallback_controls_clearance": HUD_CONTROLS_CLEARANCE,
             "bottom_clearance": bottom_clearance,
+            "answer_controls_exclusion": answer_controls,
             "horizontal_scroll_maximum": horizontal_range,
             "vertical_scroll_maximum": vertical_range,
             "sticky_header_and_dock": expanded_regions_sticky,
             "dock_visible": dock_visible,
             "footer_visible": footer_visible,
-            "overlaps_bottom_controls": bottom_clearance < 112,
+            "overlaps_bottom_controls": (
+                bottom_clearance < HUD_CONTROLS_CLEARANCE
+            ),
             "minimum_art_preserved": minimum_art_preserved,
             "collapsed_tab_visible": collapsed_tab_visible,
             "collapsed_progress_ring_visible": progress_ring_visible,
@@ -8936,7 +11327,7 @@ class _UiFaceCaptureRunner:
         self,
         card: Any,
     ) -> dict[str, Any]:
-        """Prove the centered, focus-safe, single-scroll sync receipt."""
+        """Prove the right-docked, focus-safe, single-scroll sync receipt."""
 
         parent = getattr(mw, "web", None)
         actual_parent = card.parentWidget() if card is not None else None
@@ -8989,7 +11380,7 @@ class _UiFaceCaptureRunner:
             "GARDEN PROGRESS",
             "Rose",
             "+420 Growth",
-            "75% toward Flowering reached",
+            "Reached Flowering",
             "+80 Shared Growth",
             "+20 Stored Growth",
             "Wisteria Reached Full Bloom",
@@ -9033,17 +11424,27 @@ class _UiFaceCaptureRunner:
                 and not candidate.pixmap().isNull()
             ),
         } for candidate in asset_thumbnails]
+        model = getattr(card, "model", None)
         required_asset_ids = {
             "sync_review_cards",
             "growth_resource",
             "garden_coin",
             "shared_growth",
             "stored_growth",
-            "checkpoint_badge",
             "rose",
             "wisteria",
             "firefly_lantern",
         }
+        # A stage change supersedes checkpoints from the previous stage. Only
+        # require checkpoint artwork when the canonical presentation model
+        # actually retains a checkpoint row for this receipt.
+        if any(
+            bool(getattr(result, "canonical_checkpoints", ()))
+            for result in tuple(
+                getattr(model, "grouped_plant_results", ()) or ()
+            )
+        ):
+            required_asset_ids.add("checkpoint_badge")
         artwork_passed = bool(
             required_asset_ids
             <= {str(row["asset_id"]) for row in asset_records}
@@ -9134,20 +11535,22 @@ class _UiFaceCaptureRunner:
                 for actual, expected in zip(bounds, expected_bounds)
             )
         )
-        centered = bool(
+        right_margin = (
+            int(container_size[0]) - (int(bounds[0]) + int(bounds[2]))
+            if len(bounds) == 4 and len(container_size) == 2 else
+            -1
+        )
+        right_docked = bool(
             len(bounds) == 4
             and len(container_size) == 2
-            and abs(
-                (int(bounds[0]) * 2 + int(bounds[2]))
-                - int(container_size[0])
-            ) <= 2
+            and right_margin == 24
         )
         geometry_passed = bool(
             evidence.get("visible", False)
             and evidence.get("contained", False)
             and geometry_exact
-            and centered
-            and int(bounds[1]) == 22
+            and right_docked
+            and int(bounds[1]) == 24
             and 400 <= int(bounds[2]) <= 480
             and int(bounds[3]) <= 640
             and int(bounds[3])
@@ -9155,7 +11558,6 @@ class _UiFaceCaptureRunner:
             and shell_passed
         )
 
-        model = getattr(card, "model", None)
         try:
             plant_growth_units = sum(
                 max(0, int(row.growth_delta_units))
@@ -9240,7 +11642,8 @@ class _UiFaceCaptureRunner:
             **evidence,
             "expected_bounds": expected_bounds,
             "geometry_exact": geometry_exact,
-            "centered": centered,
+            "right_docked": right_docked,
+            "right_margin": right_margin,
             "top_offset": int(bounds[1]) if len(bounds) == 4 else -1,
             "single_scroll_owner": len(scrolls) == 1 and shell_passed,
             "horizontal_scroll_maximum": horizontal_range,
@@ -9718,7 +12121,7 @@ class _UiFaceCaptureRunner:
             and all(bool(row["compact"]) for row in compact_highlights)
             and all(bool(row["static"]) for row in highlight_records)
             and "final growth stage reached" in normalized
-            and "garden item unlocked" in normalized
+            and "garden discovery unlocked" in normalized
             and "firefly lantern" in normalized
             and "added to your garden collection" in normalized
         )
@@ -10059,8 +12462,9 @@ class _UiFaceCaptureRunner:
             and firefly_highlight is not None
             and str(firefly_highlight.kind) == "environment"
             and str(firefly_highlight.unlock_category) == "garden_item"
-            and str(firefly_highlight.eyebrow) == "GARDEN ITEM UNLOCKED"
-            and "garden item unlocked" in normalized
+            and str(firefly_highlight.eyebrow) == "GARDEN DISCOVERY UNLOCKED"
+            and "garden discovery unlocked" in normalized
+            and "garden item unlocked" not in normalized
             and "environment unlocked" not in normalized
             and garden_item_art is not None
             and list(garden_item_art["logical_size"]) == [58, 58]
@@ -10128,7 +12532,7 @@ class _UiFaceCaptureRunner:
         cards_complete_copy = bool(re.search(r"\bcards complete\b", normalized))
         required_copy = (
             "session summary",
-            "126 cards completed this session",
+            "24 cards completed this session",
             "today’s cards",
             "19 remaining",
             "126 of 145 completed",
@@ -10264,7 +12668,10 @@ class _UiFaceCaptureRunner:
     ) -> None:
         """Exercise the required Reviewer window/content states transiently."""
 
-        from ..ui.reviewer_hud import ReviewerHudProjection
+        from ..ui.reviewer_hud import (
+            ReviewerHudProjection,
+            reviewer_hud_safe_bottom,
+        )
         from ..ui.reviewer_hud_widget import _pixmap_visible_geometry
 
         canonical = getattr(handler, "_reviewer_hud_projection", None)
@@ -10351,23 +12758,57 @@ class _UiFaceCaptureRunner:
         def current_hud() -> Any:
             return getattr(handler, "_reviewer_hud", None)
 
+        def answer_controls_measured_for_current_viewport() -> bool:
+            reviewer = getattr(mw, "reviewer", None)
+            parent = getattr(reviewer, "web", None)
+            if parent is None:
+                return False
+            try:
+                measured = bool(
+                    parent.property("reviewerAnswerControlsMeasured")
+                )
+                source = str(
+                    parent.property("reviewerAnswerControlsSource") or ""
+                )
+                measured_viewport = list(
+                    parent.property("reviewerAnswerControlsViewport") or ()
+                )
+                controls_rect = list(
+                    parent.property("reviewerAnswerControlsRect") or ()
+                )
+                return bool(
+                    measured
+                    and source == "webengine-dom"
+                    and len(measured_viewport) == 2
+                    and abs(int(measured_viewport[0]) - int(parent.width())) <= 2
+                    and abs(int(measured_viewport[1]) - int(parent.height())) <= 2
+                    and len(controls_rect) == 4
+                    and int(parent.property(
+                        "reviewerAnswerControlsMatchedNodes"
+                    ) or 0) >= 1
+                )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return False
+
         def host_settled(width: int, height: int, collapsed: bool) -> bool:
             if (
                 abs(int(mw.width()) - int(width)) > 3
                 or abs(int(mw.height()) - int(height)) > 3
             ):
                 return False
-            handler._ensure_reviewer_hud(
-                force_collapsed=collapsed,
-                force_dock="right",
-            )
             app = QApplication.instance()
             if app is not None:
                 app.processEvents()
             hud = current_hud()
             if hud is None or not hud.isVisible():
                 return False
-            return bool(hud.property("hudCollapsed")) is bool(collapsed)
+            return bool(
+                bool(hud.property("hudCollapsed")) is bool(collapsed)
+                and (
+                    bool(collapsed)
+                    or answer_controls_measured_for_current_viewport()
+                )
+            )
 
         def audit_viewport(
             spec: tuple[str, int, int, bool, bool, tuple[str, ...]],
@@ -10536,18 +12977,43 @@ class _UiFaceCaptureRunner:
                 remaining_count=18,
             )
             canonical_display = replace(canonical, today=eighteen_left, coins=248)
+
+            def observe_today_progress_basis(candidate: Any, _copy: str) -> dict[str, Any]:
+                progress = candidate._today_progress
+                record = {
+                    "remaining_count": 18,
+                    "copy": str(candidate._today_detail.text()),
+                    "progress_value": int(
+                        progress.property("progressValue") or -1
+                    ),
+                    "progress_maximum": int(
+                        progress.property("progressMaximum") or -1
+                    ),
+                    "actual_progress_percent": float(
+                        progress.property("actualProgressPercent") or -1
+                    ),
+                    "displayed_progress_percent": float(
+                        progress.property("displayedProgressPercent") or -1
+                    ),
+                    "painted": bool(
+                        progress.isVisibleTo(candidate)
+                        and not progress.grab().isNull()
+                    ),
+                }
+                issues = today_cards_painted_progress_issue_codes(record)
+                record["issues"] = list(issues)
+                record["passed"] = bool(
+                    candidate._today_card.property("completionStatus")
+                    == "in_progress"
+                    and str(candidate._today_detail.text()) == "18 cards left"
+                    and not issues
+                )
+                return record
+
             apply_projection(
                 "18-cards-left",
                 canonical_display,
-                lambda candidate, _copy: {
-                    "remaining_count": 18,
-                    "copy": str(candidate._today_detail.text()),
-                    "passed": bool(
-                        candidate._today_card.property("completionStatus")
-                        == "in_progress"
-                        and str(candidate._today_detail.text()) == "18 cards left"
-                    ),
-                },
+                observe_today_progress_basis,
             )
             if finished:
                 return
@@ -11303,7 +13769,7 @@ class _UiFaceCaptureRunner:
                     canonical,
                     nurture=resolved_stage_projection(
                         "sprout",
-                        "Sprout · Stage 1 of 5",
+                        "Sprout · 2 of 6 stages",
                         10,
                     ),
                 ),
@@ -11312,7 +13778,7 @@ class _UiFaceCaptureRunner:
                     copy,
                     state_name="early-stage-art",
                     stage_key="sprout",
-                    stage_label="Sprout · Stage 1 of 5",
+                    stage_label="Sprout · 2 of 6 stages",
                 ),
             )
             if finished:
@@ -11323,7 +13789,7 @@ class _UiFaceCaptureRunner:
                     canonical,
                     nurture=resolved_stage_projection(
                         "mature",
-                        "Mature · Stage 3 of 5",
+                        "Mature · 4 of 6 stages",
                         38,
                     ),
                 ),
@@ -11332,7 +13798,7 @@ class _UiFaceCaptureRunner:
                     copy,
                     state_name="mature-stage-art",
                     stage_key="mature",
-                    stage_label="Mature · Stage 3 of 5",
+                    stage_label="Mature · 4 of 6 stages",
                 ),
             )
             if finished:
@@ -11990,7 +14456,11 @@ class _UiFaceCaptureRunner:
                 # webview) with the just-earned major reveal and the existing
                 # session footer. The flexible center must scroll while the
                 # header and integrated dock remain fully contained.
-                hud.reposition(1280, 509)
+                short_viewport_height = 509
+                short_safe_bottom = reviewer_hud_safe_bottom(
+                    short_viewport_height
+                )
+                hud.reposition(1280, short_viewport_height)
                 process_events()
                 dock_bounds = self._widget_bounds_evidence(
                     hud._reward_dock,
@@ -12043,8 +14513,9 @@ class _UiFaceCaptureRunner:
                     ),
                     "vertical_scroll_maximum": body_vertical,
                     "overlaps_bottom_controls": bool(
-                        int(hud.y()) + int(hud.height()) > 509 - 112
+                        int(hud.y()) + int(hud.height()) > short_safe_bottom
                     ),
+                    "safe_bottom": short_safe_bottom,
                     "minimum_art_preserved": bool(
                         int(hud._plant_art.height()) >= 82
                     ),
@@ -12229,7 +14700,9 @@ class _UiFaceCaptureRunner:
                 })
                 deferred = bool(hud.property("hudRoutineSessionUpdateDeferred"))
 
-                def routine_applied_probe() -> None:
+                def routine_applied_probe(
+                    applied_tries_remaining: int = 12,
+                ) -> None:
                     if finished:
                         return
                     applied = {
@@ -12244,8 +14717,30 @@ class _UiFaceCaptureRunner:
                             hud._session_footer.property("sessionGrowthUnits") or 0
                         ),
                     }
+                    applied_ready = bool(applied == {
+                        "label": "Growth applied",
+                        "value": "+18 growth",
+                        "result_state": "applied",
+                        "progress_percent": 10,
+                        "art_pulse": True,
+                        "session_growth_units": 0,
+                    })
+                    if not applied_ready and applied_tries_remaining > 0:
+                        # Observe the actual row-swap state rather than one
+                        # wall-clock instant. The exact transient remains
+                        # mandatory, and exhaustion still reaches the shared
+                        # fail-closed assertion with the last observation.
+                        QTimer.singleShot(
+                            20,
+                            lambda: routine_applied_probe(
+                                applied_tries_remaining - 1
+                            ),
+                        )
+                        return
 
-                    def routine_progress_settled() -> None:
+                    def routine_progress_settled(
+                        tries_remaining: int = 40,
+                    ) -> None:
                         if finished:
                             return
                         settled = {
@@ -12262,7 +14757,33 @@ class _UiFaceCaptureRunner:
                             ),
                         }
 
-                        def routine_projection_restored() -> None:
+                        settled_ready = bool(
+                            settled["progress_percent"] == 18
+                            and not settled["routine_feedback_active"]
+                            and settled["session_growth_units"] == 1_800
+                            and settled["session_metric_copy"]
+                            == ["+18 growth"]
+                            and settled["released_after_progress"]
+                        )
+                        if not settled_ready and tries_remaining > 0:
+                            # The projection releases the footer after its
+                            # progress fill, then starts a separate 600ms
+                            # count-up. A busy full-matrix run can delay the
+                            # release timer relative to this probe even though
+                            # every transition remains correct. Poll the exact
+                            # semantic postcondition with a hard deadline
+                            # instead of sampling one scheduler instant.
+                            QTimer.singleShot(
+                                90,
+                                lambda: routine_progress_settled(
+                                    tries_remaining - 1
+                                ),
+                            )
+                            return
+
+                        def routine_projection_restored(
+                            restore_tries_remaining: int = 20,
+                        ) -> None:
                             if finished:
                                 return
                             restored = {
@@ -12278,6 +14799,25 @@ class _UiFaceCaptureRunner:
                                     hud.property("hudRewardVisible")
                                 ),
                             }
+                            restored_ready = bool(
+                                restored["label"] == "Next answer"
+                                and restored["value"]
+                                == str(routine_post.nurture.next_answer_value)
+                                and restored["result_state"] == "projection"
+                                and not restored["art_pulse"]
+                                and not restored["reward_visible"]
+                            )
+                            if (
+                                not restored_ready
+                                and restore_tries_remaining > 0
+                            ):
+                                QTimer.singleShot(
+                                    30,
+                                    lambda: routine_projection_restored(
+                                        restore_tries_remaining - 1
+                                    ),
+                                )
+                                return
                             routine = {
                                 "presented": routine_presented,
                                 "progress_before": progress_before,
@@ -12328,12 +14868,12 @@ class _UiFaceCaptureRunner:
 
                         QTimer.singleShot(30, routine_projection_restored)
 
-                    # The progress fill releases the footer snapshot at 640ms;
-                    # its visible count-up then needs the full 600ms highlight
-                    # duration before the exact +18 growth copy is asserted.
-                    QTimer.singleShot(1_100, routine_progress_settled)
+                    # Start after the nominal 640ms release plus most of the
+                    # visible footer count-up. The bounded semantic poll above
+                    # owns the exact finish condition and deadline.
+                    QTimer.singleShot(900, routine_progress_settled)
 
-                QTimer.singleShot(180, routine_applied_probe)
+                QTimer.singleShot(60, routine_applied_probe)
 
             def run_daily_completion_transition() -> None:
                 if finished:
@@ -12625,10 +15165,6 @@ class _UiFaceCaptureRunner:
             )
 
             def maximized_ready() -> bool:
-                handler._ensure_reviewer_hud(
-                    force_collapsed=False,
-                    force_dock="right",
-                )
                 app = QApplication.instance()
                 if app is not None:
                     app.processEvents()
@@ -12637,6 +15173,7 @@ class _UiFaceCaptureRunner:
                     return False
                 return bool(
                     not bool(hud.property("hudCollapsed"))
+                    and answer_controls_measured_for_current_viewport()
                     and self._home_fullscreen_window_evidence().get("passed", False)
                 )
 
@@ -12911,11 +15448,11 @@ class _UiFaceCaptureRunner:
             and not compact["hero_title_clamped"]
             and compact["visible_summary_count"] == 2
             and compact["visible_summary_labels"]
-            == ["1 Garden Find", "2 new discoveries"]
+            == ["1 Standard Find", "Garden discoveries"]
             and compact["visible_summary_rows"]
             == [
                 {
-                    "label": "1 Garden Find",
+                    "label": "1 Standard Find",
                     "reward_type": "garden_find",
                     "artwork_ref": compact["visible_summary_rows"][0]["artwork_ref"],
                     "uses_item_art": True,
@@ -12923,7 +15460,7 @@ class _UiFaceCaptureRunner:
                     "icon_kind": "item-art",
                 },
                 {
-                    "label": "2 new discoveries",
+                    "label": "Garden discoveries",
                     "reward_type": "environment_discovery",
                     "artwork_ref": compact["visible_summary_rows"][1]["artwork_ref"],
                     "uses_item_art": False,
@@ -12960,7 +15497,7 @@ class _UiFaceCaptureRunner:
                 "",
             ),
             "passed": bool(
-                summary_labels == ["1 Garden Find", "2 new discoveries"]
+                summary_labels == ["1 Standard Find", "Garden discoveries"]
                 and summary_rows[0]["icon_kind"] == "item-art"
                 and summary_rows[1]["icon_kind"]
                 == "environment-discovery"
@@ -13185,7 +15722,10 @@ class _UiFaceCaptureRunner:
             )
             and not celebration_record["select_another_visible"]
             and celebration_record["settled_copy"]
-            == "Future growth will be shared or stored."
+            == (
+                "Future Growth will go to other planted plants. "
+                "Any remainder will be stored."
+            )
         )
         content["full-bloom-celebration"] = celebration_record
         celebration_started = bool(celebration_record["passed"])
@@ -13570,7 +16110,10 @@ class _UiFaceCaptureRunner:
             and full_bloom["art_height"] >= 132
             and not full_bloom["light_rays"]
             and full_bloom["settled_copy"]
-            == "Future growth will be shared or stored."
+            == (
+                "Future Growth will go to other planted plants. "
+                "Any remainder will be stored."
+            )
             and full_bloom["select_another_visible"]
             and full_bloom["select_another_copy"] == "Choose next plant ›"
             and full_bloom["art_scale"] == 1.0
@@ -13594,7 +16137,10 @@ class _UiFaceCaptureRunner:
                 full_bloom["settled"]
                 and full_bloom["temporary_gold_cleared"]
                 and full_bloom["settled_copy"]
-                == "Future growth will be shared or stored."
+                == (
+                    "Future Growth will go to other planted plants. "
+                    "Any remainder will be stored."
+                )
                 and full_bloom["select_another_visible"]
                 and full_bloom["select_another_copy"]
                 == "Choose next plant ›"
@@ -13646,6 +16192,9 @@ class _UiFaceCaptureRunner:
         hud.reposition()
         if app is not None:
             app.processEvents()
+        short_measurement_ready = (
+            self._wait_for_current_reviewer_answer_controls(handler)
+        )
         short_hud_geometry = self._reviewer_hud_geometry_audit(
             "reviewer-reward-dock-bundle",
             hud,
@@ -13718,8 +16267,10 @@ class _UiFaceCaptureRunner:
             ),
             "hud_height": int(hud.height()),
             "hud_safe_area_passed": bool(
-                short_hud_geometry.get("safe_area_passed", False)
+                short_measurement_ready
+                and short_hud_geometry.get("safe_area_passed", False)
             ),
+            "answer_controls_measurement_current": short_measurement_ready,
             "horizontal_scroll_maximum": int(
                 short_hud_geometry.get("horizontal_scroll_maximum", -1)
             ),
@@ -13799,7 +16350,7 @@ class _UiFaceCaptureRunner:
                     item.kind is RewardHero.GARDEN_FIND
                     for item in bundle.all_items
                 ) == 1
-                and str(hud._session_finds.text()) == "1 find"
+                and str(hud._session_finds.text()) == "1 Standard Find"
             ),
         }
         history_bundle_ids = tuple(
@@ -13841,7 +16392,7 @@ class _UiFaceCaptureRunner:
                     str(hud._session_growth.text()),
                     str(hud._session_coins.text()),
                     str(hud._session_finds.text()),
-                ] == ["+40 growth", "+14 coins", "1 find"]
+                ] == ["+40 growth", "+14 coins", "1 Standard Find"]
             ),
         }
 
@@ -16148,6 +18699,17 @@ class _UiFaceCaptureRunner:
             for candidate in widget.findChildren(QFrame)
             if bool(candidate.property("storyStage"))
         ]
+        accessible_names = [
+            str(candidate.accessibleName() or "").strip()
+            for candidate in widget.findChildren(QWidget)
+            if str(candidate.accessibleName() or "").strip()
+        ]
+        full_bloom_accessible_name = (
+            "Full Bloom stage. Hidden until unlocked."
+        )
+        stage_accessibility_issues = species_stage_accessibility_issue_codes(
+            accessible_names
+        )
         rare_geometry: list[dict[str, Any]] = []
         for candidate in rare_metadata:
             contents = candidate.contentsRect()
@@ -16191,9 +18753,13 @@ class _UiFaceCaptureRunner:
                 and not rare_geometry[0]["tooltip"]
                 and len(stage_heights) == len(GROWTH_STAGES)
                 and len(set(stage_heights)) == 1
+                and not stage_accessibility_issues
             ),
             "metadata": rare_geometry,
             "stage_heights": stage_heights,
+            "accessible_names": accessible_names,
+            "full_bloom_accessible_name": full_bloom_accessible_name,
+            "stage_accessibility_issues": list(stage_accessibility_issues),
         }
 
     def _capture_fixture_postcondition(
@@ -16329,6 +18895,19 @@ class _UiFaceCaptureRunner:
                         if placement_action is not None else
                         ""
                     ),
+                )
+                first_run_sequence = dict(
+                    annotation.get("first_run_sequence", {}) or {}
+                )
+                require(
+                    "first_run_sequential_species",
+                    bool(
+                        first_run_sequence.get("passed", False)
+                        and not first_run_sequence_issue_codes(
+                            first_run_sequence
+                        )
+                    ),
+                    first_run_sequence,
                 )
             elif state_name == "starter-completion":
                 require("onboarding_step", step_value == "completion", step_value)
@@ -16960,6 +19539,27 @@ class _UiFaceCaptureRunner:
                 bool(growth_track_geometry["passed"]),
                 growth_track_geometry,
             )
+            if expected_fixture == "nurtured-active":
+                progress_matrix = dict(
+                    annotation.get("home_progress_fraction_matrix", {}) or {}
+                )
+                live_progress = dict(
+                    annotation.get("home_progress_fraction_live", {}) or {}
+                )
+                require(
+                    "home_progress_fractions",
+                    bool(
+                        progress_matrix.get("passed", False)
+                        and live_progress.get("passed", False)
+                        and not home_progress_fraction_issue_codes(
+                            dict(progress_matrix.get("records", {}) or {})
+                        )
+                    ),
+                    {
+                        "matrix": progress_matrix,
+                        "live": live_progress,
+                    },
+                )
             require(
                 "home_preview_information_model",
                 bool(
@@ -17029,7 +19629,7 @@ class _UiFaceCaptureRunner:
                 normalized_summary_copy = summary_copy.casefold()
                 summary_copy_passed = bool(
                     "session summary" in normalized_summary_copy
-                    and "126 cards completed this session"
+                    and "24 cards completed this session"
                     in normalized_summary_copy
                     and "today’s cards" in normalized_summary_copy
                     and "19 remaining" in normalized_summary_copy
@@ -17069,6 +19669,34 @@ class _UiFaceCaptureRunner:
                     {
                         "copy": summary_copy,
                         "passed": summary_copy_passed,
+                    },
+                )
+                require(
+                    "session_daily_totals_distinct",
+                    bool(
+                        annotation.get("session_daily_totals_distinct", False)
+                        and int(annotation.get("session_cards_completed", -1))
+                        == 24
+                        and int(annotation.get("today_cards_completed", -1))
+                        == 126
+                        and int(annotation.get("today_cards_remaining", -1))
+                        == 19
+                        and int(annotation.get("today_cards_total", -1))
+                        == 145
+                    ),
+                    {
+                        "session_cards_completed": annotation.get(
+                            "session_cards_completed"
+                        ),
+                        "today_cards_completed": annotation.get(
+                            "today_cards_completed"
+                        ),
+                        "today_cards_remaining": annotation.get(
+                            "today_cards_remaining"
+                        ),
+                        "today_cards_total": annotation.get(
+                            "today_cards_total"
+                        ),
                     },
                 )
                 require(
@@ -17139,7 +19767,9 @@ class _UiFaceCaptureRunner:
                     "sync_reward_summary_geometry",
                     bool(
                         summary_geometry.get("passed", False)
-                        and summary_geometry.get("centered", False)
+                        and summary_geometry.get("right_docked", False)
+                        and summary_geometry.get("right_margin") == 24
+                        and summary_geometry.get("top_offset") == 24
                         and summary_geometry.get("single_scroll_owner", False)
                         and summary_geometry.get("fixed_header_footer", False)
                         and int(
@@ -17186,6 +19816,22 @@ class _UiFaceCaptureRunner:
                     ),
                     summary_nonmodal,
                 )
+                discovery_matrix = dict(
+                    annotation.get(
+                        "sync_reward_discovery_state_matrix",
+                        {},
+                    ) or {}
+                )
+                require(
+                    "sync_reward_discovery_state_matrix",
+                    bool(
+                        discovery_matrix.get("passed", False)
+                        and not sync_reward_discovery_state_matrix_issue_codes(
+                            discovery_matrix
+                        )
+                    ),
+                    discovery_matrix,
+                )
                 require(
                     "sync_reward_summary_window_screen_filling",
                     bool(window_mode.get("passed", False)),
@@ -17211,6 +19857,14 @@ class _UiFaceCaptureRunner:
             require("garden_scene_present", scene is not None, bool(scene))
             if state_name == "starter-garden-onboarding":
                 panel = getattr(widget, "onboarding_panel", None)
+                onboarding = getattr(garden_state, "onboarding", None)
+                step = getattr(onboarding, "step", "")
+                step_value = str(getattr(step, "value", step))
+                require(
+                    "onboarding_step",
+                    step_value == "introduction",
+                    step_value,
+                )
                 require(
                     "starter_incomplete",
                     not bool(getattr(garden_state, "starter_selection_complete", False)),
@@ -17263,6 +19917,53 @@ class _UiFaceCaptureRunner:
                     {"active_plant_id": active_id, "selected_plant_id": selected_id},
                 )
                 if expects_active:
+                    growth_charge_action = getattr(
+                        plant_card,
+                        "growth_charge",
+                        None,
+                    )
+                    require(
+                        "zero_inventory_growth_charge_route",
+                        bool(
+                            isinstance(
+                                growth_charge_action,
+                                QAbstractButton,
+                            )
+                            and int(
+                                growth_charge_action.property(
+                                    "growthChargeInventoryCount"
+                                ) or 0
+                            ) == 0
+                            and _displayed_button_text(
+                                growth_charge_action
+                            ) == "Get growth charges"
+                            and growth_charge_action.isEnabled()
+                        ),
+                        {
+                            "inventory": (
+                                int(
+                                    growth_charge_action.property(
+                                        "growthChargeInventoryCount"
+                                    ) or 0
+                                )
+                                if isinstance(
+                                    growth_charge_action,
+                                    QAbstractButton,
+                                ) else
+                                -1
+                            ),
+                            "copy": (
+                                _displayed_button_text(
+                                    growth_charge_action
+                                )
+                                if isinstance(
+                                    growth_charge_action,
+                                    QAbstractButton,
+                                ) else
+                                ""
+                            ),
+                        },
+                    )
                     matrix = dict(
                         annotation.get("plant_popover_window_matrix", {}) or {}
                     )
@@ -17296,14 +19997,41 @@ class _UiFaceCaptureRunner:
                 placing = bool(getattr(getattr(scene, "_interaction", None), "placing", False))
                 require("move_mode_active", placing, placing)
                 if state_name == "move-mode":
+                    from ..presentation import PlantIdentity
+
                     move_banner = getattr(widget, "rearrange_bar", None)
                     move_title = getattr(move_banner, "title", None)
                     move_instructions = getattr(move_banner, "instructions", None)
+                    move_plant_id = str(
+                        getattr(move_banner, "plant_id", "") or ""
+                    )
+                    move_plant = next(
+                        (
+                            plant for plant in plants
+                            if str(getattr(plant, "plant_id", "") or "")
+                            == move_plant_id
+                        ),
+                        None,
+                    )
+                    expected_move_title = (
+                        f"Move {PlantIdentity.from_plant(move_plant).display_name}"
+                        if move_plant is not None else
+                        ""
+                    )
                     require(
                         "move_bonsai_title",
                         isinstance(move_title, QLabel)
-                        and str(move_title.text()) == "Move Bonsai Plant",
-                        str(move_title.text()) if isinstance(move_title, QLabel) else "",
+                        and bool(expected_move_title)
+                        and str(move_title.text()) == expected_move_title,
+                        {
+                            "actual": (
+                                str(move_title.text())
+                                if isinstance(move_title, QLabel) else
+                                ""
+                            ),
+                            "expected": expected_move_title,
+                            "plant_id": move_plant_id,
+                        },
                     )
                     require(
                         "move_swap_copy",
@@ -17315,6 +20043,22 @@ class _UiFaceCaptureRunner:
                             if isinstance(move_instructions, QLabel) else
                             ""
                         ),
+                    )
+                    occupied_hover = dict(
+                        annotation.get("move_occupied_hover", {}) or {}
+                    )
+                    expected_hover_label = str(
+                        occupied_hover.get("expected_label", "")
+                    )
+                    require(
+                        "move_occupied_hover",
+                        bool(
+                            expected_hover_label
+                            and not move_occupied_hover_issue_codes(
+                                occupied_hover
+                            )
+                        ),
+                        occupied_hover,
                     )
                 if state_name == "move-occupied-empty-destinations":
                     require("four_occupied_slots", len(occupied_slots) == 4, occupied_slots)
@@ -17508,10 +20252,19 @@ class _UiFaceCaptureRunner:
                     "remaining_cards": sum(
                         max(0, int(getattr(completion, field, 0) or 0))
                         for field in (
+                            "remaining_new_cards",
                             "remaining_required_reviews",
                             "remaining_learning_steps",
                             "future_learning_steps_before_cutoff",
                         )
+                    ),
+                    "remaining_new_cards": max(
+                        0,
+                        int(getattr(
+                            completion,
+                            "remaining_new_cards",
+                            0,
+                        ) or 0),
                     ),
                     "cards_completed": int(
                         getattr(completion, "cards_completed_today", 0) or 0
@@ -17528,10 +20281,11 @@ class _UiFaceCaptureRunner:
                     and today_cards_evidence["claim_state"] == "pending"
                     and today_cards_evidence["starting_cards"] == 194
                     and today_cards_evidence["remaining_cards"] == 18
+                    and today_cards_evidence["remaining_new_cards"] == 0
                     and today_cards_evidence["cards_completed"] == 176
                     and "18 cards remaining" in normalized_copy
                     and "176 cards complete" in normalized_copy
-                    and "garden finds · 2 of 3 today" in normalized_copy
+                    and "standard finds · 2 of 3 today" in normalized_copy
                     and not banned_terms
                 )
                 require(
@@ -17625,6 +20379,18 @@ class _UiFaceCaptureRunner:
                     and bool(annotation.get("passed", False)),
                     annotation,
                 )
+                next_reward = dict(
+                    annotation.get("thirty_day_reward", {}) or {}
+                )
+                require(
+                    "thirty_day_next_reward",
+                    bool(
+                        next_reward.get("painted", False)
+                        and next_reward.get("canonical_copy")
+                        == "100 Garden Coins + 1 Small Growth Charge"
+                    ),
+                    next_reward,
+                )
             elif state_name == "coins-zero":
                 transactions = list(getattr(garden_state, "currency_transactions", ()) or ())
                 receipts = list(
@@ -17713,7 +20479,7 @@ class _UiFaceCaptureRunner:
                         and all(
                             f"progress.coin-ledger-header-{index}"
                             in visible_semantic_widgets
-                            for index in range(3)
+                            for index in range(4)
                         )
                     ),
                     {
@@ -17723,6 +20489,14 @@ class _UiFaceCaptureRunner:
                         ),
                         "semantic_ids": sorted(visible_semantic_widgets),
                     },
+                )
+                coin_matrix = dict(
+                    annotation.get("coin_activity_state_matrix", {}) or {}
+                )
+                require(
+                    "coin_activity_state_matrix",
+                    bool(coin_matrix.get("passed", False)),
+                    coin_matrix,
                 )
             elif state_name == "progress-overview-redirect-growth":
                 require(
@@ -17747,6 +20521,46 @@ class _UiFaceCaptureRunner:
                     ),
                     direct_growth,
                 )
+            elif state_name == "progress-achievements":
+                reward_evidence = dict(
+                    annotation.get("thirty_day_reward_cross_surface", {}) or {}
+                )
+                require(
+                    "thirty_day_completed_reward_cross_surface",
+                    bool(
+                        reward_evidence.get("passed", False)
+                        and (
+                            not reward_evidence.get("required", False)
+                            or not thirty_day_reward_surface_issue_codes(
+                                reward_evidence
+                            )
+                        )
+                    ),
+                    reward_evidence,
+                )
+                filter_matrix = dict(
+                    annotation.get(
+                        "achievement_filter_state_matrix",
+                        {},
+                    ) or {}
+                )
+                require(
+                    "achievement_filter_state_matrix",
+                    bool(
+                        filter_matrix.get("passed", False)
+                        and filter_matrix.get("restored_filter") == "all"
+                        and set(
+                            dict(filter_matrix.get("records", {}) or {})
+                        ) == {"in_progress", "locked"}
+                        and all(
+                            bool(record.get("passed", False))
+                            for record in dict(
+                                filter_matrix.get("records", {}) or {}
+                            ).values()
+                        )
+                    ),
+                    filter_matrix,
+                )
             elif state_name == "progress-collection":
                 from ..collectibles import collectible_views
 
@@ -17759,20 +20573,47 @@ class _UiFaceCaptureRunner:
                 count_widget = visible_semantic_widgets.get(
                     "progress.collection-count"
                 )
+                expected_painted_copy = (
+                    "10 of 10 species discovered\n"
+                    "30 of 39 collection entries discovered"
+                )
                 require(
                     "representative_collection_summary",
                     len(collection_views) == expected_collectible_count
                     and collected_count == expected_collected_count
                     and count_widget is not None
+                    and str(count_widget.text()).strip()
+                    == expected_painted_copy
                     and int(count_widget.property("collectedCount") or -1)
                     == expected_collected_count
                     and int(count_widget.property("collectibleCount") or -1)
-                    == expected_collectible_count,
+                    == expected_collectible_count
+                    and int(
+                        count_widget.property("speciesDiscoveredCount") or -1
+                    ) == 10
+                    and int(count_widget.property("speciesTotalCount") or -1)
+                    == 10,
                     {
                         "collected": collected_count,
                         "total": len(collection_views),
                         "semantic_id": "progress.collection-count",
+                        "painted_copy": (
+                            str(count_widget.text())
+                            if count_widget is not None else
+                            ""
+                        ),
                     },
+                )
+                filter_roundtrip = dict(
+                    annotation.get("collection_filter_roundtrip", {}) or {}
+                )
+                require(
+                    "collection_filter_roundtrip",
+                    bool(filter_roundtrip.get("passed", False))
+                    and not collection_filter_roundtrip_issue_codes(
+                        filter_roundtrip
+                    ),
+                    filter_roundtrip,
                 )
             elif state_name == "collection-several-discovered":
                 require(
@@ -18037,6 +20878,33 @@ class _UiFaceCaptureRunner:
                 starter_mode is bool(expectation.get("starter_mode", False)),
                 starter_mode,
             )
+            if state_name == "starter-nursery-plants":
+                onboarding = getattr(garden_state, "onboarding", None)
+                step = getattr(onboarding, "step", "")
+                step_value = str(getattr(step, "value", step))
+                require(
+                    "onboarding_step",
+                    step_value == "nursery",
+                    step_value,
+                )
+            elif state_name == "nursery-plants":
+                require(
+                    "canonical_collection_counts",
+                    bool(
+                        annotation.get("passed", False)
+                        and annotation.get("fixture_state_passed", False)
+                        and annotation.get("species_copy")
+                        == "10 of 10 species discovered"
+                        and annotation.get("collection_entries_copy")
+                        == "30 of 39 collection entries discovered"
+                        and annotation.get("species_copy_visible", False)
+                        and annotation.get(
+                            "collection_entries_copy_visible",
+                            False,
+                        )
+                    ),
+                    annotation,
+                )
             visible_buttons = [
                 _displayed_button_text(button)
                 for button in widget.findChildren(QAbstractButton)
@@ -18050,6 +20918,7 @@ class _UiFaceCaptureRunner:
                         for candidate in widget.findChildren(QWidget)
                         if str(candidate.property("catalogItemId") or "")
                         == item_id
+                        and candidate.isVisibleTo(widget)
                     ),
                     None,
                 )
@@ -18057,13 +20926,23 @@ class _UiFaceCaptureRunner:
                     [
                         button
                         for button in item_card.findChildren(QAbstractButton)
-                        if button.isVisible() and button.isEnabled()
+                        if button.isVisibleTo(item_card) and button.isEnabled()
                     ]
                     if item_card is not None else []
+                )
+                supplement_matrix = dict(
+                    annotation.get("supplement_state_matrix", {}) or {}
+                )
+                supplement_records = dict(
+                    supplement_matrix.get("records", {}) or {}
                 )
                 require(
                     "stored_find_fertilizer_usable",
                     bool(annotation.get("passed", False))
+                    and bool(supplement_matrix.get("passed", False))
+                    and not nursery_supplement_state_matrix_issue_codes(
+                        supplement_records
+                    )
                     and item_card is not None
                     and bool(usable_actions)
                     and int(garden_state.consumables.get(item_id, 0) or 0) >= 1
@@ -18239,8 +21118,45 @@ class _UiFaceCaptureRunner:
                     # A completed collection already owns one normal-flow
                     # View collection action in its empty state.  The receipt
                     # intentionally omits the duplicate secondary action.
+                    placement_branch = dict(
+                        annotation.get("placement_branch", {}) or {}
+                    )
+                    no_bed_branch = dict(
+                        annotation.get("no_bed_branch", {}) or {}
+                    )
                     secondary_action_passed = bool(
                         not dismiss_visible
+                        and toast_text == "Sunflower added."
+                        and _displayed_button_text(toast.action)
+                        == "Open Garden"
+                        and str(
+                            toast.property("receiptPrimaryRoute") or ""
+                        ) == "Open Garden"
+                        and dict(
+                            annotation.get(
+                                "collection_capacity_fixture",
+                                {},
+                            ) or {}
+                        ).get("passed", False)
+                        and placement_branch.get("passed", False)
+                        and dict(
+                            placement_branch.get("receipt", {}) or {}
+                        ).get("passed", False)
+                        and no_bed_branch.get("passed", False)
+                        and no_bed_branch.get("asset_id")
+                        == "plant_sunflower_seed_twilight_v6"
+                        and no_bed_branch.get("source")
+                        == (
+                            "assets/v6_storybook_gouache/plants/sunflower/"
+                            "seed/sunflower_seed_twilight_v6.webp"
+                        )
+                        and no_bed_branch.get("painted_size") == [32, 32]
+                        and no_bed_branch.get("painted") is True
+                        and no_bed_branch.get("fallback") is False
+                        and no_bed_branch.get("species_copy")
+                        == "10 of 10 species discovered"
+                        and no_bed_branch.get("collection_entries_copy")
+                        == "30 of 39 collection entries discovered"
                     )
                 else:
                     secondary_action_passed = bool(
@@ -18289,10 +21205,41 @@ class _UiFaceCaptureRunner:
                 require(
                     "intentional_nursery_empty_state",
                     bool(annotation.get("passed", False))
-                    and bool(annotation.get("empty_state_visible", False)),
+                    and bool(annotation.get("empty_state_visible", False))
+                    and bool(
+                        annotation.get("canonical_collection_counts", False)
+                    )
+                    and annotation.get("species_copy")
+                    == "10 of 10 species discovered"
+                    and annotation.get("collection_entries_copy")
+                    == "30 of 39 collection entries discovered",
                     annotation,
                 )
-            elif state_name == "nursery-weather-scenery":
+            elif state_name == "nursery-garden-spaces":
+                bed_state = dict(
+                    annotation.get(
+                        "nursery_bed_incomplete_state",
+                        {},
+                    ) or {}
+                )
+                require(
+                    "nursery_bed_incomplete_state",
+                    bool(
+                        bed_state.get("passed", False)
+                        and not nursery_bed_incomplete_state_issue_codes(
+                            bed_state
+                        )
+                    ),
+                    bed_state,
+                )
+            elif state_name == "nursery-garden-decorations-scenery":
+                environment_fixture = dict(
+                    annotation.get(
+                        "garden_decoration_scenery_fixture",
+                        {},
+                    )
+                    or {}
+                )
                 require(
                     "distinct_garden_feature_preview_art",
                     bool(annotation.get("passed", False))
@@ -18303,6 +21250,14 @@ class _UiFaceCaptureRunner:
                     and not bool(annotation.get("missing_art_previews", ()))
                     and bool(annotation.get("preview_signatures_distinct", False)),
                     annotation,
+                )
+                require(
+                    "garden_decoration_scenery_fixture",
+                    bool(annotation.get("passed", False))
+                    and not nursery_environment_fixture_issue_codes(
+                        environment_fixture
+                    ),
+                    environment_fixture,
                 )
             elif state_name == "missing-artwork-graphical-fallback":
                 missing_matrix = dict(
@@ -18366,18 +21321,92 @@ class _UiFaceCaptureRunner:
                     {"home_preview_enabled": enabled, "draft_dirty": dirty},
                 )
             elif state_name == "settings-display-advanced-open":
+                appearance_matrix = dict(
+                    annotation.get("appearance_state_matrix", {}) or {}
+                )
+                name_preview_absence = dict(
+                    annotation.get(
+                        "garden_name_preview_absence",
+                        {},
+                    ) or {}
+                )
                 require(
                     "advanced_display_open",
                     bool(widget.behavior.advanced_toggle.isChecked())
                     and bool(widget.behavior.advanced_panel.isVisible()),
                     bool(widget.behavior.advanced_panel.isVisible()),
                 )
+                require(
+                    "appearance_state_matrix",
+                    bool(annotation.get("passed", False))
+                    and not appearance_state_matrix_issue_codes(
+                        appearance_matrix
+                    )
+                    and [
+                        [caption, str(widget.behavior.appearance_values[key].text())]
+                        for key, caption in (
+                            ("scenery", "Scenery"),
+                            ("displayed_decoration", "Displayed decoration"),
+                            ("active_bonus", "Active garden bonus"),
+                            ("visual_effects", "Visual effects"),
+                        )
+                    ] == [
+                        ["Scenery", "Verdant Twilight"],
+                        ["Displayed decoration", "Seedling Sign"],
+                        ["Active garden bonus", "Watering Station"],
+                        ["Visual effects", "On"],
+                    ],
+                    appearance_matrix,
+                )
+                require(
+                    "garden_name_preview_absence",
+                    bool(name_preview_absence.get("passed", False))
+                    and not settings_name_preview_absence_issue_codes(
+                        name_preview_absence
+                    ),
+                    name_preview_absence,
+                )
             elif state_name == "diagnostics-clean":
                 value = str(widget.diagnostics_card.property("diagnosticState") or "")
-                require("clean_diagnostics", value == "clean", value)
+                require("clean_diagnostics", value == "success", value)
             elif state_name == "diagnostics-warning":
-                value = str(widget.diagnostics_card.property("diagnosticState") or "")
-                require("warning_diagnostics", value == "warning", value)
+                state_value = str(
+                    widget.diagnostics_card.property("diagnosticState") or ""
+                )
+                result_value = str(
+                    widget.diagnostics_card.property(
+                        "diagnosticResultState"
+                    ) or ""
+                )
+                matrix = dict(
+                    annotation.get("diagnostics_state_matrix", {}) or {}
+                )
+                require(
+                    "warning_diagnostics",
+                    bool(
+                        state_value == "copy-confirmation"
+                        and result_value == "warning"
+                        and widget.diagnostics_copy_confirmation.isVisible()
+                        and str(
+                            widget.diagnostics_copy_confirmation.text()
+                        ).strip() == "Report copied to clipboard"
+                    ),
+                    {
+                        "state": state_value,
+                        "result": result_value,
+                        "copy_confirmation": str(
+                            widget.diagnostics_copy_confirmation.text()
+                        ),
+                    },
+                )
+                require(
+                    "diagnostics_state_matrix",
+                    bool(
+                        matrix.get("passed", False)
+                        and not diagnostics_state_matrix_issue_codes(matrix)
+                    ),
+                    matrix,
+                )
             elif state_name == "settings-unsaved-changes":
                 value = str(widget.garden_name_edit.text())
                 require("unsaved_name", value == "Unsaved Moonlit Garden", value)
@@ -18421,6 +21450,12 @@ class _UiFaceCaptureRunner:
                 rendered_state = dict(
                     annotation.get("rendered_state", {}) or {}
                 )
+                state_matrix = dict(
+                    annotation.get(
+                        "collection_loadout_state_matrix",
+                        {},
+                    ) or {}
+                )
                 require(
                     "collection_loadout_tab",
                     bool(
@@ -18432,6 +21467,16 @@ class _UiFaceCaptureRunner:
                         "tab": tab,
                         "rendered_state": rendered_state,
                     },
+                )
+                require(
+                    "collection_loadout_state_matrix",
+                    bool(
+                        state_matrix.get("passed", False)
+                        and not collection_loadout_state_matrix_issue_codes(
+                            state_matrix
+                        )
+                    ),
+                    state_matrix,
                 )
             elif state_name == "collection-loadout-persistence-error":
                 rendered_state = dict(
@@ -18788,6 +21833,22 @@ class _UiFaceCaptureRunner:
                             "annotation": annotation,
                         },
                     )
+                    transient = dict(
+                        annotation.get(
+                            "transient_growth_charge_variants",
+                            {},
+                        ) or {}
+                    )
+                    require(
+                        "growth_charge_no_transition_and_reward_free_success",
+                        bool(
+                            transient.get("passed", False)
+                            and not growth_charge_transient_variant_issue_codes(
+                                dict(transient.get("records", {}) or {})
+                            )
+                        ),
+                        transient,
+                    )
             elif state_name.startswith("purchase-confirmation-") or state_name.startswith("purchase-error-"):
                 buttons = [
                     _displayed_button_text(button)
@@ -18827,9 +21888,20 @@ class _UiFaceCaptureRunner:
                     queue_confirmation = dict(
                         annotation.get("fertilizer_queue_confirmation", {}) or {}
                     )
+                    flow_continuity = dict(
+                        queue_confirmation.get("plant_state_continuity", {}) or {}
+                    )
+                    flow_records = dict(
+                        flow_continuity.get("records", {}) or {}
+                    )
                     require(
                         "fertilizer_queue_confirmation",
                         bool(queue_confirmation.get("passed", False))
+                        and bool(flow_continuity.get("passed", False))
+                        and flow_continuity.get("issues") == []
+                        and not fertilizer_flow_continuity_issue_codes(
+                            flow_records
+                        )
                         and str(widget.property("purchaseKind") or "")
                         == "fertilizer"
                         and str(widget.quote.disposition.value) == "queued"
@@ -18837,6 +21909,26 @@ class _UiFaceCaptureRunner:
                         and widget.discard_warning_host.isHidden()
                         and widget.comparison_host.isHidden(),
                         queue_confirmation,
+                    )
+                if state_name == "purchase-confirmation-growth-charge":
+                    state_matrix = dict(
+                        annotation.get(
+                            "purchase_growth_charge_states",
+                            {},
+                        ) or {}
+                    )
+                    state_records = dict(
+                        state_matrix.get("records", {}) or {}
+                    )
+                    require(
+                        "growth_charge_purchase_state_matrix",
+                        bool(
+                            state_matrix.get("passed", False)
+                            and not purchase_growth_charge_state_issue_codes(
+                                state_records
+                            )
+                        ),
+                        state_matrix,
                     )
                 if state_name in {
                     "purchase-error-stale-price",
@@ -18937,6 +22029,16 @@ class _UiFaceCaptureRunner:
                     require("affordable_fertilizer", balance == 500 and not active, [balance, active])
                 elif state_name == "fertilizer-active":
                     require("active_fertilizer", active, active)
+                    source = dict(
+                        annotation.get("fertilizer_flow_source", {}) or {}
+                    )
+                    require(
+                        "fertilizer_flow_source",
+                        bool(source.get("passed", False))
+                        and source.get("issues") == []
+                        and not fertilizer_flow_source_issue_codes(source),
+                        source,
+                    )
                 else:
                     remaining = (
                         float(getattr(fertilizer, "expires_at", 0.0) or 0.0)
@@ -19034,11 +22136,13 @@ class _UiFaceCaptureRunner:
             if widget is not mw:
                 self._move_to_capture_display(widget)
             app.processEvents()
+            self._settle_dialog_content_fit_for_capture(label, widget)
             if label == "streak-active":
                 # The complete-section guard settles during visual-stability
                 # processing. Record the authoritative fold now, immediately
                 # before the same frame is audited and grabbed.
                 self._record_streak_fold_geometry(widget, label)
+            self._record_progress_reference_geometry(widget, label)
             geometry_request = (
                 dict(self._active_geometry_request)
                 if self._active_geometry_request is not None
@@ -19097,6 +22201,38 @@ class _UiFaceCaptureRunner:
                 home_annotation["home_fullscreen_window"] = (
                     self._home_fullscreen_window_evidence()
                 )
+                if self._active_home_fixture_state == "nurtured-active":
+                    progress_matrix = self._home_progress_fraction_matrix()
+                    live_progress = {
+                        "current": dom_audit.get("progressCurrent"),
+                        "maximum": dom_audit.get("progressMaximum"),
+                        "percent": dom_audit.get("progressPercent"),
+                        "calculated_percent": dom_audit.get(
+                            "calculatedProgressPercent"
+                        ),
+                        "painted_current": dom_audit.get(
+                            "paintedProgressCurrent"
+                        ),
+                        "painted_maximum": dom_audit.get(
+                            "paintedProgressMaximum"
+                        ),
+                        "painted_percent": dom_audit.get(
+                            "paintedProgressPercent"
+                        ),
+                        "complete": bool(dom_audit.get("progressComplete", False)),
+                        "passed": bool(
+                            dom_audit.get("progressFractionPassed", False)
+                        ),
+                    }
+                    home_annotation["home_progress_fraction_matrix"] = (
+                        progress_matrix
+                    )
+                    home_annotation["home_progress_fraction_live"] = live_progress
+                    home_annotation["passed"] = bool(
+                        home_annotation.get("passed", True)
+                        and progress_matrix.get("passed", False)
+                        and live_progress["passed"]
+                    )
                 home_annotation["passed"] = bool(
                     home_annotation.get("passed", True)
                 ) and bool(compact_copy["passed"])
@@ -19112,42 +22248,19 @@ class _UiFaceCaptureRunner:
                         {},
                     ) or {}
                 )
-                def normalized_dom_integer(value: Any) -> Any:
-                    if (
-                        not isinstance(value, bool)
-                        and isinstance(value, (int, float))
-                        and float(value).is_integer()
-                    ):
-                        return int(value)
-                    return value
-
-                client_width = normalized_dom_integer(
-                    dom_audit.get("rootClientWidth")
+                root_overflow_evidence = capture_web_root_overflow_evidence(
+                    dom_audit,
+                    surface_kind=(
+                        "home"
+                        if label in _HOME_CAPTURE_LABELS else
+                        "reviewer"
+                    ),
                 )
-                scroll_width = normalized_dom_integer(
-                    dom_audit.get("rootScrollWidth")
+                overflow_issues = web_root_overflow_issue_codes(
+                    root_overflow_evidence
                 )
-                measured_overflow = normalized_dom_integer(
-                    dom_audit.get("rootHorizontalOverflow")
-                )
-                overflow_passed = bool(
-                    type(client_width) is int
-                    and client_width > 0
-                    and type(scroll_width) is int
-                    and scroll_width > 0
-                    and type(measured_overflow) is int
-                    and measured_overflow
-                    == max(0, scroll_width - client_width)
-                    and scroll_width <= client_width
-                    and dom_audit.get("rootOverflowPassed") is True
-                )
-                root_overflow_evidence = {
-                    "source": "document.documentElement",
-                    "client_width": client_width,
-                    "scroll_width": scroll_width,
-                    "horizontal_overflow": measured_overflow,
-                    "passed": overflow_passed,
-                }
+                root_overflow_evidence["issues"] = list(overflow_issues)
+                root_overflow_evidence["passed"] = not overflow_issues
                 web_annotation = self._capture_annotations.setdefault(
                     label,
                     {},
@@ -19155,8 +22268,54 @@ class _UiFaceCaptureRunner:
                 web_annotation["web_root_overflow"] = root_overflow_evidence
                 web_annotation["passed"] = bool(
                     web_annotation.get("passed", True)
-                    and overflow_passed
+                    and not overflow_issues
                 )
+            qt_copy_evidence = capture_visible_qt_copy_evidence(
+                widget,
+                CAPTURE_CONTRACT_VERSION,
+            )
+            visible_copy_parts = list(qt_copy_evidence["parts"])
+            if label in _HOME_CAPTURE_LABELS:
+                visible_copy_parts.append(
+                    str(self._active_home_dom_audit.get("renderedCopy", ""))
+                )
+            elif label in _REVIEWER_CAPTURE_LABELS:
+                visible_copy_parts.append(
+                    str(self._active_reviewer_dom_audit.get("renderedCopy", ""))
+                )
+            visible_copy = " ".join(visible_copy_parts)
+            deprecated_hits = deprecated_visible_copy_hits(visible_copy)
+            deprecated_copy_audit = {
+                "visible_copy": visible_copy,
+                "hits": list(deprecated_hits),
+                "collection_issues": list(qt_copy_evidence["issues"]),
+                "passed": bool(
+                    qt_copy_evidence["passed"]
+                    and not deprecated_hits
+                ),
+            }
+            copy_annotation = self._capture_annotations.setdefault(label, {})
+            copy_annotation["deprecated_visible_copy"] = deprecated_copy_audit
+            copy_annotation["passed"] = bool(
+                copy_annotation.get("passed", True)
+                and deprecated_copy_audit["passed"]
+            )
+            if qt_copy_evidence["issues"]:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Visible Qt copy collection failed closed: "
+                        + ", ".join(qt_copy_evidence["issues"])
+                    ),
+                })
+            if deprecated_hits:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Deprecated visible copy was painted: "
+                        + ", ".join(deprecated_hits)
+                    ),
+                })
             try:
                 postcondition = self._capture_fixture_postcondition(
                     label,
@@ -19177,20 +22336,73 @@ class _UiFaceCaptureRunner:
                     "issues": ["postcondition_exception"],
                     "passed": False,
                 }
+            # Fixture state matrices paint transient variants and restore the
+            # canonical state. Drain the shared content-fit queue only after
+            # that restoration, then derive every geometry-bound record from
+            # the same settled frame that will be grabbed.
+            self._settle_dialog_content_fit_for_capture(label, widget)
+            native_progress_bar_evidence = self._native_progress_bar_telemetry(
+                widget,
+                label,
+            )
+            native_progress_bar_issues = (
+                native_progress_bar_evidence_issue_codes(
+                    native_progress_bar_evidence
+                )
+            )
+            progress_annotation = self._capture_annotations.setdefault(
+                label,
+                {},
+            )
+            progress_annotation["native_progress_bars"] = dict(
+                native_progress_bar_evidence
+            )
+            progress_annotation["passed"] = bool(
+                progress_annotation.get("passed", True)
+                and not native_progress_bar_issues
+            )
+            if native_progress_bar_issues:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Native progress paint evidence failed: "
+                        + ", ".join(native_progress_bar_issues)
+                    ),
+                })
+            postcondition["native_progress_bar_evidence"] = dict(
+                native_progress_bar_evidence
+            )
+            if native_progress_bar_issues:
+                postcondition["issues"] = list(dict.fromkeys((
+                    *list(postcondition.get("issues", ()) or ()),
+                    *native_progress_bar_issues,
+                )))
+                postcondition["passed"] = False
+            fixture_identity_passed = bool(
+                expected_family
+                and family == expected_family
+                and not native_progress_bar_issues
+            )
+            fixture_semantic_passed = bool(
+                postcondition.get("passed", False)
+            )
             fixture_validation = {
                 "capture_id": capture_id,
-                "fixture_id": label,
+                "surface_id": label,
+                "scenario_id": capture_scenario_id(label),
+                "fixture_id": capture_fixture_id(label),
+                "scenario_step": capture_scenario_step(label),
                 "fixture_source": fixture_source,
                 "expected_window_family": expected_family,
                 "actual_window_family": family,
                 "state_profile": str(postcondition.get("profile_id", "")),
                 "postcondition": postcondition,
-                "semantic_audit_passed": bool(
-                    postcondition.get("passed", False)
-                ),
-                "passed": bool(
-                    expected_family
-                    and family == expected_family
+                "identity_passed": fixture_identity_passed,
+                "semantic_audit_passed": fixture_semantic_passed,
+                "passed": capture_acceptance_passes_contract(
+                    CAPTURE_CONTRACT_VERSION,
+                    gross_capture_passed=fixture_identity_passed,
+                    semantic_audit_passed=fixture_semantic_passed,
                 ),
             }
             annotation = self._capture_annotations.setdefault(label, {})
@@ -19211,7 +22423,7 @@ class _UiFaceCaptureRunner:
                 })
                 return
             if not bool(postcondition.get("passed", False)):
-                self._capture_advisories.append({
+                postcondition_failure = {
                     "label": label,
                     "reason": (
                         "Capture fixture semantic audit did not pass: "
@@ -19220,8 +22432,14 @@ class _UiFaceCaptureRunner:
                             for issue in list(postcondition.get("issues", ()))
                         )
                     ),
-                    "severity": "advisory",
-                })
+                }
+                if CAPTURE_CONTRACT_VERSION >= 26:
+                    self._failures.append(postcondition_failure)
+                else:
+                    self._capture_advisories.append({
+                        **postcondition_failure,
+                        "severity": "advisory",
+                    })
             requested_size = (
                 list(geometry_request["requested_client_size"])
                 if geometry_request is not None else
@@ -19282,6 +22500,11 @@ class _UiFaceCaptureRunner:
                 self._visual_contract_audit(widget, label)
             )
             geometry_layout_warnings.extend(visual_contract_warnings)
+            if geometry_request is None:
+                # With no external size request, declare the exact settled
+                # client that will be painted. Layout audits may service a
+                # final coalesced content-fit event before this point.
+                requested_size = [int(widget.width()), int(widget.height())]
             annotation = self._capture_annotations.setdefault(label, {})
             annotation["native_layout_telemetry"] = dict(
                 native_layout_telemetry
@@ -19291,7 +22514,9 @@ class _UiFaceCaptureRunner:
                 annotation.get("passed", True)
             ) and bool(
                 native_layout_telemetry.get("passed", False)
-            ) and bool(visual_contract_audit.get("passed", False))
+            ) and bool(
+                visual_contract_audit.get("passed", False)
+            ) and not native_progress_bar_issues
             capture_method = "qt-widget-grab"
             foreground_confirmed = False
             if widget is mw:
@@ -19551,7 +22776,16 @@ class _UiFaceCaptureRunner:
                     ),
                 )
             temporary_path = path.with_name(f".{path.name}.tmp")
-            if pixmap.save(str(temporary_path), "png"):
+            # Bind the raw pixels to their v26 seeded scenario lineage inside
+            # the PNG itself. The manifest and dependency records carry the
+            # same values, so a detached or substituted image fails closed.
+            pixmap_image.setText("scenario_id", capture_scenario_id(label))
+            pixmap_image.setText("fixture_id", capture_fixture_id(label))
+            pixmap_image.setText(
+                "scenario_step",
+                str(capture_scenario_step(label)),
+            )
+            if pixmap_image.save(str(temporary_path), "PNG"):
                 os.replace(temporary_path, path)
                 png_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
                 self._screenshots.append(str(path))
@@ -19626,6 +22860,10 @@ class _UiFaceCaptureRunner:
                             annotation.get("home_fullscreen_window", {}) or {}
                         ).get("passed", False)
                     ),
+                    "native_progress_bar_evidence": bool(
+                        not native_progress_bar_issues
+                        and native_progress_bar_evidence.get("passed", False)
+                    ),
                 }
                 semantic_audit_passed = bool(
                     annotation.get(
@@ -19640,12 +22878,22 @@ class _UiFaceCaptureRunner:
                     and dialog_scroll_audit.get("passed", True)
                 )
                 gross_capture_passed = all(gross_checks.values())
+                capture_acceptance_passed = (
+                    capture_acceptance_passes_contract(
+                        CAPTURE_CONTRACT_VERSION,
+                        gross_capture_passed=gross_capture_passed,
+                        semantic_audit_passed=semantic_audit_passed,
+                    )
+                )
                 annotation["semantic_audit_passed"] = semantic_audit_passed
-                annotation["passed"] = gross_capture_passed
+                annotation["passed"] = capture_acceptance_passed
                 capture_acceptance = {
-                    "policy": "gross-failures-only",
+                    "policy": capture_acceptance_policy(
+                        CAPTURE_CONTRACT_VERSION
+                    ),
                     "gross_checks": gross_checks,
-                    "passed": gross_capture_passed,
+                    "gross_passed": gross_capture_passed,
+                    "passed": capture_acceptance_passed,
                     "semantic_audit_passed": semantic_audit_passed,
                 }
                 frame = widget.frameGeometry()
@@ -19664,6 +22912,9 @@ class _UiFaceCaptureRunner:
                 record = {
                     "capture_id": capture_id,
                     "label": label,
+                    "scenario_id": capture_scenario_id(label),
+                    "fixture_id": capture_fixture_id(label),
+                    "scenario_step": capture_scenario_step(label),
                     "path": str(path),
                     "widget": type(widget).__name__,
                     "window_family": family,
@@ -19760,6 +23011,9 @@ class _UiFaceCaptureRunner:
                     ),
                     "responsive_semantics": responsive_semantics,
                     "dialog_scroll_audit": dialog_scroll_audit,
+                    "native_progress_bar_evidence": dict(
+                        native_progress_bar_evidence
+                    ),
                     "native_layout_telemetry": dict(
                         native_layout_telemetry
                     ),
@@ -19919,6 +23173,189 @@ class _UiFaceCaptureRunner:
         return entries, warnings
 
     @staticmethod
+    def _native_progress_bar_telemetry(
+        root: QWidget,
+        label: str,
+    ) -> dict[str, Any]:
+        """Read every visible add-on QProgressBar through its Qt paint option."""
+
+        evidence: dict[str, Any] = {
+            "source": "QProgressBar.initStyleOption",
+            "scanned": False,
+            "root_semantic_id": f"capture.{label}",
+            "root_geometry": [
+                0,
+                0,
+                int(root.width()),
+                int(root.height()),
+            ],
+            "candidate_count": 0,
+            "bars": [],
+            "issues": [],
+            "passed": False,
+        }
+        issues: list[str] = []
+        try:
+            candidates = tuple(root.findChildren(QProgressBar))
+        except Exception as exc:
+            evidence["issues"] = [
+                f"native-progress-discovery:{type(exc).__name__}"
+            ]
+            return evidence
+
+        def belongs_to_addon_surface(candidate: Any) -> bool:
+            if root is not mw:
+                try:
+                    return candidate.window() is root
+                except Exception:
+                    return False
+            ancestor = candidate
+            while ancestor is not None and ancestor is not root:
+                semantic = str(ancestor.property("semanticId") or "")
+                if semantic.startswith(("reviewer.", "sync-rewards.")):
+                    return True
+                ancestor = ancestor.parentWidget()
+            return False
+
+        records: list[dict[str, Any]] = []
+        for candidate in candidates:
+            try:
+                if not belongs_to_addon_surface(candidate):
+                    continue
+                if (
+                    not candidate.isVisible()
+                    or not candidate.isVisibleTo(root)
+                ):
+                    continue
+                visible_bounds = candidate.visibleRegion().boundingRect()
+                if visible_bounds.isEmpty():
+                    continue
+
+                origin = candidate.mapTo(root, candidate.rect().topLeft())
+                visible_origin = candidate.mapTo(
+                    root,
+                    visible_bounds.topLeft(),
+                )
+                visible_left = max(0, int(visible_origin.x()))
+                visible_top = max(0, int(visible_origin.y()))
+                visible_right = min(
+                    int(root.width()),
+                    int(visible_origin.x()) + int(visible_bounds.width()),
+                )
+                visible_bottom = min(
+                    int(root.height()),
+                    int(visible_origin.y()) + int(visible_bounds.height()),
+                )
+                visible_geometry = [
+                    visible_left,
+                    visible_top,
+                    max(0, visible_right - visible_left),
+                    max(0, visible_bottom - visible_top),
+                ]
+
+                logical_minimum = int(candidate.minimum())
+                logical_value = int(candidate.value())
+                logical_maximum = int(candidate.maximum())
+                expected_fraction = native_progress_fraction(
+                    logical_minimum,
+                    logical_value,
+                    logical_maximum,
+                )
+                option = QStyleOptionProgressBar()
+                candidate.initStyleOption(option)
+                painted_minimum = int(option.minimum)
+                painted_value = int(option.progress)
+                painted_maximum = int(option.maximum)
+                painted_fraction = native_progress_fraction(
+                    painted_minimum,
+                    painted_value,
+                    painted_maximum,
+                )
+                geometry = [
+                    int(origin.x()),
+                    int(origin.y()),
+                    int(candidate.width()),
+                    int(candidate.height()),
+                ]
+                paint_geometry = [
+                    int(option.rect.x()),
+                    int(option.rect.y()),
+                    int(option.rect.width()),
+                    int(option.rect.height()),
+                ]
+                paint_input_consistent = bool(
+                    painted_minimum == logical_minimum
+                    and painted_value == logical_value
+                    and painted_maximum == logical_maximum
+                    and painted_fraction == expected_fraction
+                    and paint_geometry == [
+                        0,
+                        0,
+                        geometry[2],
+                        geometry[3],
+                    ]
+                )
+                records.append({
+                    "semantic_id": str(
+                        candidate.property("semanticId") or ""
+                    ),
+                    "native_class": "QProgressBar",
+                    "visible": bool(candidate.isVisible()),
+                    "visible_to_root": bool(candidate.isVisibleTo(root)),
+                    "visible_region_nonempty": bool(
+                        visible_geometry[2] > 0 and visible_geometry[3] > 0
+                    ),
+                    "geometry": geometry,
+                    "visible_geometry": visible_geometry,
+                    "logical_minimum": logical_minimum,
+                    "logical_value": logical_value,
+                    "logical_maximum": logical_maximum,
+                    "clamped_logical_value": min(
+                        logical_maximum,
+                        max(logical_minimum, logical_value),
+                    ),
+                    "denominator_zero": bool(
+                        logical_maximum <= logical_minimum
+                    ),
+                    "denominator_zero_fallback": "zero",
+                    "expected_fraction": expected_fraction,
+                    "paint_input": {
+                        "source": "QStyleOptionProgressBar",
+                        "initialized": True,
+                        "minimum": painted_minimum,
+                        "value": painted_value,
+                        "maximum": painted_maximum,
+                        "fraction": painted_fraction,
+                        "geometry": paint_geometry,
+                    },
+                    "paint_input_consistent": paint_input_consistent,
+                })
+            except Exception as exc:
+                issues.append(
+                    "native-progress-observation:"
+                    f"{type(exc).__name__}"
+                )
+
+        records.sort(key=lambda row: str(row.get("semantic_id", "")))
+        evidence.update({
+            "scanned": True,
+            "candidate_count": len(records),
+            "bars": records,
+            "issues": list(dict.fromkeys(issues)),
+        })
+        validation_issues = native_progress_bar_evidence_issue_codes({
+            **evidence,
+            "passed": not issues,
+        })
+        evidence["passed"] = not validation_issues
+        if validation_issues:
+            evidence["issues"] = list(dict.fromkeys((
+                *issues,
+                *validation_issues,
+            )))
+        return evidence
+
+    @staticmethod
     def _dialog_surface_page_semantic(root: QWidget) -> str:
         """Return the visible dialog family plus its selected page/tab."""
 
@@ -19942,7 +23379,7 @@ class _UiFaceCaptureRunner:
                 0: "plants",
                 1: "fertilizer",
                 2: "garden-spaces",
-                3: "weather-scenery",
+                3: "garden-decorations-scenery",
             }.get(index, f"tab-{index}")
             return f"{family}:{page}"
         if family == "CollectibleDetailDialog":
@@ -19954,6 +23391,282 @@ class _UiFaceCaptureRunner:
             )
             return f"{family}:{page}"
         return family
+
+    @staticmethod
+    def _scroll_state_row_candidates(
+        root: QWidget,
+        content: QWidget,
+    ) -> tuple[list[QWidget], int]:
+        """Return semantic body rows and the authoritative painted row count."""
+
+        row_markers = (
+            "gardenItemRow",
+            "progressRow",
+            "detailRow",
+            "memoryRow",
+            "fertilizerCard",
+            "nurseryCatalogCard",
+            "sectionCard",
+            "catalogCard",
+            "appearanceCard",
+            "emptyState",
+            "toggleSettingRow",
+            "disclosureRow",
+        )
+        marked: list[QWidget] = []
+        for candidate in content.findChildren(QWidget):
+            try:
+                if (
+                    candidate.window() is root
+                    and candidate.isVisibleTo(content)
+                    and int(candidate.width()) > 0
+                    and int(candidate.height()) > 0
+                    and any(bool(candidate.property(marker)) for marker in row_markers)
+                ):
+                    marked.append(candidate)
+            except RuntimeError:
+                continue
+        marked_ids = {id(candidate) for candidate in marked}
+        outermost: list[QWidget] = []
+        for candidate in marked:
+            ancestor = candidate.parentWidget()
+            nested = False
+            while ancestor is not None and ancestor is not content:
+                if id(ancestor) in marked_ids:
+                    nested = True
+                    break
+                ancestor = ancestor.parentWidget()
+            if not nested:
+                outermost.append(candidate)
+
+        if not outermost:
+            layout = content.layout()
+            if layout is not None:
+                for index in range(layout.count()):
+                    item = layout.itemAt(index)
+                    widget = item.widget() if item is not None else None
+                    try:
+                        if (
+                            isinstance(widget, QWidget)
+                            and widget.isVisibleTo(content)
+                            and int(widget.width()) > 0
+                            and int(widget.height()) > 0
+                        ):
+                            outermost.append(widget)
+                    except RuntimeError:
+                        continue
+
+        declared_count = content.property("contentRowCount")
+        row_count = (
+            int(declared_count)
+            if type(declared_count) is int and int(declared_count) >= 0
+            else len(outermost)
+        )
+        # Keep nested semantic rows available for the max-scroll reachability
+        # witness. An outer section may intentionally be taller than the
+        # viewport while its final card/row is still wholly reachable.
+        return (marked or outermost), row_count
+
+    def _paint_dialog_scroll_state_matrix(
+        self,
+        root: QWidget,
+        scroll: QScrollArea,
+    ) -> dict[str, Any]:
+        """Paint applicable four-state scroll witnesses and restore position."""
+
+        content = scroll.widget()
+        viewport = scroll.viewport()
+        vertical = scroll.verticalScrollBar()
+        horizontal = scroll.horizontalScrollBar()
+        canonical_value = int(vertical.value())
+        observations: list[dict[str, Any]] = []
+        rows, row_count = (
+            self._scroll_state_row_candidates(root, content)
+            if isinstance(content, QWidget)
+            else ([], 0)
+        )
+
+        fixed_widgets: list[tuple[str, QWidget]] = []
+        seen_fixed: set[int] = set()
+
+        def add_fixed(name: str, candidate: Any) -> None:
+            if not isinstance(candidate, QWidget) or id(candidate) in seen_fixed:
+                return
+            try:
+                if candidate.window() is root and candidate.isVisibleTo(root):
+                    seen_fixed.add(id(candidate))
+                    fixed_widgets.append((name, candidate))
+            except RuntimeError:
+                return
+
+        add_fixed("header", getattr(root, "header", None))
+        add_fixed("tabs", getattr(root, "tabs_region", None))
+        add_fixed("footer", getattr(root, "_pinned_footer", None))
+        for index, tabs in enumerate(root.findChildren(QTabWidget)):
+            try:
+                add_fixed(f"tab-bar-{index}", tabs.tabBar())
+            except RuntimeError:
+                continue
+        for index, candidate in enumerate(root.findChildren(QWidget)):
+            try:
+                if bool(candidate.property("progressFixedHeader")):
+                    add_fixed(f"fixed-progress-header-{index}", candidate)
+            except RuntimeError:
+                continue
+
+        def overlapping_area(first: list[int], second: list[int]) -> int:
+            if len(first) != 4 or len(second) != 4:
+                return 0
+            left = max(first[0], second[0])
+            top = max(first[1], second[1])
+            right = min(first[0] + first[2], second[0] + second[2])
+            bottom = min(first[1] + first[3], second[1] + second[3])
+            return max(0, right - left) * max(0, bottom - top)
+
+        def settle() -> None:
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+                root.repaint()
+                viewport.repaint()
+                app.processEvents()
+
+        def paint(state: str, *, final_item: QWidget | None = None) -> None:
+            settle()
+            pixmap = viewport.grab()
+            vertical_bounds = list(
+                self._external_widget_bounds_evidence(vertical, root).get(
+                    "bounds",
+                    (),
+                )
+                or ()
+            )
+            intrusions: list[dict[str, Any]] = []
+            if vertical.isVisibleTo(root):
+                for name, fixed in fixed_widgets:
+                    fixed_bounds = list(
+                        self._widget_bounds_evidence(fixed, root).get(
+                            "bounds",
+                            (),
+                        )
+                        or ()
+                    )
+                    area = overlapping_area(vertical_bounds, fixed_bounds)
+                    if area > 0:
+                        intrusions.append({
+                            "fixed_region": name,
+                            "area": area,
+                        })
+            final_bounds: list[int] = []
+            final_visible = False
+            if isinstance(final_item, QWidget):
+                try:
+                    point = final_item.mapTo(
+                        viewport,
+                        final_item.rect().topLeft(),
+                    )
+                    final_bounds = [
+                        int(point.x()),
+                        int(point.y()),
+                        int(final_item.width()),
+                        int(final_item.height()),
+                    ]
+                    final_visible = bool(
+                        final_item.isVisibleTo(viewport)
+                        and final_bounds[0] >= 0
+                        and final_bounds[1] >= 0
+                        and final_bounds[0] + final_bounds[2]
+                        <= int(viewport.width()) + 1
+                        and final_bounds[1] + final_bounds[3]
+                        <= int(viewport.height()) + 1
+                    )
+                except RuntimeError:
+                    final_bounds = []
+            record = {
+                "state": state,
+                "painted": bool(not pixmap.isNull()),
+                "paint_digest": self._sample_pixmap_digest(pixmap),
+                "paint_size": [int(pixmap.width()), int(pixmap.height())],
+                "row_count": int(row_count),
+                "scroll_minimum": int(vertical.minimum()),
+                "scroll_maximum": int(vertical.maximum()),
+                "scroll_value": int(vertical.value()),
+                "vertical_scrollbar_visible": bool(vertical.isVisibleTo(root)),
+                "horizontal_scroll_minimum": int(horizontal.minimum()),
+                "horizontal_scroll_maximum": int(horizontal.maximum()),
+                "horizontal_scrollbar_visible": bool(
+                    horizontal.isVisibleTo(root)
+                ),
+                "content_width": (
+                    int(content.width())
+                    if isinstance(content, QWidget) else
+                    0
+                ),
+                "viewport_width": int(viewport.width()),
+                "viewport_height": int(viewport.height()),
+                "fixed_region_intrusions": intrusions,
+                "final_item_bounds": final_bounds,
+                "final_item_visible": final_visible,
+            }
+            issue_codes = dialog_scroll_state_observation_issue_codes(record)
+            record["issues"] = list(issue_codes)
+            record["passed"] = not issue_codes
+            observations.append(record)
+
+        try:
+            minimum = int(vertical.minimum())
+            maximum = int(vertical.maximum())
+            if maximum == minimum:
+                vertical.setValue(minimum)
+                paint("no-overflow-list")
+                if row_count == 1:
+                    paint("one-row-list")
+            elif row_count >= 2:
+                vertical.setValue(minimum)
+                paint("enough-rows-to-scroll")
+                eligible_final_rows = [
+                    candidate
+                    for candidate in rows
+                    if int(candidate.height()) <= int(viewport.height()) + 1
+                ]
+                final_item = max(
+                    eligible_final_rows,
+                    key=lambda candidate: (
+                        int(candidate.mapTo(
+                            content,
+                            candidate.rect().topLeft(),
+                        ).y()) + int(candidate.height()),
+                        -int(candidate.height()),
+                    ),
+                    default=None,
+                )
+                vertical.setValue(maximum)
+                paint(
+                    "final-item-at-maximum-scroll",
+                    final_item=final_item,
+                )
+        finally:
+            # Max-scroll painting is transient evidence. Restore the exact
+            # scenario-owned position before the permanent capture is saved.
+            vertical.setValue(canonical_value)
+            settle()
+            vertical.setValue(canonical_value)
+            settle()
+
+        restored_value = int(vertical.value())
+        matrix = {
+            "observations": observations,
+            "canonical_scroll_value_before": canonical_value,
+            "canonical_scroll_value_after": restored_value,
+            "canonical_scroll_restored": restored_value == canonical_value,
+        }
+        local_issues = dialog_scroll_state_matrix_issue_codes(
+            matrix,
+            require_complete=False,
+        )
+        matrix["issues"] = list(local_issues)
+        matrix["passed"] = not local_issues
+        return matrix
 
     def _find_geometry_layout_warnings(
         self,
@@ -20084,6 +23797,14 @@ class _UiFaceCaptureRunner:
                 scroll = measurement_scroll
                 content = scroll.widget()
                 viewport = scroll.viewport()
+                # Paint transient scroll witnesses first. Their event pumps
+                # may service a final shared Content-window fit; all canonical
+                # geometry below must be measured after that restoration from
+                # one settled frame.
+                scroll_state_matrix = self._paint_dialog_scroll_state_matrix(
+                    root,
+                    scroll,
+                )
                 footer = getattr(root, "_pinned_footer", None)
                 footer_visible = bool(
                     footer is not None and footer.isVisibleTo(root)
@@ -20226,6 +23947,12 @@ class _UiFaceCaptureRunner:
                 issue_codes = list(
                     dialog_scroll_geometry_issue_codes(**metrics)
                 )
+                issue_codes.extend(
+                    f"scroll-state:{issue}"
+                    for issue in tuple(
+                        scroll_state_matrix.get("issues", ()) or ()
+                    )
+                )
                 if capture_label in {
                     "progress-achievements",
                     "progress-collection",
@@ -20263,6 +23990,7 @@ class _UiFaceCaptureRunner:
                     "viewport_bottom": viewport_top + int(viewport.height()),
                     "required_content_height": required_content_height,
                     "reachable_content_height": reachable_content_height,
+                    "four_state_scroll_matrix": scroll_state_matrix,
                     "issues": list(dict.fromkeys(issue_codes)),
                     "passed": not issue_codes,
                 }
@@ -20945,7 +24673,7 @@ class _UiFaceCaptureRunner:
 
         del compositor_fallback
         QToolTip.hideText()
-        if label == "hover-outline":
+        if label in {"hover-outline", "move-mode"}:
             # The explicit hover fixture owns its pointer state.
             return 0
         try:
@@ -21242,6 +24970,166 @@ class _UiFaceCaptureRunner:
             return all(candidate is not widget for candidate in app.allWidgets())
         except RuntimeError:
             return True
+
+    def _settle_dialog_content_fit_for_capture(
+        self,
+        label: str,
+        widget: Any,
+    ) -> dict[str, Any]:
+        """Finish the shared Content-window fit before reading its geometry.
+
+        State-matrix painting can leave a zero-delay coalesced fit pending on
+        the canonical dialog. Reading geometry before that fit, then painting
+        after it, would combine two valid but different client sizes.
+        """
+
+        applicable = bool(
+            widget is not mw
+            and widget.property("dialogContentFit") is True
+            and callable(getattr(widget, "fit_content_to_family", None))
+        )
+        before = [int(widget.width()), int(widget.height())]
+        evidence: dict[str, Any] = {
+            "applicable": applicable,
+            "before_size": before,
+            "after_size": list(before),
+            "size_samples": [list(before)],
+            "stable_size": True,
+            "content_fit_pending_before": bool(
+                widget.property("contentFitPending")
+            ),
+            "content_fit_pending_after": False,
+            "timer_active_after": False,
+            "running_after": False,
+            "passed": True,
+        }
+        if not applicable:
+            return evidence
+        try:
+            timer = getattr(widget, "_content_fit_timer", None)
+            app = QApplication.instance()
+            samples = [list(before)]
+            timer_active = False
+            pending = False
+            running = False
+            for _round in range(4):
+                if app is not None:
+                    app.processEvents()
+                widget.fit_content_to_family()
+                if app is not None:
+                    app.processEvents()
+                current = [int(widget.width()), int(widget.height())]
+                samples.append(current)
+                timer_active = bool(
+                    timer is not None
+                    and callable(getattr(timer, "isActive", None))
+                    and timer.isActive()
+                )
+                pending = bool(widget.property("contentFitPending"))
+                running = bool(getattr(widget, "_content_fit_running", False))
+                if (
+                    current == samples[-2]
+                    and not pending
+                    and not timer_active
+                    and not running
+                ):
+                    break
+            stable_size = bool(
+                len(samples) >= 2
+                and samples[-1] == samples[-2]
+            )
+            evidence.update({
+                "after_size": list(samples[-1]),
+                "size_samples": samples,
+                "stable_size": stable_size,
+                "content_fit_pending_after": pending,
+                "timer_active_after": timer_active,
+                "running_after": running,
+                "passed": bool(
+                    stable_size
+                    and not pending
+                    and not timer_active
+                    and not running
+                ),
+            })
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            evidence.update({
+                "exception": type(exc).__name__,
+                "passed": False,
+            })
+        annotation = self._capture_annotations.setdefault(label, {})
+        annotation["content_fit_settlement"] = dict(evidence)
+        annotation["passed"] = bool(
+            annotation.get("passed", True)
+            and evidence["passed"]
+        )
+        if not evidence["passed"]:
+            self._failures.append({
+                "label": label,
+                "reason": "Dialog content-fit geometry did not settle before capture",
+            })
+        return evidence
+
+    def _record_post_capture_contract_gate(
+        self,
+        label: str,
+        gate_name: str,
+        evidence: dict[str, Any],
+    ) -> bool:
+        """Bind a post-pixel transition result to its captured v26 record."""
+
+        gate = dict(evidence)
+        gate_passed = bool(
+            gate.get("passed") is True
+            and gate.get("issues") == []
+        )
+        annotation = self._capture_annotations.setdefault(label, {})
+        annotation[gate_name] = gate
+        matched = False
+        for record in reversed(getattr(self, "_capture_records", [])):
+            if str(record.get("label", "")) != str(label):
+                continue
+            matched = True
+            audit = dict(record.get("audit", {}) or {})
+            audit[gate_name] = gate
+            acceptance = dict(record.get("capture_acceptance", {}) or {})
+            current_semantic = bool(
+                acceptance.get(
+                    "semantic_audit_passed",
+                    audit.get("semantic_audit_passed", False),
+                )
+            )
+            semantic_passed = post_capture_contract_gate_semantic_passes(
+                CAPTURE_CONTRACT_VERSION,
+                current_semantic_passed=current_semantic,
+                gate_passed=gate_passed,
+            )
+            if CAPTURE_CONTRACT_VERSION >= 26:
+                audit["semantic_audit_passed"] = semantic_passed
+                audit["passed"] = bool(
+                    audit.get("passed", True)
+                    and semantic_passed
+                )
+                acceptance["semantic_audit_passed"] = semantic_passed
+                acceptance["passed"] = capture_acceptance_passes_contract(
+                    CAPTURE_CONTRACT_VERSION,
+                    gross_capture_passed=bool(
+                        acceptance.get("gross_passed", False)
+                    ),
+                    semantic_audit_passed=semantic_passed,
+                )
+            record["audit"] = audit
+            record["capture_acceptance"] = acceptance
+            break
+        annotation["passed"] = bool(
+            annotation.get("passed", True)
+            and (
+                gate_passed
+                if CAPTURE_CONTRACT_VERSION >= 26 else
+                True
+            )
+        )
+        return matched
 
     def _close_top_level_dialogs(self) -> None:
         app = QApplication.instance()
@@ -21723,10 +25611,43 @@ class _UiFaceCaptureRunner:
         }
         annotation = dict(self._capture_annotations.get(label, {}) or {})
         annotation["streak_fold_geometry"] = fold_geometry
+        next_card = next(
+            (
+                card
+                for card in dialog.findChildren(QFrame)
+                if bool(card.property("streakNextAchievement"))
+                and str(card.property("achievementId") or "") == "streak_30"
+            ),
+            None,
+        )
+        next_reward_copy = ""
+        if next_card is not None:
+            next_reward_copy = next(
+                (
+                    str(candidate.text()).strip()
+                    for candidate in next_card.findChildren(QLabel)
+                    if str(candidate.text()).strip()
+                    == "100 Garden Coins · 1 Small Growth Charge"
+                ),
+                "",
+            )
+        next_reward = dict(annotation.get("thirty_day_reward", {}) or {})
+        next_reward.update({
+            "painted_copy": next_reward_copy,
+            "painted": bool(
+                next_card is not None
+                and next_card.isVisibleTo(dialog)
+                and next_reward_copy
+                and not next_card.grab().isNull()
+            ),
+        })
+        annotation["thirty_day_reward"] = next_reward
+        self._thirty_day_reward_evidence["streak-active"] = next_reward
         base_state_passed = bool(
             annotation.get("achievement_completed", False)
             and annotation.get("daily_reward_earned", False)
             and annotation.get("weekly_reward_earned", False)
+            and next_reward.get("painted", False)
         )
         annotation["passed"] = bool(
             base_state_passed and fold_passed
@@ -21784,6 +25705,12 @@ class _UiFaceCaptureRunner:
         dialog.activateWindow()
 
         def _dialog_ready() -> None:
+            if label == "coins-activity":
+                self._exercise_coin_activity_state_matrix(
+                    dialog,
+                    label,
+                )
+
             def close_metric() -> None:
                 try:
                     self._close_widget(dialog)
@@ -22151,8 +26078,6 @@ class _UiFaceCaptureRunner:
         label: str = "starter-nursery-plants",
         audit_action: bool = False,
     ) -> None:
-        from ..ui.dashboard import NurseryDialog
-
         dashboard = getattr(self.app, "dashboard", None)
         if dashboard is None:
             self._failures.append({
@@ -22162,43 +26087,167 @@ class _UiFaceCaptureRunner:
             self._next_after(250)
             return
 
-        # The product route intentionally uses QDialog.exec(). Capture this
-        # surface non-modally so teardown cannot become trapped in that nested
-        # event loop while the first-run prompt is still eligible to reopen.
-        dialog = NurseryDialog(dashboard, self.app.engine, self.app.storage)
-        dashboard.nursery_dialog = dialog
-        dialog.catalog_tabs.setCurrentIndex(0)
-        dialog.setWindowModality(Qt.WindowModality.NonModal)
-        dialog.setModal(False)
-        self._move_to_capture_display(dialog)
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-
-        def capture_ready() -> None:
-            if audit_action:
-                self._audit_nursery_action_above_footer(
-                    dialog,
-                    dialog.scroll,
-                    label,
-                    row="first",
-                    button_prefix="Choose",
-                )
-            self._capture_and_advance(
-                label,
-                dialog,
-                capture_delay_ms=420,
-                close_callback=lambda: self._dispose_capture_widget(
-                    dialog,
-                    owner=dashboard,
-                    owner_attribute="nursery_dialog",
-                ),
-                cleanup_predicate=lambda: self._capture_widget_disposed(dialog),
-                close_ms=780,
-                next_ms=1200,
-            )
+        # Open through the production route. It persists INTRODUCTION ->
+        # NURSERY before constructing the modal dialog, and the nested event
+        # loop continues servicing the capture timers until Choose closes it.
+        def product_dialog() -> Any | None:
+            return getattr(dashboard, "nursery_dialog", None)
 
         def ready() -> None:
+            dialog = product_dialog()
+            if dialog is None:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Product Starter Nursery dialog was unavailable",
+                    "contract_gate": "first-run-selection-persistence",
+                })
+                self._next_after(200)
+                return
+            dialog.catalog_tabs.setCurrentIndex(0)
+            self._move_to_capture_display(dialog)
+            dialog.raise_()
+            dialog.activateWindow()
+            entry_progress = self.app.storage.state.onboarding
+            entry_step = getattr(entry_progress, "step", "")
+            entry_step_value = str(getattr(entry_step, "value", entry_step))
+            nursery_entry = {
+                "step": entry_step_value,
+                "pending_species": str(entry_progress.pending_species or ""),
+                "persisted": entry_step_value == "nursery",
+                "product_route": "GardenDashboard._open_starter_nursery",
+            }
+            annotation = self._capture_annotations.setdefault(label, {})
+            annotation["starter_nursery_entry"] = nursery_entry
+            annotation["passed"] = bool(
+                annotation.get("passed", True)
+                and nursery_entry["persisted"]
+            )
+
+            def close_starter_nursery() -> None:
+                if label != "starter-nursery-plants":
+                    self._close_widget(dialog)
+                    return
+                candidates = tuple(self.app.engine.release_ready_species())
+                selected_species = (
+                    str(candidates[0]).casefold() if candidates else ""
+                )
+                selected_card = next(
+                    (
+                        card
+                        for card in dialog.findChildren(QFrame)
+                        if str(card.property("catalogItemId") or "").casefold()
+                        == selected_species
+                        and card.isVisibleTo(dialog)
+                    ),
+                    None,
+                )
+                choose_action = next(
+                    (
+                        button
+                        for button in (
+                            selected_card.findChildren(QAbstractButton)
+                            if selected_card is not None else
+                            ()
+                        )
+                        if _displayed_button_text(button).strip() == "Choose"
+                        and button.isVisibleTo(dialog)
+                        and button.isEnabled()
+                    ),
+                    None,
+                )
+                progress_before = self.app.storage.state.onboarding
+                before_step = getattr(progress_before, "step", "")
+                before_step_value = str(
+                    getattr(before_step, "value", before_step)
+                )
+                selection_action_triggered = False
+                if choose_action is not None:
+                    selection_action_triggered = True
+                    choose_action.click()
+                progress = self.app.storage.state.onboarding
+                step = getattr(progress, "step", "")
+                step_value = str(getattr(step, "value", step))
+                pending_species = str(progress.pending_species or "")
+                selection_persisted = bool(
+                    nursery_entry["persisted"]
+                    and selected_card is not None
+                    and selection_action_triggered
+                    and step_value == "placement"
+                    and pending_species.casefold() == selected_species
+                )
+                message_widget = getattr(
+                    getattr(dialog, "status", None),
+                    "message",
+                    None,
+                )
+                selection = {
+                    "selected_species": selected_species,
+                    "pending_species": pending_species,
+                    "selection_message": str(
+                        message_widget.text()
+                        if message_widget is not None else
+                        ""
+                    ),
+                    "nursery_entry_persisted": nursery_entry["persisted"],
+                    "step_before_selection": before_step_value,
+                    "step_after_selection": step_value,
+                    "selection_action": (
+                        _displayed_button_text(choose_action).strip()
+                        if choose_action is not None else
+                        ""
+                    ),
+                    "selection_action_triggered": selection_action_triggered,
+                    "selection_card_found": selected_card is not None,
+                    "selection_persisted": selection_persisted,
+                }
+                selection_issues = first_run_selection_issue_codes(selection)
+                selection["issues"] = list(selection_issues)
+                selection["passed"] = not selection_issues
+                self._first_run_sequence_evidence = dict(selection)
+                record_bound = self._record_post_capture_contract_gate(
+                    label,
+                    "first_run_selection",
+                    selection,
+                )
+                if selection_issues or not record_bound:
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Starter Nursery selection did not persist into "
+                            "the first-run placement step"
+                            + (
+                                ": " + ", ".join(selection_issues)
+                                if selection_issues else
+                                "; capture record was unavailable"
+                            )
+                        ),
+                        "contract_gate": "first-run-selection-persistence",
+                    })
+                if not selection_persisted:
+                    self._close_widget(dialog)
+
+            def capture_ready() -> None:
+                if audit_action:
+                    self._audit_nursery_action_above_footer(
+                        dialog,
+                        dialog.scroll,
+                        label,
+                        row="first",
+                        button_prefix="Choose",
+                    )
+                self._capture_and_advance(
+                    label,
+                    dialog,
+                    capture_delay_ms=420,
+                    close_callback=close_starter_nursery,
+                    cleanup_predicate=lambda: bool(
+                        product_dialog() is not dialog
+                        and self._capture_widget_disposed(dialog)
+                    ),
+                    close_ms=780,
+                    next_ms=1200,
+                )
+
             if audit_action:
                 content = dialog.scroll.widget()
                 actions = [
@@ -22218,22 +26267,20 @@ class _UiFaceCaptureRunner:
                 return
             capture_ready()
 
-        QTimer.singleShot(
-            0,
-            lambda: self._wait_for(
-                lambda: bool(
-                    getattr(dashboard, "nursery_dialog", None)
-                    is dialog
-                    and dialog.isVisible()
-                    and dialog.catalog_tabs.currentIndex() == 0
-                    and bool(getattr(dialog, "_starter_mode", False))
-                ),
-                ready,
-                tries=80,
-                failure_label=label,
-                failure_reason="Starter Nursery Plants tab did not become ready",
+        self._wait_for(
+            lambda: bool(
+                product_dialog() is not None
+                and product_dialog().isVisible()
+                and product_dialog().catalog_tabs.currentIndex() == 0
+                and bool(getattr(product_dialog(), "_starter_mode", False))
             ),
+            ready,
+            tries=80,
+            failure_label=label,
+            failure_reason="Starter Nursery Plants tab did not become ready",
+            on_error=lambda: self._close_widget(product_dialog()),
         )
+        QTimer.singleShot(0, dashboard._open_starter_nursery)
 
     def _replace_capture_state(self, state: Any) -> Callable[[], None]:
         """Install one in-memory fixture and return an idempotent restoration."""
@@ -22267,27 +26314,23 @@ class _UiFaceCaptureRunner:
         return restore
 
     def _capture_starter_placement(self) -> None:
-        from ..models.state import GardenState, OnboardingProgress, OnboardingStep
+        from ..models.state import OnboardingStep
+        from ..ui.formatters import format_status_label
 
         def ready() -> None:
             dashboard = getattr(self.app, "dashboard", None)
             if dashboard is None:
                 self._next_after(200)
                 return
-            fixture = GardenState()
-            # Prove all placement semantics in one real viewport: two usable
-            # beds followed by four visibly locked beds.
-            fixture.unlocked_slots = 2
-            fixture.onboarding = OnboardingProgress(
-                step=OnboardingStep.PLACEMENT,
-                pending_species="bonsai",
-            )
-            restore = self._replace_capture_state(fixture)
+            state = self.app.storage.state
+            # This is the live state persisted by Surface 3, not an
+            # independently reconstructed placement fixture.
+            progress = state.onboarding
+            state.unlocked_slots = 2
             cleanup_complete = False
 
             def cleanup() -> None:
                 nonlocal cleanup_complete
-                restore()
                 cleanup_complete = True
 
             dashboard._starter_placement_active = False
@@ -22323,6 +26366,73 @@ class _UiFaceCaptureRunner:
                         int(destination)
                     )
                     dashboard.scene.update()
+
+                pending_species = str(
+                    self.app.storage.state.onboarding.pending_species or ""
+                ).casefold()
+                display_species = format_status_label(pending_species)
+                instruction_copy = str(
+                    dashboard.rearrange_bar.instructions.text()
+                ).strip()
+                created_species = ""
+                creation_undone = False
+                placement_message = ""
+                undo_message = ""
+                if destination is not None:
+                    (
+                        placed,
+                        placement_message,
+                        created_plant,
+                        placement_change,
+                    ) = self.app.engine.place_starter_with_change(
+                        int(destination)
+                    )
+                    created_species = str(
+                        getattr(created_plant, "species", "") or ""
+                    ).casefold()
+                    if placed and created_plant is not None and placement_change is not None:
+                        creation_undone, undo_message = (
+                            self.app.engine.undo_starter_placement(
+                                placement_change
+                            )
+                        )
+                current_state = self.app.storage.state
+                creation_undone = bool(
+                    creation_undone
+                    and not current_state.plants
+                    and current_state.onboarding.step
+                    == OnboardingStep.PLACEMENT
+                    and str(
+                        current_state.onboarding.pending_species or ""
+                    ).casefold() == pending_species
+                )
+                dashboard.refresh_all()
+                dashboard._begin_starter_placement()
+                destinations = dashboard.scene._destination_slots()
+                if destination is not None and int(destination) in destinations:
+                    dashboard.scene._interaction.choose_destination(
+                        int(destination),
+                        destinations,
+                    )
+                    dashboard._on_placement_destination_changed(
+                        int(destination)
+                    )
+                QApplication.processEvents()
+
+                sequence = {
+                    **dict(self._first_run_sequence_evidence),
+                    "pending_species": pending_species,
+                    "display_species": display_species,
+                    "instruction_copy": instruction_copy,
+                    "created_species": created_species,
+                    "creation_undone": creation_undone,
+                    "placement_message": str(placement_message),
+                    "undo_message": str(undo_message),
+                }
+                sequence_issues = first_run_sequence_issue_codes(sequence)
+                sequence["issues"] = list(sequence_issues)
+                sequence["passed"] = not sequence_issues
+                self._first_run_sequence_evidence = sequence
 
                 # The pixel-bearing grab below invokes the same paint path as
                 # the final capture, rather than inferring locked state from
@@ -22365,7 +26475,8 @@ class _UiFaceCaptureRunner:
                     )
                 )
                 self._capture_annotations["starter-placement"] = {
-                    "pending_species": fixture.onboarding.pending_species,
+                    "pending_species": pending_species,
+                    "first_run_sequence": sequence,
                     "allowed_destination_slots": destinations,
                     "locked_bed_slots": expected_locked,
                     "locked_bed_visuals": locked_records,
@@ -22375,20 +26486,29 @@ class _UiFaceCaptureRunner:
                         int(paint_probe.height()),
                     ],
                     "passed": bool(
-                        fixture.onboarding.step == OnboardingStep.PLACEMENT
-                        and not fixture.plants
+                        current_state.onboarding.step == OnboardingStep.PLACEMENT
+                        and not current_state.plants
                         and dashboard.scene._interaction.placing
                         and locked_visuals_passed
+                        and not sequence_issues
                     ),
                 }
+                if sequence_issues:
+                    self._failures.append({
+                        "label": "starter-placement",
+                        "reason": (
+                            "First-run selected/instructed/created species "
+                            "chain failed: " + ", ".join(sequence_issues)
+                        ),
+                    })
 
             self._capture_annotations["starter-placement"] = {
                 "passed": bool(
-                    fixture.onboarding.step == OnboardingStep.PLACEMENT
-                    and not fixture.plants
+                    progress.step == OnboardingStep.PLACEMENT
+                    and not state.plants
                     and dashboard.scene._interaction.placing
                 ),
-                "pending_species": fixture.onboarding.pending_species,
+                "pending_species": progress.pending_species,
             }
             self._capture_and_advance(
                 "starter-placement",
@@ -23314,9 +27434,12 @@ class _UiFaceCaptureRunner:
         }
 
     def _capture_nurture_after(self) -> None:
+        from ..environment import GROWTH_CHARGES
         from ..models.state import OnboardingStep
 
         state = self.app.storage.state
+        for charge_id in GROWTH_CHARGES:
+            state.consumables[charge_id] = 0
         active_id = str(getattr(state, "active_plant_id", "") or "")
         eligible = sorted(
             (
@@ -23458,6 +27581,64 @@ class _UiFaceCaptureRunner:
             self.app.engine.set_active_plant(plant_id)
         return plant_id
 
+    def _fertilizer_flow_plant_snapshot(
+        self,
+        plant_id: str,
+        *,
+        artwork_widget: Any | None = None,
+    ) -> dict[str, Any]:
+        """Project one authoritative plant state for sequential flow gates."""
+
+        plant = self.app.engine.plant_story(str(plant_id or ""))
+        resolved = None
+        if plant is not None:
+            try:
+                resolved = self.app.engine.resolve_plant_asset(
+                    str(plant.species),
+                    str(plant.growth_stage),
+                )
+            except Exception:
+                resolved = None
+        metadata = dict(getattr(resolved, "metadata", {}) or {})
+        asset_source = str(
+            metadata.get("file", "")
+            or getattr(resolved, "path", "")
+            or ""
+        )
+        pixmap = None
+        if artwork_widget is not None:
+            try:
+                pixmap = artwork_widget.pixmap()
+            except Exception:
+                pixmap = None
+        return {
+            "plant_id": str(getattr(plant, "plant_id", "") or ""),
+            "plant_name": str(getattr(plant, "name", "") or ""),
+            "species": str(getattr(plant, "species", "") or ""),
+            "growth_points": int(
+                getattr(plant, "growth_points", -1) if plant is not None else -1
+            ),
+            "growth_remainder_units": int(
+                getattr(plant, "growth_remainder_units", -1)
+                if plant is not None else -1
+            ),
+            "growth_stage": str(getattr(plant, "growth_stage", "") or ""),
+            "artwork_asset_id": str(
+                getattr(resolved, "asset_id", "") or ""
+            ),
+            "artwork_source": asset_source,
+            "artwork_resolved": bool(
+                resolved is not None
+                and getattr(resolved, "asset_id", "")
+                and asset_source
+            ),
+            "artwork_painted": (
+                None
+                if artwork_widget is None
+                else bool(pixmap is not None and not pixmap.isNull())
+            ),
+        }
+
     def _capture_fertilize_after(self, label: str, state_variant: str) -> None:
         from ..models.state import Fertilizer
 
@@ -23467,13 +27648,19 @@ class _UiFaceCaptureRunner:
             self._close_dashboard()
             self._next_after(250)
             return
-        snapshot = self._capture_fixture_state_snapshot(label)
+        snapshot = self._capture_fixture_state_snapshot(
+            label,
+            exact_ledger_restore=True,
+        )
 
         def cleanup() -> None:
             self._restore_capture_fixture_state(snapshot)
 
         state = self.app.storage.state
         plant = self.app.engine.plant_story(plant_id)
+        if label == "fertilizer-active" and plant is not None:
+            self._fertilizer_flow_source_plant_id = str(plant.plant_id)
+            self._fertilizer_flow_source_plant_name = str(plant.name)
         try:
             if plant is not None:
                 plant.fertilizer = None
@@ -23504,6 +27691,59 @@ class _UiFaceCaptureRunner:
 
         def ready() -> None:
             dialog = getattr(dashboard, "fertilizer_dialog", None)
+
+            if label == "fertilizer-active" and dialog is not None and plant is not None:
+                hero_artwork = next(
+                    (
+                        candidate
+                        for candidate in dialog.findChildren(QLabel)
+                        if candidate.property("stagePreview") is True
+                    ),
+                    None,
+                )
+                identity = self._fertilizer_flow_plant_snapshot(
+                    str(plant.plant_id),
+                    artwork_widget=hero_artwork,
+                )
+                identity.update({
+                    "active_plant_id": str(state.active_plant_id or ""),
+                    "window_title": str(dialog.windowTitle()),
+                    "target_copy": str(dialog.fertilizer_target.text()).strip(),
+                    "active_tier": str(
+                        getattr(getattr(plant, "fertilizer", None), "tier", "") or ""
+                    ),
+                })
+                identity_issues = list(
+                    fertilizer_flow_source_issue_codes(identity)
+                )
+                if identity["plant_id"] != self._fertilizer_flow_source_plant_id:
+                    identity_issues.append("fertilizer-flow-source:selected-plant-id")
+                if identity["plant_name"] != self._fertilizer_flow_source_plant_name:
+                    identity_issues.append("fertilizer-flow-source:selected-plant-name")
+                if identity["active_plant_id"] != identity["plant_id"]:
+                    identity_issues.append("fertilizer-flow-source:active-plant-id")
+                if identity["window_title"] != f"Fertilize {identity['plant_name']}":
+                    identity_issues.append("fertilizer-flow-source:window-title")
+                if identity["target_copy"] != f"Applying to {identity['plant_name']}":
+                    identity_issues.append("fertilizer-flow-source:target-copy")
+                if identity["active_tier"] != "basic":
+                    identity_issues.append("fertilizer-flow-source:active-tier")
+                identity["issues"] = list(dict.fromkeys(identity_issues))
+                identity["passed"] = not identity["issues"]
+                self._fertilizer_flow_source_snapshot = deepcopy(identity)
+                annotation = self._capture_annotations.setdefault(label, {})
+                annotation["fertilizer_flow_source"] = identity
+                annotation["passed"] = bool(
+                    annotation.get("passed", True) and identity["passed"]
+                )
+                if not identity["passed"]:
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Fertilizer source selection did not preserve one "
+                            "active plant identity"
+                        ),
+                    })
 
             def close_dialog() -> None:
                 self._close_widget(dialog)
@@ -23561,6 +27801,133 @@ class _UiFaceCaptureRunner:
             begin_move(plant_id)
         cancel_move = getattr(dashboard, "_cancel_move", None)
 
+        def prepare_occupied_hover() -> None:
+            """Paint one real occupied destination with its swap identity."""
+
+            scene = getattr(dashboard, "scene", None)
+            if scene is None:
+                self._capture_annotations["move-mode"] = {
+                    "passed": False,
+                    "move_occupied_hover": {
+                        "issues": ["move-scene-unavailable"],
+                        "passed": False,
+                    },
+                }
+                return
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            origin_slot = getattr(scene._interaction, "drag_origin_slot", None)
+            valid_destinations = set(scene._destination_slots())
+            occupied_candidates = sorted(
+                (
+                    int(row.get("slot_index", -1)),
+                    str(row.get("plant_id", "") or ""),
+                    str(row.get("name") or row.get("species") or "plant"),
+                )
+                for row in list(scene.scene.get("plants", ()) or ())
+                if int(row.get("slot_index", -1)) in valid_destinations
+                and str(row.get("plant_id", "") or "") != plant_id
+                and int(row.get("slot_index", -1)) in scene._slot_placements
+            )
+            if not occupied_candidates:
+                evidence = {
+                    "source_plant_id": plant_id,
+                    "source_slot": origin_slot,
+                    "valid_destinations": sorted(valid_destinations),
+                    "issues": ["occupied-destination-unavailable"],
+                    "passed": False,
+                }
+                annotation = self._capture_annotations.setdefault("move-mode", {})
+                annotation["move_occupied_hover"] = evidence
+                annotation["passed"] = False
+                return
+
+            occupied_slot, occupant_plant_id, occupant_name = occupied_candidates[0]
+            expected_label = f"Swap with {occupant_name}"
+            layout = scene._slot_placements[occupied_slot]
+            local_x = int(round(
+                float(layout.bed_footprint.x)
+                + float(layout.bed_footprint.width) / 2.0
+            ))
+            local_y = int(round(
+                float(layout.bed_footprint.y)
+                + float(layout.bed_footprint.height) / 2.0
+            ))
+            global_target = scene.mapToGlobal(QPoint(local_x, local_y))
+            QCursor.setPos(global_target)
+            if app is not None:
+                app.processEvents()
+            # Some virtual displays do not dispatch a move event after a
+            # programmatic cursor warp. Preserve the exact post-hover state
+            # without selecting the destination or mutating the draft.
+            if scene._hovered_move_slot != occupied_slot:
+                scene._hovered_move_slot = occupied_slot
+                scene._inline_message = f"{expected_label}."
+            scene.update()
+            scene.repaint()
+            if app is not None:
+                app.processEvents()
+            painted_label = str(
+                dict(getattr(scene, "_painted_move_labels", {}) or {}).get(
+                    occupied_slot,
+                    "",
+                )
+            )
+            actual_cursor = QCursor.pos()
+            pointer_reached = bool(
+                abs(int(actual_cursor.x()) - int(global_target.x())) <= 2
+                and abs(int(actual_cursor.y()) - int(global_target.y())) <= 2
+            )
+            evidence = {
+                "source_plant_id": plant_id,
+                "source_slot": origin_slot,
+                "occupied_destination_slot": occupied_slot,
+                "occupant_plant_id": occupant_plant_id,
+                "occupant_display_name": occupant_name,
+                "valid_destinations": sorted(valid_destinations),
+                "hovered_slot": scene._hovered_move_slot,
+                "expected_label": expected_label,
+                "painted_label": painted_label,
+                "pointer_target_local": [local_x, local_y],
+                "pointer_target_global": [
+                    int(global_target.x()),
+                    int(global_target.y()),
+                ],
+                "pointer_actual_global": [
+                    int(actual_cursor.x()),
+                    int(actual_cursor.y()),
+                ],
+                "pointer_reached_target": pointer_reached,
+                "move_mode_active": bool(scene._interaction.placing),
+                "source_slot_not_selectable": origin_slot not in valid_destinations,
+                "unrelated_controls_disabled": bool(
+                    not dashboard.header_actions_widget.isEnabled()
+                    and not dashboard.garden_stats_bar.isEnabled()
+                    and not dashboard.plant_card.isEnabled()
+                ),
+            }
+            evidence["issues"] = [
+                issue
+                for issue, passed in (
+                    ("move-mode-inactive", evidence["move_mode_active"]),
+                    ("source-and-occupant-match", occupant_plant_id != plant_id),
+                    ("occupied-slot-not-valid", occupied_slot in valid_destinations),
+                    ("hovered-slot-mismatch", scene._hovered_move_slot == occupied_slot),
+                    ("swap-label-not-painted", painted_label == expected_label),
+                    ("pointer-not-on-occupied-bed", pointer_reached),
+                    ("source-slot-selectable", evidence["source_slot_not_selectable"]),
+                    ("unrelated-controls-enabled", evidence["unrelated_controls_disabled"]),
+                )
+                if not passed
+            ]
+            evidence["passed"] = not evidence["issues"]
+            annotation = self._capture_annotations.setdefault("move-mode", {})
+            annotation["move_occupied_hover"] = evidence
+            annotation["passed"] = bool(
+                annotation.get("passed", True) and evidence["passed"]
+            )
+
         def cleanup_move() -> None:
             if callable(cancel_move):
                 cancel_move()
@@ -23570,6 +27937,7 @@ class _UiFaceCaptureRunner:
             "move-mode",
             dashboard,
             capture_delay_ms=500,
+            before_capture=prepare_occupied_hover,
             close_callback=cleanup_move,
             close_ms=800,
             next_ms=1200,
@@ -24208,7 +28576,7 @@ class _UiFaceCaptureRunner:
                 state.currency_transactions.append(CurrencyTransaction(
                     transaction_id=f"capture-tx-{reward.reward_id}",
                     event_key=event_key,
-                    reason=f"Garden Find: {reward.display_name}",
+                    reason=f"Standard Find: {reward.display_name}",
                     delta=reward.amount,
                     balance=state.currency_balance,
                     occurred_at=occurred_at,
@@ -24235,6 +28603,40 @@ class _UiFaceCaptureRunner:
 
         if stacked_event_key not in state.applied_reward_event_keys:
             state.applied_reward_event_keys.append(stacked_event_key)
+
+        # Keep debit styling and a deliberately long learner-facing source in
+        # the active Surface 16 ledger. These are release states, not retired
+        # standalone screenshots.
+        long_source_transaction_id = "capture-tx-community-anniversary"
+        state.currency_balance += 7
+        state.currency_transactions.append(CurrencyTransaction(
+            transaction_id=long_source_transaction_id,
+            event_key="capture:community-garden-anniversary",
+            reason="Community Garden Anniversary",
+            delta=7,
+            balance=state.currency_balance,
+            occurred_at=f"{day_value}T10:15:00+00:00",
+            transaction_type="credit",
+            source="community_garden_anniversary",
+            source_id="community-garden-anniversary",
+            scheduler_day=day_value,
+            correlation_id="capture-community-garden-anniversary",
+        ))
+        spending_transaction_id = "capture-tx-nursery-spend"
+        state.currency_balance -= 30
+        state.currency_transactions.append(CurrencyTransaction(
+            transaction_id=spending_transaction_id,
+            event_key="purchase:capture-small-growth-charge",
+            reason="Small Growth Charge",
+            delta=-30,
+            balance=state.currency_balance,
+            occurred_at=f"{day_value}T10:20:00+00:00",
+            transaction_type="debit",
+            source="purchase",
+            source_id="growth_charge_small",
+            scheduler_day=day_value,
+            correlation_id="capture-nursery-spend",
+        ))
         summaries = recent_reward_summaries(state)
         findings = recent_garden_finds(state)
         stacked = next(
@@ -24262,6 +28664,10 @@ class _UiFaceCaptureRunner:
             ),
             "rich_compost_item_id": compost.item_id,
             "rich_compost_result": compost.description,
+            "spending_transaction_id": spending_transaction_id,
+            "long_source_transaction_id": long_source_transaction_id,
+            "long_source_copy": "Community Garden Anniversary",
+            "spending_delta": -30,
         }
         annotation["passed"] = bool(
             annotation["stacked_receipt_count"] == 2
@@ -24278,6 +28684,16 @@ class _UiFaceCaptureRunner:
             and not annotation["direct_growth_has_passive_wording"]
             and annotation["rich_compost_item_id"]
             == reward_by_id["find_fertilizer"].inventory_item_id
+            and any(
+                transaction.transaction_id == spending_transaction_id
+                and int(transaction.delta) == -30
+                for transaction in state.currency_transactions
+            )
+            and any(
+                transaction.transaction_id == long_source_transaction_id
+                and transaction.source == "community_garden_anniversary"
+                for transaction in state.currency_transactions
+            )
         )
         return snapshot, annotation
 
@@ -24330,6 +28746,7 @@ class _UiFaceCaptureRunner:
             from ..achievements import ACHIEVEMENTS_BY_ID
 
             definition = ACHIEVEMENTS_BY_ID["streak_7"]
+            thirty_day_definition = ACHIEVEMENTS_BY_ID["streak_30"]
             streak_days = int(definition.progress_target)
             daily_answers = streak_days + 5
             snapshot, projections = (
@@ -24356,6 +28773,40 @@ class _UiFaceCaptureRunner:
                 item for item in projections
                 if item.achievement_id == "streak_7"
             )
+            next_projection = next(
+                item for item in projections
+                if item.achievement_id == "streak_30"
+            )
+            canonical_copy = "100 Garden Coins + 1 Small Growth Charge"
+            definition_evidence = {
+                "achievement_id": thirty_day_definition.achievement_id,
+                "coins": thirty_day_definition.reward.coins,
+                "small_growth_charges": (
+                    thirty_day_definition.reward.small_growth_charges
+                ),
+                "standard_growth_charges": (
+                    thirty_day_definition.reward.standard_growth_charges
+                ),
+                "canonical_copy": canonical_copy,
+            }
+            next_reward_evidence = {
+                "role": "next",
+                "achievement_id": next_projection.achievement_id,
+                "coins": next_projection.reward_coins,
+                "small_growth_charges": (
+                    next_projection.reward_small_growth_charges
+                ),
+                "standard_growth_charges": (
+                    next_projection.reward_standard_growth_charges
+                ),
+                "canonical_copy": canonical_copy,
+                "definition_identity": thirty_day_definition.achievement_id,
+                "painted": False,
+            }
+            self._thirty_day_reward_evidence["definition"] = definition_evidence
+            self._thirty_day_reward_evidence["streak-active"] = (
+                next_reward_evidence
+            )
             self._capture_annotations["streak-active"] = {
                 "achievement_id": streak_projection.achievement_id,
                 "achievement_name": streak_projection.name,
@@ -24366,6 +28817,7 @@ class _UiFaceCaptureRunner:
                 "recurring_receipt_sources": list(receipt_sources),
                 "daily_reward_earned": reward_rules["daily_activity"].awarded_today,
                 "weekly_reward_earned": reward_rules["weekly_streak"].awarded_today,
+                "thirty_day_reward": next_reward_evidence,
                 "passed": bool(
                     streak_projection.completed
                     and streak_projection.reward_coins == definition.reward.coins
@@ -24375,6 +28827,12 @@ class _UiFaceCaptureRunner:
                     == definition.reward.standard_growth_charges
                     and reward_rules["daily_activity"].awarded_today
                     and reward_rules["weekly_streak"].awarded_today
+                    and next_projection.reward_coins
+                    == thirty_day_definition.reward.coins == 100
+                    and next_projection.reward_small_growth_charges
+                    == thirty_day_definition.reward.small_growth_charges == 1
+                    and next_projection.reward_standard_growth_charges
+                    == thirty_day_definition.reward.standard_growth_charges == 0
                 ),
             }
             self._refresh_capture_dashboard()
@@ -24415,6 +28873,132 @@ class _UiFaceCaptureRunner:
             )
 
         self._with_dashboard(ready)
+
+    def _exercise_coin_activity_state_matrix(
+        self,
+        dialog: Any,
+        label: str,
+    ) -> None:
+        """Paint spending/long-source and zero-balance states in Surface 16."""
+
+        state = self.app.storage.state
+        original_balance = int(state.currency_balance)
+        original_transactions = list(state.currency_transactions)
+
+        def visible_texts() -> list[str]:
+            return [
+                str(candidate.text()).strip()
+                for candidate in dialog.findChildren(QLabel)
+                if candidate.isVisibleTo(dialog)
+                and str(candidate.text()).strip()
+            ]
+
+        def refresh_currency() -> None:
+            refresh = getattr(dialog, "refresh", None)
+            if callable(refresh):
+                refresh()
+            navigation = getattr(dialog, "navigation", None)
+            if (
+                navigation is not None
+                and "currency" in getattr(navigation, "keys", [])
+            ):
+                navigation.set_current("currency")
+            QApplication.processEvents()
+            dialog.repaint()
+            QApplication.processEvents()
+
+        records: dict[str, dict[str, Any]] = {}
+        try:
+            refresh_currency()
+            main_texts = visible_texts()
+            main_probe = dialog.grab()
+            open_nursery = next((
+                button
+                for button in dialog.findChildren(QAbstractButton)
+                if button.isVisibleTo(dialog)
+                and _displayed_button_text(button) == "Open nursery"
+            ), None)
+            header_ids = {
+                str(candidate.property("semanticId") or "")
+                for candidate in dialog.findChildren(QWidget)
+                if candidate.isVisibleTo(dialog)
+                and str(candidate.property("semanticId") or "").startswith(
+                    "progress.coin-ledger-header-"
+                )
+            }
+            records["activity"] = {
+                "spending_copy": "−30" in main_texts,
+                "long_source_copy": (
+                    "Community Garden Anniversary" in main_texts
+                ),
+                "header_ids": sorted(header_ids),
+                "open_nursery_variant": (
+                    str(open_nursery.property("variant") or "")
+                    if open_nursery is not None else
+                    ""
+                ),
+                "painted": bool(
+                    dialog.isVisible() and not main_probe.isNull()
+                ),
+            }
+
+            state.currency_balance = 0
+            state.currency_transactions = []
+            refresh_currency()
+            zero_texts = visible_texts()
+            zero_probe = dialog.grab()
+            records["zero"] = {
+                "balance": int(state.currency_balance),
+                "transaction_count": len(state.currency_transactions),
+                "empty_guidance": "No coin activity yet" in zero_texts,
+                "current_balance_visible": (
+                    "Current balance" in zero_texts and "0" in zero_texts
+                ),
+                "painted": bool(
+                    dialog.isVisible() and not zero_probe.isNull()
+                ),
+            }
+        finally:
+            state.currency_balance = original_balance
+            state.currency_transactions = original_transactions
+            refresh_currency()
+
+        activity = dict(records.get("activity", {}) or {})
+        zero = dict(records.get("zero", {}) or {})
+        passed = bool(
+            activity.get("spending_copy", False)
+            and activity.get("long_source_copy", False)
+            and activity.get("header_ids") == [
+                "progress.coin-ledger-header-0",
+                "progress.coin-ledger-header-1",
+                "progress.coin-ledger-header-2",
+                "progress.coin-ledger-header-3",
+            ]
+            and activity.get("open_nursery_variant")
+            == "secondary"
+            and activity.get("painted", False)
+            and zero.get("balance") == 0
+            and zero.get("transaction_count") == 0
+            and zero.get("empty_guidance", False)
+            and zero.get("current_balance_visible", False)
+            and zero.get("painted", False)
+        )
+        annotation = dict(
+            self._capture_annotations.get(label, {}) or {}
+        )
+        annotation["coin_activity_state_matrix"] = {
+            "records": records,
+            "passed": passed,
+        }
+        annotation["passed"] = bool(
+            annotation.get("passed", False) and passed
+        )
+        self._capture_annotations[label] = annotation
+        if not passed:
+            self._failures.append({
+                "label": label,
+                "reason": "Coin activity painted state matrix failed",
+            })
 
     def _capture_coins_activity(self) -> None:
         def ready() -> None:
@@ -24679,6 +29263,15 @@ class _UiFaceCaptureRunner:
                     ),
                     None,
                 )
+                reward_copy = next(
+                    (
+                        str(label_widget.text()).strip()
+                        for label_widget in candidate.findChildren(QLabel)
+                        if bool(label_widget.property("rowStatus"))
+                        and str(label_widget.text()).strip()
+                    ),
+                    "",
+                )
                 cards.append({
                     "achievement_id": achievement_id,
                     "state": str(
@@ -24692,6 +29285,7 @@ class _UiFaceCaptureRunner:
                         if completion_date is not None else
                         ""
                     ),
+                    "reward_copy": reward_copy,
                     "bounds": rectangle,
                     "fully_contained": bool(bounds.get("contained", False)),
                 })
@@ -24751,6 +29345,64 @@ class _UiFaceCaptureRunner:
             annotation.get("valid_distinct_completion_dates", False)
             and int(annotation.get("completion_date_count", 0) or 0) >= 4
         )
+        thirty_day_card = next(
+            (
+                record for record in cards
+                if record["achievement_id"] == "streak_30"
+                and record["state"] == "completed"
+            ),
+            None,
+        )
+        completed_reward = dict(
+            annotation.get("thirty_day_reward", {}) or {}
+        )
+        completed_reward.update({
+            "painted_copy": (
+                str(thirty_day_card.get("reward_copy", ""))
+                if thirty_day_card is not None else
+                ""
+            ),
+            "painted": bool(
+                thirty_day_card is not None
+                and thirty_day_card.get("fully_contained", False)
+                and thirty_day_card.get("reward_copy")
+                == "100 Garden Coins and 1 Small Growth Charge"
+            ),
+        })
+        annotation["thirty_day_reward"] = completed_reward
+        self._thirty_day_reward_evidence["progress-achievements"] = (
+            completed_reward
+        )
+        cross_surface_required = bool(
+            {"streak-active", "progress-achievements"}.issubset(
+                set(getattr(self, "_requested_face_labels", ()) or ())
+            )
+        )
+        cross_surface_issues = (
+            thirty_day_reward_surface_issue_codes(
+                self._thirty_day_reward_evidence
+            )
+            if cross_surface_required else
+            ()
+        )
+        cross_surface_evidence = {
+            "required": cross_surface_required,
+            "definition": dict(
+                self._thirty_day_reward_evidence.get("definition", {}) or {}
+            ),
+            "streak-active": dict(
+                self._thirty_day_reward_evidence.get("streak-active", {}) or {}
+            ),
+            "progress-achievements": completed_reward,
+            "issues": list(cross_surface_issues),
+            "passed": bool(
+                completed_reward.get("painted", False)
+                and (not cross_surface_required or not cross_surface_issues)
+            ),
+        }
+        filter_state_matrix = dict(
+            annotation.get("achievement_filter_state_matrix", {}) or {}
+        )
         annotation.update({
             "visible_achievement_cards": cards,
             "visible_completion_days": visible_days,
@@ -24758,10 +29410,465 @@ class _UiFaceCaptureRunner:
             "visible_completion_date_texts": completion_date_texts,
             "achievement_card_geometry_passed": card_geometry_passed,
             "rendered_chronological_dates_passed": dates_passed,
+            "thirty_day_reward_cross_surface": cross_surface_evidence,
             "passed": bool(
                 schedule_passed
                 and card_geometry_passed
                 and dates_passed
+                and cross_surface_evidence["passed"]
+                and filter_state_matrix.get("passed", False)
+            ),
+        })
+        if cross_surface_issues:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "30-day reward drifted between Streak and Achievements: "
+                    + ", ".join(cross_surface_issues)
+                ),
+            })
+        self._capture_annotations[label] = annotation
+
+    def _exercise_achievement_filter_state_matrix(
+        self,
+        dashboard: Any,
+        label: str,
+    ) -> None:
+        """Paint the In progress and Locked filters owned by Surface 17."""
+
+        from ..achievements import ACHIEVEMENTS_BY_ID
+
+        state = self.app.storage.state
+        original_achievements = deepcopy(state.achievements)
+        candidate_ids = [
+            achievement_id
+            for achievement_id in sorted(state.achievements)
+            if not str(achievement_id).startswith("streak_")
+        ]
+        progress_targets = {
+            achievement_id: int(
+                ACHIEVEMENTS_BY_ID[achievement_id].progress_target
+            )
+            for achievement_id in candidate_ids
+            if achievement_id in ACHIEVEMENTS_BY_ID
+        }
+        capture_pair = achievement_filter_capture_pair(
+            candidate_ids,
+            progress_targets,
+        )
+        records: dict[str, dict[str, Any]] = {}
+        if len(capture_pair) != 2:
+            records["setup"] = {
+                "candidate_count": len(candidate_ids),
+                "progress_targets": progress_targets,
+            }
+        else:
+            in_progress_id, locked_id = capture_pair
+            for achievement_id, progress in (
+                (in_progress_id, 0.5),
+                (locked_id, 0.0),
+            ):
+                achievement = state.achievements[achievement_id]
+                achievement.unlocked = False
+                achievement.progress = progress
+                achievement.unlocked_at = None
+                achievement.rewarded_at = None
+                achievement.reward_event_key = ""
+
+            def observe(selected: str) -> None:
+                dashboard._set_achievement_filter(selected)
+                QApplication.processEvents()
+                achievement_grid = getattr(
+                    dashboard,
+                    "achievement_list",
+                    None,
+                )
+                cards = [
+                    candidate
+                    for candidate in (
+                        achievement_grid.findChildren(QFrame)
+                        if achievement_grid is not None else
+                        ()
+                    )
+                    if bool(candidate.property("achievementId"))
+                ]
+                expected_card_id = (
+                    in_progress_id
+                    if selected == "in_progress" else
+                    locked_id
+                )
+                filter_button = getattr(
+                    dashboard,
+                    "_achievement_filter_buttons",
+                    {},
+                ).get(selected)
+                probe = (
+                    achievement_grid.grab()
+                    if achievement_grid is not None else
+                    None
+                )
+                records[selected] = {
+                    "active_filter": str(
+                        getattr(dashboard, "_achievement_filter", "")
+                        or ""
+                    ),
+                    "filter_checked": bool(
+                        filter_button is not None
+                        and filter_button.isChecked()
+                    ),
+                    "card_ids": [
+                        str(card.property("achievementId") or "")
+                        for card in cards
+                    ],
+                    "card_states": [
+                        str(card.property("achievementState") or "")
+                        for card in cards
+                    ],
+                    "expected_card_id": expected_card_id,
+                    "criteria_visible": any(
+                        label_widget.isVisibleTo(card)
+                        and bool(label_widget.property("rowCriteria"))
+                        and bool(str(label_widget.text()).strip())
+                        for card in cards
+                        for label_widget in card.findChildren(QLabel)
+                    ),
+                    "painted": bool(
+                        achievement_grid is not None
+                        and achievement_grid.isVisibleTo(dashboard)
+                        and probe is not None
+                        and not probe.isNull()
+                    ),
+                }
+                records[selected]["passed"] = bool(
+                    records[selected]["active_filter"] == selected
+                    and records[selected]["filter_checked"]
+                    and records[selected]["card_ids"]
+                    == [expected_card_id]
+                    and records[selected]["card_states"] == [selected]
+                    and records[selected]["criteria_visible"]
+                    and records[selected]["painted"]
+                )
+
+            observe("in_progress")
+            observe("locked")
+
+        state.achievements = original_achievements
+        dashboard._set_achievement_filter("all")
+        QApplication.processEvents()
+        passed = bool(
+            records.get("in_progress", {}).get("passed", False)
+            and records.get("locked", {}).get("passed", False)
+            and getattr(dashboard, "_achievement_filter", "") == "all"
+        )
+        annotation = dict(
+            self._capture_annotations.get(label, {}) or {}
+        )
+        annotation["achievement_filter_state_matrix"] = {
+            "records": records,
+            "restored_filter": str(
+                getattr(dashboard, "_achievement_filter", "") or ""
+            ),
+            "passed": passed,
+        }
+        annotation["passed"] = bool(
+            annotation.get("passed", False) and passed
+        )
+        self._capture_annotations[label] = annotation
+        if not passed:
+            self._failures.append({
+                "label": label,
+                "reason": "Achievement filter painted state matrix failed",
+            })
+
+    def _exercise_collection_filter_roundtrip(
+        self,
+        dashboard: Any,
+        progress_dialog: Any,
+        label: str,
+    ) -> None:
+        """Paint a filtered species card, open it, and prove state survives."""
+
+        expected_query = "Bonsai"
+        expected_species_id = "bonsai"
+        evidence: dict[str, Any] = {
+            "production_route": "",
+            "species_overview": {},
+            "dialog_closed": False,
+        }
+
+        def state_snapshot() -> dict[str, str]:
+            return {
+                "query": str(
+                    getattr(dashboard, "_collection_query", "") or ""
+                ),
+                "filter": str(
+                    getattr(dashboard, "_collection_filter", "") or ""
+                ),
+                "category": str(
+                    getattr(dashboard, "_collection_category", "") or ""
+                ),
+                "sort": str(
+                    getattr(dashboard, "_collection_sort", "") or ""
+                ),
+            }
+
+        def controls_snapshot() -> dict[str, str]:
+            controls = getattr(
+                dashboard,
+                "collection_filter_controls",
+                None,
+            )
+            if controls is None:
+                return {}
+            return {
+                "query": str(controls.search.text()),
+                "filter": str(
+                    controls.status_combo.currentData() or ""
+                ),
+                "category": str(
+                    controls.category_combo.currentData() or ""
+                ),
+                "sort": str(
+                    controls.sort_combo.currentData() or ""
+                ),
+            }
+
+        def result_snapshot() -> dict[str, Any]:
+            collection_grid = getattr(
+                dashboard,
+                "collection_list",
+                None,
+            )
+            cards = (
+                [
+                    candidate
+                    for candidate in collection_grid.findChildren(
+                        QPushButton
+                    )
+                    if bool(candidate.property("collectionSpeciesCard"))
+                ]
+                if collection_grid is not None else
+                []
+            )
+            visible_cards = [
+                candidate
+                for candidate in cards
+                if candidate.isVisibleTo(progress_dialog)
+            ]
+            species_names: list[str] = []
+            for candidate in visible_cards:
+                name = next(
+                    (
+                        str(label_widget.text()).strip()
+                        for label_widget in candidate.findChildren(QLabel)
+                        if bool(
+                            label_widget.property(
+                                "collectionSpeciesName"
+                            )
+                        )
+                    ),
+                    "",
+                )
+                species_names.append(name)
+            probe = (
+                collection_grid.grab()
+                if collection_grid is not None else
+                None
+            )
+            return {
+                "species_ids": [
+                    str(candidate.property("collectionSpeciesId") or "")
+                    for candidate in visible_cards
+                ],
+                "species_names": species_names,
+                "target_visible": any(
+                    str(
+                        candidate.property("collectionSpeciesId") or ""
+                    ) == expected_species_id
+                    for candidate in visible_cards
+                ),
+                "painted": bool(
+                    collection_grid is not None
+                    and collection_grid.isVisibleTo(progress_dialog)
+                    and probe is not None
+                    and not probe.isNull()
+                ),
+            }
+
+        try:
+            dashboard._set_collection_filter("collected")
+            dashboard._set_collection_category("plants")
+            dashboard._set_collection_sort("name")
+            dashboard._set_collection_query(expected_query)
+            QApplication.processEvents()
+            evidence["before_open"] = state_snapshot()
+            evidence["before_open_controls"] = controls_snapshot()
+            evidence["before_open_result"] = result_snapshot()
+
+            collection_grid = getattr(
+                dashboard,
+                "collection_list",
+                None,
+            )
+            target = next(
+                (
+                    candidate
+                    for candidate in collection_grid.findChildren(
+                        QPushButton
+                    )
+                    if bool(candidate.property("collectionSpeciesCard"))
+                    and str(
+                        candidate.property("collectionSpeciesId") or ""
+                    ) == expected_species_id
+                ),
+                None,
+            ) if collection_grid is not None else None
+
+            def close_species_overview(tries: int = 80) -> None:
+                candidate = QApplication.activeModalWidget()
+                if (
+                    candidate is None
+                    or str(
+                        candidate.property("windowFamily") or ""
+                    ) != "SpeciesOverviewDialog"
+                ):
+                    candidate = next(
+                        (
+                            widget
+                            for widget in QApplication.topLevelWidgets()
+                            if widget.isVisible()
+                            and str(
+                                widget.property("windowFamily") or ""
+                            ) == "SpeciesOverviewDialog"
+                        ),
+                        None,
+                    )
+                if candidate is None:
+                    if tries > 0:
+                        QTimer.singleShot(
+                            20,
+                            lambda: close_species_overview(tries - 1),
+                        )
+                        return
+                    active = QApplication.activeModalWidget()
+                    if isinstance(active, QDialog):
+                        self._close_widget(active)
+                    return
+                parent = candidate.parentWidget()
+                probe = candidate.grab()
+                evidence["species_overview"] = {
+                    "opened": bool(candidate.isVisible()),
+                    "window_family": str(
+                        candidate.property("windowFamily") or ""
+                    ),
+                    "species_id": str(
+                        candidate.property("speciesId") or ""
+                    ),
+                    "title": str(candidate.windowTitle()),
+                    "parent_window_family": str(
+                        parent.property("windowFamily") or ""
+                    ) if parent is not None else "",
+                    "painted": bool(not probe.isNull()),
+                }
+                self._close_widget(candidate)
+
+            if target is not None and target.isEnabled():
+                evidence["production_route"] = "collection-card-click"
+                QTimer.singleShot(40, close_species_overview)
+                target.click()
+            QApplication.processEvents()
+            evidence["after_close"] = state_snapshot()
+            evidence["after_close_controls"] = controls_snapshot()
+            evidence["after_close_result"] = result_snapshot()
+            evidence["dialog_closed"] = bool(
+                QApplication.activeModalWidget() is None
+            )
+        except Exception as error:
+            evidence["runtime_error"] = str(error)
+        finally:
+            dashboard._clear_collection_filters()
+            QApplication.processEvents()
+            evidence["restored"] = state_snapshot()
+            evidence["restored_controls"] = controls_snapshot()
+            collection_grid = getattr(
+                dashboard,
+                "collection_list",
+                None,
+            )
+            restored_probe = (
+                collection_grid.grab()
+                if collection_grid is not None else
+                None
+            )
+            evidence["restored_painted"] = bool(
+                collection_grid is not None
+                and collection_grid.isVisibleTo(progress_dialog)
+                and restored_probe is not None
+                and not restored_probe.isNull()
+            )
+
+        issues = collection_filter_roundtrip_issue_codes(evidence)
+        evidence["issues"] = list(issues)
+        evidence["passed"] = not issues
+        annotation = dict(
+            self._capture_annotations.get(label, {}) or {}
+        )
+        annotation["collection_filter_roundtrip"] = evidence
+        annotation["passed"] = bool(
+            annotation.get("passed", True) and not issues
+        )
+        self._capture_annotations[label] = annotation
+        if issues:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Collection filter Species Overview round trip failed: "
+                    + ", ".join(issues)
+                ),
+            })
+
+    def _record_progress_reference_geometry(
+        self,
+        dialog: Any,
+        label: str,
+    ) -> None:
+        """Record exact Progress geometry after content-fit has settled."""
+
+        references = {
+            "growth-nonzero": ("growth", (940, 501)),
+            "streak-active": ("streak", (940, 440)),
+        }
+        reference = references.get(label)
+        if reference is None:
+            return
+        page_key, reference_size = reference
+        page_scroll = dict(
+            getattr(dialog, "body_scrolls", {}) or {}
+        ).get(page_key)
+        page_bar = (
+            page_scroll.verticalScrollBar()
+            if isinstance(page_scroll, QAbstractScrollArea) else
+            None
+        )
+        no_vertical_scroll = bool(
+            page_bar is not None
+            and int(page_bar.maximum()) == 0
+            and not page_bar.isVisible()
+        )
+        rendered_size = (int(dialog.width()), int(dialog.height()))
+        reference_size_passed = rendered_size == reference_size
+        annotation = dict(
+            self._capture_annotations.get(label, {}) or {}
+        )
+        annotation.update({
+            "reference_size": list(reference_size),
+            "rendered_size": list(rendered_size),
+            "no_vertical_scroll": no_vertical_scroll,
+            "reference_size_passed": reference_size_passed,
+            "passed": bool(
+                annotation.get("passed", True)
+                and no_vertical_scroll
+                and reference_size_passed
             ),
         })
         self._capture_annotations[label] = annotation
@@ -24801,45 +29908,6 @@ class _UiFaceCaptureRunner:
         dialog.activateWindow()
 
         def ready() -> None:
-            if label in {"growth-nonzero", "streak-active"}:
-                reference_size = (
-                    (940, 480)
-                    if label == "growth-nonzero" else
-                    (940, 480)
-                )
-                page_scroll = dict(
-                    getattr(dialog, "body_scrolls", {}) or {}
-                ).get(key)
-                page_bar = (
-                    page_scroll.verticalScrollBar()
-                    if isinstance(page_scroll, QAbstractScrollArea) else
-                    None
-                )
-                no_vertical_scroll = bool(
-                    page_bar is not None
-                    and int(page_bar.maximum()) == 0
-                    and not page_bar.isVisible()
-                )
-                reference_size_passed = (
-                    int(dialog.width()),
-                    int(dialog.height()),
-                ) == reference_size
-                annotation = dict(
-                    self._capture_annotations.get(label, {}) or {}
-                )
-                annotation["reference_size"] = list(reference_size)
-                annotation["rendered_size"] = [
-                    int(dialog.width()),
-                    int(dialog.height()),
-                ]
-                annotation["no_vertical_scroll"] = no_vertical_scroll
-                annotation["reference_size_passed"] = reference_size_passed
-                annotation["passed"] = bool(
-                    annotation.get("passed", True)
-                    and no_vertical_scroll
-                    and reference_size_passed
-                )
-                self._capture_annotations[label] = annotation
             if label == "growth-nonzero":
                 stage_cards = [
                     candidate
@@ -24923,43 +29991,14 @@ class _UiFaceCaptureRunner:
                         ),
                         "extra_text": extra_text,
                     })
-                future = [
-                    record
-                    for record in stage_records
-                    if record["state"] in {"upcoming", "locked"}
-                ]
-                expected_state_labels = {
-                    "completed": "Completed",
-                    "current": "Current",
-                    "upcoming": "Upcoming",
-                    "locked": "Locked",
-                }
-                muting_passed = bool(
-                    len(stage_records) == 6
-                    and sum(
-                        record["state"] == "current"
-                        for record in stage_records
-                    ) == 1
-                    and future
-                    and all(
-                        record["preview_enabled"]
-                        and record["label_enabled"]
-                        and record["preview_future_treatment"]
-                        and record["label_future_treatment"]
-                        and not record["extra_text"]
-                        for record in future
-                    )
-                    and all(
-                        record["state_label"]
-                        == expected_state_labels.get(record["state"], "")
-                        for record in stage_records
-                    )
-                )
+                strip_issues = growth_stage_strip_issue_codes(stage_records)
+                muting_passed = not strip_issues
                 annotation = dict(
                     self._capture_annotations.get(label, {}) or {}
                 )
                 annotation.update({
                     "growth_stage_records": stage_records,
+                    "growth_stage_strip_issues": list(strip_issues),
                     "future_stage_muting_passed": muting_passed,
                     "passed": bool(
                         annotation.get("passed", True)
@@ -25103,8 +30142,18 @@ class _UiFaceCaptureRunner:
                 )
                 self._capture_annotations[label] = annotation
             if label == "progress-achievements":
+                self._exercise_achievement_filter_state_matrix(
+                    dashboard,
+                    label,
+                )
                 self._record_progress_achievement_capture_evidence(
                     dashboard,
+                    label,
+                )
+            if label == "progress-collection":
+                self._exercise_collection_filter_roundtrip(
+                    dashboard,
+                    dialog,
                     label,
                 )
             if label in {
@@ -25558,6 +30607,7 @@ class _UiFaceCaptureRunner:
             completion.status = "in_progress"
             completion.starting_required_cards = 194
             completion.starting_required_cards_completed = 176
+            completion.remaining_new_cards = 0
             completion.remaining_required_reviews = 16
             completion.remaining_learning_steps = 0
             completion.future_learning_steps_before_cutoff = 2
@@ -25632,6 +30682,7 @@ class _UiFaceCaptureRunner:
         state = self.app.storage.state
         original_achievements = deepcopy(state.achievements)
         original_receipts = deepcopy(state.recent_reward_receipts)
+        from ..achievements import ACHIEVEMENTS_BY_ID
         from ..reward_presentation import achievement_presentations
 
         category_rank = {
@@ -25656,6 +30707,55 @@ class _UiFaceCaptureRunner:
             str(view.achievement_id)
             for view in unlocked_views
         ]
+        thirty_day_definition = ACHIEVEMENTS_BY_ID["streak_30"]
+        thirty_day_projection = next(
+            (
+                view for view in unlocked_views
+                if view.achievement_id == "streak_30"
+            ),
+            None,
+        )
+        canonical_copy = "100 Garden Coins + 1 Small Growth Charge"
+        completed_reward_evidence = {
+            "role": "completed",
+            "achievement_id": (
+                thirty_day_projection.achievement_id
+                if thirty_day_projection is not None else
+                ""
+            ),
+            "coins": (
+                thirty_day_projection.reward_coins
+                if thirty_day_projection is not None else
+                -1
+            ),
+            "small_growth_charges": (
+                thirty_day_projection.reward_small_growth_charges
+                if thirty_day_projection is not None else
+                -1
+            ),
+            "standard_growth_charges": (
+                thirty_day_projection.reward_standard_growth_charges
+                if thirty_day_projection is not None else
+                -1
+            ),
+            "canonical_copy": canonical_copy,
+            "definition_identity": thirty_day_definition.achievement_id,
+            "painted": False,
+        }
+        self._thirty_day_reward_evidence.setdefault("definition", {
+            "achievement_id": thirty_day_definition.achievement_id,
+            "coins": thirty_day_definition.reward.coins,
+            "small_growth_charges": (
+                thirty_day_definition.reward.small_growth_charges
+            ),
+            "standard_growth_charges": (
+                thirty_day_definition.reward.standard_growth_charges
+            ),
+            "canonical_copy": canonical_copy,
+        })
+        self._thirty_day_reward_evidence["progress-achievements"] = (
+            completed_reward_evidence
+        )
         completion_categories = {
             str(view.achievement_id): str(view.category)
             for view in unlocked_views
@@ -25690,6 +30790,7 @@ class _UiFaceCaptureRunner:
             "completion_date_count": len(scheduled_days),
             "scheduled_completion_days": scheduled_days,
             "scheduled_completion_categories": completion_categories,
+            "thirty_day_reward": completed_reward_evidence,
             "passed": bool(
                 len(scheduled_days) >= 4
                 and len(set(scheduled_days.values()))
@@ -25702,6 +30803,14 @@ class _UiFaceCaptureRunner:
                 )
                 and max(completion_schedule.values(), default=CAPTURE_DATE)
                 <= CAPTURE_DATE
+                and thirty_day_projection is not None
+                and thirty_day_projection.completed
+                and thirty_day_projection.reward_coins
+                == thirty_day_definition.reward.coins == 100
+                and thirty_day_projection.reward_small_growth_charges
+                == thirty_day_definition.reward.small_growth_charges == 1
+                and thirty_day_projection.reward_standard_growth_charges
+                == thirty_day_definition.reward.standard_growth_charges == 0
             ),
         }
         self._refresh_capture_dashboard()
@@ -25719,7 +30828,8 @@ class _UiFaceCaptureRunner:
         if not self._ensure_development_stress_state():
             self._next_after(200)
             return
-        from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
+        from ..collectibles import collectible_views
+        from .fixtures import representative_collection_inventory_plan
 
         # The broad development state owns the complete environment catalog.
         # This one representative Collection face deliberately leaves the six
@@ -25730,32 +30840,44 @@ class _UiFaceCaptureRunner:
         state = self.app.storage.state
         original_features = list(state.inventory.get("garden_features", ()) or ())
         original_scenery = list(state.inventory.get("scenery", ()) or ())
+        original_consumables = dict(state.consumables)
         restored = False
 
-        def restore_environment_inventory() -> None:
+        def restore_collection_inventory() -> None:
             nonlocal restored
             if restored:
                 return
             restored = True
             state.inventory["garden_features"] = original_features
             state.inventory["scenery"] = original_scenery
+            state.consumables.clear()
+            state.consumables.update(original_consumables)
             self._refresh_capture_dashboard()
 
-        state.inventory["garden_features"] = [
-            item_id for item_id in original_features
-            if item_id in GARDEN_FEATURE_CATALOG
-            and not bool(GARDEN_FEATURE_CATALOG[item_id].drop_only)
-        ]
-        state.inventory["scenery"] = [
-            item_id for item_id in original_scenery
-            if item_id in SCENERY_CATALOG
-            and not bool(SCENERY_CATALOG[item_id].drop_only)
-        ]
+        inventory_plan = representative_collection_inventory_plan()
+        state.inventory["garden_features"] = list(
+            inventory_plan["garden_features"]
+        )
+        state.inventory["scenery"] = list(inventory_plan["scenery"])
+        state.consumables.update(dict(inventory_plan["consumables"]))
+        views = tuple(collectible_views(state))
+        owned_count = sum(1 for view in views if bool(view.owned))
+        if len(views) != 39 or owned_count != 30:
+            self._failures.append({
+                "label": "progress-collection",
+                "reason": (
+                    "Canonical Collection inventory did not derive 30 of 39 "
+                    f"owned entries (observed {owned_count} of {len(views)})"
+                ),
+            })
+            restore_collection_inventory()
+            self._next_after(200)
+            return
         self._refresh_capture_dashboard()
         self._capture_progress_page(
             "collection",
             "progress-collection",
-            restore_callback=restore_environment_inventory,
+            restore_callback=restore_collection_inventory,
         )
 
     def _capture_species_overview(self) -> None:
@@ -25838,7 +30960,8 @@ class _UiFaceCaptureRunner:
             self._next_after(200)
             return
         rare_hidden = any(
-            "Undiscovered Rare stage silhouette" in str(widget.accessibleName())
+            "Undiscovered Full Bloom stage locked"
+            in str(widget.accessibleName())
             for widget in dialog.findChildren(QLabel)
         )
         passed = bool(
@@ -25879,6 +31002,9 @@ class _UiFaceCaptureRunner:
         label: str,
         *,
         exact_ledger_restore: bool = False,
+        target_plant_id: str | None = None,
+        target_species: str | None = None,
+        preserve_target_progress: bool = False,
     ) -> tuple[dict[str, Any], Any] | None:
         """Return a reversible, canonical purchase fixture and active plant."""
 
@@ -25889,11 +31015,40 @@ class _UiFaceCaptureRunner:
             })
             return None
         state = self.app.storage.state
-        plant = state.plants[0] if state.plants else None
+        requested_target = str(target_plant_id or "")
+        requested_species = str(target_species or "").casefold()
+        plant = next(
+            (
+                candidate
+                for candidate in state.plants
+                if requested_target
+                and str(getattr(candidate, "plant_id", "") or "")
+                == requested_target
+            ),
+            None,
+        )
+        if plant is None and not requested_target and requested_species:
+            plant = next(
+                (
+                    candidate
+                    for candidate in state.plants
+                    if str(getattr(candidate, "species", "") or "").casefold()
+                    == requested_species
+                    and bool(getattr(candidate, "planted", False))
+                    and not bool(getattr(candidate, "fully_grown", False))
+                ),
+                None,
+            )
+        if plant is None and not requested_target and not requested_species:
+            plant = state.plants[0] if state.plants else None
         if plant is None:
             self._failures.append({
                 "label": label,
-                "reason": "The purchase fixture had no target plant",
+                "reason": (
+                    "The purchase fixture did not contain its requested target plant"
+                    if requested_target or requested_species else
+                    "The purchase fixture had no target plant"
+                ),
             })
             return None
         snapshot = self._capture_fixture_state_snapshot(
@@ -25904,7 +31059,8 @@ class _UiFaceCaptureRunner:
         state.currency_transactions.clear()
         state.completed_purchase_requests.clear()
         plant.slot_index = 0
-        plant.growth_points = 0
+        if not preserve_target_progress:
+            plant.growth_points = 0
         plant.fertilizer = None
         plant.fertilizer_history.clear()
         state.active_plant_id = plant.plant_id
@@ -25913,6 +31069,150 @@ class _UiFaceCaptureRunner:
 
     def _restore_purchase_capture(self, snapshot: dict[str, Any]) -> None:
         self._restore_capture_fixture_state(snapshot)
+
+    def _exercise_purchase_growth_charge_states(
+        self,
+        label: str,
+    ) -> dict[str, Any]:
+        """Paint the loading and coin-shortage states owned by Surface 31."""
+
+        from ..purchases import PurchaseKind
+        from ..ui.dashboard import PurchaseConfirmationDialog
+
+        state = self.app.storage.state
+        original_balance = int(state.currency_balance)
+        records: dict[str, dict[str, Any]] = {}
+        dialog: Any | None = None
+
+        def dispose() -> None:
+            nonlocal dialog
+            if dialog is None:
+                return
+            try:
+                if getattr(dialog, "_submitting", False):
+                    dialog._set_submitting(False)
+                self._dispose_capture_widget(dialog)
+                QApplication.processEvents()
+            finally:
+                dialog = None
+
+        try:
+            state.currency_balance = 5_000
+            loading_quote = self.app.engine.quote_purchase(
+                PurchaseKind.GROWTH_CHARGE,
+                "growth_charge_small",
+            )
+            dialog = PurchaseConfirmationDialog(
+                self.app.dashboard,
+                self.app.engine,
+                loading_quote,
+            )
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            dialog._progress_motion_enabled = False
+            self._move_to_capture_display(dialog)
+            dialog.show()
+            dialog.raise_()
+            dialog._set_submitting(True)
+            QApplication.processEvents()
+            dialog.repaint()
+            QApplication.processEvents()
+            probe = dialog.grab()
+            records["loading"] = {
+                "purchase_state": str(
+                    dialog.property("purchaseState") or ""
+                ),
+                "action_state": str(
+                    dialog.purchase_action.property("purchaseActionState")
+                    or ""
+                ),
+                "busy": bool(dialog.purchase_action.property("busy")),
+                "primary_enabled": bool(dialog.purchase_action.isEnabled()),
+                "cancel_enabled": bool(dialog.cancel_action.isEnabled()),
+                "purchase_kind": str(
+                    dialog.property("purchaseKind") or ""
+                ),
+                "item_id": str(dialog.property("purchaseItemId") or ""),
+                "painted": bool(
+                    dialog.isVisible()
+                    and dialog.artwork.isVisibleTo(dialog)
+                    and not probe.isNull()
+                ),
+            }
+            dispose()
+
+            state.currency_balance = 0
+            insufficient_quote = self.app.engine.quote_purchase(
+                PurchaseKind.GROWTH_CHARGE,
+                "growth_charge_small",
+            )
+            dialog = PurchaseConfirmationDialog(
+                self.app.dashboard,
+                self.app.engine,
+                insufficient_quote,
+            )
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._move_to_capture_display(dialog)
+            dialog.show()
+            dialog.raise_()
+            QApplication.processEvents()
+            dialog.repaint()
+            QApplication.processEvents()
+            probe = dialog.grab()
+            records["insufficient"] = {
+                "purchase_state": str(
+                    dialog.property("purchaseState") or ""
+                ),
+                "action_state": str(
+                    dialog.purchase_action.property("purchaseActionState")
+                    or ""
+                ),
+                "primary_enabled": bool(dialog.purchase_action.isEnabled()),
+                "status_visible": bool(dialog.status.isVisibleTo(dialog)),
+                "status_copy": str(dialog.status.text()).strip(),
+                "purchase_kind": str(
+                    dialog.property("purchaseKind") or ""
+                ),
+                "item_id": str(dialog.property("purchaseItemId") or ""),
+                "painted": bool(
+                    dialog.isVisible()
+                    and dialog.artwork.isVisibleTo(dialog)
+                    and not probe.isNull()
+                ),
+            }
+        except Exception as exc:
+            records["runtime-error"] = {"type": type(exc).__name__}
+        finally:
+            dispose()
+            state.currency_balance = original_balance
+
+        issues = purchase_growth_charge_state_issue_codes({
+            "ready": {
+                "purchase_state": "ready",
+                "action_state": "ready",
+                "primary_enabled": True,
+                "status_visible": False,
+                "purchase_kind": "growth_charge",
+                "item_id": "growth_charge_small",
+                "painted": True,
+            },
+            **records,
+        })
+        evidence = {
+            "records": records,
+            "issues": list(issues),
+            "passed": not issues,
+        }
+        if issues:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Growth Charge purchase state matrix failed: "
+                    + ", ".join(issues)
+                ),
+            })
+        return evidence
 
     def _capture_purchase_dialog_fixture(self, label: str, variant: str) -> None:
         cleanup_holder: dict[str, Callable[[], None]] = {
@@ -25923,7 +31223,21 @@ class _UiFaceCaptureRunner:
             cleanup_holder["callback"]()
 
         def dashboard_ready() -> None:
-            prepared = self._purchase_capture_snapshot(label)
+            fertilizer_source_id = (
+                self._fertilizer_flow_source_plant_id
+                if variant == "fertilizer-queue" else
+                ""
+            )
+            prepared = self._purchase_capture_snapshot(
+                label,
+                target_plant_id=fertilizer_source_id or None,
+                target_species=(
+                    "rose"
+                    if variant == "fertilizer-queue" and not fertilizer_source_id
+                    else None
+                ),
+                preserve_target_progress=variant == "fertilizer-queue",
+            )
             if prepared is None:
                 self._next_after(200)
                 return
@@ -25948,6 +31262,15 @@ class _UiFaceCaptureRunner:
 
             state = self.app.storage.state
             engine = self.app.engine
+            if variant == "fertilizer-queue":
+                # Continue the shared step-09 fixture without inventing a
+                # balance reset between sequential evidence surfaces.
+                state.currency_balance = 500
+            fertilizer_fixture_snapshot = (
+                self._fertilizer_flow_plant_snapshot(str(plant.plant_id))
+                if variant == "fertilizer-queue" else
+                {}
+            )
             kind = PurchaseKind.GROWTH_CHARGE
             item_id = "growth_charge_small"
             target_id: str | None = None
@@ -26001,10 +31324,35 @@ class _UiFaceCaptureRunner:
                 item_id,
                 target_id=target_id,
             )
+            fertilizer_quote_snapshot = (
+                self._fertilizer_flow_plant_snapshot(str(quote.target_id or ""))
+                if variant == "fertilizer-queue" else
+                {}
+            )
             dialog = PurchaseConfirmationDialog(
                 self.app.dashboard,
                 engine,
                 quote,
+            )
+            fertilizer_request_snapshot = (
+                self._fertilizer_flow_plant_snapshot(
+                    str(dialog.request.target_id or "")
+                )
+                if variant == "fertilizer-queue" else
+                {}
+            )
+            fertilizer_confirmation_snapshot = (
+                self._fertilizer_flow_plant_snapshot(
+                    str(dialog.request.target_id or ""),
+                    artwork_widget=dialog.target_artwork,
+                )
+                if variant == "fertilizer-queue" else
+                {}
+            )
+            purchase_growth_charge_states = (
+                self._exercise_purchase_growth_charge_states(label)
+                if variant == "growth-charge" else
+                {"records": {}, "issues": [], "passed": True}
             )
             original_confirmation = {
                 "title": str(dialog.windowTitle()),
@@ -26188,6 +31536,30 @@ class _UiFaceCaptureRunner:
                     and bool(dialog.item_name.isVisible())
                 )
             )
+            fertilizer_flow_records = (
+                {
+                    "source": deepcopy(self._fertilizer_flow_source_snapshot),
+                    "fixture": fertilizer_fixture_snapshot,
+                    "quote": fertilizer_quote_snapshot,
+                    "request": fertilizer_request_snapshot,
+                    "confirmation": fertilizer_confirmation_snapshot,
+                }
+                if variant == "fertilizer-queue" else
+                {}
+            )
+            fertilizer_flow_issues = (
+                fertilizer_flow_continuity_issue_codes(
+                    fertilizer_flow_records
+                )
+                if variant == "fertilizer-queue" else
+                ()
+            )
+            fertilizer_flow_continuity = {
+                "applicable": variant == "fertilizer-queue",
+                "records": fertilizer_flow_records,
+                "issues": list(fertilizer_flow_issues),
+                "passed": not fertilizer_flow_issues,
+            }
             fertilizer_queue_confirmation = {
                 "applicable": variant == "fertilizer-queue",
                 "title": str(dialog.windowTitle()),
@@ -26203,8 +31575,29 @@ class _UiFaceCaptureRunner:
                 ),
                 "comparison_hidden": dialog.comparison_host.isHidden(),
                 "discard_warning_hidden": dialog.discard_warning_host.isHidden(),
+                "source_plant_id": fertilizer_source_id or str(plant.plant_id),
+                "source_plant_name": (
+                    self._fertilizer_flow_source_plant_name or str(plant.name)
+                ),
+                "fixture_plant_id": str(plant.plant_id),
+                "fixture_plant_name": str(plant.name),
+                "quote_target_id": str(quote.target_id or ""),
+                "quote_target_name": str(quote.target_name or ""),
+                "request_target_id": str(dialog.request.target_id or ""),
+                "painted_target_name": str(dialog.target_name.text()).strip(),
+                "plant_state_continuity": fertilizer_flow_continuity,
                 "passed": bool(
                     variant == "fertilizer-queue"
+                    and (fertilizer_source_id or str(plant.plant_id))
+                    == str(plant.plant_id)
+                    == str(quote.target_id or "")
+                    == str(dialog.request.target_id or "")
+                    and (
+                        self._fertilizer_flow_source_plant_name or str(plant.name)
+                    )
+                    == str(plant.name)
+                    == str(quote.target_name or "")
+                    == str(dialog.target_name.text()).strip()
                     and actual_disposition == "queued"
                     and not quote.replacement_required
                     and str(quote.current_item_name) == "Basic Fertilizer"
@@ -26216,9 +31609,13 @@ class _UiFaceCaptureRunner:
                     and str(dialog.windowTitle()) == "Queue Magical Fertilizer?"
                     and primary_action == "Buy and queue · 300 coins"
                     and str(dialog.outcome_label.text()).strip()
-                    == "Queued for 4 hours after Basic Fertilizer."
+                    == (
+                        "Starts after Basic Fertilizer ends, then lasts 4 hours. "
+                        "+3 Growth per eligible card answer."
+                    )
                     and dialog.comparison_host.isHidden()
                     and dialog.discard_warning_host.isHidden()
+                    and fertilizer_flow_continuity["passed"]
                 ),
             }
             self._capture_annotations[label] = {
@@ -26263,6 +31660,9 @@ class _UiFaceCaptureRunner:
                 "fertilizer_queue_confirmation": (
                     fertilizer_queue_confirmation
                 ),
+                "purchase_growth_charge_states": (
+                    purchase_growth_charge_states
+                ),
                 "passed": bool(
                     actual_status == expected_status
                     and (
@@ -26292,6 +31692,10 @@ class _UiFaceCaptureRunner:
                         variant != "fertilizer-queue"
                         or fertilizer_queue_confirmation["passed"]
                     )
+                    and (
+                        variant != "growth-charge"
+                        or purchase_growth_charge_states["passed"]
+                    )
                 ),
             }
             if not self._capture_annotations[label]["passed"]:
@@ -26306,6 +31710,64 @@ class _UiFaceCaptureRunner:
             dialog.show()
             dialog.raise_()
             dialog.activateWindow()
+
+            def audit_purchase_surface() -> None:
+                if variant != "growth-charge":
+                    return
+                QApplication.processEvents()
+                dialog.repaint()
+                QApplication.processEvents()
+                probe = dialog.grab()
+                matrix = dict(purchase_growth_charge_states)
+                records = dict(matrix.get("records", {}) or {})
+                records["ready"] = {
+                    "purchase_state": str(
+                        dialog.property("purchaseState") or ""
+                    ),
+                    "action_state": str(
+                        dialog.purchase_action.property(
+                            "purchaseActionState"
+                        ) or ""
+                    ),
+                    "primary_enabled": bool(
+                        dialog.purchase_action.isEnabled()
+                    ),
+                    "status_visible": bool(
+                        dialog.status.isVisibleTo(dialog)
+                    ),
+                    "purchase_kind": str(
+                        dialog.property("purchaseKind") or ""
+                    ),
+                    "item_id": str(
+                        dialog.property("purchaseItemId") or ""
+                    ),
+                    "painted": bool(
+                        dialog.isVisible()
+                        and dialog.artwork.isVisibleTo(dialog)
+                        and not probe.isNull()
+                    ),
+                }
+                issues = purchase_growth_charge_state_issue_codes(records)
+                matrix.update({
+                    "records": records,
+                    "issues": list(issues),
+                    "passed": not issues,
+                })
+                self._capture_annotations[label][
+                    "purchase_growth_charge_states"
+                ] = matrix
+                self._capture_annotations[label]["passed"] = bool(
+                    self._capture_annotations[label].get("passed", False)
+                    and not issues
+                )
+                if issues:
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Painted Growth Charge purchase state matrix "
+                            "failed: " + ", ".join(issues)
+                        ),
+                    })
 
             def close_dialog() -> None:
                 if dialog._submitting:
@@ -26323,6 +31785,7 @@ class _UiFaceCaptureRunner:
                 label,
                 dialog,
                 capture_delay_ms=420,
+                before_capture=audit_purchase_surface,
                 close_callback=close_dialog,
                 cleanup_predicate=lambda: self._capture_widget_disposed(dialog),
                 close_ms=820,
@@ -26425,7 +31888,10 @@ class _UiFaceCaptureRunner:
             from ..ui.dashboard import NurseryDialog
 
             state = self.app.storage.state
+            collection_capacity_fixture: dict[str, Any] = {}
             if variant == "collection":
+                from .fixtures import representative_collection_inventory_plan
+
                 kind = PurchaseKind.SPECIES
                 item_id = "sunflower"
                 target_id = None
@@ -26433,6 +31899,66 @@ class _UiFaceCaptureRunner:
                 state.unlocked_species = [
                     item for item in state.unlocked_species if item != item_id
                 ]
+                # Start from the same truthful 29-entry lineage used by the
+                # canonical Collection surface.  The real Sunflower purchase
+                # below then owns the tenth species and the thirtieth entry.
+                inventory_plan = representative_collection_inventory_plan()
+                state.inventory["garden_features"] = list(
+                    inventory_plan["garden_features"]
+                )
+                state.inventory["scenery"] = list(
+                    inventory_plan["scenery"]
+                )
+                state.consumables.update(
+                    dict(inventory_plan["consumables"])
+                )
+                occupied_slots = {
+                    int(candidate.slot_index)
+                    for candidate in state.plants
+                    if candidate.slot_index is not None
+                }
+                missing_slots = [
+                    slot
+                    for slot in range(
+                        max(0, min(6, int(state.unlocked_slots)))
+                    )
+                    if slot not in occupied_slots
+                ]
+                capacity_filler = next(
+                    (
+                        candidate
+                        for candidate in state.plants
+                        if candidate.slot_index is None
+                    ),
+                    None,
+                )
+                filled_capacity, capacity_message = (
+                    self.app.engine.plant_from_collection(
+                        capacity_filler.plant_id,
+                        missing_slots[0],
+                    )
+                    if capacity_filler is not None and missing_slots else
+                    (not missing_slots, "All beds were already occupied.")
+                )
+                collection_capacity_fixture = {
+                    "missing_slots_before_fill": missing_slots,
+                    "filler_plant_id": str(
+                        getattr(capacity_filler, "plant_id", "") or ""
+                    ),
+                    "filled_capacity": bool(filled_capacity),
+                    "message": str(capacity_message),
+                    "occupied_slots_after_fill": sorted(
+                        int(candidate.slot_index)
+                        for candidate in state.plants
+                        if candidate.slot_index is not None
+                    ),
+                }
+                collection_capacity_fixture["passed"] = bool(
+                    filled_capacity
+                    and collection_capacity_fixture[
+                        "occupied_slots_after_fill"
+                    ] == list(range(6))
+                )
             elif variant == "fertilizer":
                 kind = PurchaseKind.FERTILIZER
                 item_id = "basic"
@@ -26454,6 +31980,258 @@ class _UiFaceCaptureRunner:
             outcome = self.app.engine.confirm_purchase(
                 PurchaseRequest.from_quote(quote)
             )
+
+            def collection_receipt_evidence(
+                receipt_dialog: Any,
+                *,
+                expected_route: str,
+            ) -> dict[str, Any]:
+                """Measure Surface 32's exact painted collection receipt."""
+
+                if variant != "collection":
+                    return {}
+                from ..presentation import project_collection
+
+                toast = receipt_dialog.nursery_toast
+                icon = toast.icon
+                pixmap = icon.pixmap()
+                pixmap_width = 0
+                pixmap_height = 0
+                pixmap_dpr = 1.0
+                painted_width = 0
+                painted_height = 0
+                visible_alpha_pixels = 0
+                if pixmap is not None and not pixmap.isNull():
+                    image = pixmap.toImage()
+                    pixmap_width = int(image.width())
+                    pixmap_height = int(image.height())
+                    pixmap_dpr = max(
+                        1.0,
+                        float(pixmap.devicePixelRatio()),
+                    )
+                    painted_width = round(pixmap_width / pixmap_dpr)
+                    painted_height = round(pixmap_height / pixmap_dpr)
+                    visible_alpha_pixels = sum(
+                        1
+                        for y in range(pixmap_height)
+                        for x in range(pixmap_width)
+                        if int(image.pixelColor(x, y).alpha()) >= 64
+                    )
+                icon_bounds = self._widget_bounds_evidence(icon, toast)
+                projection = project_collection(self.app.storage.state)
+                species_label = next(
+                    (
+                        label_widget
+                        for label_widget in receipt_dialog.findChildren(QLabel)
+                        if str(label_widget.text()) == projection.species_text
+                        and label_widget.isVisibleTo(receipt_dialog)
+                    ),
+                    None,
+                )
+                collection_entries_label = next(
+                    (
+                        label_widget
+                        for label_widget in receipt_dialog.findChildren(QLabel)
+                        if str(label_widget.text())
+                        == projection.collection_entries_text
+                        and label_widget.isVisibleTo(receipt_dialog)
+                    ),
+                    None,
+                )
+                collection_viewport = receipt_dialog.scroll.viewport()
+                species_bounds = self._widget_bounds_evidence(
+                    species_label,
+                    collection_viewport,
+                )
+                collection_entries_bounds = self._widget_bounds_evidence(
+                    collection_entries_label,
+                    collection_viewport,
+                )
+                action_text = _displayed_button_text(toast.action)
+                message_text = str(toast.message.text())
+                asset_id = str(
+                    icon.property("receiptArtworkAssetId") or ""
+                )
+                source = str(
+                    icon.property("receiptArtworkSource") or ""
+                )
+                species = str(
+                    icon.property("receiptArtworkSpecies") or ""
+                )
+                stage = str(icon.property("receiptArtworkStage") or "")
+                fallback = bool(icon.property("receiptArtworkFallback"))
+                expected_source = (
+                    "assets/v6_storybook_gouache/plants/sunflower/seed/"
+                    "sunflower_seed_twilight_v6.webp"
+                )
+                painted = bool(
+                    icon.isVisibleTo(receipt_dialog)
+                    and icon_bounds.get("contained", False)
+                    and 30 <= painted_width <= 34
+                    and 30 <= painted_height <= 34
+                    and icon.property("paintedArtworkLogicalSize")
+                    == [32, 32]
+                    and visible_alpha_pixels > 0
+                )
+                evidence = {
+                    "message": message_text,
+                    "route": str(
+                        toast.property("receiptPrimaryRoute") or ""
+                    ),
+                    "action_text": action_text,
+                    "action_visible": bool(
+                        toast.action.isVisibleTo(receipt_dialog)
+                    ),
+                    "action_enabled": bool(toast.action.isEnabled()),
+                    "receipt_item_id": str(
+                        toast.property("receiptItemId") or ""
+                    ),
+                    "asset_id": asset_id,
+                    "source": source,
+                    "species": species,
+                    "stage": stage,
+                    "fallback": fallback,
+                    "accessible_name": str(icon.accessibleName()),
+                    "pixmap_size": [pixmap_width, pixmap_height],
+                    "pixmap_device_pixel_ratio": pixmap_dpr,
+                    "painted_size": [painted_width, painted_height],
+                    "visible_alpha_pixels": visible_alpha_pixels,
+                    "icon_bounds": icon_bounds,
+                    "painted": painted,
+                    "species_copy": projection.species_text,
+                    "collection_entries_copy": (
+                        projection.collection_entries_text
+                    ),
+                    "species_copy_bounds": species_bounds,
+                    "collection_entries_copy_bounds": (
+                        collection_entries_bounds
+                    ),
+                    "species_copy_visible": bool(
+                        species_bounds.get("visible", False)
+                        and species_bounds.get("contained", False)
+                    ),
+                    "collection_entries_copy_visible": bool(
+                        collection_entries_bounds.get("visible", False)
+                        and collection_entries_bounds.get("contained", False)
+                    ),
+                }
+                evidence["passed"] = bool(
+                    message_text == "Sunflower added."
+                    and evidence["route"] == expected_route
+                    and action_text == expected_route
+                    and evidence["action_visible"]
+                    and evidence["action_enabled"]
+                    and evidence["receipt_item_id"] == "sunflower"
+                    and asset_id == "plant_sunflower_seed_twilight_v6"
+                    and source == expected_source
+                    and species == "sunflower"
+                    and stage == "seed"
+                    and not fallback
+                    and evidence["accessible_name"]
+                    == "Sunflower Seed artwork"
+                    and painted
+                    and projection.species_text
+                    == "10 of 10 species discovered"
+                    and projection.collection_entries_text
+                    == "30 of 39 collection entries discovered"
+                    and evidence["species_copy_visible"]
+                    and evidence["collection_entries_copy_visible"]
+                )
+                return evidence
+
+            placement_branch: dict[str, Any] = {}
+            if variant == "collection" and outcome.success:
+                displaced = next(
+                    (
+                        candidate
+                        for candidate in state.plants
+                        if candidate.slot_index is not None
+                        and str(candidate.plant_id)
+                        != str(state.active_plant_id or "")
+                        and str(candidate.plant_id)
+                        != str(outcome.result_id or "")
+                    ),
+                    None,
+                )
+                displaced_slot = (
+                    int(displaced.slot_index)
+                    if displaced is not None
+                    and displaced.slot_index is not None else
+                    -1
+                )
+                freed, free_message = (
+                    self.app.engine.move_to_collection(displaced.plant_id)
+                    if displaced is not None else
+                    (False, "No planted source was available.")
+                )
+                placement_dialog = NurseryDialog(
+                    self.app.dashboard,
+                    self.app.engine,
+                    self.app.storage,
+                )
+                placement_dialog.catalog_tabs.setCurrentIndex(tab_index)
+                placement_dialog.setWindowModality(Qt.WindowModality.NonModal)
+                placement_dialog.setModal(False)
+                self._move_to_capture_display(placement_dialog)
+                placement_dialog._show_purchase_receipt(
+                    outcome,
+                    purchase_presentation(quote, ignore_status=True),
+                )
+                placement_dialog.show()
+                for _settle_pass in range(3):
+                    QApplication.processEvents()
+                placement_receipt = collection_receipt_evidence(
+                    placement_dialog,
+                    expected_route="Place in garden",
+                )
+                placement_dialog.nursery_toast.action.click()
+                QApplication.processEvents()
+                purchased = self.app.engine.plant_story(
+                    str(outcome.result_id or "")
+                )
+                placed_slot = (
+                    int(purchased.slot_index)
+                    if purchased is not None
+                    and purchased.slot_index is not None else
+                    -1
+                )
+                stored_again, store_message = (
+                    self.app.engine.move_to_collection(purchased.plant_id)
+                    if purchased is not None and purchased.planted else
+                    (False, "Purchased plant was not placed.")
+                )
+                restored_bed, restore_message = (
+                    self.app.engine.plant_from_collection(
+                        displaced.plant_id,
+                        displaced_slot,
+                    )
+                    if displaced is not None and displaced_slot >= 0 else
+                    (False, "No displaced plant was available.")
+                )
+                placement_branch = {
+                    "freed_bed": bool(freed),
+                    "free_message": str(free_message),
+                    "displaced_plant_id": str(
+                        getattr(displaced, "plant_id", "") or ""
+                    ),
+                    "expected_slot": displaced_slot,
+                    "placed_slot": placed_slot,
+                    "stored_again": bool(stored_again),
+                    "store_message": str(store_message),
+                    "restored_bed": bool(restored_bed),
+                    "restore_message": str(restore_message),
+                    "receipt": placement_receipt,
+                }
+                placement_branch["passed"] = bool(
+                    freed
+                    and placement_receipt.get("passed", False)
+                    and placed_slot == displaced_slot
+                    and stored_again
+                    and restored_bed
+                )
+                self._dispose_capture_widget(placement_dialog)
+                QApplication.processEvents()
+
             dialog = NurseryDialog(
                 self.app.dashboard,
                 self.app.engine,
@@ -26475,7 +32253,18 @@ class _UiFaceCaptureRunner:
                 "amount_spent": outcome.amount_spent,
                 "new_balance": outcome.new_balance,
                 "result_id": outcome.result_id,
-                "passed": bool(outcome.success),
+                "collection_capacity_fixture": collection_capacity_fixture,
+                "placement_branch": placement_branch,
+                "passed": bool(
+                    outcome.success
+                    and (
+                        variant != "collection"
+                        or (
+                            collection_capacity_fixture.get("passed", False)
+                            and placement_branch.get("passed", False)
+                        )
+                    )
+                ),
             }
             if not outcome.success:
                 self._failures.append({
@@ -26530,8 +32319,22 @@ class _UiFaceCaptureRunner:
                     "scroll_layout_index": page_layout.indexOf(scroll),
                     "passed": normal_flow,
                 }
+                if variant == "collection":
+                    annotation["no_bed_branch"] = (
+                        collection_receipt_evidence(
+                            dialog,
+                            expected_route="Open Garden",
+                        )
+                    )
                 annotation["passed"] = bool(
-                    annotation.get("passed", False) and normal_flow
+                    annotation.get("passed", False)
+                    and normal_flow
+                    and (
+                        variant != "collection"
+                        or dict(
+                            annotation.get("no_bed_branch", {}) or {}
+                        ).get("passed", False)
+                    )
                 )
 
             def close_dialog() -> None:
@@ -26637,6 +32440,133 @@ class _UiFaceCaptureRunner:
     ) -> None:
         self.app.engine._pending_stage_transitions = list(transition_snapshot)
         self._restore_capture_fixture_state(snapshot)
+
+    def _exercise_growth_charge_transient_variants(
+        self,
+        label: str,
+    ) -> dict[str, Any]:
+        """Paint the no-transition preview and its reward-free success receipt."""
+
+        from ..ui.dashboard import GrowthChargeConfirmationDialog
+
+        snapshot, transition_snapshot, plant = self._prepare_growth_charge_capture(
+            label,
+            inventory=2,
+            growth_points=600,
+            planted=True,
+            exact_ledger_restore=True,
+        )
+        dialog: Any | None = None
+        records: dict[str, dict[str, Any]] = {}
+        try:
+            dialog = GrowthChargeConfirmationDialog(
+                self.app.dashboard,
+                self.app.engine,
+                plant.plant_id,
+                open_nursery=lambda: None,
+            )
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._move_to_capture_display(dialog)
+            dialog.show()
+            dialog.raise_()
+            QApplication.processEvents()
+            dialog.repaint()
+            QApplication.processEvents()
+            preview_probe = dialog.grab()
+            records["ready-no-transition"] = {
+                "growth_value": str(dialog.compact_growth_value.text()).strip(),
+                "stage_value": str(dialog.compact_stage_value.text()).strip(),
+                "stage_badge_visible": bool(
+                    dialog.static_charge_quantity.isVisibleTo(dialog)
+                ),
+                "stage_progress": str(
+                    dialog.compact_stage_progress.text()
+                ).strip(),
+                "current_growth": int(
+                    dialog.compact_summary_card.property("currentGrowth") or -1
+                ),
+                "projected_growth": int(
+                    dialog.compact_summary_card.property("projectedGrowth") or -1
+                ),
+                "inventory_before": int(
+                    dialog.compact_summary_card.property("inventoryBefore") or -1
+                ),
+                "inventory_after": int(
+                    dialog.compact_summary_card.property("inventoryAfter") or -1
+                ),
+                "progress_minimum": int(dialog.compact_progress_bar.minimum()),
+                "progress_maximum": int(dialog.compact_progress_bar.maximum()),
+                "progress_value": int(dialog.compact_progress_bar.value()),
+                "painted": bool(
+                    dialog.compact_summary_card.isVisibleTo(dialog)
+                    and not preview_probe.isNull()
+                ),
+            }
+
+            dialog._submitting = True
+            dialog._commit()
+            QApplication.processEvents()
+            dialog.repaint()
+            QApplication.processEvents()
+            receipt_probe = dialog.grab()
+            outcome = getattr(dialog, "outcome", None)
+            target = self.app.engine.plant_story(plant.plant_id)
+            records["success-no-stage-reward"] = {
+                "receipt_title": str(dialog.receipt_title.text()).strip(),
+                "receipt_copy": str(dialog.receipt_copy.text()).strip(),
+                "completed_stage_count": int(
+                    dialog.receipt.property("receiptCompletedStageCount") or 0
+                ),
+                "reward_total": int(
+                    dialog.receipt.property("receiptRewardTotal") or 0
+                ),
+                "stage_row_visible": bool(
+                    dialog.receipt_stage_row.isVisibleTo(dialog)
+                ),
+                "reward_chips_visible": bool(
+                    dialog.reward_chips.isVisibleTo(dialog)
+                ),
+                "resulting_growth": int(
+                    getattr(target, "growth_points", -1)
+                ),
+                "inventory_remaining": int(
+                    getattr(outcome, "inventory_remaining", -1)
+                ),
+                "progress_minimum": int(dialog.receipt_progress.minimum()),
+                "progress_maximum": int(dialog.receipt_progress.maximum()),
+                "progress_value": int(dialog.receipt_progress.value()),
+                "painted": bool(
+                    dialog.receipt.isVisibleTo(dialog)
+                    and not receipt_probe.isNull()
+                ),
+            }
+        except Exception as exc:
+            records["runtime-error"] = {"type": type(exc).__name__}
+        finally:
+            if dialog is not None:
+                dialog._submitting = False
+                self._dispose_capture_widget(dialog)
+                QApplication.processEvents()
+            self._restore_growth_charge_capture(
+                snapshot,
+                transition_snapshot,
+            )
+        issues = growth_charge_transient_variant_issue_codes(records)
+        evidence = {
+            "records": records,
+            "issues": list(issues),
+            "passed": not issues,
+        }
+        if issues:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Growth Charge transient painted variants failed: "
+                    + ", ".join(issues)
+                ),
+            })
+        return evidence
 
     def _growth_charge_capture_annotation(
         self,
@@ -26961,7 +32891,8 @@ class _UiFaceCaptureRunner:
                 dialog.receipt.isVisibleTo(dialog)
                 and dialog.receipt_title.isVisibleTo(dialog)
                 and dialog.receipt_copy.isVisibleTo(dialog)
-                and rendered_values["stage_transition"] == "Seed → Sprout"
+                and rendered_values["stage_transition"]
+                == "Bonsai Plant reached Sprout"
                 and rendered_values["receipt_copy"]
                 == (
                     "+100 Growth · 1 growth charge remaining\n"
@@ -27052,6 +32983,11 @@ class _UiFaceCaptureRunner:
             cleanup_holder["callback"]()
 
         def dashboard_ready() -> None:
+            transient_variants = (
+                self._exercise_growth_charge_transient_variants(label)
+                if variant == "success" else
+                {"records": {}, "issues": [], "passed": True}
+            )
             inventory = 0 if variant == "empty" else 2
             # Ready and success are two views of one coherent transaction:
             # the same +100 charge crosses the Seed -> Sprout threshold.
@@ -27121,6 +33057,15 @@ class _UiFaceCaptureRunner:
             dialog.activateWindow()
             QApplication.processEvents()
             self._growth_charge_capture_annotation(label, variant, dialog, plant)
+            if variant == "success":
+                annotation = self._capture_annotations[label]
+                annotation["transient_growth_charge_variants"] = (
+                    transient_variants
+                )
+                annotation["passed"] = bool(
+                    annotation.get("passed", False)
+                    and transient_variants.get("passed", False)
+                )
             self._capture_and_advance(
                 label,
                 dialog,
@@ -27192,6 +33137,9 @@ class _UiFaceCaptureRunner:
 
             state = self.app.storage.state
             state.unlocked_species = list(self.app.engine.release_ready_species())
+            from ..presentation import project_collection
+
+            collection_projection = project_collection(state)
             dialog = NurseryDialog(
                 self.app.dashboard,
                 self.app.engine,
@@ -27223,16 +33171,36 @@ class _UiFaceCaptureRunner:
                         [],
                     )
                 )
+                expected_species_copy = "10 of 10 species discovered"
+                expected_entries_copy = (
+                    "30 of 39 collection entries discovered"
+                )
+                canonical_collection_counts = bool(
+                    collection_projection.species_text
+                    == expected_species_copy
+                    and collection_projection.collection_entries_text
+                    == expected_entries_copy
+                )
                 empty_visible = bool(
-                    "All 10 plant species collected" in visible_labels
+                    expected_species_copy in visible_labels
+                    and expected_entries_copy in visible_labels
                     and "View collection" in visible_buttons
                     and scrollbar.value() == 0
                 )
                 self._capture_annotations[label] = {
                     "empty_state_visible": empty_visible,
                     "available_count": available_count,
+                    "species_copy": collection_projection.species_text,
+                    "collection_entries_copy": (
+                        collection_projection.collection_entries_text
+                    ),
+                    "canonical_collection_counts": canonical_collection_counts,
                     "actions": sorted(visible_buttons),
-                    "passed": bool(empty_visible and available_count == 0),
+                    "passed": bool(
+                        empty_visible
+                        and canonical_collection_counts
+                        and available_count == 0
+                    ),
                 }
 
             def close_dialog() -> None:
@@ -27297,7 +33265,7 @@ class _UiFaceCaptureRunner:
             cleanup_holder["callback"] = restore
             # Keep the release collection projection at its canonical 30/37:
             # all built-in/purchasable environments are owned, while the six
-            # Garden Find environments remain mysteries.
+            # Standard Find environments remain mysteries.
             state.inventory["garden_features"] = [
                 item_id for item_id, item in GARDEN_FEATURE_CATALOG.items()
                 if str(item.acquisition) != "drop"
@@ -28193,6 +34161,136 @@ class _UiFaceCaptureRunner:
 
         self._with_dashboard(ready, failure_label=label)
 
+    def _exercise_collection_loadout_state_matrix(
+        self,
+        dialog: Any,
+    ) -> dict[str, Any]:
+        """Paint a draft across all tabs, then restore the saved appearance."""
+
+        def settle() -> None:
+            dialog._sync_option_page_geometry(
+                dialog.option_tabs.currentIndex()
+            )
+            dialog._sync_preview_scene_geometry()
+            app = QApplication.instance()
+            if app is not None:
+                QCoreApplication.sendPostedEvents(
+                    None,
+                    QEvent.Type.LayoutRequest,
+                )
+                app.processEvents()
+            dialog.repaint()
+            if app is not None:
+                app.processEvents()
+
+        dialog.prepare_to_show()
+        dialog.option_tabs.setCurrentIndex(0)
+        settle()
+        initial_apply_enabled = bool(dialog.apply_changes.isEnabled())
+        candidate_ids = sorted(
+            item_id
+            for (kind, item_id), tile in dict(dialog._tiles).items()
+            if kind == "scenery"
+            and item_id != str(dialog._persisted_scenery)
+            and tile.isEnabled()
+        )
+        selected_scenery_id = candidate_ids[0] if candidate_ids else ""
+        dirty_apply_enabled = False
+        selection_preserved = False
+        selected_tile_checked = False
+        dirty_state_painted = False
+        if selected_scenery_id:
+            dialog._select_option("scenery", selected_scenery_id)
+            settle()
+            dirty_apply_enabled = bool(dialog.apply_changes.isEnabled())
+            dirty_pixmap = dialog.grab()
+            dirty_state_painted = bool(
+                dialog.isVisible()
+                and dirty_pixmap is not None
+                and not dirty_pixmap.isNull()
+            )
+            for tab_index in (1, 2, 0):
+                dialog.option_tabs.setCurrentIndex(tab_index)
+                settle()
+            selection_preserved = bool(
+                str(dialog._draft_scenery) == selected_scenery_id
+            )
+            selected_tile = dict(dialog._tiles).get(
+                ("scenery", selected_scenery_id)
+            )
+            selected_tile_checked = bool(
+                selected_tile is not None
+                and selected_tile.isChecked()
+                and str(
+                    selected_tile.property("environmentSelectionState") or ""
+                ) == "selected"
+            )
+
+        dialog.prepare_to_show()
+        dialog.option_tabs.setCurrentIndex(0)
+        settle()
+        structured_values = {
+            str(key): str(value.text()).strip()
+            for key, value in dict(dialog.appearance_values).items()
+        }
+        structured_values_visible = bool(
+            set(structured_values) == {
+                "scenery",
+                "displayed_decoration",
+                "active_bonus",
+                "visual_effects",
+            }
+            and all(
+                value.isVisibleTo(dialog)
+                for value in dict(dialog.appearance_values).values()
+            )
+        )
+        preview_size = [
+            int(dialog.preview_scene.width()),
+            int(dialog.preview_scene.height()),
+        ]
+        restored_pixmap = dialog.grab()
+        restored_state_painted = bool(
+            dialog.isVisible()
+            and restored_pixmap is not None
+            and not restored_pixmap.isNull()
+        )
+        evidence = {
+            "structured_values": structured_values,
+            "structured_values_visible": structured_values_visible,
+            "initial_apply_enabled": initial_apply_enabled,
+            "dirty_apply_enabled": dirty_apply_enabled,
+            "restored_apply_enabled": bool(
+                dialog.apply_changes.isEnabled()
+            ),
+            "selected_scenery_id": selected_scenery_id,
+            "selection_preserved_across_tabs": selection_preserved,
+            "selected_tile_checked_after_tabs": selected_tile_checked,
+            "preview_size": preview_size,
+            "preview_aspect_ratio": (
+                round(preview_size[0] / preview_size[1], 6)
+                if preview_size[1] > 0 else
+                0.0
+            ),
+            "dirty_state_painted": dirty_state_painted,
+            "restored_state_painted": restored_state_painted,
+            "restored_to_persisted_draft": bool(
+                dialog._draft_key() == dialog._persisted_draft
+            ),
+        }
+        issues = collection_loadout_state_matrix_issue_codes(evidence)
+        evidence["issues"] = list(issues)
+        evidence["passed"] = not issues
+        if issues:
+            self._failures.append({
+                "label": "collection-loadout-detail",
+                "reason": (
+                    "Collection loadout state matrix failed: "
+                    + ", ".join(issues)
+                ),
+            })
+        return evidence
+
     def _capture_collection_loadout_detail(self) -> None:
         self._with_dashboard(self._capture_collection_loadout_detail_after)
 
@@ -28209,6 +34307,7 @@ class _UiFaceCaptureRunner:
             return
         opener()
         dialog = getattr(dashboard, "collectible_detail_dialog", None)
+        interaction_matrix: dict[str, Any] = {}
 
         def current_catalog_scroll() -> QScrollArea | None:
             return dialog._catalog_scroll_by_page.get(
@@ -28248,7 +34347,13 @@ class _UiFaceCaptureRunner:
                 app.processEvents()
 
         def rendered_state_ready() -> bool:
+            nonlocal interaction_matrix
             prepare_rendered_state()
+            if not interaction_matrix:
+                interaction_matrix = (
+                    self._exercise_collection_loadout_state_matrix(dialog)
+                )
+                prepare_rendered_state()
             active_scroll = current_catalog_scroll()
             dialog.preview_scene.repaint()
             app = QApplication.instance()
@@ -28398,9 +34503,16 @@ class _UiFaceCaptureRunner:
             self._capture_annotations[label] = {
                 "rendered_state": rendered_state,
                 "catalog_geometry": catalog_geometry,
-                "passed": bool(rendered_state["passed"]),
+                "collection_loadout_state_matrix": interaction_matrix,
+                "passed": bool(
+                    rendered_state["passed"]
+                    and interaction_matrix.get("passed", False)
+                ),
             }
-            return bool(rendered_state["passed"])
+            return bool(
+                rendered_state["passed"]
+                and interaction_matrix.get("passed", False)
+            )
 
         def dialog_ready() -> None:
             self._wait_for(
@@ -28705,7 +34817,7 @@ class _UiFaceCaptureRunner:
         label: str,
         dashboard: Any,
     ) -> Callable[[], None]:
-        """Expose one useful partial-catalog state without weakening 30/37.
+        """Expose one useful partial-catalog state without weakening 30/39.
 
         The representative Collection capture owns the canonical broad state.
         Nursery needs a different single painting: one owned plant, affordable
@@ -28714,7 +34826,10 @@ class _UiFaceCaptureRunner:
         continue to use the canonical development projection.
         """
 
-        snapshot = self._capture_fixture_state_snapshot(label)
+        snapshot = self._capture_fixture_state_snapshot(
+            label,
+            exact_ledger_restore=True,
+        )
         if self._capture_profile != "representative":
             return lambda: self._restore_capture_fixture_state(snapshot)
         try:
@@ -28757,17 +34872,157 @@ class _UiFaceCaptureRunner:
             raise
         return lambda: self._restore_capture_fixture_state(snapshot)
 
+    def _prepare_nursery_plants_fixture(
+        self,
+        label: str,
+        dashboard: Any,
+        fixture: dict[str, Any],
+    ) -> Callable[[], None]:
+        """Install the exact complete-species, partial-registry Nursery state."""
+
+        from ..presentation import project_collection
+        from .fixtures import representative_collection_inventory_plan
+
+        snapshot = self._capture_fixture_state_snapshot(
+            label,
+            exact_ledger_restore=True,
+        )
+        try:
+            state = self.app.storage.state
+            release_ready = list(self.app.engine.release_ready_species())
+            state.unlocked_species = list(release_ready)
+            inventory_plan = representative_collection_inventory_plan()
+            state.inventory["garden_features"] = list(
+                inventory_plan["garden_features"]
+            )
+            state.inventory["scenery"] = list(inventory_plan["scenery"])
+            state.inventory.pop("backgrounds", None)
+            state.consumables.update(dict(inventory_plan["consumables"]))
+
+            projection = project_collection(state)
+            fixture.update({
+                "species_copy": projection.species_text,
+                "collection_entries_copy": projection.collection_entries_text,
+                "species_discovered": projection.species_discovered,
+                "species_total": projection.species_total,
+                "collection_entries_discovered": (
+                    projection.collection_entries_discovered
+                ),
+                "collection_entries_total": projection.collection_entries_total,
+                "fixture_state_passed": bool(
+                    projection.species_text
+                    == "10 of 10 species discovered"
+                    and projection.collection_entries_text
+                    == "30 of 39 collection entries discovered"
+                ),
+                "reversible": True,
+            })
+            if not fixture["fixture_state_passed"]:
+                raise RuntimeError(
+                    "Nursery Plants fixture did not project canonical 10/10 "
+                    "species and 30/39 collection counts"
+                )
+            dashboard.refresh_all()
+        except Exception:
+            self._restore_capture_fixture_state(snapshot)
+            raise
+        return lambda: self._restore_capture_fixture_state(snapshot)
+
+    def _prepare_appearance_capture_fixture(
+        self,
+        label: str,
+        dashboard: Any,
+        fixture: dict[str, Any] | None = None,
+    ) -> Callable[[], None]:
+        """Install the same exact, reversible appearance state in both profiles."""
+
+        snapshot = self._capture_fixture_state_snapshot(label)
+        restored = False
+
+        def restore() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            self._restore_capture_fixture_state(snapshot)
+
+        try:
+            state = self.app.storage.state
+            state.inventory["garden_features"] = [
+                "seedling_sign",
+                "watering_station",
+            ]
+            state.inventory["scenery"] = ["default"]
+            state.inventory.pop("backgrounds", None)
+            state.displayed_garden_feature = "seedling_sign"
+            state.selected_garden_feature = "watering_station"
+            state.selected_background = "default"
+            state.loadout.visibility = {
+                "garden_feature": True,
+                "scenery": True,
+            }
+            schedule = state.daily_loadout
+            anki_day = str(state.daily_stats.day)
+            schedule.garden_feature_id = "watering_station"
+            schedule.garden_bonus_anki_day_id = anki_day
+            schedule.garden_bonus_locked_at_ms = 1
+            schedule.pending_garden_feature_id = ""
+            schedule.queued_for_day = ""
+            schedule.queued_scenery_id = ""
+            schedule.scheduler_day = anki_day
+            schedule.locked_at_ms = 1
+            schedule.scenery_id = "default"
+            state.currency_balance = 100
+            if fixture is not None:
+                fixture.update({
+                    "fixture_profiles": ["full", "representative"],
+                    "reversible": True,
+                    "displayed_decoration_id": "seedling_sign",
+                    "active_bonus_id": "watering_station",
+                    "purchasable_item_id": "wind_chime",
+                    "locked_item_id": "firefly_lantern",
+                })
+            dashboard.refresh_all()
+        except Exception:
+            restore()
+            raise
+        return restore
+
     def _capture_nursery_plants(self) -> None:
         label = "nursery-plants"
+        fixture: dict[str, Any] = {}
+
+        def audit(dialog: Any) -> None:
+            visible_labels = {
+                str(candidate.text()).strip()
+                for candidate in dialog.findChildren(QLabel)
+                if candidate.isVisibleTo(dialog)
+                and str(candidate.text()).strip()
+            }
+            fixture["species_copy_visible"] = bool(
+                "10 of 10 species discovered" in visible_labels
+            )
+            fixture["collection_entries_copy_visible"] = bool(
+                "30 of 39 collection entries discovered" in visible_labels
+            )
+            fixture["passed"] = bool(
+                fixture.get("fixture_state_passed", False)
+                and fixture["species_copy_visible"]
+                and fixture["collection_entries_copy_visible"]
+            )
+            self._capture_annotations[label] = fixture
+
         self._capture_nursery_tab(
             0,
             label,
             fixture_setup=lambda dashboard: (
-                self._prepare_representative_nursery_fixture(
+                self._prepare_nursery_plants_fixture(
                     label,
                     dashboard,
+                    fixture,
                 )
             ),
+            ready_audit=audit,
         )
 
     def _capture_nursery_fertilizer_booster(self) -> None:
@@ -28803,22 +35058,22 @@ class _UiFaceCaptureRunner:
                         "Rich Compost capture requires an unfinished planted plant"
                     )
                 target.fertilizer = None
+                target.fertilizer_history = []
                 state.active_plant_id = str(target.plant_id)
                 for inventory_id in (
-                    "fertilizer_quality",
                     "fertilizer_premium",
-                    "booster_potion",
                     *tuple(GROWTH_CHARGES),
                 ):
                     state.consumables[inventory_id] = 0
-                state.consumables["fertilizer_basic"] = max(
-                    1,
-                    int(state.consumables.get("fertilizer_basic", 0) or 0),
-                )
+                state.currency_balance = 500
+                state.consumables["fertilizer_basic"] = 3
+                state.consumables["fertilizer_quality"] = 2
+                state.consumables["booster_potion"] = 2
                 fixture.update({
                     "item_display_name": str(item.name),
                     "item_id": str(item.source_id),
                     "target_plant_id": str(target.plant_id),
+                    "reversible": True,
                 })
                 dashboard.refresh_all()
             except Exception:
@@ -28828,24 +35083,368 @@ class _UiFaceCaptureRunner:
 
         def audit(dialog: Any) -> None:
             scroll = getattr(dialog, "supplements_scroll", None)
-            if scroll is not None:
-                scroll.verticalScrollBar().setValue(0)
             app = QApplication.instance()
-            if app is not None:
-                app.processEvents()
-            item_id = str(fixture.get("item_id", ""))
-            card = next(
+            records: dict[str, dict[str, Any]] = {}
+
+            def settle(*, refresh: bool = False) -> None:
+                if refresh:
+                    dialog.refresh()
+                    QCoreApplication.sendPostedEvents(
+                        None,
+                        QEvent.Type.DeferredDelete,
+                    )
+                dialog.catalog_tabs.setCurrentIndex(1)
+                if app is not None:
+                    app.processEvents()
+                dialog.repaint()
+                if app is not None:
+                    app.processEvents()
+
+            def item_card(item_id: str) -> Any | None:
+                current_cards = [
+                    candidate
+                    for candidate in dialog.findChildren(QFrame)
+                    if candidate.isVisibleTo(dialog)
+                    and (
+                        str(candidate.property("catalogItemId") or "")
+                        == item_id
+                        or (
+                            item_id == "booster_potion"
+                            and str(getattr(
+                                getattr(candidate, "responsive", None),
+                                "semantic_id",
+                                "",
+                            )) == "nursery.booster-potion"
+                        )
+                    )
+                ]
+                return current_cards[-1] if current_cards else None
+
+            def card_action(card: Any | None) -> Any | None:
+                return next(
+                    (
+                        button
+                        for button in card.findChildren(QAbstractButton)
+                        if button.isVisibleTo(card)
+                    ),
+                    None,
+                ) if card is not None else None
+
+            def card_texts(card: Any | None) -> list[str]:
+                return [
+                    str(candidate.text()).strip()
+                    for candidate in card.findChildren(QLabel)
+                    if candidate.isVisibleTo(card)
+                    and str(candidate.text()).strip()
+                ] if card is not None else []
+
+            def painted_card(card: Any | None) -> bool:
+                if card is None or scroll is None:
+                    return False
+                scroll.ensureWidgetVisible(card, 0, 18)
+                settle()
+                bounds = self._widget_bounds_evidence(
+                    card,
+                    scroll.viewport(),
+                )
+                probe = dialog.grab()
+                return bool(
+                    card.isVisibleTo(dialog)
+                    and bounds.get("contained", False)
+                    and not probe.isNull()
+                )
+
+            settle(refresh=True)
+            sufficient_card = item_card("premium")
+            sufficient_action = card_action(sufficient_card)
+            sufficient_price = next(
+                (
+                    candidate
+                    for candidate in sufficient_card.findChildren(QWidget)
+                    if bool(candidate.property("nurseryPrice"))
+                ),
+                None,
+            ) if sufficient_card is not None else None
+            records["sufficient-balance"] = {
+                "balance": int(self.app.storage.state.currency_balance),
+                "balance_copy": str(dialog.coins.text()).strip(),
+                "item_id": "premium",
+                "price_copy": (
+                    str(sufficient_price.accessibleName()).strip()
+                    if sufficient_price is not None else
+                    ""
+                ),
+                "action": (
+                    _displayed_button_text(sufficient_action)
+                    if sufficient_action is not None else
+                    ""
+                ),
+                "action_disposition": (
+                    str(sufficient_action.property(
+                        "fertilizerActionDisposition"
+                    ) or "")
+                    if sufficient_action is not None else
+                    ""
+                ),
+                "action_enabled": bool(
+                    sufficient_action is not None
+                    and sufficient_action.isEnabled()
+                ),
+                "painted": painted_card(sufficient_card),
+            }
+
+            stored_card = item_card("fertilizer_basic")
+            stored_action = card_action(stored_card)
+            stored_texts = card_texts(stored_card)
+            stored_artwork = next(
+                (
+                    candidate
+                    for candidate in stored_card.findChildren(QLabel)
+                    if str(candidate.property("itemArtworkRef") or "")
+                    == "rich_compost"
+                ),
+                None,
+            ) if stored_card is not None else None
+            stored_pixmap = (
+                stored_artwork.pixmap()
+                if stored_artwork is not None else
+                None
+            )
+            booster_card = item_card("booster_potion")
+            booster_action = card_action(booster_card)
+            booster_texts = card_texts(booster_card)
+            records["stored-multiple"] = {
+                "item_id": "fertilizer_basic",
+                "item_name": "Rich Compost" if "Rich Compost" in stored_texts else "",
+                "owned_copy": "3 owned" if "3 owned" in stored_texts else "",
+                "action": (
+                    _displayed_button_text(stored_action)
+                    if stored_action is not None else
+                    ""
+                ),
+                "action_disposition": (
+                    str(stored_action.property(
+                        "fertilizerActionDisposition"
+                    ) or "")
+                    if stored_action is not None else
+                    ""
+                ),
+                "meta_copy": next(
+                    (
+                        text for text in stored_texts
+                        if "eligible card answer" in text
+                    ),
+                    "",
+                ),
+                "artwork_ref": (
+                    str(stored_artwork.property("itemArtworkRef") or "")
+                    if stored_artwork is not None else
+                    ""
+                ),
+                "artwork_source_matches": bool(
+                    stored_artwork is not None
+                    and str(stored_artwork.property("itemArtworkSource") or "")
+                    .replace("\\", "/")
+                    .endswith(
+                        "assets/v6_storybook_gouache/ui/rich_compost.webp"
+                    )
+                ),
+                "artwork_fallback": bool(
+                    stored_artwork.property("itemArtworkFallback")
+                    if stored_artwork is not None else
+                    True
+                ),
+                "booster_item_id": (
+                    "booster_potion" if booster_card is not None else ""
+                ),
+                "booster_owned_copy": (
+                    "2 owned" if "2 owned" in booster_texts else ""
+                ),
+                "booster_action": (
+                    _displayed_button_text(booster_action)
+                    if booster_action is not None else
+                    ""
+                ),
+                "booster_painted": painted_card(booster_card),
+                "painted": bool(
+                    painted_card(stored_card)
+                    and stored_artwork is not None
+                    and stored_artwork.isVisibleTo(stored_card)
+                    and stored_pixmap is not None
+                    and not stored_pixmap.isNull()
+                ),
+            }
+
+            target_id = str(fixture.get("target_plant_id", ""))
+            basic_ok, basic_message = self.app.engine.use_fertilizer_item(
+                target_id,
+                tier="basic",
+            )
+            settle(refresh=True)
+            target = self.app.engine.plant_story(target_id)
+            active_fertilizer, _queued = self.app.engine.fertilizer_schedule(
+                target,
+                now=time.time(),
+            )
+            active_card = item_card("fertilizer_basic")
+            active_action = card_action(active_card)
+            active_texts = card_texts(active_card)
+            active_block = next(
                 (
                     candidate
                     for candidate in dialog.findChildren(QFrame)
-                    if str(candidate.property("catalogItemId") or "") == item_id
+                    if bool(candidate.property("fertilizerStatusBlock"))
                 ),
                 None,
             )
-            action = next(
-                iter(card.findChildren(QAbstractButton)),
+            active_summary = next(
+                (
+                    candidate
+                    for candidate in active_block.findChildren(QLabel)
+                    if bool(candidate.property("fertilizerStatusSummary"))
+                ),
                 None,
-            ) if card is not None else None
+            ) if active_block is not None else None
+            active_painted = painted_card(active_block)
+            records["active"] = {
+                "engine_tier": str(
+                    getattr(active_fertilizer, "tier", "") or ""
+                ),
+                "item_id": "fertilizer_basic",
+                "owned_copy": "2 owned" if "2 owned" in active_texts else "",
+                "action": (
+                    _displayed_button_text(active_action)
+                    if active_action is not None else
+                    ""
+                ),
+                "action_disposition": (
+                    str(active_action.property(
+                        "fertilizerActionDisposition"
+                    ) or "")
+                    if active_action is not None else
+                    ""
+                ),
+                "status_phase": (
+                    str(active_block.property("fertilizerPhase") or "")
+                    if active_block is not None else
+                    ""
+                ),
+                "status_copy": (
+                    str(active_summary.text()).strip()
+                    if active_summary is not None else
+                    ""
+                ),
+                "operation_succeeded": bool(basic_ok),
+                "operation_message": str(basic_message),
+                "painted": bool(
+                    active_painted
+                    and active_action is not None
+                    and active_action.isVisibleTo(active_card)
+                ),
+            }
+
+            quality_ok, quality_message = self.app.engine.use_fertilizer_item(
+                target_id,
+                tier="quality",
+            )
+            settle(refresh=True)
+            target = self.app.engine.plant_story(target_id)
+            _active, queued_fertilizers = self.app.engine.fertilizer_schedule(
+                target,
+                now=time.time(),
+            )
+            queued_card = item_card("fertilizer_quality")
+            queued_action = card_action(queued_card)
+            queued_texts = card_texts(queued_card)
+            final_basic_card = item_card("fertilizer_basic")
+            final_basic_action = card_action(final_basic_card)
+            final_basic_painted = painted_card(final_basic_card)
+            final_quality_painted = painted_card(queued_card)
+            records["queued"] = {
+                "engine_tiers": [
+                    str(getattr(period, "tier", "") or "")
+                    for period in queued_fertilizers
+                ],
+                "item_id": "fertilizer_quality",
+                "owned_copy": "1 owned" if "1 owned" in queued_texts else "",
+                "queued_copy": "Queued" if "Queued" in queued_texts else "",
+                "action": (
+                    _displayed_button_text(queued_action)
+                    if queued_action is not None else
+                    ""
+                ),
+                "action_disposition": (
+                    str(queued_action.property(
+                        "fertilizerActionDisposition"
+                    ) or "")
+                    if queued_action is not None else
+                    ""
+                ),
+                "final_basic_action": (
+                    _displayed_button_text(final_basic_action)
+                    if final_basic_action is not None else
+                    ""
+                ),
+                "final_basic_action_disposition": (
+                    str(final_basic_action.property(
+                        "fertilizerActionDisposition"
+                    ) or "")
+                    if final_basic_action is not None else
+                    ""
+                ),
+                "final_basic_painted": bool(
+                    final_basic_painted
+                    and final_basic_action is not None
+                    and final_basic_action.isVisibleTo(final_basic_card)
+                ),
+                "final_quality_action": (
+                    _displayed_button_text(queued_action)
+                    if queued_action is not None else
+                    ""
+                ),
+                "final_quality_action_disposition": (
+                    str(queued_action.property(
+                        "fertilizerActionDisposition"
+                    ) or "")
+                    if queued_action is not None else
+                    ""
+                ),
+                "final_quality_painted": bool(
+                    final_quality_painted
+                    and queued_action is not None
+                    and queued_action.isVisibleTo(queued_card)
+                ),
+                "meta_copy": next(
+                    (
+                        text for text in queued_texts
+                        if "eligible card answer" in text
+                    ),
+                    "",
+                ),
+                "operation_succeeded": bool(quality_ok),
+                "operation_message": str(quality_message),
+                "painted": bool(
+                    painted_card(queued_card)
+                    and queued_action is not None
+                    and queued_action.isVisibleTo(queued_card)
+                ),
+            }
+            matrix_issues = nursery_supplement_state_matrix_issue_codes(records)
+            state_matrix = {
+                "records": records,
+                "issues": list(matrix_issues),
+                "passed": bool(
+                    not matrix_issues
+                    and records["active"].get("operation_succeeded", False)
+                    and records["queued"].get("operation_succeeded", False)
+                ),
+            }
+            if scroll is not None:
+                scroll.verticalScrollBar().setValue(0)
+            settle()
+            item_id = str(fixture.get("item_id", ""))
+            card = item_card(item_id)
+            action = card_action(card)
             action_text = (
                 _displayed_button_text(action) if action is not None else ""
             )
@@ -28984,7 +35583,10 @@ class _UiFaceCaptureRunner:
                 # below that fold remain inspectable in their own card. Do not
                 # force Premium Fertilizer to peek into the viewport merely to
                 # prove that its price and action share a row.
-                expected_first_fold = {"fertilizer_basic", "basic"}
+                expected_first_fold = {
+                    "fertilizer_basic",
+                    "fertilizer_quality",
+                }
                 first_fold_geometry = {
                     "scroll_name": str(
                         scroll.accessibleName()
@@ -29032,6 +35634,7 @@ class _UiFaceCaptureRunner:
                 and owned_count >= 1
                 and str(getattr(state, "active_plant_id", "") or "")
                 == fixture.get("target_plant_id")
+                and state_matrix["passed"]
                 and first_fold_geometry["passed"]
             )
             self._capture_annotations[label] = {
@@ -29040,6 +35643,7 @@ class _UiFaceCaptureRunner:
                 "action_visible": bool(action is not None and action.isVisible()),
                 "action_enabled": bool(action is not None and action.isEnabled()),
                 "owned_count": owned_count,
+                "supplement_state_matrix": state_matrix,
                 "first_fold_geometry": first_fold_geometry,
                 "passed": passed,
             }
@@ -29051,21 +35655,152 @@ class _UiFaceCaptureRunner:
             ready_audit=audit,
         )
 
+    def _exercise_nursery_bed_incomplete_state(
+        self,
+        dialog: Any,
+        label: str,
+    ) -> None:
+        """Audit the affordable Bed 3 expansion painted by Surface 23."""
+
+        def settle() -> None:
+            dialog.catalog_tabs.setCurrentIndex(2)
+            dialog.upgrades_scroll.verticalScrollBar().setValue(0)
+            app = QApplication.instance()
+            if app is not None:
+                QCoreApplication.sendPostedEvents(
+                    None,
+                    QEvent.Type.LayoutRequest,
+                )
+                app.processEvents()
+            dialog.repaint()
+            if app is not None:
+                app.processEvents()
+
+        settle()
+        progression = next((
+            candidate
+            for candidate in dialog.upgrades_catalog.findChildren(QWidget)
+            if candidate.property("gardenBedProgression") is True
+            and candidate.isVisibleTo(dialog)
+        ), None)
+        details = next((
+            candidate
+            for candidate in dialog.upgrades_catalog.findChildren(QFrame)
+            if candidate.property("selectedBedDetails") is True
+            and candidate.isVisibleTo(dialog)
+        ), None)
+        labels = details.findChildren(QLabel) if details is not None else ()
+        summary = next((
+            candidate
+            for candidate in dialog.upgrades_catalog.findChildren(QLabel)
+            if candidate.isVisibleTo(dialog)
+            and str(candidate.text()).strip() == "2 of 6 beds unlocked"
+        ), None)
+        title = next((
+            candidate for candidate in labels
+            if candidate.property("gardenBedTitle") is True
+        ), None)
+        capacity = next((
+            candidate for candidate in labels
+            if candidate.property("gardenBedCapacity") is True
+        ), None)
+        price = next((
+            candidate for candidate in labels
+            if candidate.property("gardenBedPrice") is True
+        ), None)
+        action = getattr(dialog, "bed_button", None)
+        viewport = dialog.upgrades_scroll.viewport()
+        detail_bounds = self._widget_bounds_evidence(details, viewport)
+        action_bounds = self._widget_bounds_evidence(action, viewport)
+        painted = dialog.upgrades_scroll.viewport().grab()
+        evidence = {
+            "unlocked_beds": int(
+                progression.property("unlockedBedCount")
+                if progression is not None else -1
+            ),
+            "summary": str(summary.text()).strip() if summary is not None else "",
+            "bed_number": int(
+                details.property("bedNumber") if details is not None else -1
+            ),
+            "bed_title": str(title.text()).strip() if title is not None else "",
+            "price": int(
+                details.property("bedPrice") if details is not None else -1
+            ),
+            "price_copy": str(price.text()).strip() if price is not None else "",
+            "resulting_capacity": int(
+                details.property("resultingCapacity")
+                if details is not None else -1
+            ),
+            "capacity_copy": (
+                str(capacity.text()).strip() if capacity is not None else ""
+            ),
+            "action_copy": (
+                _displayed_button_text(action) if action is not None else ""
+            ),
+            "action_accessible_name": (
+                str(action.accessibleName()) if action is not None else ""
+            ),
+            "action_enabled": bool(action is not None and action.isEnabled()),
+            "painted": bool(painted is not None and not painted.isNull()),
+            "contained": bool(
+                detail_bounds.get("contained", False)
+                and action_bounds.get("contained", False)
+            ),
+            "detail_bounds": detail_bounds,
+            "action_bounds": action_bounds,
+        }
+
+        issues = nursery_bed_incomplete_state_issue_codes(evidence)
+        evidence["issues"] = list(issues)
+        evidence["passed"] = not issues
+        annotation = dict(self._capture_annotations.get(label, {}) or {})
+        annotation["nursery_bed_incomplete_state"] = evidence
+        annotation["passed"] = bool(
+            annotation.get("passed", True) and not issues
+        )
+        self._capture_annotations[label] = annotation
+        if issues:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Nursery incomplete bed state failed: "
+                    + ", ".join(issues)
+                ),
+            })
+
     def _capture_nursery_garden_spaces(self) -> None:
         label = "nursery-garden-spaces"
+
+        def setup(dashboard: Any) -> Callable[[], None]:
+            restore = self._prepare_representative_nursery_fixture(
+                label,
+                dashboard,
+            )
+            try:
+                state = self.app.storage.state
+                state.unlocked_slots = 2
+                state.currency_balance = 150
+                dashboard.refresh_all()
+            except Exception:
+                restore()
+                raise
+            return restore
+
         self._capture_nursery_tab(
             2,
             label,
-            fixture_setup=lambda dashboard: (
-                self._prepare_representative_nursery_fixture(
+            fixture_setup=setup,
+            ready_audit=lambda dialog: (
+                self._exercise_nursery_bed_incomplete_state(
+                    dialog,
                     label,
-                    dashboard,
                 )
             ),
         )
 
-    def _capture_nursery_weather_scenery(self) -> None:
-        label = "nursery-weather-scenery"
+    def _capture_nursery_garden_decorations_scenery(self) -> None:
+        label = "nursery-garden-decorations-scenery"
+        fixture: dict[str, Any] = {}
 
         def pixmap_signature(pixmap: Any) -> list[int]:
             image = pixmap.toImage()
@@ -29087,6 +35822,8 @@ class _UiFaceCaptureRunner:
                 for candidate in dialog.environment_catalog.findChildren(QFrame)
                 if bool(candidate.property("nurseryCatalogCard"))
                 and bool(str(candidate.property("catalogItemId") or ""))
+                and str(candidate.property("catalogRole") or "")
+                != "active-bonus"
                 and candidate.isVisibleTo(dialog)
             ]
             product_cards.sort(
@@ -29199,6 +35936,139 @@ class _UiFaceCaptureRunner:
                 and second_signature
                 and first_signature != second_signature
             )
+            all_cards = {
+                str(candidate.property("catalogItemId") or ""): candidate
+                for candidate in dialog.environment_catalog.findChildren(QFrame)
+                if bool(candidate.property("nurseryCatalogCard"))
+                and bool(str(candidate.property("catalogItemId") or ""))
+            }
+            scroll = dialog.environment_scroll
+            viewport = scroll.viewport()
+
+            def paint_widget(widget: Any) -> bool:
+                if widget is None:
+                    return False
+                scroll.ensureWidgetVisible(widget, 0, 24)
+                QApplication.processEvents()
+                bounds = self._widget_bounds_evidence(widget, viewport)
+                painted = dialog.grab()
+                return bool(
+                    painted is not None
+                    and not painted.isNull()
+                    and bounds.get("visible", False)
+                    and bounds.get("contained", False)
+                )
+
+            def visible_copy(widget: Any) -> list[str]:
+                if widget is None:
+                    return []
+                values = [
+                    str(candidate.text()).strip()
+                    for candidate in widget.findChildren(QLabel)
+                    if str(candidate.text()).strip()
+                ]
+                values.extend(
+                    _displayed_button_text(candidate).strip()
+                    for candidate in widget.findChildren(QAbstractButton)
+                    if _displayed_button_text(candidate).strip()
+                )
+                return values
+
+            displayed_card = all_cards.get("seedling_sign")
+            active_card = all_cards.get("watering_station")
+            purchasable_card = all_cards.get("wind_chime")
+            locked_card = all_cards.get("firefly_lantern")
+            scenery_heading = next((
+                candidate
+                for candidate in dialog.environment_catalog.findChildren(QLabel)
+                if str(candidate.property("semanticId") or "")
+                == "nursery.scenery-heading"
+            ), None)
+
+            displayed_copy = visible_copy(displayed_card)
+            active_copy = visible_copy(active_card)
+            purchasable_copy = visible_copy(purchasable_card)
+            locked_copy = visible_copy(locked_card)
+            exact_fixture = {
+                **fixture,
+                "displayed_decoration": {
+                    "item_id": "seedling_sign",
+                    "ownership_state": str(
+                        displayed_card.property("catalogOwnershipState") or ""
+                    ) if displayed_card is not None else "",
+                    "display_state": str(
+                        displayed_card.property("catalogDisplayState") or ""
+                    ) if displayed_card is not None else "",
+                    "display_action": (
+                        "Displayed" if "Displayed" in displayed_copy else ""
+                    ),
+                    "bonus_action": (
+                        "Select today’s bonus"
+                        if "Select today’s bonus" in displayed_copy else ""
+                    ),
+                    "painted": paint_widget(displayed_card),
+                },
+                "active_bonus": {
+                    "item_id": "watering_station",
+                    "ownership_state": str(
+                        active_card.property("catalogOwnershipState") or ""
+                    ) if active_card is not None else "",
+                    "bonus_state": str(
+                        active_card.property("catalogBonusState") or ""
+                    ) if active_card is not None else "",
+                    "action": (
+                        "Garden Bonus active today"
+                        if "Garden Bonus active today" in active_copy else ""
+                    ),
+                    "painted": paint_widget(active_card),
+                },
+                "purchasable": {
+                    "item_id": "wind_chime",
+                    "ownership_state": str(
+                        purchasable_card.property("catalogOwnershipState") or ""
+                    ) if purchasable_card is not None else "",
+                    "price": int(
+                        purchasable_card.property("catalogPrice") or 0
+                    ) if purchasable_card is not None else 0,
+                    "action": "Buy" if "Buy" in purchasable_copy else "",
+                    "action_enabled": bool(next((
+                        candidate.isEnabled()
+                        for candidate in purchasable_card.findChildren(QAbstractButton)
+                        if _displayed_button_text(candidate).strip() == "Buy"
+                    ), False)) if purchasable_card is not None else False,
+                    "painted": paint_widget(purchasable_card),
+                },
+                "locked": {
+                    "item_id": "firefly_lantern",
+                    "ownership_state": str(
+                        locked_card.property("catalogOwnershipState") or ""
+                    ) if locked_card is not None else "",
+                    "price": int(
+                        locked_card.property("catalogPrice") or 0
+                    ) if locked_card is not None else 0,
+                    "action": (
+                        "How to unlock" if "How to unlock" in locked_copy else ""
+                    ),
+                    "action_enabled": bool(next((
+                        candidate.isEnabled()
+                        for candidate in locked_card.findChildren(QAbstractButton)
+                        if _displayed_button_text(candidate).strip()
+                        == "How to unlock"
+                    ), False)) if locked_card is not None else False,
+                    "painted": paint_widget(locked_card),
+                },
+                "scenery_heading": {
+                    "text": str(scenery_heading.text()).strip()
+                    if scenery_heading is not None else "",
+                    "reachable": bool(scenery_heading is not None),
+                    "painted": paint_widget(scenery_heading),
+                },
+            }
+            fixture_issues = nursery_environment_fixture_issue_codes(
+                exact_fixture
+            )
+            scroll.verticalScrollBar().setValue(0)
+            QApplication.processEvents()
             passed = bool(
                 len(preview_names) == 2
                 and first_signature
@@ -29206,6 +36076,7 @@ class _UiFaceCaptureRunner:
                 and not missing_art_previews
                 and distinct
                 and first_product_row_contained
+                and not fixture_issues
             )
             self._capture_annotations[label] = {
                 "preview_names": preview_names,
@@ -29222,6 +36093,10 @@ class _UiFaceCaptureRunner:
                 "preview_signatures_distinct": distinct,
                 "first_product_row_geometry": first_row_geometry,
                 "first_product_row_contained": first_product_row_contained,
+                "garden_decoration_scenery_fixture": exact_fixture,
+                "garden_decoration_scenery_fixture_issues": list(
+                    fixture_issues
+                ),
                 "passed": passed,
             }
             if not passed:
@@ -29237,9 +36112,10 @@ class _UiFaceCaptureRunner:
             3,
             label,
             fixture_setup=lambda dashboard: (
-                self._prepare_representative_nursery_fixture(
+                self._prepare_appearance_capture_fixture(
                     label,
                     dashboard,
+                    fixture,
                 )
             ),
             ready_audit=audit,
@@ -29284,16 +36160,31 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_settings_display_advanced(self) -> None:
-        self._with_dashboard(self._capture_settings_display_advanced_after)
+        self._with_dashboard(
+            self._capture_settings_display_advanced_after,
+            failure_label="settings-display-advanced-open",
+        )
 
     def _capture_settings_display_advanced_after(self) -> None:
         dashboard = getattr(self.app, "dashboard", None)
         if dashboard is None:
             self._next_after(250)
             return
+        fixture: dict[str, Any] = {}
+        cleanup = self._prepare_appearance_capture_fixture(
+            "settings-display-advanced-open",
+            dashboard,
+            fixture,
+        )
+        self._settings_appearance_fixture = fixture
+        self._settings_appearance_fixture_cleanup = cleanup
         open_settings = getattr(dashboard, "_open_settings", None)
-        if callable(open_settings):
-            open_settings()
+        try:
+            if callable(open_settings):
+                open_settings()
+        except Exception:
+            cleanup()
+            raise
         self._wait_for(
             lambda: bool(
                 self._find_settings_dialog() is not None
@@ -29303,16 +36194,218 @@ class _UiFaceCaptureRunner:
             tries=80,
             failure_label="settings-display-advanced-open",
             failure_reason="Settings Display Advanced state did not become ready",
+            on_error=cleanup,
         )
+
+    def _exercise_settings_appearance_state_matrix(
+        self,
+        settings_dialog: Any,
+    ) -> dict[str, Any]:
+        """Paint exact shared Appearance projections without changing the draft."""
+
+        from ..presentation import project_garden_appearance
+
+        behavior = settings_dialog.behavior
+        state = self.app.storage.state
+        original_visibility = dict(state.loadout.visibility)
+        draft_payload_before = deepcopy(behavior.build_theme_payload())
+        garden_name_before = str(settings_dialog.garden_name_edit.text())
+        draft_dirty_before = bool(settings_dialog._draft_is_dirty())
+        records: dict[str, dict[str, Any]] = {}
+
+        try:
+            for state_name, enabled in (("off", False), ("on", True)):
+                state.loadout.visibility = {
+                    "garden_feature": enabled,
+                    "scenery": enabled,
+                }
+                projection = project_garden_appearance(state)
+                behavior._refresh_appearance_card()
+                QApplication.processEvents()
+                painted_rows = [
+                    [caption, str(behavior.appearance_values[key].text())]
+                    for key, caption in (
+                        ("scenery", "Scenery"),
+                        ("displayed_decoration", "Displayed decoration"),
+                        ("active_bonus", "Active garden bonus"),
+                        ("visual_effects", "Visual effects"),
+                    )
+                ]
+                appearance_bounds = self._widget_bounds_evidence(
+                    behavior.theme_card,
+                    settings_dialog.behavior_scroll.viewport(),
+                )
+                painted = settings_dialog.grab()
+                records[state_name] = {
+                    "projection_rows": [
+                        [caption, value]
+                        for caption, value in projection.summary_rows
+                    ],
+                    "painted_rows": painted_rows,
+                    "painted": bool(
+                        painted is not None
+                        and not painted.isNull()
+                        and appearance_bounds.get("visible", False)
+                        and appearance_bounds.get("contained", False)
+                    ),
+                }
+        finally:
+            # The capture itself intentionally ends on the canonical On state;
+            # the fixture restore after close returns the pre-capture state.
+            state.loadout.visibility = {
+                "garden_feature": True,
+                "scenery": True,
+            }
+            behavior._refresh_appearance_card()
+            QApplication.processEvents()
+
+        evidence = {
+            "records": records,
+            "final_state": "on",
+            "draft_dirty_before": draft_dirty_before,
+            "draft_dirty_after": bool(settings_dialog._draft_is_dirty()),
+            "draft_payload_unchanged": bool(
+                behavior.build_theme_payload() == draft_payload_before
+            ),
+            "garden_name_draft_unchanged": bool(
+                str(settings_dialog.garden_name_edit.text())
+                == garden_name_before
+            ),
+            "reversible": bool(
+                getattr(self, "_settings_appearance_fixture", {}).get(
+                    "reversible",
+                    False,
+                )
+            ),
+            "original_visibility": original_visibility,
+        }
+        evidence["issues"] = list(
+            appearance_state_matrix_issue_codes(evidence)
+        )
+        evidence["passed"] = not evidence["issues"]
+        return evidence
+
+    def _settings_name_preview_absence_evidence(
+        self,
+        settings_dialog: Any,
+    ) -> dict[str, Any]:
+        """Prove Settings has one editable name field and no preview echo."""
+
+        name_edit = settings_dialog.garden_name_edit
+        draft_name = " ".join(str(name_edit.text()).split())
+        normalized_draft = draft_name.casefold()
+        labels = list(settings_dialog.findChildren(QLabel))
+        preview_attribute = getattr(
+            settings_dialog,
+            "garden_name_preview",
+            None,
+        )
+        preview_candidates: list[Any] = []
+        if preview_attribute is not None:
+            preview_candidates.append(preview_attribute)
+        for candidate in labels:
+            accessible_name = str(candidate.accessibleName() or "").strip()
+            object_name = str(candidate.objectName() or "").strip()
+            if (
+                accessible_name.casefold() == "garden name preview"
+                or object_name.casefold() in {
+                    "gardennamepreview",
+                    "garden_name_preview",
+                }
+                or candidate.property("gardenNamePreview") is True
+            ):
+                preview_candidates.append(candidate)
+        preview_candidates = list({
+            id(candidate): candidate
+            for candidate in preview_candidates
+        }.values())
+
+        def visible(candidate: Any) -> bool:
+            try:
+                return bool(candidate.isVisibleTo(settings_dialog))
+            except (AttributeError, RuntimeError, TypeError):
+                return bool(getattr(candidate, "isVisible", lambda: False)())
+
+        visible_candidates = [
+            candidate
+            for candidate in preview_candidates
+            if visible(candidate)
+        ]
+        visible_copy = [
+            " ".join(str(candidate.text()).split())
+            for candidate in visible_candidates
+            if callable(getattr(candidate, "text", None))
+            and " ".join(str(candidate.text()).split())
+        ]
+
+        edit_origin = name_edit.mapTo(settings_dialog, QPoint(0, 0))
+        edit_left = int(edit_origin.x())
+        edit_right = edit_left + int(name_edit.width())
+        edit_bottom = int(edit_origin.y()) + int(name_edit.height())
+        draft_echoes: list[dict[str, Any]] = []
+        if normalized_draft:
+            for candidate in labels:
+                if not visible(candidate):
+                    continue
+                candidate_copy = " ".join(str(candidate.text()).split())
+                if candidate_copy.casefold() != normalized_draft:
+                    continue
+                origin = candidate.mapTo(settings_dialog, QPoint(0, 0))
+                bounds = [
+                    int(origin.x()),
+                    int(origin.y()),
+                    int(candidate.width()),
+                    int(candidate.height()),
+                ]
+                horizontal_overlap = bool(
+                    bounds[0] < edit_right
+                    and bounds[0] + bounds[2] > edit_left
+                )
+                below_field_gap = bounds[1] - edit_bottom
+                if horizontal_overlap and -2 <= below_field_gap <= 64:
+                    draft_echoes.append({
+                        "text": candidate_copy,
+                        "bounds": bounds,
+                    })
+
+        evidence = {
+            "attribute_present": hasattr(
+                settings_dialog,
+                "garden_name_preview",
+            ),
+            "candidate_count": len(preview_candidates),
+            "visible_candidate_count": len(visible_candidates),
+            "visible_copy": visible_copy,
+            "draft_echo_count": len(draft_echoes),
+            "draft_echoes": draft_echoes,
+        }
+        evidence["issues"] = list(
+            settings_name_preview_absence_issue_codes(evidence)
+        )
+        evidence["passed"] = not evidence["issues"]
+        return evidence
 
     def _capture_settings_display_advanced_ready(self) -> None:
         settings_dialog = self._find_settings_dialog()
         if settings_dialog is None:
+            cleanup = getattr(
+                self,
+                "_settings_appearance_fixture_cleanup",
+                None,
+            )
+            if callable(cleanup):
+                cleanup()
             self._close_dashboard()
             self._next_after(300)
             return
         self._set_settings_tab(settings_dialog, 0)
         settings_dialog.behavior.advanced_toggle.setChecked(True)
+        appearance_matrix = self._exercise_settings_appearance_state_matrix(
+            settings_dialog
+        )
+        name_preview_absence = self._settings_name_preview_absence_evidence(
+            settings_dialog
+        )
 
         def display_geometry_ready() -> bool:
             app = QApplication.instance()
@@ -29445,9 +36538,29 @@ class _UiFaceCaptureRunner:
             )
             self._capture_annotations["settings-display-advanced-open"] = {
                 "display_geometry": geometry,
-                "passed": bool(geometry["passed"]),
+                "appearance_state_matrix": appearance_matrix,
+                "garden_name_preview_absence": name_preview_absence,
+                "passed": bool(
+                    geometry["passed"]
+                    and appearance_matrix.get("passed", False)
+                    and name_preview_absence.get("passed", False)
+                ),
             }
-            return bool(geometry["passed"])
+            return bool(
+                geometry["passed"]
+                and appearance_matrix.get("passed", False)
+                and name_preview_absence.get("passed", False)
+            )
+
+        def close_and_restore() -> None:
+            self._close_widget(settings_dialog)
+            cleanup = getattr(
+                self,
+                "_settings_appearance_fixture_cleanup",
+                None,
+            )
+            if callable(cleanup):
+                cleanup()
 
         self._wait_for(
             lambda: bool(
@@ -29460,7 +36573,7 @@ class _UiFaceCaptureRunner:
                 "settings-display-advanced-open",
                 settings_dialog,
                 capture_delay_ms=500,
-                close_callback=lambda: self._close_widget(settings_dialog),
+                close_callback=close_and_restore,
                 close_ms=900,
                 next_ms=1400,
             ),
@@ -29470,6 +36583,7 @@ class _UiFaceCaptureRunner:
                 "Settings Display Advanced panel did not become visible and "
                 "contained"
             ),
+            on_error=close_and_restore,
         )
 
     def _capture_settings_troubleshooting(self) -> None:
@@ -29554,6 +36668,16 @@ class _UiFaceCaptureRunner:
         refresh = getattr(settings_dialog, "_refresh_debug_report", None)
         if callable(refresh):
             refresh()
+        matrix = self._exercise_diagnostics_state_matrix(settings_dialog)
+        annotation = self._capture_annotations.setdefault(
+            "diagnostics-warning",
+            {},
+        )
+        annotation["diagnostics_state_matrix"] = matrix
+        annotation["passed"] = bool(
+            annotation.get("passed", True)
+            and matrix.get("passed", False)
+        )
         self._capture_and_advance(
             "diagnostics-warning",
             settings_dialog,
@@ -29562,6 +36686,93 @@ class _UiFaceCaptureRunner:
             close_ms=900,
             next_ms=1400,
         )
+
+    def _exercise_diagnostics_state_matrix(
+        self,
+        dialog: Any,
+    ) -> dict[str, Any]:
+        """Paint all Surface 26 states, leaving warning plus inline copy visible."""
+
+        from ..presentation import project_diagnostics
+
+        variants: tuple[tuple[str, dict[str, Any]], ...] = (
+            ("success", {}),
+            ("warning", {"missing_artwork_count": 3}),
+            ("failure", {"contract_failure_count": 1}),
+            ("checking", {"checking": True}),
+            (
+                "copy-confirmation",
+                {"missing_artwork_count": 3, "copy_confirmed": True},
+            ),
+        )
+        records: dict[str, dict[str, Any]] = {}
+        for name, inputs in variants:
+            dialog._apply_diagnostics_projection(
+                project_diagnostics(**inputs)
+            )
+            QApplication.processEvents()
+            dialog.repaint()
+            QApplication.processEvents()
+            probe = dialog.grab()
+            records[name] = {
+                "diagnostic_state": str(
+                    dialog.diagnostics_card.property("diagnosticState") or ""
+                ),
+                "result_state": str(
+                    dialog.diagnostics_card.property(
+                        "diagnosticResultState"
+                    ) or ""
+                ),
+                "title": str(dialog.troubleshooting_status.text()).strip(),
+                "summary": str(dialog.diagnostics_summary.text()).strip(),
+                "check_enabled": bool(dialog.refresh_debug.isEnabled()),
+                "check_label": str(dialog.refresh_debug.text()).strip(),
+                "copy_confirmation_visible": bool(
+                    dialog.diagnostics_copy_confirmation.isVisibleTo(dialog)
+                ),
+                "copy_confirmation": str(
+                    dialog.diagnostics_copy_confirmation.text()
+                ).strip(),
+                "painted": bool(
+                    dialog.diagnostics_card.isVisibleTo(dialog)
+                    and not probe.isNull()
+                ),
+            }
+
+        visible_scrolls = [
+            scroll
+            for scroll in dialog.findChildren(QScrollArea)
+            if scroll.isVisibleTo(dialog)
+        ]
+        diagnostics_scroll = dialog.diagnostics_scroll
+        chrome = (dialog.header, dialog.tabs, dialog.footer)
+        topology = {
+            "visible_central_scroll_owners": len(visible_scrolls),
+            "diagnostics_scroll_is_owner": (
+                len(visible_scrolls) == 1
+                and visible_scrolls[0] is diagnostics_scroll
+            ),
+            "chrome_outside_scroll": all(
+                not diagnostics_scroll.isAncestorOf(widget)
+                for widget in chrome
+            ),
+        }
+        evidence: dict[str, Any] = {
+            "records": records,
+            "topology": topology,
+        }
+        issues = diagnostics_state_matrix_issue_codes(evidence)
+        evidence["issues"] = list(issues)
+        evidence["passed"] = not issues
+        if issues:
+            self._failures.append({
+                "label": "diagnostics-warning",
+                "reason": (
+                    "Diagnostics painted state matrix failed: "
+                    + ", ".join(issues)
+                ),
+            })
+        return evidence
 
     def _capture_dashboard_stress(
         self,
@@ -31605,7 +38816,7 @@ class _UiFaceCaptureRunner:
                 return False
             note[field_names[0]] = "What did this review uncover?"
             if len(field_names) > 1:
-                note[field_names[1]] = "A Garden Find."
+                note[field_names[1]] = "A Standard Find."
             add_note = getattr(collection, "add_note", None)
             if callable(add_note):
                 add_note(note, int(deck_id))
@@ -31906,7 +39117,7 @@ class _UiFaceCaptureRunner:
                     item_id=item.item_id,
                     display_name=item.display_name,
                     description=(
-                        "Added to Garden Decorations"
+                        "Added to garden decorations"
                         if item.environment_kind == "garden_feature"
                         else "Added to Scenery"
                     ),
@@ -31969,7 +39180,7 @@ class _UiFaceCaptureRunner:
                 raise RuntimeError(
                     "canonical Reviewer reward feedback could not be projected"
                 )
-            expected_title = "Garden Find"
+            expected_title = "Standard Find"
             receipt_correlations = {
                 receipt.correlation_id for receipt in all_receipts
             }
@@ -32065,7 +39276,7 @@ class _UiFaceCaptureRunner:
                         feedback,
                         event_id=f"{feedback.event_id}:find:{index}",
                         event_ids=(f"{feedback.event_id}:find:{index}",),
-                        title="Garden Find",
+                        title="Standard Find",
                         message=str(presentation.description),
                         asset_category=(
                             "environment"
@@ -32702,6 +39913,7 @@ class _UiFaceCaptureRunner:
         completion.status = "in_progress"
         completion.starting_required_cards = 194
         completion.starting_required_cards_completed = 176
+        completion.remaining_new_cards = 0
         completion.remaining_required_reviews = 18
         completion.remaining_learning_steps = 0
         completion.future_learning_steps_before_cutoff = 0
@@ -32891,7 +40103,11 @@ class _UiFaceCaptureRunner:
         except Exception:
             full_bloom_art_asset = art_asset
 
-        capture_cards_completed = 126
+        # Deliberately keep the local session delta distinct from the
+        # scheduler's all-day total. This catches a presentation that simply
+        # repeats Today’s Cards in the Session Summary.
+        capture_session_cards_completed = 24
+        capture_today_cards_completed = 126
         capture_home_new_cards = 1
         capture_home_learn_cards = 0
         capture_home_due_cards = 18
@@ -32901,7 +40117,7 @@ class _UiFaceCaptureRunner:
             + capture_home_due_cards
         )
         capture_today_cards_total = (
-            capture_cards_completed + capture_cards_remaining
+            capture_today_cards_completed + capture_cards_remaining
         )
         now_seconds = max(0, int(time.time()))
         start_effects = EffectsSnapshot(
@@ -32942,7 +40158,7 @@ class _UiFaceCaptureRunner:
             anki_day_id="2026-08-28",
             started_at="2026-08-28T09:00:00+00:00",
             ended_at="2026-08-28T09:42:00+00:00",
-            cards_completed=capture_cards_completed,
+            cards_completed=capture_session_cards_completed,
             today_cards_start=TodayCardsSnapshot(
                 "in_progress",
                 cards_remaining=capture_today_cards_total,
@@ -32957,7 +40173,7 @@ class _UiFaceCaptureRunner:
             today_cards_end=TodayCardsSnapshot(
                 "in_progress",
                 cards_remaining=capture_cards_remaining,
-                cards_completed=capture_cards_completed,
+                cards_completed=capture_today_cards_completed,
                 cards_total=capture_today_cards_total,
                 currently_due_cards=capture_cards_remaining,
                 kind="reviewable",
@@ -33159,7 +40375,7 @@ class _UiFaceCaptureRunner:
             segment.started_at,
             segment.ended_at,
             (segment,),
-            capture_cards_completed,
+            capture_session_cards_completed,
         )
         cleaned_up = False
         cleanup_started_at = 0.0
@@ -33270,7 +40486,8 @@ class _UiFaceCaptureRunner:
                     try:
                         progress_finished = bool(
                             progress is not None
-                            and int(progress.value()) == capture_cards_completed
+                            and int(progress.value())
+                            == capture_today_cards_completed
                             and int(progress.maximum()) == capture_today_cards_total
                         )
                     except (AttributeError, RuntimeError, TypeError, ValueError):
@@ -33312,12 +40529,30 @@ class _UiFaceCaptureRunner:
                         "session_summary_content_matrix": content_matrix,
                         "home_study_line": dict(study_line_audit),
                         "home_fullscreen_window": window_mode,
+                        "session_cards_completed": (
+                            capture_session_cards_completed
+                        ),
+                        "today_cards_completed": capture_today_cards_completed,
+                        "today_cards_remaining": capture_cards_remaining,
+                        "today_cards_total": capture_today_cards_total,
+                        "session_daily_totals_distinct": bool(
+                            capture_session_cards_completed
+                            != capture_today_cards_completed
+                            and capture_today_cards_completed
+                            + capture_cards_remaining
+                            == capture_today_cards_total
+                        ),
                         "passed": bool(
                             study_line_audit.get("passed", False)
                             and audit.get("passed", False)
                             and matrix.get("passed", False)
                             and content_matrix.get("passed", False)
                             and window_mode.get("passed", False)
+                            and capture_session_cards_completed
+                            != capture_today_cards_completed
+                            and capture_today_cards_completed
+                            + capture_cards_remaining
+                            == capture_today_cards_total
                         ),
                     }
                     self._capture_and_advance(
@@ -33539,6 +40774,208 @@ class _UiFaceCaptureRunner:
 
         QTimer.singleShot(500, enter_deck_browser)
 
+    def _exercise_sync_reward_discovery_state_matrix(
+        self,
+        card: Any,
+        canonical_summary: Any,
+    ) -> dict[str, Any]:
+        """Paint omitted and collapsed discovery states before Surface 29."""
+
+        def settle() -> None:
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            card.repaint()
+            if app is not None:
+                app.processEvents()
+
+        def observe() -> dict[str, Any]:
+            widgets = [card, *list(card.findChildren(QWidget))]
+            rewards_sections = [
+                candidate
+                for candidate in widgets
+                if candidate.property("syncRewardsSection") is True
+                and candidate.isVisibleTo(card)
+            ]
+            rewards_section = (
+                rewards_sections[0] if len(rewards_sections) == 1 else None
+            )
+            reward_rows = [
+                candidate
+                for candidate in (
+                    rewards_section.findChildren(QFrame)
+                    if rewards_section is not None else
+                    ()
+                )
+                if candidate.property("syncRow") is True
+                and candidate.isVisibleTo(card)
+            ]
+            environment_rows = [
+                candidate
+                for candidate in reward_rows
+                if str(candidate.property("syncRewardKind") or "")
+                == "garden_discovery"
+            ]
+            standard_find_rows = [
+                candidate
+                for candidate in reward_rows
+                if str(candidate.property("syncRewardKind") or "")
+                == "standard_find"
+            ]
+            metric_tiles = [
+                candidate
+                for candidate in card.findChildren(QFrame)
+                if candidate.property("syncMetric") is True
+                and candidate.isVisibleTo(card)
+            ]
+            metric_projection: dict[str, dict[str, str]] = {}
+            for tile in metric_tiles:
+                key = str(tile.property("syncMetricKey") or "")
+                labels = [
+                    child
+                    for child in tile.findChildren(QLabel)
+                    if child.property("syncMetricLabel") is True
+                ]
+                values = [
+                    child
+                    for child in tile.findChildren(QLabel)
+                    if child.property("syncMetricValue") is True
+                ]
+                if key and len(labels) == 1 and len(values) == 1:
+                    metric_projection[key] = {
+                        "label": str(labels[0].text()),
+                        "value": str(
+                            values[0].property("syncMetricFinalValue") or ""
+                        ),
+                    }
+            headings = [
+                candidate
+                for candidate in card.findChildren(QLabel)
+                if candidate.isVisibleTo(card)
+                and str(candidate.text()).strip() == "REWARDS FOUND"
+            ]
+            disclosures = [
+                candidate
+                for candidate in card.findChildren(QAbstractButton)
+                if candidate.property("syncDisclosure") is True
+                and candidate.isVisibleTo(card)
+            ]
+            disclosure = disclosures[0] if len(disclosures) == 1 else None
+            pixmap = card.grab()
+            model = getattr(card, "model", None)
+            return {
+                "environment_count": len(
+                    tuple(
+                        getattr(model, "environment_discoveries", ()) or ()
+                    )
+                ),
+                "rewards_section_visible": rewards_section is not None,
+                "rewards_heading_visible": len(headings) == 1,
+                "visible_environment_rows": len(environment_rows),
+                "visible_standard_find_rows": len(standard_find_rows),
+                "visible_environment_ids": [
+                    str(row.property("syncRewardIdentity") or "")
+                    for row in environment_rows
+                ],
+                "visible_environment_event_ids": [
+                    str(row.property("syncRewardEventId") or "")
+                    for row in environment_rows
+                ],
+                "visible_standard_find_ids": [
+                    str(row.property("syncRewardIdentity") or "")
+                    for row in standard_find_rows
+                ],
+                "visible_standard_find_event_ids": [
+                    str(row.property("syncRewardEventId") or "")
+                    for row in standard_find_rows
+                ],
+                "metric_tile_count": len(metric_tiles),
+                "metric_projection": metric_projection,
+                "disclosure_visible": disclosure is not None,
+                "disclosure_text": (
+                    _displayed_button_text(disclosure)
+                    if disclosure is not None else
+                    ""
+                ),
+                "disclosure_accessible_name": (
+                    str(disclosure.accessibleName())
+                    if disclosure is not None else
+                    ""
+                ),
+                "expanded": bool(getattr(card, "_expanded", False)),
+                "painted": bool(
+                    card.isVisible()
+                    and pixmap is not None
+                    and not pixmap.isNull()
+                ),
+            }
+
+        records: dict[str, dict[str, Any]] = {}
+        base_discovery = dict(
+            tuple(canonical_summary.environment_discoveries)[0]
+        )
+        multi_discoveries = tuple({
+            **base_discovery,
+            "environment_id": environment_id,
+            "event_id": f"capture-sync-discovery:{environment_id}",
+            "display_name": display_name,
+            "rarity": rarity,
+        } for environment_id, display_name, rarity in (
+            ("firefly_lantern", "Firefly Lantern", "Rare"),
+            ("moon_arch", "Moon Arch", "Rare"),
+            ("bird_bath", "Bird Bath", "Uncommon"),
+            ("stone_path", "Stone Path", "Common"),
+            ("wind_chimes", "Wind Chimes", "Common"),
+        ))
+
+        card._expanded = False
+        card.update_model(replace(
+            canonical_summary,
+            environment_discoveries=(),
+            finds=(),
+        ))
+        settle()
+        records["no-discovery"] = observe()
+
+        card._expanded = False
+        card.update_model(replace(
+            canonical_summary,
+            environment_discoveries=multi_discoveries,
+            finds=({
+                "reward_id": "growth_charge_small",
+                "event_id": (
+                    "capture-sync-standard-find:growth_charge_small"
+                ),
+                "display_name": "Small Growth Charge",
+                "quantity": 3,
+                "rarity": "Common",
+                "reward_type": "inventory_item",
+            },),
+        ))
+        settle()
+        records["multi-discovery-collapsed"] = observe()
+
+        card._expanded = False
+        card.update_model(canonical_summary)
+        settle()
+        restored = observe()
+        evidence = {
+            "records": records,
+            "restored": restored,
+        }
+        issues = sync_reward_discovery_state_matrix_issue_codes(evidence)
+        evidence["issues"] = list(issues)
+        evidence["passed"] = not issues
+        if issues:
+            self._failures.append({
+                "label": "sync-rewards-summary",
+                "reason": (
+                    "Sync reward discovery painted state matrix failed: "
+                    + ", ".join(issues)
+                ),
+            })
+        return evidence
+
     def _capture_sync_rewards_summary(self) -> None:
         """Capture one rich, committed post-sync receipt over stable Home."""
 
@@ -33604,6 +41041,8 @@ class _UiFaceCaptureRunner:
                     stage_progress_after=68,
                     next_stage="rare",
                     active=True,
+                    stage_event_id="capture-sync-stage-change",
+                    stage_event_text="Reached Flowering",
                     checkpoints=(SyncPlantCheckpoint(
                         event_id="capture-sync-checkpoint",
                         percent=75,
@@ -33657,6 +41096,9 @@ class _UiFaceCaptureRunner:
             finds=(),
             environment_discoveries=({
                 "environment_id": "firefly_lantern",
+                "event_id": (
+                    "capture-sync-environment-discovery:firefly_lantern"
+                ),
                 "display_name": "Firefly Lantern",
                 "rarity": "Rare",
                 "preview_asset": environment_art,
@@ -33669,6 +41111,13 @@ class _UiFaceCaptureRunner:
                     "event_type": "full_bloom",
                     "stage_name": "Full Bloom",
                     "display_text": "Wisteria reached Full Bloom",
+                },
+                {
+                    "event_id": "capture-sync-stage-change",
+                    "plant_id": plant_id,
+                    "event_type": "stage_change",
+                    "stage_name": "Flowering",
+                    "display_text": "Reached Flowering",
                 },
                 {
                     "event_id": "capture-sync-checkpoint",
@@ -33684,6 +41133,7 @@ class _UiFaceCaptureRunner:
         )
 
         summary_card: Any | None = None
+        discovery_state_matrix: dict[str, Any] = {}
         focus_before: Any | None = None
         cleaned_up = False
         cleanup_started_at = 0.0
@@ -33752,7 +41202,7 @@ class _UiFaceCaptureRunner:
                 return False
 
         def render_summary() -> None:
-            nonlocal summary_card, focus_before
+            nonlocal summary_card, focus_before, discovery_state_matrix
             parent = getattr(mw, "web", None)
             if parent is None:
                 self._failures.append({
@@ -33775,6 +41225,12 @@ class _UiFaceCaptureRunner:
                 app = QApplication.instance()
                 if app is not None:
                     app.processEvents()
+                discovery_state_matrix = (
+                    self._exercise_sync_reward_discovery_state_matrix(
+                        summary_card,
+                        summary,
+                    )
+                )
             except Exception:
                 cleanup()
                 raise
@@ -33815,10 +41271,19 @@ class _UiFaceCaptureRunner:
                         **nonmodal,
                         "passed": nonmodal_passed,
                     },
+                    "sync_reward_discovery_state_matrix": (
+                        discovery_state_matrix
+                    ),
                     "home_fullscreen_window": window_mode,
-                    "passed": passed,
+                    "passed": bool(
+                        passed
+                        and discovery_state_matrix.get("passed", False)
+                    ),
                 }
-                return passed
+                return bool(
+                    passed
+                    and discovery_state_matrix.get("passed", False)
+                )
 
             def capture_ready() -> None:
                 self._capture_and_advance(
@@ -33837,7 +41302,7 @@ class _UiFaceCaptureRunner:
                 tries=100,
                 failure_label=label,
                 failure_reason=(
-                    "Sync rewards summary did not reach centered nonmodal geometry"
+                    "Sync rewards summary did not reach right-docked nonmodal geometry"
                 ),
                 on_error=cleanup,
             )
@@ -34011,7 +41476,7 @@ class _UiFaceCaptureRunner:
                     "garden_feature",
                     "Rare",
                     "firefly_lantern",
-                    "Added to Garden Decorations",
+                    "Added to garden decorations",
                     occurred_at,
                 ),
                 EnvironmentDiscovery(
@@ -34070,7 +41535,7 @@ class _UiFaceCaptureRunner:
             and compact.hero_title == "Full Bloom achieved"
             and compact.hero_subtitle == plant.name
             and [summary.label for summary in compact.visible_summaries]
-            == ["1 Garden Find", "2 new discoveries"]
+            == ["1 Standard Find", "Garden discoveries"]
             and len(compact.visible_summaries) == 2
             and compact.visible_summaries[0].reward_type == "garden_find"
             and bool(compact.visible_summaries[0].artwork_ref)
@@ -34325,7 +41790,7 @@ class _UiFaceCaptureRunner:
                     ]
                     and bundle_evidence["secondary_summary_count"] == 2
                     and bundle_evidence["visible_summary_labels"]
-                    == ["1 Garden Find", "2 new discoveries"]
+                    == ["1 Standard Find", "Garden discoveries"]
                     and bundle_evidence["visible_summary_reward_types"]
                     == ["garden_find", "environment_discovery"]
                     and all(bundle_evidence["visible_summary_artwork_refs"])
@@ -34654,6 +42119,17 @@ class _UiFaceCaptureRunner:
                 "required": False,
                 "required_count": 0,
                 "records": [],
+                "four_state_scroll_matrix": {
+                    "required": False,
+                    "required_states": [],
+                    "observations": [],
+                    "witness_labels": {},
+                    "canonical_scroll_value_before": 0,
+                    "canonical_scroll_value_after": 0,
+                    "canonical_scroll_restored": True,
+                    "issues": [],
+                    "passed": True,
+                },
                 "passed": True,
             }
         coverage_by_label: dict[str, tuple[str, str]] = {}
@@ -34731,7 +42207,7 @@ class _UiFaceCaptureRunner:
             fixture = record.get("fixture_validation")
             if (
                 not isinstance(fixture, dict)
-                or fixture.get("passed") is not True
+                or fixture.get("identity_passed") is not True
                 or fixture.get("state_profile") != label
             ):
                 issues.append("scroll-fixture-identity-not-proven")
@@ -34808,6 +42284,15 @@ class _UiFaceCaptureRunner:
                 issues.append("visible-footer-height")
             if not isinstance(audit.get("issues"), list) or audit.get("issues"):
                 issues.append("dialog-scroll-audit-reported-issues")
+            state_matrix = audit.get("four_state_scroll_matrix")
+            state_matrix_issues = dialog_scroll_state_matrix_issue_codes(
+                state_matrix,
+                require_complete=False,
+            )
+            issues.extend(
+                f"scroll-state:{issue}"
+                for issue in state_matrix_issues
+            )
             if not any(issue.startswith("invalid-scroll-metric:") for issue in issues):
                 metrics = {
                     field: int(audit[field])
@@ -34860,6 +42345,7 @@ class _UiFaceCaptureRunner:
                 "last_body_child_bottom_at_scroll_end": audit.get(
                     "last_body_child_bottom_at_scroll_end"
                 ),
+                "four_state_scroll_matrix": state_matrix,
                 "issues": list(dict.fromkeys(issues)),
                 "passed": passed,
             })
@@ -34871,18 +42357,69 @@ class _UiFaceCaptureRunner:
                         + ", ".join(dict.fromkeys(issues))
                     ),
                 })
+        witness_observations: list[dict[str, Any]] = []
+        witness_labels: dict[str, str] = {}
+        for state in DIALOG_SCROLL_FOUR_STATE_NAMES:
+            for result in results:
+                matrix = result.get("four_state_scroll_matrix")
+                if not isinstance(matrix, dict):
+                    continue
+                match = next((
+                    observation
+                    for observation in list(matrix.get("observations", ()) or ())
+                    if isinstance(observation, dict)
+                    and observation.get("state") == state
+                    and observation.get("passed") is True
+                    and not dialog_scroll_state_observation_issue_codes(
+                        observation
+                    )
+                ), None)
+                if match is None:
+                    continue
+                witness = dict(match)
+                witness["label"] = str(result.get("label", ""))
+                witness_observations.append(witness)
+                witness_labels[state] = witness["label"]
+                break
+        aggregate_matrix: dict[str, Any] = {
+            "required": True,
+            "required_states": list(DIALOG_SCROLL_FOUR_STATE_NAMES),
+            "observations": witness_observations,
+            "witness_labels": witness_labels,
+            "canonical_scroll_value_before": 0,
+            "canonical_scroll_value_after": 0,
+            "canonical_scroll_restored": True,
+        }
+        aggregate_matrix_issues = dialog_scroll_state_matrix_issue_codes(
+            aggregate_matrix,
+            require_complete=True,
+        )
+        aggregate_matrix["issues"] = list(aggregate_matrix_issues)
+        aggregate_matrix["passed"] = not aggregate_matrix_issues
+        if aggregate_matrix_issues:
+            self._failures.append({
+                "label": "dialog-scroll-four-state-matrix",
+                "reason": (
+                    "Four-state scrolling coverage failed: "
+                    + ", ".join(aggregate_matrix_issues)
+                ),
+            })
+        aggregate_complete = bool(
+            len(results) == len(coverage_by_label)
+            and {result["label"] for result in results}
+            == set(coverage_by_label)
+        )
         return {
             "required": True,
             "required_count": len(coverage_by_label),
             "attempted_count": len(results),
-            "aggregate_complete": (
-                len(results) == len(coverage_by_label)
-                and {result["label"] for result in results}
-                == set(coverage_by_label)
-            ),
+            "aggregate_complete": aggregate_complete,
             "records": results,
+            "four_state_scroll_matrix": aggregate_matrix,
             "passed": (
                 not duplicate_labels
+                and aggregate_complete
+                and aggregate_matrix["passed"]
                 and all(result["passed"] for result in results)
             ),
         }
@@ -34976,7 +42513,25 @@ class _UiFaceCaptureRunner:
             dialog_scroll_audits = {
                 "required": True,
                 "required_count": 0,
+                "attempted_count": 0,
+                "aggregate_complete": False,
                 "records": [],
+                "four_state_scroll_matrix": {
+                    "required": True,
+                    "required_states": list(
+                        DIALOG_SCROLL_FOUR_STATE_NAMES
+                    ),
+                    "observations": [],
+                    "witness_labels": {},
+                    "canonical_scroll_value_before": 0,
+                    "canonical_scroll_value_after": 0,
+                    "canonical_scroll_restored": True,
+                    "issues": [
+                        f"missing-scroll-state:{state}"
+                        for state in DIALOG_SCROLL_FOUR_STATE_NAMES
+                    ],
+                    "passed": False,
+                },
                 "passed": False,
             }
             self._capture_advisories.append({
@@ -34989,6 +42544,17 @@ class _UiFaceCaptureRunner:
                 "required": False,
                 "required_count": 0,
                 "records": [],
+                "four_state_scroll_matrix": {
+                    "required": False,
+                    "required_states": [],
+                    "observations": [],
+                    "witness_labels": {},
+                    "canonical_scroll_value_before": 0,
+                    "canonical_scroll_value_after": 0,
+                    "canonical_scroll_restored": True,
+                    "issues": [],
+                    "passed": True,
+                },
                 "passed": True,
             }
         dialog_scroll_audits_complete = bool(
@@ -35123,6 +42689,9 @@ class _UiFaceCaptureRunner:
             ],
             "scenario_setup_closures": {
                 label: {
+                    "scenario_id": capture_scenario_id(label),
+                    "fixture_id": capture_fixture_id(label),
+                    "scenario_step": capture_scenario_step(label),
                     "capture_prerequisites": list(
                         capture_scenario_prerequisites(label)
                     ),

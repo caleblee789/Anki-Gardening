@@ -17,7 +17,8 @@ active.
 - `GardenScene.heightForWidth()` uses a 4:3 scene below 620 px, 16:9 from 620 through 1399 px, and a 12:5 home-like scene at 1400 px and above. The registered surface profile selects its 4:3 bitmap at aspect ratios up to 1.42, its home bitmap from 2.05 upward, and its 16:9 bitmap in between.
 - The three native background canvases are 1280 x 960 (4:3), 1672 x 941 (16:9), and 1942 x 809 (home). There was no independent bed asset before this change: every bed was painted into these full-scene bitmaps and repeated in their scenery reskins.
 - `plant_layout()` resolves six explicit `BedAnchor` records from `verdant_twilight_surface_v6`. A plant's ground point is the slot support-line point, not the background or planter bitmap center.
-- Plant draw position is `stable slot ground anchor - asset soil_contact * plant draw size`. Plant draw size is calculated only from plant metadata, slot depth scale, responsive fit, and canvas aspect.
+- Plant draw position is `stable slot ground anchor - asset soil_contact * plant draw size`. Plant draw size is calculated only from plant metadata, slot depth scale, responsive fit, canvas aspect, and the serialized per-asset `visual_scale_correction`.
+- `visual_scale_correction` is required manifest data and round-trips through placement serialization. Catalog thumbnails use a separately calibrated `thumbnail_scale`; thumbnail calibration never changes soil-plane geometry, saved anchors, or hit regions.
 - Plant hitboxes come from the plant asset's semantic `interaction_bounds` plus motion/44 px accessibility padding. Empty-bed and move-mode targets use `bed_footprint` separately.
 - Selection rings use `bed_footprint`; hover/keyboard outlines follow plant alpha; information cards use `smart_card_anchor` and the plant hit rectangle. Retained watering-can metadata is dormant and is neither rendered nor reserved by scene layout.
 - Runtime order is deterministic: background, decorations, rear shadows 0-3, rear plants 0-3, rear occlusion, front shadows 4-5, front plants 4-5, front occlusion, interaction/selection/labels.
@@ -25,7 +26,7 @@ active.
 
 ## Canonical 100% fixture
 
-Canonical scene: native 16:9 surface, 1672 x 941 px. The fixed fixture deliberately covers all six stages: Bonsai Seed, Rose Sprout, Sunflower Young, Lavender Mature, Hydrangea Flowering, and Wisteria Rare.
+Canonical scene: native 16:9 surface, 1672 x 941 px. The fixed fixture deliberately covers all six stages: Bonsai Seed, Rose Sprout, Sunflower Young, Lavender Mature, Hydrangea Flowering, and Wisteria internal `rare` (player-facing Full Bloom).
 
 Coordinates and rectangles are `[x, y]` or `[left, top, width, height]` in scene pixels. `slot scale` is the immutable perspective coefficient. `resolved scale` is the fixture plant's calculated draw width and must also remain exactly unchanged for the same fixture.
 
@@ -84,6 +85,15 @@ feed plant anchors, plant scale, plant hitboxes, plant labels, or render order.
 
 `tests/test_planter_family_contract.py`, the scene surface fixture, the asset
 audit, responsive geometry matrices, and package parity are the executable
-authorities. Visual review images under `build/` are reproducible diagnostics,
-not permanent source or release evidence. The canonical v19 UI capture remains
-the retained scene-level visual record.
+authorities. The audit covers all 60 species-stage assets, requires serialized
+`visual_scale_correction` plus calibrated thumbnail scale, and exercises every
+asset across all six bed positions.
+
+Capture contract v26 (contract schema 2, scenario schema 3) is the current
+visual-evidence boundary. It rejects v25 reuse and requires scenario/fixture/
+one-based-step lineage plus hard gates for asset mapping and clipping. Current
+run paths, archive and capture hashes, artifact sizes, and validation totals
+are recorded only in the
+[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). These artifacts remain
+review evidence, not release approval: `quality_status: review-required`,
+`release_ready: false`, with manual and platform gates open.

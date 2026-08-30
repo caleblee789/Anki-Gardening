@@ -70,6 +70,14 @@ def test_environment_discovery_icon_is_not_a_generic_image_frame() -> None:
     assert "M17.5 3.5v5" in payload
 
 
+def test_settings_icon_is_a_closed_cog_not_a_weather_sunburst() -> None:
+    payload = GARDEN_ICON_PATHS["settings"]
+
+    assert '<circle cx="12" cy="12" r="3.1"/>' in payload
+    assert "M9.7 2.8h4.6" in payload
+    assert "M12 2.5v3" not in payload
+
+
 
 
 def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:

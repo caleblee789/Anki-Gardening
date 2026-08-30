@@ -484,7 +484,7 @@ def test_explicit_only_reuse_rejects_competing_evidence_modes(
         runner.main(arguments)
 
 
-def test_profile_retention_understands_relative_v24_paths_and_is_independent(
+def test_profile_retention_preserves_all_raw_and_sheet_evidence_per_profile(
     tmp_path: Path,
 ) -> None:
     evidence_root = tmp_path / "evidence"
@@ -518,17 +518,14 @@ def test_profile_retention_understands_relative_v24_paths_and_is_independent(
         "capture-sequence-20260824-000004",
         "capture-sequence-20260824-000003",
         "capture-sequence-20260824-000002",
+        "capture-sequence-20260824-000001",
     ]
-    assert [path.name for path in pruned] == [
-        "capture-sequence-20260824-000001"
-    ]
-    assert len(pruned_archives) == 1
-    assert len(retained_sheets) == 3
-    assert [path.name for path in pruned_sheets] == [
-        "anki-garden-ui-contact-sheet-2.1.0-20260824-000001"
-    ]
-    assert not profiles["representative"][0].exists()
-    assert not (
+    assert pruned == []
+    assert pruned_archives == []
+    assert len(retained_sheets) == 4
+    assert pruned_sheets == []
+    assert profiles["representative"][0].exists()
+    assert (
         representative_root
         / "contact-sheets"
         / "anki-garden-ui-contact-sheet-2.1.0-20260824-000001"
@@ -546,15 +543,11 @@ def test_profile_retention_understands_relative_v24_paths_and_is_independent(
     ) = runner._enforce_profile_evidence_retention(
         full_root
     )
-    assert len(retained_full) == 3
-    assert len(retained_full_sheets) == 3
-    assert [path.name for path in pruned_full] == [
-        "capture-sequence-20260824-000001"
-    ]
-    assert [path.name for path in pruned_full_sheets] == [
-        "anki-garden-ui-contact-sheet-2.1.0-20260824-000001"
-    ]
-    assert not profiles["full"][0].exists()
+    assert len(retained_full) == 4
+    assert len(retained_full_sheets) == 4
+    assert pruned_full == []
+    assert pruned_full_sheets == []
+    assert profiles["full"][0].exists()
 
 
 def test_profile_retention_preserves_malformed_fake_complete_artifacts(
@@ -591,6 +584,14 @@ def test_profile_retention_preserves_malformed_fake_complete_artifacts(
     assert malformed.exists()
     assert archive.exists()
     assert all(path.exists() for path in valid_runs)
+
+
+def test_profile_retention_uses_the_current_v26_contract() -> None:
+    assert runner.CONTRACT_VERSION == 26
+    assert runner._profile_evidence_counts(26, "representative") == (18, 2)
+    assert runner._profile_evidence_counts(26, "full") == (34, 5)
+    assert runner._profile_evidence_counts(25, "full") is None
+    assert runner._profile_evidence_counts(24, "representative") == (26, 4)
 
 
 class _FakeProcess:

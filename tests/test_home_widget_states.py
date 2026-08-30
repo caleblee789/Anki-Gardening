@@ -9,10 +9,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ankigarden.ui.home_widget import (
+    HomeSurfaceMode,
     HomeWidgetData,
     HomeWidgetSnapshot,
     HomeWidgetStateController,
     build_home_widget_success_data,
+    home_surface_view_model,
     render_home_widget,
 )
 from ankigarden.models.state import Achievement
@@ -50,6 +52,49 @@ def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str 
         active_next_stage="sprout",
         active_points_remaining=max(0, 500 - growth_earned),
     )
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected_mode", "current", "maximum", "percent"),
+    (
+        ({"starter_selected": False}, HomeSurfaceMode.STARTER, 0, 0, 0.0),
+        ({"active_plant_name": ""}, HomeSurfaceMode.EMPTY, 0, 0, 0.0),
+        ({"active_stage_points": 0}, HomeSurfaceMode.ACTIVE_ZERO, 0, 500, 0.0),
+        ({"active_stage_points": 125}, HomeSurfaceMode.ACTIVE_PARTIAL, 125, 500, 25.0),
+        (
+            {
+                "active_plant_name": "Clover",
+                "active_fully_grown": True,
+                "active_growth_points": 50_000,
+                "active_stage_points": 0,
+                "active_stage_goal": 0,
+            },
+            HomeSurfaceMode.ACTIVE_COMPLETE,
+            50_000,
+            50_000,
+            100.0,
+        ),
+    ),
+)
+def test_home_surface_view_model_drives_every_compact_product_state(
+    changes: dict[str, object],
+    expected_mode: HomeSurfaceMode,
+    current: int,
+    maximum: int,
+    percent: float,
+) -> None:
+    base = _sample_data()
+    data = HomeWidgetData(**{**base.__dict__, **changes})
+
+    view = home_surface_view_model(data)
+    html = render_home_widget(HomeWidgetSnapshot(99, "success", data))
+
+    assert view.mode is expected_mode
+    assert (view.progress_current, view.progress_maximum) == (current, maximum)
+    assert view.progress_percent == pytest.approx(percent)
+    assert f'data-home-mode="{expected_mode.value}"' in html
+    assert f'data-progress-current="{current}"' in html
+    assert f'data-progress-maximum="{maximum}"' in html
 
 
 def test_loading_state_preserves_preview_geometry_without_actions() -> None:

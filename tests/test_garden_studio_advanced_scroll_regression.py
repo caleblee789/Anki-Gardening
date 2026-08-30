@@ -520,6 +520,104 @@ def _live_replacement_quote(engine: Any, storage: Any) -> Any:
     )
 
 
+def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv(
+        "QT_QPA_PLATFORM",
+        os.environ.get("QT_QPA_PLATFORM", "offscreen"),
+    )
+    try:
+        from aqt.qt import QApplication, QWidget
+        from ankigarden.models.state import CURRENT_CATALOG_SPECIES_ORDER, Plant
+        from ankigarden.presentation import project_collection
+        from ankigarden.purchases import (
+            PurchaseKind,
+            PurchaseRequest,
+            purchase_presentation,
+        )
+        from ankigarden.ui.dashboard import NurseryDialog
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    _config, storage, engine = _live_engine_fixture()
+    species = [
+        item for item in CURRENT_CATALOG_SPECIES_ORDER
+        if item != "sunflower"
+    ]
+    plants = [
+        Plant(
+            f"surface32-{item}",
+            item,
+            f"{item.replace('_', ' ').title()} Plant",
+            index if index < 6 else None,
+        )
+        for index, item in enumerate(species)
+    ]
+    state = storage.state
+    state.plants = plants
+    state.unlocked_species = list(species)
+    state.unlocked_slots = 6
+    state.active_plant_id = plants[0].plant_id
+    state.starter_selection_complete = True
+    state.currency_balance = 5_000
+
+    quote = engine.quote_purchase(PurchaseKind.SPECIES, "sunflower")
+    outcome = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
+    assert outcome.success
+    assert outcome.message == "Sunflower added."
+    assert project_collection(state).species_text == "10 of 10 species discovered"
+
+    displaced = plants[1]
+    displaced_slot = int(displaced.slot_index)
+    assert engine.move_to_collection(displaced.plant_id)[0]
+    owner = QWidget()
+    owner.show()
+    placement = NurseryDialog(owner, engine, storage)
+    placement._show_purchase_receipt(
+        outcome,
+        purchase_presentation(quote, ignore_status=True),
+    )
+    placement.show()
+    application.processEvents()
+
+    icon = placement.nursery_toast.icon
+    icon_pixmap = icon.pixmap()
+    assert placement.nursery_toast.message.text() == "Sunflower added."
+    assert placement.nursery_toast.action.text() == "Place in garden"
+    assert placement.nursery_toast.property("receiptPrimaryRoute") == "Place in garden"
+    assert icon.accessibleName() == "Sunflower Seed artwork"
+    assert icon_pixmap is not None and not icon_pixmap.isNull()
+
+    placement.nursery_toast.action.click()
+    application.processEvents()
+    sunflower = engine.plant_story(str(outcome.result_id))
+    assert sunflower is not None
+    assert sunflower.slot_index == displaced_slot
+    assert engine.move_to_collection(sunflower.plant_id)[0]
+    assert engine.plant_from_collection(displaced.plant_id, displaced_slot)[0]
+    placement.hide()
+    placement.deleteLater()
+
+    no_bed = NurseryDialog(owner, engine, storage)
+    no_bed._show_purchase_receipt(
+        outcome,
+        purchase_presentation(quote, ignore_status=True),
+    )
+    no_bed.show()
+    application.processEvents()
+    assert no_bed.nursery_toast.message.text() == "Sunflower added."
+    assert no_bed.nursery_toast.action.text() == "Open Garden"
+    assert no_bed.nursery_toast.property("receiptPrimaryRoute") == "Open Garden"
+
+    no_bed.hide()
+    no_bed.deleteLater()
+    owner.close()
+    application.processEvents()
+
+
 def _focus_signature(surface: Any) -> tuple[tuple[str, str, str, str], ...]:
     """Return stable control identity without relying on transient PyQt wrappers."""
 
@@ -1582,6 +1680,14 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
             "release_ready_species": [f"species-{index}" for index in range(10)],
         },
     )
+    monkeypatch.setattr(
+        "ankigarden.ui.dashboard.project_collection",
+        lambda _state: SimpleNamespace(
+            species_text="10 of 10 species discovered",
+            collection_entries_text="30 of 39 collection entries discovered",
+            collection_complete=True,
+        ),
+    )
     final_nursery = NurseryDialog(dashboard, final_engine, final_storage)
     final_nursery.show()
     application.processEvents()
@@ -1599,7 +1705,8 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         for button in final_nursery.findChildren(QPushButton)
         if button.isVisibleTo(final_nursery)
     ]
-    assert "All 10 plant species collected" in final_labels
+    assert "10 of 10 species discovered" in final_labels
+    assert "30 of 39 collection entries discovered" in final_labels
     assert final_actions.count("View collection") == 1
     final_nursery.hide()
     assert_surface(fertilizer_selection, "Fertilizer selection")

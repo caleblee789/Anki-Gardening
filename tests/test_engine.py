@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
-from ankigarden.game import GardenGameEngine, difficulty_from_factor, queue_and_lapse_from_revlog_type
+from ankigarden.game import (
+    GardenGameEngine,
+    StageTransition,
+    difficulty_from_factor,
+    queue_and_lapse_from_revlog_type,
+)
 from ankigarden.garden_finds import (
     GardenFindReward,
     PreparedRewardRegistry,
@@ -474,6 +479,52 @@ def test_full_history_sync_reconciliation_rewards_past_and_current_but_not_futur
     assert final
     assert duplicate_results == []
     assert storage.state.to_dict() == after_late_arrival
+
+
+def test_suppressed_sync_restores_the_preexisting_stage_transition_queue() -> None:
+    engine, storage = make_engine()
+    storage.state.reward_state_initialized = True
+    storage.state.reward_activation_ms = 100
+    storage.state.progression_activation_ms = 100
+    storage.state.garden_find_activation_ms = storage.now_ms + 100_000
+    storage.state.plants[0].growth_points = 490
+    storage.state.active_plant_periods = [
+        ActivePlantPeriod(storage.day, "p1", 100)
+    ]
+    existing = StageTransition(
+        "p2",
+        "rose",
+        "seed",
+        "sprout",
+        "Briar",
+        "charge",
+    )
+    engine._pending_stage_transitions.append(existing)
+    entry = HistoricalReviewEntry(
+        revlog_id=storage.now_ms + 1_000,
+        card_id=42,
+        ease=3,
+        interval=1,
+        last_interval=0,
+        factor=2_500,
+        response_time_ms=500,
+        review_type=1,
+        answer_ms=storage.now_ms + 1_000,
+        scheduler_day=storage.day,
+        card_day_ordinal=1,
+        answer_identity=f"v1|{storage.day}|42|1",
+    )
+    storage.load_eligible_review_history = lambda: HistoricalReviewSnapshot(
+        entries=(entry,),
+        high_water_revlog_id=entry.revlog_id,
+        fingerprint="suppressed-stage-transition",
+    )
+
+    reconciled, _message = engine.reconcile_reward_history(emit_feedback=False)
+
+    assert reconciled
+    assert storage.state.plants[0].growth_points >= 500
+    assert engine.peek_stage_transitions() == [existing]
 
 
 def test_first_post_activation_answer_can_start_the_current_weekly_cycle():

@@ -14,7 +14,18 @@ try:
     from aqt.gui_hooks import reviewer_did_show_question
 except (ImportError, AttributeError):
     reviewer_did_show_question = None
+try:
+    from aqt.gui_hooks import reviewer_did_show_answer
+except (ImportError, AttributeError):
+    reviewer_did_show_answer = None
 from aqt.qt import QAction
+try:
+    from aqt.qt import QApplication as _QApplication
+except (ImportError, AttributeError):
+    # Older Anki test doubles and compatibility stubs do not necessarily
+    # expose QApplication.  Focus restoration is an enhancement, so startup
+    # must remain safe when the binding cannot provide it.
+    _QApplication = None
 
 from .config import ConfigManager
 from .build_capabilities import CAPTURE_HARNESS_ENABLED
@@ -28,6 +39,7 @@ from .sync_review_detector import SyncReviewDetector
 from .sync_reward_processor import SyncRewardProcessor
 from .ui.dashboard import GardenDashboard
 from .ui.state import GardenUiCoordinator
+from .ui.transient_summary_coordinator import TransientSummaryCoordinator
 from .ui.home_widget import (
     HomeWidgetStateController,
     build_home_widget_success_data,
@@ -48,6 +60,18 @@ _MAINTENANCE_PERFORMANCE_ROUTES = {
     "home retry": "home",
     "home rendering": "home",
 }
+
+
+def _focused_qt_widget() -> Any | None:
+    """Return the focused Qt widget when the active binding supports it."""
+    application = _QApplication
+    focus_widget = getattr(application, "focusWidget", None)
+    if not callable(focus_widget):
+        return None
+    try:
+        return focus_widget()
+    except (AttributeError, RuntimeError):
+        return None
 
 
 def _qt_action_text(action: Any) -> str:
@@ -120,12 +144,16 @@ class AnkiGardenApp:
         self.state_events = GardenUiCoordinator(mw)
         self.state_events.stateChanged.connect(self._invalidate_home_cache)
         self.state_events.stateChanged.connect(self._invalidate_maintenance_cache)
+        self.transient_summary_coordinator = TransientSummaryCoordinator(
+            _focused_qt_widget
+        )
         self.reviewer_hooks = ReviewerHookHandler(
             self.engine,
             self.storage,
             state_changed=self.state_events.notify,
             history_invalidated=self._invalidate_maintenance_cache,
             open_garden=self.open_dashboard,
+            summary_coordinator=self.transient_summary_coordinator,
         )
         # Import the Qt-heavy presenter only after Anki has constructed its
         # main window.  This keeps the reward/detection core importable in
@@ -139,6 +167,7 @@ class AnkiGardenApp:
             enabled=self._sync_reward_summary_enabled,
             open_garden=self.open_dashboard,
             can_present=self._sync_reward_can_present,
+            summary_coordinator=self.transient_summary_coordinator,
         )
         self.sync_review_detector = SyncReviewDetector(self.engine)
         self.sync_reward_processor = SyncRewardProcessor(
@@ -427,6 +456,13 @@ class AnkiGardenApp:
         question_handler = getattr(self.reviewer_hooks, "on_question", None)
         if reviewer_did_show_question is not None and callable(question_handler):
             reviewer_did_show_question.append(question_handler)
+        answer_shown_handler = getattr(
+            self.reviewer_hooks,
+            "on_answer_shown",
+            None,
+        )
+        if reviewer_did_show_answer is not None and callable(answer_shown_handler):
+            reviewer_did_show_answer.append(answer_shown_handler)
         try:
             from aqt import gui_hooks
 

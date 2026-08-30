@@ -80,6 +80,13 @@ bands are not part of this release.
   Charge surfaces now share scheduled content fitting, one overflow owner,
   normal-flow feedback/footer, compact button variants, focus, and typed
   transaction-state contracts.
+- Renderer-neutral projections now keep plant instance, display, and species
+  identity distinct; expose all six canonical stages while preserving internal
+  `rare` as player-facing **Full Bloom**; and keep Standard Finds separate from
+  Garden discoveries. The compact HUD uses `Sprout · 2 of 6 stages`.
+- Collection completion now reports `10 of 10 species discovered` separately
+  from `30 of 39 collection entries discovered`; the latter is never described
+  as a plant count.
 - Reward surfaces consume committed projections from
   `ankigarden.reward_presentation`; UI components no longer reconstruct reward
   eligibility, thresholds, amounts, or earned state.
@@ -93,6 +100,14 @@ bands are not part of this release.
 - Stale purchase balance refresh keeps the affordable confirmation visible with
   a **Balance updated** chip; Growth Charges show **Availability updated** and a
   structured Seed → Sprout receipt without duplicating transaction logic.
+- Fertilizer selection, quote, confirmation, and a queued period retain one
+  immutable source `plant_id`. Actions distinguish **Apply**, **Queue**,
+  **Buy and apply**, and **Buy and queue**; **Extend** is reserved for the
+  existing same-tier extension disposition.
+- The canonical Small Growth Charge transition is 450→550 Growth,
+  Seed→Sprout, two charges→one, and 50/2,000 toward Young. Separate
+  no-transition and no-stage-reward success states remain covered, while Full
+  Bloom rejection and overflow conservation stay engine-owned.
 - Settings uses staged edits, an accurate unsaved-change count, compact
   Discard/Save actions, Restore defaults, dirty-close protection, validation,
   **Reduce animations**, a default-on **Show reviewer HUD** setting, the
@@ -104,6 +119,9 @@ bands are not part of this release.
   prominent plant/checkpoint progress, next-answer Growth, and compact active
   effects. It hides raw routing, environment names, Find limits, and irrelevant
   Stored Growth while retaining those exact typed facts for detailed views.
+- The expanded Reviewer safe area is 296 px wide, 44 px from the top, and 16 px
+  from the right. Its bottom clearance is measured from Anki's answer controls
+  with a 72 px fallback; narrow layouts collapse instead of squeezing content.
 - Correlated rewards are consolidated into one integrated dock bundle with one
   event-specific hero, at most two categorized summaries, and an exact
   event-ID-backed remainder action. Full Bloom suppresses redundant intermediate
@@ -112,6 +130,15 @@ bands are not part of this release.
   Leaving the reviewer produces a local session summary using cards
   complete and committed Growth, Coins, Finds, crossings, Stored Growth, and
   remaining Fertilizer time and Booster cards.
+- Session Summary and Sync Rewards remain nonmodal and share one coordinator
+  for mutual exclusion, Escape ownership, focus restoration, and safe
+  upper-right Sync docking. Sync milestones render deterministically as Full
+  Bloom, stage change, highest valid checkpoint in the resulting stage, then
+  ordinary Growth; superseded checkpoints and Home-banner leakage are
+  suppressed.
+- Plant placement metadata now serializes `visual_scale_correction` and an
+  independently calibrated thumbnail scale. Asset validation covers all 60
+  species-stage records and each of the six bed positions.
 
 The proposed four-theme system and every downstream palette matrix are outside
 this release. Anki Garden retains its established styling.
@@ -135,15 +162,19 @@ this release. Anki Garden retains its established styling.
 
 ## Release validation status
 
-Automated source, simulation, and package gates must pass before live capture.
-Exact-package Anki startup, restart, interactive acceptance, the v25
-registry-derived representative preflight and complete full-profile
-canonical-100%-scale final capture, same-process clean-shutdown evidence,
-geometry validation, full-resolution visual
-review, final archive path, and SHA-256 belong to the immutable capture report
-for the final combined package. The preflight may seed unchanged overlapping
-states, but cannot substitute for the final full-profile evidence. Additional
-125%, 150%, and 200% screenshot matrices remain a separate platform gate. Native
-Windows/Linux, 125%/150%, true OS scaling, forced colors, screen-reader, and
-broader human/device acceptance remain separate unless actually run. This note
-does not substitute for that evidence.
+Capture contract v26 uses contract schema 2 and scenario schema 3. It defines
+18 representative and 34 full surfaces, rendered as two and five contact-sheet
+pages. Every spec, dependency record, runtime record, manifest, validator,
+sheet index, and PNG carries `scenario_id`, `fixture_id`, and one-based
+`scenario_step`; shared fixture IDs identify sequential seeded lineage. Reuse
+of v25 evidence is rejected.
+
+Deprecated visible copy, root/DOM overflow, progress fractions, asset mapping,
+Reviewer exclusion rectangles, four-state scrolling coverage, and lineage are
+hard gates. Current run paths, archive and capture hashes, artifact sizes, and
+validation totals are recorded only in the
+[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). `quality_status` remains
+`review-required` and `release_ready` remains `false`. Manual macOS interaction,
+Windows/Linux, mixed-DPI and 125%/150%/200% coverage, forced colors,
+screen-reader, broader keyboard/device acceptance, and human release approval
+remain open.

@@ -92,6 +92,7 @@ class SpacingToken(IntEnum):
     SM = 8
     MD = 12
     LG = 16
+    DIALOG_BODY = 20
     XL = 24
     XXL = 32
 
@@ -107,6 +108,7 @@ SPACING_SCALE: dict[str, int] = {
     "sm": 8,
     "md": 12,
     "lg": 16,
+    "dialog-body": 20,
     "xl": 24,
     "xxl": 32,
 }
@@ -198,6 +200,9 @@ CONTROL_HEIGHT_SCALE: dict[str, int] = {
     "primary": PRIMARY_BUTTON_VISUAL_HEIGHT,
 }
 PROGRESS_BAR_HEIGHT = 6
+STATUS_CHIP_MIN_HEIGHT = 22
+STATUS_CHIP_VISUAL_HEIGHT = 24
+STATUS_CHIP_MAX_HEIGHT = 26
 
 BUTTON_SIZE_TOKENS: dict[ButtonSize, ButtonSizeToken] = {
     ButtonSize.COMPACT_ROW: ButtonSizeToken(COMPACT_BUTTON_HEIGHT, 10),
@@ -264,11 +269,13 @@ SEMANTIC_COLORS = {
     "text_primary": "#F4F3DF",
     "text_secondary": "#B7C4BD",
     "text_muted": "#95A89F",
+    "text_disabled": "#7F9289",
     "primary": "#63D99F",
     "primary_hover": "#75E4AE",
     "primary_pressed": "#4FC58C",
     "gold": "#E7B94A",
     "danger": "#F07B75",
+    "rare": "#B69AFF",
     # Warning amber is deliberately warmer than coin gold so a caution card
     # cannot read as a reward surface at a glance.
     "warning": "#F2A35B",
@@ -279,6 +286,41 @@ SEMANTIC_COLORS = {
     "shop_surface_1": "#0D3026",
     "shop_surface_2": "#123D31",
     "shop_surface_3": "#0B1F1B",
+}
+
+
+class SemanticColorRole(str, Enum):
+    """Meaning-first color roles; components must not infer tone from hue."""
+
+    PRIMARY_ACTION = "primary-action"
+    SELECTION = "selection"
+    PROGRESS = "progress"
+    COIN = "coin"
+    REWARD_VALUE = "reward-value"
+    WARNING = "warning"
+    VALUE_LOSS = "value-loss"
+    DESTRUCTIVE = "destructive"
+    SHORTAGE = "shortage"
+    RARE = "rare"
+    FULL_BLOOM = "full-bloom"
+    STATUS = "status"
+    STAGE = "stage"
+
+
+SEMANTIC_ROLE_COLORS: dict[SemanticColorRole, str] = {
+    SemanticColorRole.PRIMARY_ACTION: SEMANTIC_COLORS["primary"],
+    SemanticColorRole.SELECTION: SEMANTIC_COLORS["primary"],
+    SemanticColorRole.PROGRESS: SEMANTIC_COLORS["primary"],
+    SemanticColorRole.COIN: SEMANTIC_COLORS["gold"],
+    SemanticColorRole.REWARD_VALUE: SEMANTIC_COLORS["gold"],
+    SemanticColorRole.WARNING: SEMANTIC_COLORS["warning"],
+    SemanticColorRole.VALUE_LOSS: SEMANTIC_COLORS["warning"],
+    SemanticColorRole.DESTRUCTIVE: SEMANTIC_COLORS["danger"],
+    SemanticColorRole.SHORTAGE: SEMANTIC_COLORS["danger"],
+    SemanticColorRole.RARE: SEMANTIC_COLORS["rare"],
+    SemanticColorRole.FULL_BLOOM: SEMANTIC_COLORS["rare"],
+    SemanticColorRole.STATUS: SEMANTIC_COLORS["surface_2"],
+    SemanticColorRole.STAGE: SEMANTIC_COLORS["surface_2"],
 }
 
 GREEN_SURFACE_LEVELS: tuple[str, str, str, str] = (
@@ -313,6 +355,7 @@ GARDEN_THEME = {
     "text_primary": SEMANTIC_COLORS["text_primary"],
     "text_secondary": SEMANTIC_COLORS["text_secondary"],
     "text_muted": SEMANTIC_COLORS["text_muted"],
+    "text_disabled": SEMANTIC_COLORS["text_disabled"],
     "action_accent": SEMANTIC_COLORS["primary"],
     "action_hover": SEMANTIC_COLORS["primary_hover"],
     "action_pressed": SEMANTIC_COLORS["primary_pressed"],
@@ -327,6 +370,8 @@ GARDEN_THEME = {
     "disabled_text": "#A6B6AE",
     "growth_accent": SEMANTIC_COLORS["primary"],
     "coin_accent": SEMANTIC_COLORS["gold"],
+    "rare_accent": SEMANTIC_COLORS["rare"],
+    "status_accent": SEMANTIC_COLORS["surface_2"],
     "success": SEMANTIC_COLORS["primary"],
     "warning": SEMANTIC_COLORS["warning"],
     "warning_surface": SEMANTIC_COLORS["warning_bg"],
@@ -443,6 +488,18 @@ class FeedbackTone(str, Enum):
     ERROR = "error"
 
 
+class StatusChipTone(str, Enum):
+    """Noninteractive status meanings rendered by the shared chip component."""
+
+    NEUTRAL = "neutral"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    LOCKED = "locked"
+    RARE = "rare"
+    WARNING = "warning"
+    DANGER = "danger"
+
+
 TEXT_ROLE_PROPERTY = "textRole"
 CONTROL_VARIANT_PROPERTY = "variant"
 SEMANTIC_ROLE_PROPERTY = "gardenRole"
@@ -548,6 +605,27 @@ def spacing(token: SpacingToken | str | int) -> int:
     if value != int(SpacingToken.NONE) and value not in SPACING_SCALE.values():
         raise ValueError(f"spacing value is outside the shared scale: {value}")
     return value
+
+
+def semantic_color(role: SemanticColorRole | str) -> str:
+    """Resolve a semantic color without letting callers reuse visual hues."""
+
+    try:
+        normalized = (
+            role
+            if isinstance(role, SemanticColorRole)
+            else SemanticColorRole(str(role).strip().lower())
+        )
+    except ValueError as error:
+        raise ValueError(f"unknown semantic color role: {role!r}") from error
+    return SEMANTIC_ROLE_COLORS[normalized]
+
+
+def sentence_case_label(value: Any) -> str:
+    """Normalize a category/tab label while retaining surrounding whitespace rules."""
+
+    label = _required_text(value, "label")
+    return label[:1].upper() + label[1:].lower()
 
 
 def apply_text_role(widget: Any, role: TextRole | str) -> TypographyToken:
@@ -986,6 +1064,30 @@ def set_semantic_role(
 
 
 apply_semantic_role = set_semantic_role
+
+
+def apply_status_chip(
+    widget: Any,
+    tone: StatusChipTone | str = StatusChipTone.NEUTRAL,
+) -> StatusChipTone:
+    """Apply a compact, explicitly noninteractive status-chip contract."""
+
+    try:
+        normalized = tone if isinstance(tone, StatusChipTone) else StatusChipTone(str(tone))
+    except ValueError as error:
+        raise ValueError(f"unknown status chip tone: {tone!r}") from error
+    _set_property(widget, SEMANTIC_ROLE_PROPERTY, SemanticRole.STATUS_BADGE.value)
+    _set_property(widget, "statusTone", normalized.value)
+    _set_property(widget, "statusInteractive", False)
+    _set_property(widget, "statusShadow", False)
+    minimum = getattr(widget, "setMinimumHeight", None)
+    maximum = getattr(widget, "setMaximumHeight", None)
+    if callable(minimum):
+        minimum(STATUS_CHIP_MIN_HEIGHT)
+    if callable(maximum):
+        maximum(STATUS_CHIP_MAX_HEIGHT)
+    _repolish(widget)
+    return normalized
 
 
 def button_stylesheet(
@@ -1456,6 +1558,34 @@ def semantic_component_stylesheet(
             border-radius: 8px;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_size_px}px;
             font-weight: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_weight};
+        }}
+        QLabel[gardenRole='status-badge'] {{
+            min-height: {STATUS_CHIP_MIN_HEIGHT}px;
+            max-height: {STATUS_CHIP_MAX_HEIGHT}px;
+            padding: 0 {SpacingToken.SM}px;
+            background: {t['status_accent']};
+            border-color: {t['subtle_border']};
+        }}
+        QLabel[gardenRole='status-badge'][statusTone='active'],
+        QLabel[gardenRole='status-badge'][statusTone='completed'] {{
+            color: {t['growth_accent']};
+            border-color: {t['growth_accent']};
+        }}
+        QLabel[gardenRole='status-badge'][statusTone='rare'] {{
+            color: {t['rare_accent']};
+            border-color: {t['rare_accent']};
+        }}
+        QLabel[gardenRole='status-badge'][statusTone='warning'] {{
+            color: {t['warning']};
+            border-color: {t['warning']};
+        }}
+        QLabel[gardenRole='status-badge'][statusTone='danger'] {{
+            color: {t['danger']};
+            border-color: {t['danger']};
+        }}
+        QLabel[gardenRole='status-badge'][statusTone='locked'] {{
+            color: {t['disabled_text']};
+            border-color: {t['disabled_border']};
         }}
         QLabel[gardenRole='currency-badge'] {{
             color: {t['coin_accent']};

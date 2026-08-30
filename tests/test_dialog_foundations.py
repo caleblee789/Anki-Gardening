@@ -29,8 +29,10 @@ from ankigarden.ui.dialog_foundations import (
     resolved_dialog_geometry,
     resolved_dialog_view_width,
     resolve_widget_layout,
+    should_schedule_content_fit,
     should_preserve_transition_height,
     text_column_width,
+    workspace_content_fit_natural_height,
 )
 
 
@@ -54,6 +56,7 @@ def test_shared_dialog_regions_use_the_release_spacing_and_scroll_contract() -> 
     metrics = DIALOG_LAYOUT_METRICS
     assert isinstance(metrics, DialogLayoutMetrics)
     assert metrics.horizontal_padding == 24
+    assert metrics.compact_body_padding == 20
     assert metrics.body_margins == (24, 16, 24, 24)
     assert metrics.footer_margins == (24, 12, 24, 16)
     assert metrics.card_padding == 16
@@ -83,6 +86,36 @@ def test_every_dialog_size_class_has_a_sane_policy() -> None:
         assert 0 < policy.height_ratio <= 1
         assert isinstance(policy, DialogSizeProfile)
         assert isinstance(policy.window_mode, DialogWindowMode)
+
+
+def test_every_non_canvas_dialog_content_fits_with_one_central_scroll_owner() -> None:
+    for policy in DIALOG_SIZE_POLICIES.values():
+        if policy.window_mode is DialogWindowMode.CANVAS:
+            assert policy.content_fit is False
+        else:
+            assert policy.content_fit is True
+    assert DIALOG_SCROLL_CONTRACT.central_body_scrolls is True
+    assert DIALOG_SCROLL_CONTRACT.overflow_owner_count == 1
+    assert DIALOG_SCROLL_CONTRACT.horizontal_scrolls is False
+
+
+def test_content_fit_scheduler_includes_workspace_but_never_canvas() -> None:
+    assert should_schedule_content_fit(
+        DialogWindowMode.CONTENT,
+        policy_content_fit=True,
+    )
+    assert should_schedule_content_fit(
+        DialogWindowMode.WORKSPACE,
+        policy_content_fit=True,
+    )
+    assert not should_schedule_content_fit(
+        DialogWindowMode.CANVAS,
+        policy_content_fit=True,
+    )
+    assert not should_schedule_content_fit(
+        DialogWindowMode.WORKSPACE,
+        policy_content_fit=False,
+    )
 
 
 def test_dialog_families_declare_one_first_class_native_window_mode() -> None:
@@ -138,7 +171,7 @@ def test_dialog_geometry_exposes_screen_clamped_minimum_initial_and_maximum() ->
     large = resolved_dialog_geometry(DialogSizeClass.SETTINGS, 2560, 1440)
     assert large.minimum_size == (800, 480)
     assert large.initial_size == (820, 510)
-    assert large.maximum_size == (840, 680)
+    assert large.maximum_size == (840, 720)
 
     small = resolved_dialog_geometry(DialogSizeClass.SETTINGS, 760, 560)
     assert small.minimum_size == (712, 480)
@@ -197,24 +230,25 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
         },
         DialogSizeClass.SETTINGS: {
             "display": (800, 820, 840, 390, 400, 420),
-            "advanced": (800, 820, 840, 620, 620, 620),
+            "advanced": (800, 820, 840, 700, 700, 720),
             "diagnostics-clean": (760, 780, 800, 280, 300, 320),
             "diagnostics-warning": (760, 780, 800, 280, 300, 320),
             "diagnostics-expanded": (760, 780, 800, 430, 470, 520),
         },
         DialogSizeClass.NURSERY: {
-            "starter": (925, 940, 950, 340, 350, 360),
+            "starter": (925, 940, 950, 370, 380, 410),
             "plants": (925, 940, 950, 300, 360, 520),
             "owned": (925, 940, 950, 470, 500, 530),
-            "fertilizer": (925, 940, 950, 500, 506, 560),
+            "fertilizer": (925, 940, 950, 500, 506, 541),
             "spaces": (925, 940, 950, 300, 325, 330),
-            "garden_features": (925, 940, 950, 488, 488, 500),
-            "collection-complete": (925, 940, 950, 300, 315, 330),
+            "garden_features": (925, 940, 950, 488, 575, 580),
+            "collection-complete": (925, 940, 950, 308, 323, 338),
             "collection-complete-receipt": (925, 940, 950, 390, 400, 410),
             "empty": (925, 940, 950, 300, 335, 370),
         },
         DialogSizeClass.PROGRESS: {
-            "growth": (940, 940, 960, 460, 480, 500),
+            "growth": (940, 940, 960, 501, 501, 510),
+            "today": (940, 950, 960, 564, 570, 580),
             "streak": (940, 940, 960, 440, 460, 480),
             "currency": (940, 950, 960, 340, 380, 440),
             "achievements": (950, 950, 950, 570, 570, 570),
@@ -222,7 +256,7 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "collection-empty": (940, 950, 960, 360, 400, 460),
         },
         DialogSizeClass.LOADOUT: {
-            "default": (980, 1000, 1020, 520, 540, 560),
+            "default": (980, 1000, 1020, 680, 680, 680),
         },
         DialogSizeClass.PLANT_STORY: {
             "default": (740, 760, 780, 480, 500, 520),
@@ -327,6 +361,31 @@ def test_content_fit_constraint_detection_is_width_and_height_aware() -> None:
         natural_width=540,
         natural_height=260,
     ) is True
+
+
+def test_workspace_content_fit_replaces_the_allocated_viewport_with_content() -> None:
+    assert workspace_content_fit_natural_height(
+        340,
+        window_mode=DialogWindowMode.WORKSPACE,
+        window_height=340,
+        viewport_height=181,
+        scroll_content_height=218,
+    ) == 377
+    # The same natural result remains stable after the viewport expands.
+    assert workspace_content_fit_natural_height(
+        340,
+        window_mode=DialogWindowMode.WORKSPACE,
+        window_height=377,
+        viewport_height=218,
+        scroll_content_height=218,
+    ) == 377
+    assert workspace_content_fit_natural_height(
+        340,
+        window_mode=DialogWindowMode.CONTENT,
+        window_height=340,
+        viewport_height=181,
+        scroll_content_height=218,
+    ) == 340
 
 
 def test_tabbed_empty_views_keep_the_workspace_window_mode() -> None:

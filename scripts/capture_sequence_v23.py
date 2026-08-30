@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compatibility alias for the repository-owned v25 capture runner.
+"""Compatibility alias for the repository-owned v26 capture runner.
 
-The v24 AST migration adapter remains frozen in the v25 implementation, but
+The v24 AST migration adapter remains frozen in the v26 implementation, but
 new orchestration belongs to :mod:`scripts.capture_sequence`.
 """
 

@@ -190,6 +190,25 @@ def test_review_audits_do_not_invalidate_valid_pixels(tmp_path: Path) -> None:
     assert report["surfaces"][LABEL]["advisories"]
 
 
+def test_v26_never_reuses_v25_surface_evidence(tmp_path: Path) -> None:
+    payload = _payload()
+    payload["capture_contract_version"] = 25
+    manifest, _ = _manifest(tmp_path / "v25", payload=payload)
+
+    plan = plan_incremental_capture(
+        evidence_manifests=(manifest,),
+        current_render_inputs=_render_inputs(),
+        expected_labels=(LABEL,),
+        contract_version=26,
+        contract_digest=CONTRACT_DIGEST,
+        profile="representative",
+    )
+
+    assert plan["reused"] == []
+    assert plan["recapture_required"] == [LABEL]
+    assert plan["reasons"][LABEL] == ["v25-reuse-forbidden"]
+
+
 def test_assembly_rejects_coherently_rewritten_selected_manifest(
     tmp_path: Path,
 ) -> None:
@@ -382,6 +401,37 @@ def test_relocated_lineage_remains_reusable_across_three_assemblies(
         (third_manifest.parent / row["path"]).is_file()
         for row in third_payload["source_manifests"]
     )
+
+
+def test_representative_assembly_emits_explicit_empty_scroll_matrix(
+    tmp_path: Path,
+) -> None:
+    raw_manifest, _raw_payload = _manifest(tmp_path / "raw")
+    assembled_manifest = assemble_capture_manifest(
+        reuse_plan=_plan(raw_manifest),
+        current_render_inputs=_render_inputs(),
+        output_dir=tmp_path / "assembled",
+    )
+
+    assembled = json.loads(assembled_manifest.read_text(encoding="utf-8"))
+    assert assembled["dialog_scroll_audits_complete"] is True
+    assert assembled["dialog_scroll_audits"] == {
+        "required": False,
+        "required_count": 0,
+        "records": [],
+        "four_state_scroll_matrix": {
+            "required": False,
+            "required_states": [],
+            "observations": [],
+            "witness_labels": {},
+            "canonical_scroll_value_before": 0,
+            "canonical_scroll_value_after": 0,
+            "canonical_scroll_restored": True,
+            "issues": [],
+            "passed": True,
+        },
+        "passed": True,
+    }
 
 
 @pytest.mark.parametrize(

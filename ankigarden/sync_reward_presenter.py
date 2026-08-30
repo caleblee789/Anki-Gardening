@@ -8,6 +8,7 @@ from typing import Any
 
 from .models.sync_reward import SyncRewardSummary
 from .ui.sync_reward_summary import SyncRewardSummaryCard
+from .ui.transient_summary_coordinator import dispose_unmounted_summary_card
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class SyncRewardPresenter:
         enabled: Callable[[], bool],
         open_garden: Callable[[], None],
         can_present: Callable[[], bool] | None = None,
+        summary_coordinator: Any | None = None,
     ) -> None:
         if not callable(enabled):
             raise TypeError("enabled must be callable")
@@ -51,6 +53,7 @@ class SyncRewardPresenter:
         self.enabled = enabled
         self.open_garden = open_garden
         self.can_present = can_present
+        self.summary_coordinator = summary_coordinator
         # The normal integration passes ``AnkiGardenApp.open_dashboard`` as a
         # bound method. Resolve its engine without widening the public presenter
         # constructor, so the card can use canonical plant/item art resolvers.
@@ -63,6 +66,7 @@ class SyncRewardPresenter:
         self._closing = False
         self._generation = 0
         self._last_render_error: Exception | None = None
+        self._escape_shortcut: Any | None = None
 
     @property
     def visible(self) -> bool:
@@ -248,6 +252,10 @@ class SyncRewardPresenter:
         del reason
         self._generation += 1
         self._render_scheduled = False
+        self._clear_escape_shortcut()
+        release = getattr(self.summary_coordinator, "release", None)
+        if callable(release):
+            release("sync")
         card = self._card
         self._card = None
         self._current_summary = None
@@ -415,6 +423,10 @@ class SyncRewardPresenter:
             return
 
         generation = self._generation
+        acquire = getattr(self.summary_coordinator, "acquire", None)
+        if callable(acquire):
+            acquire("sync", lambda: self.dismiss("summary-replaced"))
+        card: Any | None = None
         try:
             card = self._create_card(parent, summary)
             card.show()
@@ -424,10 +436,16 @@ class SyncRewardPresenter:
             raise_card = getattr(card, "raise_", None)
             if callable(raise_card):
                 raise_card()
+            self._install_escape_shortcut()
         except Exception as exc:
             # Rewards and the pending receipt were already committed. Keep the
             # durable/in-memory model unchanged so a later stable state can retry.
             self._last_render_error = exc
+            self._clear_escape_shortcut()
+            dispose_unmounted_summary_card(card)
+            release = getattr(self.summary_coordinator, "release", None)
+            if callable(release):
+                release("sync")
             logger.debug(
                 "Anki Garden: sync reward receipt could not be rendered",
                 exc_info=True,
@@ -435,10 +453,11 @@ class SyncRewardPresenter:
             return
 
         if generation != self._generation or self._pending_summary is not summary:
-            try:
-                card.close()
-            except Exception:
-                pass
+            self._clear_escape_shortcut()
+            dispose_unmounted_summary_card(card)
+            release = getattr(self.summary_coordinator, "release", None)
+            if callable(release):
+                release("sync")
             return
         self._card = card
         self._current_summary = summary
@@ -500,12 +519,20 @@ class SyncRewardPresenter:
         return True
 
     def _on_card_dismissed(self) -> None:
+        self._clear_escape_shortcut()
+        release = getattr(self.summary_coordinator, "release", None)
+        if callable(release):
+            release("sync")
         self._card = None
         self._current_summary = None
         if self._pending_summary is not None:
             self._schedule_present(0)
 
     def _on_open_garden(self) -> None:
+        self._clear_escape_shortcut()
+        release = getattr(self.summary_coordinator, "release", None)
+        if callable(release):
+            release("sync", restore_focus=False)
         self._card = None
         self._current_summary = None
         try:
@@ -515,6 +542,52 @@ class SyncRewardPresenter:
                 "Anki Garden: Garden could not open from sync rewards",
                 exc_info=True,
             )
+
+    def _install_escape_shortcut(self) -> None:
+        self._clear_escape_shortcut()
+        shortcut: Any | None = None
+        try:
+            from aqt.qt import QKeySequence, QShortcut, Qt
+
+            shortcut = QShortcut(QKeySequence("Escape"), self.mw)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(self._dismiss_on_escape)
+            self._escape_shortcut = shortcut
+        except Exception:
+            self._dispose_escape_shortcut(shortcut)
+            self._escape_shortcut = None
+            raise
+
+    def _dismiss_on_escape(self) -> None:
+        if self._modal_active():
+            return
+        coordinator = self.summary_coordinator
+        owns = getattr(coordinator, "owns", None)
+        if callable(owns) and not bool(owns("sync")):
+            return
+        dismiss_active = getattr(coordinator, "dismiss", None)
+        if callable(dismiss_active):
+            dismiss_active("escape")
+            return
+        self.dismiss("escape")
+
+    def _clear_escape_shortcut(self) -> None:
+        shortcut = self._escape_shortcut
+        self._escape_shortcut = None
+        self._dispose_escape_shortcut(shortcut)
+
+    @staticmethod
+    def _dispose_escape_shortcut(shortcut: Any | None) -> None:
+        if shortcut is None:
+            return
+        try:
+            shortcut.setEnabled(False)
+        except (AttributeError, RuntimeError):
+            pass
+        try:
+            shortcut.deleteLater()
+        except (AttributeError, RuntimeError):
+            pass
 
 
 __all__ = ["SyncRewardPresenter"]

@@ -63,7 +63,7 @@ _CONTINUATION_KINDS = {"deck", "parent_deck"}
 
 _UNLOCK_CATEGORY_COPY: dict[str, tuple[str, str]] = {
     "garden_item": (
-        "GARDEN ITEM UNLOCKED",
+        "GARDEN DISCOVERY UNLOCKED",
         "Added to your Garden collection",
     ),
     "environment": (
@@ -528,7 +528,7 @@ class StandardFind:
 def _standard_find_display_name(find: StandardFind) -> str:
     """Project the concrete inventory grant while retaining its Find ID."""
 
-    fallback = str(find.find_name or "Garden Find")
+    fallback = str(find.find_name or "Standard Find")
     if str(find.reward_type or "") != "inventory_item":
         return fallback
     reward_label = str(find.reward_label or "").strip()
@@ -1388,7 +1388,7 @@ def _limited_find_items(
 ) -> LimitedListProjection:
     visible = tuple(values[:max(0, int(limit))])
     hidden_quantity = sum(item.quantity for item in values[len(visible):])
-    noun = "find" if hidden_quantity == 1 else "finds"
+    noun = "Standard Find" if hidden_quantity == 1 else "Standard Finds"
     return LimitedListProjection(
         visible=visible,
         remaining_count=hidden_quantity,
@@ -1613,7 +1613,7 @@ def _session_highlights(summary: SessionDaySummary) -> HighlightProjection:
             occurred_at=find.occurred_at,
             eyebrow=f"{find.rarity.upper()} FIND",
             title=_standard_find_display_name(find),
-            supporting_text=find.reward_label or "Rare Garden Find",
+            supporting_text=find.reward_label or "Rare Standard Find",
             art_asset=find.art_asset,
             unlock_category="garden_item",
         )
@@ -1711,8 +1711,8 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
         environment_discoveries=_limited(
             summary.environment_discoveries,
             2,
-            singular="environment discovery",
-            plural="environment discoveries",
+            singular="Garden discovery",
+            plural="Garden discoveries",
         ),
         effects_remaining=summary.effects_remaining,
         open_garden_available=summary.open_garden_available,

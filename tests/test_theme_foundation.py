@@ -189,12 +189,14 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
         "sm": 8,
         "md": 12,
         "lg": 16,
+        "dialog-body": 20,
         "xl": 24,
         "xxl": 32,
     }
     assert scope["spacing"]("md") == 12
     assert scope["spacing"](spacing_token.XL) == 24
     assert scope["spacing"]("display") == 32
+    assert scope["spacing"]("dialog-body") == 20
     with pytest.raises(ValueError, match="outside the shared scale"):
         scope["spacing"](13)
 
@@ -209,6 +211,10 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
     assert scope["PROGRESS_BAR_HEIGHT"] == 6
     assert len(set(scope["GREEN_SURFACE_LEVELS"])) == 4
     assert scope["SEMANTIC_COLORS"]["gold"] != scope["SEMANTIC_COLORS"]["warning"]
+    assert scope["SEMANTIC_COLORS"]["rare"] not in {
+        scope["SEMANTIC_COLORS"]["gold"],
+        scope["SEMANTIC_COLORS"]["warning"],
+    }
     expected_colors = {
         "bg": "#08251C",
         "surface_deep": "#0B1F1B",
@@ -384,6 +390,36 @@ def test_shared_toggle_widget_paints_track_thumb_and_enabled_state() -> None:
     assert "painter.drawEllipse" in source
     assert '"on" if checked else "off"' in source
     assert "QEvent.Type.EnabledChange" in source
+    assert 'GARDEN_THEME["action_text"]\n        if checked' not in source
+    assert 'setProperty("switchThumbTone", "light")' in source
+
+
+def test_semantic_colors_sentence_case_and_status_chips_have_one_authority() -> None:
+    scope = _theme_scope()
+    role = scope["SemanticColorRole"]
+    colors = scope["SEMANTIC_COLORS"]
+
+    assert scope["semantic_color"](role.PRIMARY_ACTION) == colors["primary"]
+    assert scope["semantic_color"]("coin") == colors["gold"]
+    assert scope["semantic_color"]("warning") == colors["warning"]
+    assert scope["semantic_color"]("destructive") == colors["danger"]
+    assert scope["semantic_color"]("full-bloom") == colors["rare"]
+    assert scope["semantic_color"]("stage") == colors["surface_2"]
+    assert scope["sentence_case_label"](
+        "garden decorations and scenery"
+    ) == "Garden decorations and scenery"
+
+    widget = _Widget()
+    tone = scope["apply_status_chip"](widget, "rare")
+    assert tone is scope["StatusChipTone"].RARE
+    assert widget.properties["gardenRole"] == "status-badge"
+    assert widget.properties["statusTone"] == "rare"
+    assert widget.properties["statusInteractive"] is False
+    assert widget.properties["statusShadow"] is False
+    assert (widget.minimum_height, widget.maximum_height) == (22, 26)
+
+    stylesheet = scope["semantic_component_stylesheet"]()
+    assert "QLabel[gardenRole='status-badge'][statusTone='rare']" in stylesheet
 
 
 def test_control_helpers_apply_variant_and_restore_disabled_description() -> None:

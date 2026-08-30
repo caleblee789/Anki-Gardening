@@ -69,6 +69,7 @@ class _Hooks:
         self.profile_did_open = []
         self.reviewer_did_answer_card = []
         self.reviewer_did_show_question = []
+        self.reviewer_did_show_answer = []
         self.state_did_change = []
 
 
@@ -922,7 +923,7 @@ def test_reviewer_reward_feedback_keeps_delayed_correlations_separate_with_find_
         SimpleNamespace(
             event_id="reward-summary:answer:abc",
             kind="garden_find",
-            title="Garden Find: Morning Dew",
+            title="Standard Find: Morning Dew",
             message="+40 Growth; +4 coins; Unlocked stale display copy",
             occurred_at="2026-08-10T10:01:00",
             amount=44,
@@ -1016,7 +1017,7 @@ def test_reviewer_reward_feedback_keeps_delayed_correlations_separate_with_find_
     assert earlier.event_ids == (events[0].event_id,)
     assert earlier.message == "+2 Garden Coins"
     assert feedback.event_ids == (events[1].event_id, events[2].event_id)
-    assert feedback.title == "Garden Find"
+    assert feedback.title == "Standard Find"
     assert feedback.message == "+5 Garden Coins · +40 Growth"
     assert feedback.reward_detail == ""
     assert (feedback.coins_total, feedback.growth_total) == (5, 40)
@@ -1065,7 +1066,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
         SimpleNamespace(
             event_id=f"garden-find:{index}",
             kind="garden_find",
-            title="Garden Find",
+            title="Standard Find",
             message="",
             occurred_at=f"2026-08-10T10:0{index}:00",
             plant_id="plant:1",
@@ -1088,9 +1089,9 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     environment = handler._consolidated_reward_feedback(events[:1])
 
     assert environment is not None
-    assert environment.title == "Garden Find"
+    assert environment.title == "Garden discovery"
     assert environment.tier == "Rare"
-    assert environment.message == "Added to Garden Decorations"
+    assert environment.message == "Added to Garden decorations"
 
     grouped_finds = tuple(
         SimpleNamespace(
@@ -1108,7 +1109,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     grouped = handler._consolidated_reward_feedback(events)
 
     assert grouped is not None
-    assert grouped.title == "Garden Find"
+    assert grouped.title == "Standard Finds"
     assert grouped.message == "+6 Garden Coins · +80 Growth"
 
     handler._typed_reward_totals = lambda _events: (1, 0, 0)
@@ -2368,6 +2369,26 @@ def test_reviewer_setup_registers_surface_cleanup_once(monkeypatch):
     app._setup_reviewer_hook()
 
     assert hooks.state_did_change.count(on_state_change) == 1
+
+
+def test_reviewer_setup_registers_answer_geometry_refresh_once(monkeypatch):
+    _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    on_answer = lambda *_args: None
+    on_question = lambda *_args: None
+    on_answer_shown = lambda *_args: None
+    app.reviewer_hooks = SimpleNamespace(
+        on_answer=on_answer,
+        on_question=on_question,
+        on_answer_shown=on_answer_shown,
+    )
+
+    app._setup_reviewer_hook()
+    app._setup_reviewer_hook()
+
+    assert hooks.reviewer_did_show_question.count(on_question) == 1
+    assert hooks.reviewer_did_show_answer.count(on_answer_shown) == 1
 
 
 def test_reviews_today_counts_supported_revlog_answers(monkeypatch):

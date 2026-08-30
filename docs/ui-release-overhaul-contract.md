@@ -1,7 +1,8 @@
 # Anki Garden UI release contract
 
 Status: implemented contract for Anki Garden 2.1.0, state schema 25, and UI
-capture contract v25. Source code and persisted behavior are authoritative.
+capture contract v26, contract schema 2 and scenario schema 3. Source code and
+persisted behavior are authoritative.
 
 ## Authority map
 
@@ -17,6 +18,11 @@ capture contract v25. Source code and persisted behavior are authoritative.
   decisions.
 - `GardenUiCoordinator`, `GardenUiSnapshot`, and `GardenPreviewSnapshot` own
   shared Qt/Home projections and cache invalidation.
+- Renderer-neutral stage, `PlantIdentity`, collection-count, appearance, and
+  reward projections own learner-facing names and arithmetic. Internal `rare`
+  remains stable while rendering **Full Bloom**; default identities such as
+  **Bonsai Plant** propagate across first-run selection, placement, and the
+  created plant.
 - `SceneGeometryLayout` and the asset manifest own bed, plant, marker, move,
   landmark, occlusion, and popover geometry.
 - `ConfigManager` owns add-on configuration separately from Garden state.
@@ -36,11 +42,28 @@ states are in `docs/ui/state_scenarios.md`.
 | Cottage or Collection action | Collection page in the existing Garden Progress window |
 | Nursery landmark | Four-tab Nursery for Plants, Fertilizers and boosts, Garden beds, and Garden Decorations and Scenery |
 | Settings action or Anki menu | Staged settings plus read-only Diagnostics with explicit save/discard behavior |
-| Sync completion | One centered, nonmodal Sync Rewards receipt over stable Anki Home, with **Close** and **Open Garden** actions |
+| Sync completion | One safely upper-right-docked, nonmodal Sync Rewards receipt over stable Anki Home, with **Close** and **Open Garden** actions |
 
 Home previews expose no scene actions, and Settings does not duplicate that
 preview. The full Garden alone owns plant selection, move destinations, and
 landmark activation.
+
+## Presentation projection contract
+
+- The canonical stage projection has six positions: Seed, Sprout, Young,
+  Mature, Flowering, and Full Bloom. It preserves internal `rare` while compact
+  UI renders `Sprout · 2 of 6 stages`.
+- `PlantIdentity(plant_id, display_name, species_name)` is renderer-neutral and
+  preserves defaults such as **Bonsai Plant** across onboarding, placement,
+  Garden, Progress, and transaction surfaces.
+- Collection counts are deliberately orthogonal. The canonical fixture renders
+  `10 of 10 species discovered` and separately
+  `30 of 39 collection entries discovered`; 30 is never labeled as plants.
+- Appearance projects Scenery, Displayed decoration, Active garden bonus, and
+  Visual effects as four independent rows. Displayed decoration remains
+  cosmetic and independent of the locked or queued Garden Bonus.
+- Standard Finds and Garden discoveries use distinct player-facing labels while
+  the engine and ledger retain their stable internal event IDs.
 
 ## Growth and reward flow
 
@@ -85,6 +108,18 @@ emphasizes the global number left; completion becomes `All cards complete`, the
 exact Coin reward, and `176 reviewed today`. Internal scheduler and obligation
 identifiers never become player copy.
 
+The canonical HUD fixture reconciles `176 + 18 = 194` cards due at the start
+and identifies the plant as `Sprout · 2 of 6 stages`. Session Summary keeps its
+local scope explicit with `126 + 19 = 145`; Sync Rewards keeps imported reward
+arithmetic explicit with `420 + 80 + 20 = 520`. Session and Sync summaries are
+nonmodal. One shared coordinator provides mutual exclusion, focus restoration,
+single-owner Escape handling, and safe Sync docking, so summary surfaces never
+compete or leak into normal Home banners.
+
+Sync milestone presentation is deterministic: Full Bloom, stage change, the
+highest valid checkpoint in the resulting stage, then ordinary Growth.
+Superseded checkpoints are omitted.
+
 Meaningful committed results appear in one integrated reward dock with a live,
 zero-free `This session` footer. One answer produces one stable-ID bundle with
 one event-specific hero, at most two categorized summaries, and an
@@ -114,6 +149,12 @@ locks Scenery. Later mechanical selections queue for the next Anki day.
 `apply_garden_loadout()` is the sole atomic mutation path. Nursery purchases
 never auto-equip an environment item, and visibility never changes mechanics.
 
+Fertilizer binds one immutable source `plant_id` through selection, quote,
+confirmation, application, and a queued period. Owned actions are **Apply** or
+**Queue**; purchases are **Buy and apply** or **Buy and queue**. **Extend** is
+reserved for the existing same-tier extension disposition. A different tier
+queues without changing the source plant or discarding remaining time.
+
 ## Persistence and failure behavior
 
 - Schema 25 persists resumable `OnboardingProgress`, exact hundredth-Growth
@@ -140,6 +181,12 @@ never auto-equip an environment item, and visibility never changes mechanics.
 - Verdant Twilight V6, its geometry-compatible Scenery reskins, seven static
   Garden Decorations with one shared pad, six fixed planter spaces, and the
   current plant/item art remain the visual foundation.
+- One shared Home-card shell renders starter, empty, active, zero, partial, and
+  complete states. Individual progression and the species artwork gallery use
+  two distinct six-stage strips rather than overloading one component.
+- Shared semantics use sentence-case tabs, tabular metrics, noninteractive
+  status chips, light switch thumbs, crisp lock/completion icons, a recognizable
+  Settings gear, semantic colors, and a 20 px spacing rhythm.
 - Dialogs schedule content fitting after layout, visibility, font, style,
   artwork, and state changes. They have one vertical overflow owner, reachable
   content, normal-flow feedback/footer actions, terminal-state shrinking, and
@@ -155,32 +202,53 @@ never auto-equip an environment item, and visibility never changes mechanics.
   animation; Reviewer feedback preserves focus and does not activate itself.
 - Missing or unreadable artwork preserves the item/plant identity and renders
   the code-native graphical fallback.
+- Serialized placement metadata includes `visual_scale_correction` and
+  calibrated thumbnail scaling. The release asset gate validates all 60
+  species-stage assets and all six bed positions.
+- The Reviewer safe area is 296 px wide, 44 px from the top, and 16 px from the
+  right. It uses measured answer-control clearance with a 72 px fallback and
+  collapses in narrow layouts before entering the answer controls.
 
 ## Capture and acceptance contract
 
-Capture contract v25 has two registry-derived ordered evidence tiers under
-`QT_SCALE_FACTOR=1.0`. The `representative` profile is the preflight and the
-`full` profile is the final release authority. The current registry derives an
-18-surface/two-sheet preflight and a 34-surface/five-sheet full profile after
-retiring 98 redundant or behavioral-only IDs, including every watering-can
-capture. These totals
-remain generated rather than fixed acceptance constants. A passing
-preflight may seed overlapping full-profile states; it does not replace the
-full release set.
+Capture contract v26, contract schema 2 and scenario schema 3, has two
+registry-derived ordered evidence tiers under `QT_SCALE_FACTOR=1.0`. The
+`representative` profile is the preflight and the `full` profile is the final
+release authority. The current registry derives an 18-surface/two-sheet
+preflight and a 34-surface/five-sheet full profile after retiring redundant or
+behavioral-only IDs, including every watering-can capture and
+`nursery-weather-scenery`. Its ordinal-24 replacement is
+`nursery-garden-decorations-scenery`. These totals remain generated rather than
+fixed acceptance constants. A passing preflight does not replace the full
+release set.
 
-The independent validator must report contract 25, exact agreement with the
-compiled active registry, and zero rejecting acquisition or lifecycle failures.
-Detailed semantic, copy, text-fit, geometry, layout, scroll, and duplicate-view
-findings remain visible review advisories rather than being silently normalized.
-Production and capture archives must retain exact shared-payload parity and distinct
-capability identities. Native dialogs accept only a direct widget grab; Home
-and Reviewer prefer a verified app-owned Qt/WebView capture and label any
-identity-verified compositor use as fallback. Per-state evidence may be reused
-when its surface and dependency digests remain exact. Unknown, shared, or
-unowned changes fail closed. The PNG, environment, record hash, and
-recursively closed local lineage must remain valid in either case; a failed
-replacement blocks older evidence until a newer passing capture clears that
-invalidation.
+Every surface spec, dependency digest, runtime record, manifest row, validator
+result, contact-sheet index entry, and PNG metadata record requires
+`scenario_id`, `fixture_id`, and one-based `scenario_step`. Shared seeded
+lineages are `first_run` 01–04, `fertilizer_queue` 09–10, and
+`growth_charge_transition` 33–34. Named single-surface scenarios are
+`reviewer_hud_base` (27), `session_summary` (28), `sync_rewards` (29), and
+`reviewer_hud_full_bloom` (30). Other surfaces default to their stable ID,
+fixture version `v1`, and step 1. A fixture identifies shared seeded lineage;
+each step still has an exact state contract. V25 evidence is frozen and rejected
+for all v26 reuse.
+
+The independent validator must report contract 26, schema 2/scenario 3, exact
+agreement with the compiled active registry, and zero rejecting failures.
+Deprecated visible copy, DOM/root overflow, progress fractions, asset mapping,
+Reviewer exclusion rectangles, four-state scrolling, acquisition/lifecycle,
+and scenario/state identity are hard gates. Compatibility keys and historical
+migration tests receive narrow non-visible allowlists only.
+
+Production and capture archives must retain exact shared-payload parity and
+distinct capability identities. Native dialogs accept only a direct widget
+grab; Home and Reviewer prefer a verified app-owned Qt/WebView capture and
+label any identity-verified compositor use as fallback. Per-state evidence may
+be reused only within v26 when scenario identity, state, surface, and dependency
+digests remain exact. Unknown, shared, or unowned changes fail closed. The PNG,
+environment, record hash, and recursively closed local lineage must remain
+valid in either case; a failed replacement blocks older evidence until a newer
+passing capture clears that invalidation.
 
 All selected surfaces run in one disposable Anki process. Checkpoint cohorts
 remain logical restore and circuit-break domains inside that session; they no

@@ -2,51 +2,310 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from ankigarden.ui.reviewer_hud import reviewer_hud_geometry
 from ankigarden.ui.sync_reward_summary import sync_reward_summary_geometry
 from scripts.validate_ui_capture import (
+    fertilizer_flow_continuity_issue_codes,
+    fertilizer_flow_source_issue_codes,
     growth_charge_rendered_value_issue_codes,
+    growth_stage_strip_issue_codes,
+    move_occupied_hover_issue_codes,
+    nursery_supplement_state_matrix_issue_codes,
     reviewer_hud_acceptance_matrix_issue_codes,
     reviewer_reward_dock_issue_codes,
+    starter_nursery_geometry_issue_codes,
     streak_fold_geometry_issue_codes,
     visible_action_geometry_issue_codes,
-    web_root_overflow_issue_codes,
 )
 
 
-def test_sync_reward_capture_geometry_is_centered_and_viewport_bounded() -> None:
+def _canonical_starter_nursery_geometry() -> dict[str, object]:
+    records = []
+    for index, item_id in enumerate(("bonsai", "rose", "sunflower", "lavender")):
+        column = index % 2
+        row = index // 2
+        records.append({
+            "item_id": item_id,
+            "card_size": [442, 90],
+            "seed_badge_bounds": [374, 13, 55, 24],
+            "choose_bounds": [343, 41, 86, 36],
+            "details_bounds": [71, 41, 120, 36],
+            "viewport_bounds": [2 + column * 454, 2 + row * 102, 442, 90],
+            "contained_in_catalog_viewport": True,
+            "passed": True,
+        })
+    return {
+        "applicable": True,
+        "dialog_height": 377,
+        "catalog_viewport_size": [906, 218],
+        "catalog_scroll_maximum": 0,
+        "partial_card_ids": [],
+        "records": records,
+        "footer": {
+            "bounds": [14, 324, 912, 43],
+            "contained": True,
+            "action_text": "Skip for now",
+            "action_bounds": [816, 327, 110, 40],
+            "action_contained": True,
+        },
+        "passed": True,
+    }
+
+
+def test_starter_nursery_geometry_rejects_partial_second_row() -> None:
+    evidence = _canonical_starter_nursery_geometry()
+    assert starter_nursery_geometry_issue_codes(evidence) == ()
+
+    evidence["catalog_scroll_maximum"] = 37
+    evidence["partial_card_ids"] = ["sunflower", "lavender"]
+    records = evidence["records"]
+    assert isinstance(records, list)
+    assert isinstance(records[2], dict)
+    records[2]["contained_in_catalog_viewport"] = False
+    issues = starter_nursery_geometry_issue_codes(evidence)
+    assert "starter-nursery:catalog-scroll" in issues
+    assert "starter-nursery:partial-cards" in issues
+    assert "starter-nursery:card-3:viewport-containment" in issues
+
+
+def _canonical_growth_stage_records() -> list[dict[str, object]]:
+    return [
+        {
+            "label": label,
+            "state": state,
+            "state_label": state_label,
+            "preview_enabled": True,
+            "label_enabled": True,
+            "preview_future_treatment": future,
+            "label_future_treatment": future,
+            "extra_text": [],
+        }
+        for label, state, state_label, future in (
+            ("Seed", "reached", "Reached", False),
+            ("Sprout", "current", "Current", False),
+            ("Young", "next", "Next", True),
+            ("Mature", "locked", "Locked", True),
+            ("Flowering", "locked", "Locked", True),
+            ("Full Bloom", "locked", "Locked", True),
+        )
+    ]
+
+
+def _canonical_fertilizer_flow_records() -> dict[str, dict[str, object]]:
+    source: dict[str, object] = {
+        "plant_id": "dev_rose",
+        "plant_name": "Rose",
+        "species": "rose",
+        "growth_points": 500,
+        "growth_remainder_units": 0,
+        "growth_stage": "sprout",
+        "artwork_asset_id": "plant_rose_sprout_twilight_v6",
+        "artwork_source": (
+            "assets/v6_storybook_gouache/plants/rose/sprout/"
+            "rose_sprout_twilight_v6.webp"
+        ),
+        "artwork_resolved": True,
+        "artwork_painted": True,
+    }
+    return {
+        role: {
+            **source,
+            "artwork_painted": True if role in {"source", "confirmation"} else None,
+        }
+        for role in ("source", "fixture", "quote", "request", "confirmation")
+    }
+
+
+def test_fertilizer_flow_is_independently_bound_to_sprout_artwork() -> None:
+    records = _canonical_fertilizer_flow_records()
+
+    assert fertilizer_flow_source_issue_codes(records["source"]) == ()
+    assert fertilizer_flow_continuity_issue_codes(records) == ()
+
+    identity_drift = deepcopy(records)
+    identity_drift["quote"]["plant_id"] = "dev_bonsai"
+    identity_drift["quote"]["plant_name"] = "Bonsai Plant"
+    identity_issues = fertilizer_flow_continuity_issue_codes(identity_drift)
+    assert "fertilizer-flow:quote:plant-id" in identity_issues
+    assert "fertilizer-flow:quote:plant-name" in identity_issues
+
+    growth_drift = deepcopy(records)
+    growth_drift["confirmation"].update({
+        "growth_points": 0,
+        "growth_stage": "seed",
+        "artwork_asset_id": "plant_rose_seed_twilight_v6",
+        "artwork_source": (
+            "assets/v6_storybook_gouache/plants/rose/seed/"
+            "rose_seed_twilight_v6.webp"
+        ),
+    })
+    growth_issues = fertilizer_flow_continuity_issue_codes(growth_drift)
+    assert "fertilizer-flow:confirmation:growth-points" in growth_issues
+    assert "fertilizer-flow:confirmation:growth-stage" in growth_issues
+    assert "fertilizer-flow:confirmation:artwork-asset-id" in growth_issues
+    assert "fertilizer-flow:confirmation:artwork-source" in growth_issues
+
+    unpainted = deepcopy(records)
+    unpainted["confirmation"]["artwork_painted"] = False
+    assert (
+        "fertilizer-flow:confirmation:artwork-painted"
+        in fertilizer_flow_continuity_issue_codes(unpainted)
+    )
+
+
+def test_growth_strip_is_independently_validated_without_legacy_states() -> None:
+    records = _canonical_growth_stage_records()
+
+    assert growth_stage_strip_issue_codes(records) == ()
+    records[2]["state_label"] = "Upcoming"
+    assert growth_stage_strip_issue_codes(records) == (
+        "growth-stage-strip-3:state-label",
+    )
+
+    records = _canonical_growth_stage_records()
+    records[5]["label_future_treatment"] = False
+    assert growth_stage_strip_issue_codes(records) == (
+        "growth-stage-strip-6:label-treatment",
+    )
+
+
+def test_move_occupied_hover_is_independently_validated() -> None:
+    evidence = {
+        "source_plant_id": "bonsai-source",
+        "source_slot": 0,
+        "occupied_destination_slot": 1,
+        "occupant_plant_id": "juniper-target",
+        "occupant_display_name": "Juniper",
+        "valid_destinations": [1, 2, 3],
+        "hovered_slot": 1,
+        "expected_label": "Swap with Juniper",
+        "painted_label": "Swap with Juniper",
+        "pointer_reached_target": True,
+        "move_mode_active": True,
+        "source_slot_not_selectable": True,
+        "unrelated_controls_disabled": True,
+        "issues": [],
+        "passed": True,
+    }
+
+    assert move_occupied_hover_issue_codes(evidence) == ()
+    evidence["hovered_slot"] = 2
+    assert move_occupied_hover_issue_codes(evidence) == (
+        "move-hover:hovered-slot",
+    )
+
+
+def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
+    records = {
+        "sufficient-balance": {
+            "balance": 500,
+            "balance_copy": "500",
+            "item_id": "premium",
+            "price_copy": "300 coins",
+            "action": "Buy and apply",
+            "action_disposition": "apply",
+            "action_enabled": True,
+            "painted": True,
+        },
+        "stored-multiple": {
+            "item_id": "fertilizer_basic",
+            "item_name": "Rich Compost",
+            "owned_copy": "3 owned",
+            "action": "Apply",
+            "action_disposition": "apply",
+            "meta_copy": (
+                "+1 Growth per eligible card answer · Lasts 1 hour"
+            ),
+            "artwork_ref": "rich_compost",
+            "artwork_source_matches": True,
+            "artwork_fallback": False,
+            "booster_item_id": "booster_potion",
+            "booster_owned_copy": "2 owned",
+            "booster_action": "Use",
+            "booster_painted": True,
+            "painted": True,
+        },
+        "active": {
+            "engine_tier": "basic",
+            "item_id": "fertilizer_basic",
+            "owned_copy": "2 owned",
+            "action": "Extend",
+            "action_disposition": "extend",
+            "status_phase": "active",
+            "status_copy": (
+                "Basic Fertilizer · +1 Growth per eligible card answer · "
+                "1 hour left"
+            ),
+            "painted": True,
+        },
+        "queued": {
+            "engine_tiers": ["quality"],
+            "item_id": "fertilizer_quality",
+            "owned_copy": "1 owned",
+            "queued_copy": "Queued",
+            "action": "Extend",
+            "action_disposition": "extend",
+            "final_basic_action": "Queue",
+            "final_basic_action_disposition": "queue",
+            "final_basic_painted": True,
+            "final_quality_action": "Extend",
+            "final_quality_action_disposition": "extend",
+            "final_quality_painted": True,
+            "meta_copy": (
+                "+2 Growth per eligible card answer · Lasts 2 hours"
+            ),
+            "painted": True,
+        },
+    }
+    evidence = {"records": records, "passed": True}
+
+    assert nursery_supplement_state_matrix_issue_codes(evidence) == ()
+    records["queued"]["queued_copy"] = ""
+    assert nursery_supplement_state_matrix_issue_codes(evidence) == (
+        "nursery-supplement-queued:queued_copy",
+    )
+
+    records["queued"]["queued_copy"] = "Queued"
+    records["queued"]["final_basic_action_disposition"] = "extend"
+    assert nursery_supplement_state_matrix_issue_codes(evidence) == (
+        "nursery-supplement-queued:final_basic_action_disposition",
+    )
+
+
+def test_sync_reward_capture_geometry_is_right_docked_and_viewport_bounded() -> None:
     canonical = sync_reward_summary_geometry(1280, 720, 900)
 
-    assert canonical == (412, 22, 456, 640)
-    assert canonical[0] * 2 + canonical[2] == 1280
-    assert canonical[1] == 22
+    assert canonical == (800, 24, 456, 640)
+    assert canonical[0] + canonical[2] + 24 == 1280
+    assert canonical[1] == 24
 
     compact = sync_reward_summary_geometry(430, 300, 900)
-    assert compact == (24, 22, 382, 252)
+    assert compact == (24, 24, 382, 252)
     assert compact[0] * 2 + compact[2] == 430
     assert compact[0] >= 0
     assert compact[1] + compact[3] <= 300
 
 
-def test_web_root_overflow_requires_exact_document_measurement() -> None:
-    evidence = {
-        "source": "document.documentElement",
-        "client_width": 667,
-        "scroll_width": 667,
-        "horizontal_overflow": 0,
-        "passed": True,
-    }
-    assert web_root_overflow_issue_codes(evidence) == ()
-
-    overflow = {**evidence, "scroll_width": 680, "horizontal_overflow": 13}
-    assert "web-root-horizontal-overflow" in web_root_overflow_issue_codes(
-        overflow
+def test_reviewer_hud_capture_geometry_uses_v26_safe_area() -> None:
+    canonical = reviewer_hud_geometry(
+        1280,
+        800,
+        collapsed=False,
+        dock="right",
+        content_height=558,
     )
+    assert canonical == (968, 44, 296, 558)
+    assert 1280 - canonical[0] - canonical[2] == 16
 
-    inconsistent = {**evidence, "horizontal_overflow": 4}
-    assert (
-        "web-root-overflow-arithmetic-mismatch"
-        in web_root_overflow_issue_codes(inconsistent)
+    fallback_limited = reviewer_hud_geometry(
+        1280,
+        800,
+        collapsed=False,
+        dock="right",
+        content_height=900,
     )
+    assert fallback_limited == (968, 44, 296, 684)
+    assert 800 - fallback_limited[1] - fallback_limited[3] == 72
 
 
 def _action_visual() -> dict[str, object]:
@@ -207,7 +466,7 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
     success = {
         "applicable": True,
         "variant": "success",
-        "stage_transition": "Seed → Sprout",
+        "stage_transition": "Bonsai Plant reached Sprout",
         "receipt_copy": (
             "+100 Growth · 1 growth charge remaining\n"
             "Next-stage progress · 50 / 2,000 toward Young"
@@ -262,7 +521,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "bundle_id": "answer:committed:1",
         "rendered_bundle_id": "answer:committed:1",
         "hero_event_id": "reward:full-bloom",
-        "visible_summary_labels": ["1 Garden Find", "2 new discoveries"],
+        "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
         "visible_summary_reward_types": [
             "garden_find",
             "environment_discovery",
@@ -638,9 +897,9 @@ def _reviewer_baseline_content() -> dict[str, object]:
         },
     }
     header_anchors = [
-        [12, 0, 104, 44],
-        [142, 0, 170, 44],
-        [274, 6, 32, 32],
+        [14, 0, 113, 43],
+        [127, 0, 163, 43],
+        [258, 5, 32, 32],
     ]
     for state in (
         "coin-balance-248",
@@ -655,7 +914,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 "reviewerHudTitleGroup",
                 "reviewerHudHeaderActions",
             ],
-            "header_reserved_width": 170,
+            "header_reserved_width": 163,
             "balance_cluster_contained": True,
         })
     progress_markers = {
@@ -719,7 +978,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
         },
         "early-stage-art": {
             "stage_key": "sprout",
-            "stage_copy": "Sprout · Stage 1 of 5",
+            "stage_copy": "Sprout · 2 of 6 stages",
             "art_path": "/capture/bonsai_sprout.webp",
             "pixmap_present": True,
             "pixmap_cache_key": 101,
@@ -732,7 +991,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
         },
         "mature-stage-art": {
             "stage_key": "mature",
-            "stage_copy": "Mature · Stage 3 of 5",
+            "stage_copy": "Mature · 4 of 6 stages",
             "art_path": "/capture/bonsai_mature.webp",
             "pixmap_present": True,
             "pixmap_cache_key": 202,
@@ -796,7 +1055,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 "reviewerHudTitleGroup",
                 "reviewerHudHeaderActions",
             ],
-            "header_reserved_width": 170,
+            "header_reserved_width": 163,
             "balance_cluster_contained": True,
         },
         "coin-balance-1000000": {
@@ -809,7 +1068,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 "reviewerHudTitleGroup",
                 "reviewerHudHeaderActions",
             ],
-            "header_reserved_width": 170,
+            "header_reserved_width": 163,
             "balance_cluster_contained": True,
         },
         "header-stable-grouping": {
@@ -824,7 +1083,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 "reviewerHudTitleGroup",
                 "reviewerHudHeaderActions",
             ],
-            "reserved_width": 170,
+            "reserved_width": 163,
             "anchor_snapshots": [header_anchors] * 5,
         },
     })
@@ -838,7 +1097,10 @@ def _reviewer_baseline_content() -> dict[str, object]:
 
 
 def _reviewer_reward_content() -> dict[str, object]:
-    settled_copy = "Future growth will be shared or stored."
+    settled_copy = (
+        "Future Growth will go to other planted plants. "
+        "Any remainder will be stored."
+    )
     expected_detail_rows = [
         {
             "category": category,
@@ -852,7 +1114,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             ("Garden Coins", "Garden Coins", "+14 coins", "event:3"),
             ("Discovery", "Firefly Evening", "New", "event:4"),
             ("Discovery", "Morning Dew", "New", "event:5"),
-            ("Garden Find", "Moonlit Seed", "Common", "event:6"),
+            ("Standard Find", "Moonlit Seed", "Common", "event:6"),
             ("Additional effect", "Fertilizer", "1h 24m", "event:7"),
         )
     ]
@@ -871,10 +1133,13 @@ def _reviewer_reward_content() -> dict[str, object]:
             "displayed_progress_percent": 100,
             "reward_copy": "+10 coins",
         },
-        "one-garden-find": {"find_count": 1, "footer_copy": "1 find"},
+        "one-garden-find": {
+            "find_count": 1,
+            "footer_copy": "1 Standard Find",
+        },
         "discovery-new-wording": {
-            "visible_summary_labels": ["1 Garden Find", "2 new discoveries"],
-            "discovery_summary": "2 new discoveries",
+            "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
+            "discovery_summary": "Garden discoveries",
         },
         "full-bloom": {
             "eyebrow": "MILESTONE REACHED",
@@ -927,10 +1192,10 @@ def _reviewer_reward_content() -> dict[str, object]:
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "visible_summary_count": 2,
-            "visible_summary_labels": ["1 Garden Find", "2 new discoveries"],
+            "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
             "visible_summary_rows": [
                 {
-                    "label": "1 Garden Find",
+                    "label": "1 Standard Find",
                     "reward_type": "garden_find",
                     "artwork_ref": "morning_dew",
                     "uses_item_art": True,
@@ -938,7 +1203,7 @@ def _reviewer_reward_content() -> dict[str, object]:
                     "icon_kind": "item-art",
                 },
                 {
-                    "label": "2 new discoveries",
+                    "label": "Garden discoveries",
                     "reward_type": "environment_discovery",
                     "artwork_ref": "firefly_lantern",
                     "uses_item_art": False,
@@ -1002,7 +1267,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "live_coins": 14,
             "footer_finds": 1,
             "live_finds": 1,
-            "footer_copy": ["+40 growth", "+14 coins", "1 find"],
+            "footer_copy": ["+40 growth", "+14 coins", "1 Standard Find"],
         },
         "reward-reveal-lifecycle": {
             "celebrating": "celebrating",
@@ -1087,6 +1352,80 @@ def _reviewer_reward_interactions() -> dict[str, object]:
         "next_card_projection_preserved": True,
         "passed": True,
     }
+    rows["passed"] = True
+    return rows
+
+
+def _reviewer_answer_controls_exclusion(
+    *,
+    measured_required: bool,
+) -> dict[str, object]:
+    if not measured_required:
+        return {
+            "control_rectangles": [],
+            "fallback_bottom_clearance": 72,
+            "fallback_clearance": 72,
+            "fallback_passed": True,
+            "measured": False,
+            "measured_passed": False,
+            "measured_required": False,
+            "passed": True,
+            "rect_in_viewport": False,
+            "rectangles_intersect": False,
+            "source": "fallback",
+            "telemetry_state": "fallback",
+        }
+    return {
+        "control_rectangles": [{
+            "bounds": [120, 900, 1_240, 96],
+            "name": "reviewer-answer-controls",
+            "source": "webengine-dom",
+        }],
+        "controls_top": 900,
+        "fallback_passed": False,
+        "hud_answer_controls_source": "webengine-dom",
+        "hud_bottom": 850,
+        "matched_nodes": 4,
+        "measured": True,
+        "measured_passed": True,
+        "measured_required": True,
+        "passed": True,
+        "rect_in_viewport": True,
+        "rectangles_intersect": False,
+        "reported_clearance": 141,
+        "schema_version": 1,
+        "source": "webengine-dom",
+        "telemetry_state": "measured",
+        "viewport_matches": True,
+    }
+
+
+def _reviewer_hud_viewport_matrix() -> dict[str, object]:
+    rows: dict[str, object] = {
+        name: {
+            "answer_controls_exclusion": (
+                _reviewer_answer_controls_exclusion(
+                    measured_required=name != "1280x800-collapsed",
+                )
+            ),
+            "passed": True,
+        }
+        for name in (
+            "1710x1041-expanded",
+            "1600x1000-expanded",
+            "1280x800-expanded",
+            "1280x600-short-expanded",
+            "1280x800-collapsed",
+        )
+    }
+    rows["covered_requirements"] = [
+        "1710x1041",
+        "1600x1000",
+        "1280x800",
+        "short-height",
+        "expanded",
+        "collapsed",
+    ]
     rows["passed"] = True
     return rows
 
@@ -1245,22 +1584,7 @@ def test_reviewer_reward_matrix_rejects_copy_disclosure_and_replay_regressions()
 
 
 def test_reviewer_hud_release_matrix_rejects_end_gap_and_overflow_regressions() -> None:
-    viewport = {
-        "1710x1041-expanded": {"passed": True},
-        "1600x1000-expanded": {"passed": True},
-        "1280x800-expanded": {"passed": True},
-        "1280x600-short-expanded": {"passed": True},
-        "1280x800-collapsed": {"passed": True},
-        "covered_requirements": [
-            "1710x1041",
-            "1600x1000",
-            "1280x800",
-            "short-height",
-            "expanded",
-            "collapsed",
-        ],
-        "passed": True,
-    }
+    viewport = _reviewer_hud_viewport_matrix()
     resilience = {
         "no-active-plant": {"passed": True},
         "stored-growth": {"passed": True},
@@ -1274,6 +1598,34 @@ def test_reviewer_hud_release_matrix_rejects_end_gap_and_overflow_regressions() 
         content,
         resilience=resilience,
     ) == ()
+
+    missing_measured_controls = deepcopy(viewport)
+    missing_measured_controls["1710x1041-expanded"].pop(
+        "answer_controls_exclusion"
+    )
+    assert (
+        "reviewer-hud-answer-control-exclusion-not-passed"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            missing_measured_controls,
+            content,
+            resilience=resilience,
+        )
+    )
+
+    stale_mirror_source = deepcopy(viewport)
+    stale_mirror_source["1710x1041-expanded"][
+        "answer_controls_exclusion"
+    ]["hud_answer_controls_source"] = "host-property"
+    assert (
+        "reviewer-hud-answer-control-exclusion-not-passed"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            stale_mirror_source,
+            content,
+            resilience=resilience,
+        )
+    )
 
     no_gap = deepcopy(content)
     no_gap["1-card-left"]["displayed_progress_percent"] = 100
@@ -1399,22 +1751,7 @@ def test_reviewer_hud_release_matrix_rejects_end_gap_and_overflow_regressions() 
 
 
 def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression() -> None:
-    viewport = {
-        "1710x1041-expanded": {"passed": True},
-        "1600x1000-expanded": {"passed": True},
-        "1280x800-expanded": {"passed": True},
-        "1280x600-short-expanded": {"passed": True},
-        "1280x800-collapsed": {"passed": True},
-        "covered_requirements": [
-            "1710x1041",
-            "1600x1000",
-            "1280x800",
-            "short-height",
-            "expanded",
-            "collapsed",
-        ],
-        "passed": True,
-    }
+    viewport = _reviewer_hud_viewport_matrix()
     resilience = {
         "no-active-plant": {"passed": True},
         "stored-growth": {"passed": True},

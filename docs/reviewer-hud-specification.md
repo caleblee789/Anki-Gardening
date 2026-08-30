@@ -28,10 +28,11 @@ for cards, effects, Finds, rewards, and Coins.
 
 | Property | Contract |
 |---|---|
-| Width | `clamp(312px, 20vw, 328px)` |
+| Width | 296 px in the normal expanded layout; collapse to the narrow edge tab when that safe area cannot be reserved |
 | Height | Content-driven; never fixed to the full Reviewer height |
-| Maximum height | Viewport minus top/bottom safe areas and 24 px |
-| Edge inset | 12 px from the selected dock edge |
+| Top safe area | 44 px |
+| Bottom safe area | Measured from Anki's answer controls, with a 72 px fallback when those controls cannot be measured |
+| Edge inset | 16 px from the right edge in the canonical layout |
 | Card gap/padding | 10 px / 12 px |
 | Outer radius | 14 px |
 
@@ -42,6 +43,10 @@ may extend behind Anki's answer controls.
 
 The shell stays mounted between cards. Sync, answer display, resize, collapse,
 and Reviewer reload update it in place and must not replay rewards.
+
+When the available width cannot preserve the 296 px card plus its safe inset,
+the HUD enters its explicit narrow collapsed layout. It never compresses the
+expanded information model into an unreadable intermediate width.
 
 The full header opens Garden. The existing collapse chevron retains a 32 x 32
 px hit target. The balance cluster reserves measured width and uses tabular
@@ -85,10 +90,12 @@ crops transparent padding and targets visible heights of approximately 90, 99,
 109, 118, 124, and 136 px from Seed through Full Bloom. A soft painted ground
 ellipse and low-opacity glow anchor the art without a rectangular backdrop.
 
-The stage row is concise and numeric values use tabular figures:
+The stage row consumes the shared six-stage projection and numeric values use
+tabular figures. Internal `rare` remains the persisted final-stage key, but
+renderers show **Full Bloom**:
 
 ```text
-Sprout · Stage 1 of 5                         38%
+Sprout · 2 of 6 stages                       38%
 ```
 
 Checkpoint markers are not controls:
@@ -161,7 +168,7 @@ quantities for Finds:
 
 ```text
 This session
-+40 growth · +14 coins · 1 find
++40 growth · +14 coins · 1 Standard Find
 ```
 
 The footer is clickable only when exact history exists. All accepted nonempty
@@ -177,7 +184,7 @@ load, sync, resize, collapse, remount, and webview reopening cannot replay it.
 | Event | Eyebrow |
 |---|---|
 | Full Bloom or stage change | `MILESTONE REACHED` |
-| Garden Find | `GARDEN FIND` |
+| Standard Find | `STANDARD FIND` |
 | Checkpoint | `CHECKPOINT REACHED` |
 | Environment discovery | `NEW DISCOVERY` |
 | Other major reward | `REWARD EARNED` |
@@ -195,10 +202,10 @@ MILESTONE REACHED                         Details ›
 [badge] Full Bloom achieved
       coin icon  +14 coins
 
-[1 Garden Find] [2 new discoveries]
+[1 Standard Find] [2 Garden discoveries]
 ────────────────────────────────────────
 This session
-+40 growth · +14 coins · 1 find
++40 growth · +14 coins · 1 Standard Find
 ```
 
 `Details ›` is the only active-reward disclosure. It becomes `Hide details`
@@ -251,12 +258,21 @@ tabular numerals.
 - No persistence migration or duplicate reward calculation is introduced.
 - Animation never delays Anki's card transition or review input.
 
+Session Summary and Sync Rewards are mutually exclusive nonmodal surfaces. One
+shared coordinator owns the active surface, Escape dismissal, and focus
+restoration. A Sync receipt replaces an open Session Summary through that
+coordinator and docks in the safe upper-right region; neither summary may steal
+or strand focus in the Reviewer.
+
 ## Release acceptance
 
-The reviewer-specific states remain covered within the current v25
-18-representative/34-full capture topology; the separate Sync Rewards receipt
-is its own registered surface. Native macOS review at 100 percent scaling
-exercises these transient states:
+The reviewer-specific states are covered by capture contract v26 (contract
+schema 2, scenario schema 3) within the 18-surface representative and
+34-surface full topology. Representative output is two contact-sheet pages;
+full output is five. The separate Sync Rewards receipt remains its own
+registered surface. Every capture record carries `scenario_id`, `fixture_id`,
+and one-based `scenario_step`; v25 evidence is ineligible for reuse. Native
+macOS review at 100 percent scaling exercises these transient states:
 
 1. 18 cards left.
 2. 1 card left.
@@ -284,3 +300,16 @@ collapsed unseen rewards, rapid rewards, overflow/history expansion, sync while
 open, resize, and remount idempotence. Release evidence must prove no clipping,
 overlap, horizontal scroll, control collision, duplicate border, replay, or
 mismatch among reveal, footer, history, and exit Session Summary.
+
+## v26 evidence record
+
+Current run paths, archive and capture hashes, artifact sizes, and validation
+totals are recorded only in the
+[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md).
+
+The v26 gates fail closed on deprecated visible copy, root/DOM overflow,
+progress-fraction mismatches, asset mappings, Reviewer exclusion rectangles,
+scroll-state coverage, or scenario-lineage mismatches. This remains automated
+review evidence: `quality_status` is `review-required` and `release_ready` is
+`false`. Manual macOS interaction, Windows/Linux, mixed-DPI, forced-colors,
+screen-reader, broader-keyboard, and human release approval remain open.

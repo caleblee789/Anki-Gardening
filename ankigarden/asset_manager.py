@@ -523,6 +523,7 @@ class AssetPlacement:
     vessel_class: str = "legacy"
     vessel_class_multiplier: float = 1.0
     scene_scale_correction: float = 1.0
+    visual_scale_correction: float = 1.0
     focal_point: tuple[float, float] = (0.5, 0.5)
     thumbnail_bounds: tuple[float, float, float, float] = (0.08, 0.04, 0.84, 0.92)
     thumbnail_optical_center: tuple[float, float] = (0.5, 0.5)
@@ -676,6 +677,21 @@ class AssetPlacement:
             art_bounds[0] + art_bounds[2] / 2,
             art_bounds[1] + art_bounds[3] / 2,
         )
+        visual_scale_correction = number(
+            "visual_scale_correction",
+            defaults.visual_scale_correction,
+            0.5,
+            1.5,
+        )
+        # Scene correction preserves intentional species/stage proportions.
+        # Tight alpha-cropped thumbnails need a gentler inverse optical
+        # correction so a compact Seed is still recognizable without making
+        # a naturally broad Full Bloom fill the entire thumbnail. An explicit
+        # thumbnail_scale remains authoritative when asset review supplies it.
+        calibrated_thumbnail_scale = max(
+            0.85,
+            min(1.20, 1.0 / math.sqrt(max(0.01, visual_scale_correction))),
+        )
         return cls(
             anchor_x=number("anchor_x", defaults.anchor_x, 0.0, 1.0),
             baseline_y=number("baseline_y", defaults.baseline_y, 0.0, 1.0),
@@ -713,6 +729,7 @@ class AssetPlacement:
             scene_scale_correction=number(
                 "scene_scale_correction", defaults.scene_scale_correction, 0.5, 1.5
             ),
+            visual_scale_correction=visual_scale_correction,
             focal_point=pair("focal_point", defaults.focal_point),
             thumbnail_bounds=thumbnail_bounds,
             thumbnail_optical_center=pair(
@@ -720,7 +737,7 @@ class AssetPlacement:
                 thumbnail_center,
             ),
             thumbnail_scale=number(
-                "thumbnail_scale", defaults.thumbnail_scale, 0.5, 1.5
+                "thumbnail_scale", calibrated_thumbnail_scale, 0.5, 1.5
             ),
             max_visible_width=number(
                 "max_visible_width", defaults.max_visible_width, 0.1, 1.0
@@ -765,6 +782,7 @@ class AssetPlacement:
             "vessel_class": self.vessel_class,
             "vessel_class_multiplier": self.vessel_class_multiplier,
             "scene_scale_correction": self.scene_scale_correction,
+            "visual_scale_correction": self.visual_scale_correction,
             "focal_point": list(self.focal_point),
             "thumbnail_bounds": list(self.thumbnail_bounds),
             "thumbnail_optical_center": list(self.thumbnail_optical_center),

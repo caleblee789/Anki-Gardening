@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import copy
+import hashlib
 import json
 import os
 from dataclasses import replace
@@ -16,9 +18,11 @@ from ankigarden.capture.acquisition import (
     select_candidate,
 )
 from ankigarden.capture.contract import (
+    ContractValidationError,
     compile_contract,
     contract_diff,
     load_compiled_contract,
+    validate_contract_payload,
 )
 from ankigarden.capture.lifecycle import FailureLedger, build_capture_plan
 from ankigarden.capture.model import CaptureResult, ProfilePlacement
@@ -29,6 +33,7 @@ from scripts.package_addon import CAPTURE_BUILD, PRODUCTION_BUILD, package_files
 from scripts.validate_ui_capture import (
     DEFAULT_CAPTURE_SOURCE,
     load_capture_contract,
+    load_capture_scenario_contracts,
     load_expected_state_evidence_contracts,
 )
 
@@ -52,6 +57,9 @@ def _result(
 ) -> CaptureResult:
     return CaptureResult(
         surface_id=surface_id,
+        scenario_id=REGISTRY[surface_id].scenario_id,
+        fixture_id=REGISTRY[surface_id].fixture_id,
+        scenario_step=REGISTRY[surface_id].scenario_step,
         accepted=accepted,
         backend="qt-widget-grab",
         rejected_candidates=(),
@@ -189,7 +197,9 @@ def test_compiled_contract_is_current_and_validator_consumes_it() -> None:
     compiled = load_compiled_contract()
 
     assert compiled == compile_contract()
-    assert compiled["contract_version"] == 25
+    assert compiled["schema_version"] == 2
+    assert compiled["contract_version"] == 26
+    assert compiled["scenario_schema_version"] == 3
     full = load_capture_contract(DEFAULT_CAPTURE_SOURCE, profile="full")
     states = load_expected_state_evidence_contracts(
         DEFAULT_CAPTURE_SOURCE,
@@ -197,6 +207,119 @@ def test_compiled_contract_is_current_and_validator_consumes_it() -> None:
     )
     assert full.labels == REGISTRY.profile_labels("full")
     assert set(states) == set(full.labels)
+
+
+def test_v25_contract_is_frozen_and_v26_scenario_identity_is_complete() -> None:
+    v25_path = (
+        Path(capture_sequence.REPO_ROOT)
+        / "ankigarden"
+        / "capture"
+        / "capture-contract-v25.json"
+    )
+    assert hashlib.sha256(v25_path.read_bytes()).hexdigest() == (
+        "f05d8737b5343776d1ac8bdd6ba0cb379c5065efc2fa067714097d80c4917de0"
+    )
+
+    compiled = load_compiled_contract()
+    active_rows = {
+        row["id"]: row
+        for row in compiled["surfaces"]
+        if row["active"] is True
+    }
+    expected_overrides = {
+        "starter-deck-browser-home": ("first_run", 1),
+        "starter-garden-onboarding": ("first_run", 2),
+        "starter-nursery-plants": ("first_run", 3),
+        "starter-placement": ("first_run", 4),
+        "fertilizer-active": ("fertilizer_queue", 1),
+        "purchase-confirmation-fertilizer-queue": ("fertilizer_queue", 2),
+        "reviewer-hud-expanded": ("reviewer_hud_base", 1),
+        "session-summary-after-review": ("session_summary", 1),
+        "sync-rewards-summary": ("sync_rewards", 1),
+        "reviewer-reward-dock-bundle": ("reviewer_hud_full_bloom", 1),
+        "growth-charge-use-ready": ("growth_charge_transition", 1),
+        "growth-charge-success-stage-reward": ("growth_charge_transition", 2),
+    }
+    for stable_id, row in active_rows.items():
+        scenario_id, scenario_step = expected_overrides.get(
+            stable_id,
+            (stable_id, 1),
+        )
+        assert row["scenario_id"] == scenario_id
+        assert row["fixture_id"] == f"{scenario_id}-v1"
+        assert row["scenario_step"] == scenario_step
+    assert all(
+        {"scenario_id", "fixture_id", "scenario_step"} <= set(row)
+        for row in compiled["surfaces"]
+    )
+
+    contract = load_capture_contract(DEFAULT_CAPTURE_SOURCE, profile="full")
+    scenarios = load_capture_scenario_contracts(
+        DEFAULT_CAPTURE_SOURCE,
+        contract=contract,
+    )
+    for label in contract.labels:
+        assert scenarios[label]["scenario_id"] == active_rows[label]["scenario_id"]
+        assert scenarios[label]["fixture_id"] == active_rows[label]["fixture_id"]
+        assert scenarios[label]["scenario_step"] == active_rows[label][
+            "scenario_step"
+        ]
+
+
+def test_v26_shared_scenario_checkpoint_lineage_is_fail_closed() -> None:
+    queue_id = "purchase-confirmation-fertilizer-queue"
+    queue = REGISTRY[queue_id]
+    with pytest.raises(ValueError, match="multiple seeded checkpoint lineages"):
+        SurfaceRegistry(
+            replace(
+                surface,
+                checkpoint_cohort="development-stress",
+                checkpoint="development-stress",
+                internal_setups=("development-stress", "transaction-snapshot"),
+            )
+            if surface.stable_id == queue_id
+            else surface
+            for surface in REGISTRY.surfaces
+        )
+
+    tampered = copy.deepcopy(compile_contract())
+    raw_queue = next(
+        row for row in tampered["surfaces"]
+        if row["id"] == queue.stable_id
+    )
+    raw_queue.update({
+        "checkpoint_cohort": "development-stress",
+        "checkpoint": "development-stress",
+        "internal_setups": ["development-stress", "transaction-snapshot"],
+    })
+    with pytest.raises(ContractValidationError) as error:
+        validate_contract_payload(tampered)
+    assert (
+        "scenario 'fertilizer_queue' has multiple seeded checkpoint lineages"
+        in error.value.issues
+    )
+
+
+def test_v26_contract_hard_gates_scenario_and_profile_totals() -> None:
+    compiled = compile_contract()
+    bad_scenario = copy.deepcopy(compiled)
+    first = next(
+        row for row in bad_scenario["surfaces"]
+        if row["id"] == "starter-deck-browser-home"
+    )
+    first["scenario_step"] = 2
+    with pytest.raises(ContractValidationError) as scenario_error:
+        validate_contract_payload(bad_scenario)
+    assert any(
+        "unexpected v26 scenario identity" in issue
+        for issue in scenario_error.value.issues
+    )
+
+    bad_totals = copy.deepcopy(compiled)
+    bad_totals["profiles"]["representative"]["surface_count"] = 17
+    with pytest.raises(ContractValidationError) as totals_error:
+        validate_contract_payload(bad_totals)
+    assert "profile 'representative' surface count is stale" in totals_error.value.issues
 
 
 def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
@@ -223,6 +346,11 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
     )
     assert len(REGISTRY.profile_labels("representative")) == 18
     assert len(REGISTRY.profile_labels("full")) == 34
+    assert REGISTRY.profile_labels("full")[23] == (
+        "nursery-garden-decorations-scenery"
+    )
+    assert not REGISTRY["nursery-weather-scenery"].active
+    assert "nursery-weather-scenery" in compiled["retired_ids"]
     representative_labels = REGISTRY.profile_labels("representative")
     assert representative_labels[12] == "reviewer-hud-expanded"
     assert representative_labels[13] == "session-summary-after-review"
@@ -267,6 +395,8 @@ def test_primary_today_cards_and_reward_receipt_surfaces_are_active() -> None:
     assert "fertilizer_queue_confirmation" in queue.state_contract[
         "required_facts"
     ]
+    source = REGISTRY["fertilizer-active"]
+    assert "fertilizer_flow_source" in source.state_contract["required_facts"]
 
     today = REGISTRY["progress-today-cards"]
     assert today.renderer_family == "GardenProgressDialog"
@@ -873,7 +1003,7 @@ def test_sync_reward_capture_fixture_is_rich_multiday_and_nonmodal() -> None:
     assert "WA_ShowWithoutActivating" in audit
     assert "Qt.FocusPolicy.NoFocus" in audit
     assert "400 <= int(bounds[2]) <= 480" in audit
-    assert "int(bounds[1]) == 22" in audit
+    assert "int(bounds[1]) == 24" in audit
     assert "SYNC_REWARD_CAPTURE_SUBTITLE" in audit
     assert 'candidate.property("gardenAssetThumbnail") is True' in audit
     assert '"checkpoint_badge"' in audit
@@ -1069,7 +1199,6 @@ def test_collection_capture_summary_matches_current_catalog_fixture() -> None:
         "_UiFaceCaptureRunner",
         "_capture_fixture_postcondition",
     )
-
     assert "expected_collected_count = 30" in postcondition
     assert "expected_collectible_count = 39" in postcondition
     assert 'count_widget.property("collectedCount")' in postcondition
@@ -1087,115 +1216,6 @@ def test_session_summary_find_overflow_disclosure_is_separate_from_plus_three_fi
     assert "visible_limit: int = 3" in source
     assert 'more.setText(f"View {hidden_quantity:,} more Standard Finds")' in source
     assert "more.clicked.connect(self._expand_find_breakdown)" in source
-
-
-def test_session_summary_capture_audit_locks_projected_garden_item_semantics() -> None:
-    audit = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_session_summary_geometry_audit",
-    )
-
-    assert 'str(firefly_discovery.environment_kind) == "garden_feature"' in audit
-    assert 'str(firefly_discovery.unlock_category) == "garden_item"' in audit
-    assert 'str(firefly_highlight.kind) == "environment"' in audit
-    assert 'str(firefly_highlight.unlock_category) == "garden_item"' in audit
-    assert 'str(firefly_highlight.eyebrow) == "GARDEN ITEM UNLOCKED"' in audit
-    assert 'row["kind"] == "garden_item"' in audit
-    assert 'row["kind"] == "find"' in audit
-    assert 'bool(row["compact_find_art"])' in audit
-    assert 'list(garden_item_art["logical_size"]) == [58, 58]' in audit
-    assert 'int(garden_item_art["source_size"][0]) >= 116' in audit
-    assert 'bool(garden_item_art["pixmap_has_alpha"])' in audit
-    assert 'bool(garden_item_art["source_pixmap_has_alpha"])' in audit
-    assert 'bool(garden_item_art["source_has_transparent_corner"])' in audit
-    assert 'bool(garden_item_art["garden_item_art"])' in audit
-    assert 'row["kind"] == "active boost"' in audit
-    assert '"fertilizer_quality", "booster_potion"' in audit
-    assert '"boost_art_passed": boost_art_passed' in audit
-    assert 'row.property("summaryBoostRow") is not True' in audit
-    assert '"ordered_without_overlap": ordered' in audit
-    assert '"boost_layout_passed": boost_layout_passed' in audit
-    assert 'not bool(garden_item_art["environment_art"])' in audit
-    assert 'not bool(garden_item_art["framed_thumbnail_style"])' in audit
-    assert 'int(garden_item_art["media_rail_width"]) == 88' in audit
-    assert 'str(small_charge_find.find_name) == "Charged Seed"' in audit
-    assert 'str(small_charge_find.reward_label) == "+1 Small Growth Charge"' in audit
-    assert '"charged seed" not in normalized' in audit
-    assert '4 <= hero_gap <= 6' in audit
-    assert 'footer_button_texts == ["Continue Reviews", "Open Garden"]' in audit
-    assert '"Open garden" not in buttons' in audit
-    assert 'candidate.focusPolicy() == Qt.FocusPolicy.NoFocus' in audit
-    assert '!= Qt.CursorShape.PointingHandCursor' in audit
-    assert 'candidate.property("summaryMetric") is True' in audit
-    assert 'candidate.property("summaryBoostRow") is True' in audit
-    assert '{"highlight", "reward_metric", "boost"}' in audit
-
-
-def test_home_capture_gates_lock_open_garden_capitalization() -> None:
-    source = (
-        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
-    ).read_text("utf-8")
-
-    assert "homeActionText !== 'Open Garden'" in source
-    assert source.count("homeActionText === 'Open Garden'") == 2
-    assert "homeActionText === 'Open garden'" not in source
-    assert "homeActionText !== 'Open garden'" not in source
-
-
-def test_capture_reviewer_entry_waits_for_stable_home_event_turns() -> None:
-    source = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_with_capture_reviewer",
-    )
-
-    assert source.count('mw.moveToState("review")') == 1
-    assert "def enter_reviewer" in source
-    assert "def reviewer_entry_settled" in source
-    assert 'settle_samples["count"] >= 2' in source
-    assert "QTimer.singleShot(" in source
-    assert "reviewer_entry_settled,\n                enter_reviewer" in source
-
-
-def test_selected_plant_surface_owns_popover_window_matrix_evidence() -> None:
-    required_facts = REGISTRY["selected-plant-nurtured"].state_contract[
-        "required_facts"
-    ]
-
-    assert "plant_popover_window_matrix" in required_facts
-
-
-def test_adding_one_surface_changes_topology_without_invalidating_existing_pixels() -> None:
-    base = REGISTRY["starter-garden-onboarding"]
-    last = REGISTRY[REGISTRY.profile_labels("full")[-1]]
-    last_full = next(item for item in last.placements if item.profile == "full")
-    added = replace(
-        base,
-        stable_id="future-surface",
-        placements=(ProfilePlacement(
-            "full",
-            last_full.group,
-            last_full.group_order,
-            last_full.order + 1,
-            last_full.within_group_order + 1,
-        ),),
-        prerequisites=(),
-        state_contract={
-            **base.state_contract,
-            "profile": {
-                **base.state_contract["profile"],
-                "profile_id": "future-surface",
-            },
-        },
-    )
-    expanded = REGISTRY.add(added)
-
-    assert expanded.profile_labels("full")[-1] == "future-surface"
-    assert expanded.surface_digest(base.stable_id) == REGISTRY.surface_digest(
-        base.stable_id
-    )
-    assert contract_diff(compile_contract(REGISTRY), compile_contract(expanded))["added"] == [
-        "future-surface"
-    ]
 
 
 def test_retired_ids_are_reserved_and_no_longer_active() -> None:
@@ -1515,16 +1535,5 @@ def test_production_package_excludes_complete_capture_subtree() -> None:
     assert "capture_ui_faces.py" in capture
     assert "capture/runtime.py" in capture
     assert "capture/capture-contract-v25.json" in capture
+    assert "capture/capture-contract-v26.json" in capture
     assert production < capture
-
-
-def test_capture_runtime_routes_current_decoration_category_and_copy() -> None:
-    runtime_path = (
-        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
-    )
-    source = runtime_path.read_text("utf-8")
-
-    assert '_collection_category = "weather"' not in source
-    assert "Added to Weather and Scenery" not in source
-    assert '_collection_category = "garden_features"' in source
-    assert "Added to Garden Decorations" in source

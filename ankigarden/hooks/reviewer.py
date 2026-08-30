@@ -28,6 +28,8 @@ from ..performance import RUNTIME_PERFORMANCE
 from ..storage import assign_stable_answer_identities, unprocessed_revlog_entries
 from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 from ..ui.reviewer_hud import (
+    HUD_ANSWER_CONTROLS_SCHEMA_VERSION,
+    HUD_CONTROLS_CLEARANCE,
     ReviewerHudProjection,
     create_reviewer_hud,
     project_reviewer_hud,
@@ -52,9 +54,174 @@ from ..ui.session_summary import (
     TodayCardsSnapshot,
 )
 from ..ui.theme import GARDEN_THEME
+from ..ui.transient_summary_coordinator import dispose_unmounted_summary_card
 
 
 logger = logging.getLogger(__name__)
+
+
+REVIEWER_ANSWER_CONTROLS_SCHEMA_VERSION = HUD_ANSWER_CONTROLS_SCHEMA_VERSION
+REVIEWER_ANSWER_CONTROLS_SOURCE = "webengine-dom"
+REVIEWER_ANSWER_CONTROLS_FALLBACK_CLEARANCE = HUD_CONTROLS_CLEARANCE
+
+
+def reviewer_answer_controls_measurement_script() -> str:
+    """Return the WebEngine probe for Anki's visible answer controls.
+
+    Coordinates are CSS pixels relative to the Reviewer webview viewport, which
+    is the same logical coordinate space used by the native HUD overlay. The
+    selector list intentionally targets answer controls rather than Anki's
+    whole bottom bar so Edit/More/navigation chrome cannot shrink the HUD.
+    """
+
+    return r"""
+(() => {
+  const schemaVersion = 1;
+  const source = "webengine-dom";
+  const viewport = {
+    width: Math.max(1, Math.round(window.innerWidth || 0)),
+    height: Math.max(1, Math.round(window.innerHeight || 0)),
+  };
+  const selectors = [
+    "#answer-buttons",
+    ".answer-buttons",
+    "[data-testid='answer-buttons']",
+    "[data-testid='reviewer-answer-controls']",
+    ".reviewer-answer-controls",
+    ".answer-controls",
+    "#ansbut",
+    "#show-answer",
+    "button[data-testid='show-answer']",
+    "#ease1",
+    "#ease2",
+    "#ease3",
+    "#ease4",
+    "button[data-ease]"
+  ];
+  const nodes = [];
+  const seen = new Set();
+  for (const selector of selectors) {
+    for (const node of document.querySelectorAll(selector)) {
+      if (seen.has(node)) continue;
+      seen.add(node);
+      const style = window.getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        Number(style.opacity || "1") === 0 ||
+        rect.width <= 0 ||
+        rect.height <= 0 ||
+        rect.right <= 0 ||
+        rect.bottom <= 0 ||
+        rect.left >= viewport.width ||
+        rect.top >= viewport.height
+      ) continue;
+      nodes.push(rect);
+    }
+  }
+  if (!nodes.length) {
+    return {
+      schema_version: schemaVersion,
+      source,
+      measured: false,
+      viewport,
+      rect: null,
+      clearance: null,
+      matched_nodes: 0,
+    };
+  }
+  const left = Math.max(0, Math.floor(Math.min(...nodes.map(rect => rect.left))));
+  const top = Math.max(0, Math.floor(Math.min(...nodes.map(rect => rect.top))));
+  const right = Math.min(
+    viewport.width,
+    Math.ceil(Math.max(...nodes.map(rect => rect.right)))
+  );
+  const bottom = Math.min(
+    viewport.height,
+    Math.ceil(Math.max(...nodes.map(rect => rect.bottom)))
+  );
+  return {
+    schema_version: schemaVersion,
+    source,
+    measured: true,
+    viewport,
+    rect: {
+      x: left,
+      y: top,
+      width: Math.max(1, right - left),
+      height: Math.max(1, bottom - top),
+    },
+    clearance: Math.max(0, viewport.height - top),
+    matched_nodes: nodes.length,
+  };
+})()
+""".strip()
+
+
+def normalize_reviewer_answer_controls_telemetry(
+    payload: Any,
+    *,
+    viewport_width: int,
+    viewport_height: int,
+) -> dict[str, Any] | None:
+    """Validate one WebEngine answer-control measurement fail closed."""
+
+    if not isinstance(payload, Mapping):
+        return None
+    try:
+        schema_version = int(payload.get("schema_version", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if (
+        schema_version != REVIEWER_ANSWER_CONTROLS_SCHEMA_VERSION
+        or payload.get("measured") is not True
+        or str(payload.get("source", "") or "")
+        != REVIEWER_ANSWER_CONTROLS_SOURCE
+    ):
+        return None
+
+    viewport = payload.get("viewport")
+    rect = payload.get("rect")
+    if not isinstance(viewport, Mapping) or not isinstance(rect, Mapping):
+        return None
+    try:
+        measured_width = int(round(float(viewport.get("width", 0) or 0)))
+        measured_height = int(round(float(viewport.get("height", 0) or 0)))
+        x = int(round(float(rect.get("x", 0) or 0)))
+        y = int(round(float(rect.get("y", 0) or 0)))
+        width = int(round(float(rect.get("width", 0) or 0)))
+        height = int(round(float(rect.get("height", 0) or 0)))
+        matched_nodes = max(0, int(payload.get("matched_nodes", 0) or 0))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+    expected_width = max(1, int(viewport_width))
+    expected_height = max(1, int(viewport_height))
+    # A callback can arrive after a native resize. Reject that stale geometry
+    # instead of applying it in a new coordinate space.
+    if (
+        abs(measured_width - expected_width) > 2
+        or abs(measured_height - expected_height) > 2
+        or x < 0
+        or y < 0
+        or width <= 0
+        or height <= 0
+        or x + width > expected_width + 2
+        or y + height > expected_height + 2
+    ):
+        return None
+
+    return {
+        "schema_version": REVIEWER_ANSWER_CONTROLS_SCHEMA_VERSION,
+        "source": REVIEWER_ANSWER_CONTROLS_SOURCE,
+        "measured": True,
+        "viewport": (expected_width, expected_height),
+        "rect": (x, y, width, height),
+        "top": y,
+        "clearance": max(0, expected_height - y),
+        "matched_nodes": matched_nodes,
+    }
 
 
 def _standard_find_is_notable(outcome: Any) -> bool:
@@ -138,6 +305,30 @@ def reviewer_overlay_parent(main_window: Any) -> Any:
         if candidate is not None:
             return candidate
     return main_window
+
+
+def reviewer_answer_controls_webview(main_window: Any) -> Any | None:
+    """Resolve the WebEngine that actually paints Anki's answer buttons."""
+
+    reviewer = getattr(main_window, "reviewer", None)
+    bottom = getattr(reviewer, "bottom", None)
+    for candidate in (
+        getattr(reviewer, "bottomWeb", None),
+        getattr(bottom, "web", None),
+        getattr(main_window, "bottomWeb", None),
+        getattr(reviewer, "web", None),
+    ):
+        if (
+            candidate is not None
+            and callable(getattr(candidate, "width", None))
+            and callable(getattr(candidate, "height", None))
+            and (
+                callable(getattr(candidate, "evalWithCallback", None))
+                or callable(getattr(candidate, "page", None))
+            )
+        ):
+            return candidate
+    return None
 
 
 def session_summary_parent(main_window: Any) -> Any:
@@ -256,12 +447,14 @@ class ReviewerHookHandler:
         state_changed: Callable[[str], None] | None = None,
         history_invalidated: Callable[[str], None] | None = None,
         open_garden: Callable[..., None] | None = None,
+        summary_coordinator: Any | None = None,
     ) -> None:
         self.engine = engine
         self.storage = storage
         self.state_changed = state_changed
         self.history_invalidated = history_invalidated
         self.open_garden = open_garden
+        self.summary_coordinator = summary_coordinator
         self._local_answer_fast_path_ready = False
         self._last_notified_event = ""
         self._notified_event_ids: set[str] = set()
@@ -278,6 +471,7 @@ class ReviewerHookHandler:
         self._reviewer_hud_projection: ReviewerHudProjection | None = None
         self._reviewer_hud_reward_state: dict[str, Any] | None = None
         self._reviewer_hud_narrow_forced = False
+        self._reviewer_answer_controls_generation = 0
         self._reviewer_growth_pulse: Any | None = None
         # Legacy engines can still produce the exact immutable session event
         # without the newer ``CommittedAnswerResult`` wrapper.  Keep that
@@ -1003,7 +1197,7 @@ class ReviewerHookHandler:
             StandardFind(
                 event_id=str(getattr(outcome, "outcome_key", "") or outcome.answer_key),
                 find_id=str(outcome.reward_id or "garden_find"),
-                find_name=str(outcome.display_name or "Garden Find"),
+                find_name=str(outcome.display_name or "Standard Find"),
                 rarity=str(outcome.tier or ""),
                 reward_type=str(outcome.reward_type or ""),
                 reward_label=str(outcome.description or ""),
@@ -1139,7 +1333,9 @@ class ReviewerHookHandler:
                 ),
                 rarity=str(getattr(item, "rarity", "") or ""),
                 art_asset=item_id,
-                effect_summary=str(getattr(item, "effect", "") or "Cosmetic environment"),
+                effect_summary=str(
+                    getattr(item, "effect", "") or "Garden decoration or scenery"
+                ),
                 occurred_at=str(receipt.occurred_at or self._session_now_iso()),
             ))
 
@@ -1256,7 +1452,7 @@ class ReviewerHookHandler:
             standard_finds.append(StandardFind(
                 str(outcome_key),
                 str(getattr(outcome, "reward_id", "") or "garden_find"),
-                str(getattr(outcome, "display_name", "") or "Garden Find"),
+                str(getattr(outcome, "display_name", "") or "Standard Find"),
                 str(getattr(outcome, "tier", "") or ""),
                 str(getattr(outcome, "reward_type", "") or ""),
                 reward_label,
@@ -1390,7 +1586,9 @@ class ReviewerHookHandler:
                 ),
                 str(getattr(item, "rarity", "") or ""),
                 normalized,
-                str(getattr(item, "effect", "") or "Cosmetic environment"),
+                str(
+                    getattr(item, "effect", "") or "Garden decoration or scenery"
+                ),
                 self._session_event_iso(payload.get("answered_at_ms", 0)),
             ))
 
@@ -1471,6 +1669,18 @@ class ReviewerHookHandler:
             return
         self._reviewer_notice_shown = True
         self._show_no_starter_notice()
+
+    def on_answer_shown(self, *_args: Any, **_kwargs: Any) -> None:
+        """Refresh measured answer-button geometry after Anki reveals it."""
+
+        if str(getattr(mw, "state", "") or "") != "review":
+            return
+        if getattr(self, "_reviewer_hud", None) is None:
+            self._ensure_reviewer_hud()
+            return
+        self._request_reviewer_answer_control_geometry(
+            reviewer_overlay_parent(mw)
+        )
 
     def on_starter_selected(self) -> None:
         """Remove the session reminder as soon as starter persistence succeeds."""
@@ -1628,17 +1838,29 @@ class ReviewerHookHandler:
                 pass
         shortcut = self._session_summary_escape_shortcut
         self._session_summary_escape_shortcut = None
-        if shortcut is not None:
-            try:
-                shortcut.setEnabled(False)
-                shortcut.deleteLater()
-            except (AttributeError, RuntimeError):
-                pass
+        self._dispose_session_summary_shortcut(shortcut)
+        coordinator = self.summary_coordinator
+        release = getattr(coordinator, "release", None)
+        if callable(release):
+            release("session")
         if clear_pending:
             self._session_summary_presentation_generation += 1
             self._pending_session_summary = None
             self._session_summary_render_scheduled = False
             self._presented_session_summary_payload = None
+
+    @staticmethod
+    def _dispose_session_summary_shortcut(shortcut: Any | None) -> None:
+        if shortcut is None:
+            return
+        try:
+            shortcut.setEnabled(False)
+        except (AttributeError, RuntimeError):
+            pass
+        try:
+            shortcut.deleteLater()
+        except (AttributeError, RuntimeError):
+            pass
 
     def _schedule_session_summary_render(self, delay_ms: int = 0) -> None:
         if self._session_summary_render_scheduled:
@@ -1691,12 +1913,18 @@ class ReviewerHookHandler:
         if reviewer_modal_active(mw):
             self._schedule_session_summary_render(150)
             return
+        card: Any | None = None
+        shortcut: Any | None = None
         try:
             from aqt.qt import QKeySequence, QShortcut, Qt
             from ..ui.session_summary_card import SessionSummaryCard
 
             parent = session_summary_parent(mw)
             self._hide_session_summary(clear_pending=False)
+            coordinator = self.summary_coordinator
+            acquire = getattr(coordinator, "acquire", None)
+            if callable(acquire):
+                acquire("session", self._dismiss_session_summary)
             card = SessionSummaryCard(
                 parent,
                 payload,
@@ -1715,6 +1943,11 @@ class ReviewerHookHandler:
             self._presented_session_summary_payload = payload
             self._pending_session_summary = None
         except Exception:
+            self._dispose_session_summary_shortcut(shortcut)
+            dispose_unmounted_summary_card(card)
+            release = getattr(self.summary_coordinator, "release", None)
+            if callable(release):
+                release("session")
             logger.debug(
                 "Anki Garden: Session Summary could not be rendered",
                 exc_info=True,
@@ -1722,6 +1955,14 @@ class ReviewerHookHandler:
 
     def _dismiss_session_summary_on_escape(self) -> None:
         if reviewer_modal_active(mw):
+            return
+        coordinator = self.summary_coordinator
+        owns = getattr(coordinator, "owns", None)
+        if callable(owns) and not bool(owns("session")):
+            return
+        dismiss_active = getattr(coordinator, "dismiss", None)
+        if callable(dismiss_active):
+            dismiss_active("escape")
             return
         self._dismiss_session_summary()
 
@@ -2007,6 +2248,7 @@ class ReviewerHookHandler:
             )
 
     def _hide_reviewer_hud(self) -> None:
+        self._reviewer_answer_controls_generation += 1
         panel = getattr(self, "_reviewer_hud", None)
         parent = getattr(self, "_reviewer_hud_parent", None)
         resize_filter = getattr(self, "_reviewer_hud_parent_filter", None)
@@ -2268,6 +2510,270 @@ class ReviewerHookHandler:
             viewport_height=viewport_height,
         )
 
+    def _publish_reviewer_answer_controls_telemetry(
+        self,
+        parent: Any,
+        telemetry: Mapping[str, Any] | None,
+        *,
+        generation: int,
+        viewport_width: int,
+        viewport_height: int,
+    ) -> bool:
+        """Publish the measured WebEngine rectangle in Qt logical pixels."""
+
+        setter = getattr(parent, "setProperty", None)
+        if not callable(setter):
+            return False
+        if telemetry is None:
+            values: dict[str, Any] = {
+                "reviewerAnswerControlsSchemaVersion": (
+                    REVIEWER_ANSWER_CONTROLS_SCHEMA_VERSION
+                ),
+                "reviewerAnswerControlsRect": None,
+                "reviewerAnswerControlsTop": None,
+                "reviewerAnswerControlsClearance": (
+                    REVIEWER_ANSWER_CONTROLS_FALLBACK_CLEARANCE
+                ),
+                "reviewerAnswerControlsViewport": [
+                    max(1, int(viewport_width)),
+                    max(1, int(viewport_height)),
+                ],
+                "reviewerAnswerControlsSource": "fallback",
+                "reviewerAnswerControlsMeasured": False,
+                "reviewerAnswerControlsMatchedNodes": 0,
+                "reviewerAnswerControlsTelemetryState": "fallback",
+                "reviewerAnswerControlsRevision": max(0, int(generation)),
+            }
+        else:
+            rect = tuple(telemetry.get("rect", ()) or ())
+            viewport = tuple(telemetry.get("viewport", ()) or ())
+            values = {
+                "reviewerAnswerControlsSchemaVersion": int(
+                    telemetry["schema_version"]
+                ),
+                "reviewerAnswerControlsRect": list(rect),
+                "reviewerAnswerControlsTop": int(telemetry["top"]),
+                "reviewerAnswerControlsClearance": int(
+                    telemetry["clearance"]
+                ),
+                "reviewerAnswerControlsViewport": list(viewport),
+                "reviewerAnswerControlsSource": str(telemetry["source"]),
+                "reviewerAnswerControlsMeasured": True,
+                "reviewerAnswerControlsMatchedNodes": int(
+                    telemetry.get("matched_nodes", 0) or 0
+                ),
+                "reviewerAnswerControlsTelemetryState": "measured",
+                "reviewerAnswerControlsRevision": max(0, int(generation)),
+            }
+        try:
+            for key, value in values.items():
+                setter(key, value)
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return False
+        return True
+
+    def _accept_reviewer_answer_controls_telemetry(
+        self,
+        parent: Any,
+        source_webview: Any,
+        generation: int,
+        parent_width: int,
+        parent_height: int,
+        source_width: int,
+        source_height: int,
+        payload: Any,
+    ) -> None:
+        """Accept only the latest measurement for the current Reviewer view."""
+
+        if generation != self._reviewer_answer_controls_generation:
+            return
+        reviewer = getattr(mw, "reviewer", None)
+        if (
+            str(getattr(mw, "state", "") or "") != "review"
+            or getattr(reviewer, "web", None) is not parent
+            or reviewer_answer_controls_webview(mw) is not source_webview
+        ):
+            return
+        try:
+            live_width = max(1, int(parent.width()))
+            live_height = max(1, int(parent.height()))
+            live_source_width = max(1, int(source_webview.width()))
+            live_source_height = max(1, int(source_webview.height()))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return
+        if (
+            live_width != int(parent_width)
+            or live_height != int(parent_height)
+            or live_source_width != int(source_width)
+            or live_source_height != int(source_height)
+        ):
+            telemetry = None
+        else:
+            telemetry = normalize_reviewer_answer_controls_telemetry(
+                payload,
+                viewport_width=live_source_width,
+                viewport_height=live_source_height,
+            )
+            if telemetry is not None and source_webview is not parent:
+                try:
+                    source_origin = source_webview.mapToGlobal(
+                        source_webview.rect().topLeft()
+                    )
+                    target_origin = parent.mapFromGlobal(source_origin)
+                    offset_x = int(target_origin.x())
+                    offset_y = int(target_origin.y())
+                    rect_x, rect_y, rect_width, rect_height = tuple(
+                        telemetry["rect"]
+                    )
+                    raw_left = offset_x + int(rect_x)
+                    raw_top = offset_y + int(rect_y)
+                    raw_right = raw_left + int(rect_width)
+                    raw_bottom = raw_top + int(rect_height)
+                    left = max(0, min(live_width, raw_left))
+                    top = max(0, min(live_height, raw_top))
+                    right = max(
+                        left + 1,
+                        min(live_width, raw_right),
+                    )
+                    bottom = max(
+                        top + 1,
+                        min(live_height, raw_bottom),
+                    )
+                    telemetry = {
+                        **telemetry,
+                        "viewport": (live_width, live_height),
+                        "rect": (
+                            left,
+                            top,
+                            max(1, right - left),
+                            max(1, bottom - top),
+                        ),
+                        "top": top,
+                        "clearance": max(0, live_height - top),
+                    }
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    telemetry = None
+            elif telemetry is not None:
+                telemetry = {
+                    **telemetry,
+                    "viewport": (live_width, live_height),
+                    "top": int(telemetry["rect"][1]),
+                    "clearance": max(
+                        0,
+                        live_height - int(telemetry["rect"][1]),
+                    ),
+                }
+        published = self._publish_reviewer_answer_controls_telemetry(
+            parent,
+            telemetry,
+            generation=generation,
+            viewport_width=live_width,
+            viewport_height=live_height,
+        )
+        panel = getattr(self, "_reviewer_hud", None)
+        reposition = getattr(panel, "reposition", None)
+        if not callable(reposition):
+            return
+        try:
+            panel_parent = getattr(panel, "parentWidget", lambda: parent)()
+            if panel_parent is not parent:
+                return
+            if published:
+                reposition(live_width, live_height)
+            elif telemetry is not None:
+                reposition(
+                    live_width,
+                    live_height,
+                    answer_controls_top=int(telemetry["top"]),
+                )
+            else:
+                reposition(live_width, live_height)
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return
+
+    def _request_reviewer_answer_control_geometry(
+        self,
+        parent: Any | None = None,
+    ) -> bool:
+        """Measure answer controls through the current Reviewer WebEngine."""
+
+        reviewer = getattr(mw, "reviewer", None)
+        reviewer_web = getattr(reviewer, "web", None)
+        target = reviewer_web if parent is None else parent
+        if (
+            str(getattr(mw, "state", "") or "") != "review"
+            or target is None
+            or target is not reviewer_web
+        ):
+            return False
+        try:
+            parent_width = max(1, int(target.width()))
+            parent_height = max(1, int(target.height()))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return False
+        source_webview = reviewer_answer_controls_webview(mw)
+        if source_webview is None:
+            return False
+        try:
+            source_width = max(1, int(source_webview.width()))
+            source_height = max(1, int(source_webview.height()))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return False
+
+        self._reviewer_answer_controls_generation += 1
+        generation = self._reviewer_answer_controls_generation
+        script = reviewer_answer_controls_measurement_script()
+
+        def accept(payload: Any) -> None:
+            self._accept_reviewer_answer_controls_telemetry(
+                target,
+                source_webview,
+                generation,
+                parent_width,
+                parent_height,
+                source_width,
+                source_height,
+                payload,
+            )
+
+        evaluate = getattr(source_webview, "evalWithCallback", None)
+        if callable(evaluate):
+            try:
+                evaluate(script, accept)
+                return True
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                logger.debug(
+                    "Anki Garden: Reviewer answer controls could not be measured",
+                    exc_info=True,
+                )
+
+        try:
+            page = source_webview.page()
+            run_javascript = getattr(page, "runJavaScript", None)
+        except (AttributeError, RuntimeError, TypeError):
+            run_javascript = None
+        if callable(run_javascript):
+            try:
+                run_javascript(script, accept)
+                return True
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                logger.debug(
+                    "Anki Garden: Reviewer WebEngine measurement bridge failed",
+                    exc_info=True,
+                )
+
+        self._accept_reviewer_answer_controls_telemetry(
+            target,
+            source_webview,
+            generation,
+            parent_width,
+            parent_height,
+            source_width,
+            source_height,
+            None,
+        )
+        return False
+
     def _render_reviewer_hud(
         self,
         parent: Any,
@@ -2298,6 +2804,9 @@ class ReviewerHookHandler:
                     on_select_plant=self._select_another_plant_from_reviewer_hud,
                     on_choose_plant=self._choose_plant_from_reviewer_hud,
                     on_toggle_collapsed=self._toggle_reviewer_hud,
+                    on_request_answer_controls=(
+                        self._request_reviewer_answer_control_geometry
+                    ),
                     resolve_reward_art=self._resolve_reviewer_reward_art,
                     animations_enabled=self._session_summary_animations_enabled(),
                 )
@@ -2324,6 +2833,9 @@ class ReviewerHookHandler:
                         on_select_plant=self._select_another_plant_from_reviewer_hud,
                         on_choose_plant=self._choose_plant_from_reviewer_hud,
                         on_toggle_collapsed=self._toggle_reviewer_hud,
+                        on_request_answer_controls=(
+                            self._request_reviewer_answer_control_geometry
+                        ),
                         resolve_reward_art=self._resolve_reviewer_reward_art,
                         animations_enabled=self._session_summary_animations_enabled(),
                     )
@@ -2343,6 +2855,7 @@ class ReviewerHookHandler:
             reposition = getattr(panel, "reposition", None)
             if callable(reposition):
                 reposition(viewport_width, viewport_height)
+            self._request_reviewer_answer_control_geometry(parent)
         except Exception:
             logger.debug(
                 "Anki Garden: Reviewer HUD could not refresh in place",
@@ -2618,6 +3131,10 @@ class ReviewerHookHandler:
             today_layout.addWidget(today_primary)
             if projection.today.progress_maximum > 0:
                 due_progress = QProgressBar()
+                due_progress.setProperty(
+                    "semanticId",
+                    "reviewer.hud.today-progress",
+                )
                 due_progress.setRange(0, projection.today.progress_maximum)
                 due_progress.setValue(projection.today.progress_value)
                 due_progress.setTextVisible(False)
@@ -2733,6 +3250,10 @@ class ReviewerHookHandler:
                 stage_row.addWidget(percent)
                 nurture_layout.addLayout(stage_row)
                 plant_progress = QProgressBar()
+                plant_progress.setProperty(
+                    "semanticId",
+                    "reviewer.hud.plant-stage-progress",
+                )
                 plant_progress.setRange(0, 100)
                 plant_progress.setValue(projection.nurture.progress_percent)
                 plant_progress.setTextVisible(False)
@@ -4066,10 +4587,14 @@ class ReviewerHookHandler:
 
         if presentations:
             find = presentations[0]
-            title = "Garden Find"
+            title = (
+                "Garden discovery"
+                if str(find.pool_id) == "environment" else
+                "Standard Find"
+            )
             tier = self._display_tier(find.tier)
             if str(find.pool_id) == "environment" and environment_total:
-                message = "Added to Garden Decorations"
+                message = "Added to Garden decorations"
             elif not message:
                 message = self._player_reward_copy(find.description)
             first_find = presentations[0]
@@ -4080,12 +4605,42 @@ class ReviewerHookHandler:
                 else "ui"
             )
         elif find_events:
-            title = title.removeprefix("Garden Find:").strip() or "Garden reward"
+            title = (
+                title.removeprefix("Garden Find:")
+                .removeprefix("Standard Find:")
+                .strip()
+                or "Garden reward"
+            )
 
         find_count = max(len(find_events), len(presentations))
         if find_count > 1:
-            title = "Garden Find"
-            message = " · ".join(reward_parts) or "Garden rewards added"
+            discovery_count = sum(
+                1
+                for presentation in presentations
+                if str(presentation.pool_id) == "environment"
+            )
+            standard_count = max(0, len(presentations) - discovery_count)
+            if discovery_count and standard_count:
+                standard_label = (
+                    "Standard Find" if standard_count == 1 else "Standard Finds"
+                )
+                discovery_label = (
+                    "Garden discovery"
+                    if discovery_count == 1 else
+                    "Garden discoveries"
+                )
+                title = f"{standard_label} and {discovery_label}"
+                mixed_parts = list(reward_parts)
+                if not mixed_parts:
+                    mixed_parts.append(f"{standard_label} added")
+                mixed_parts.append(f"{discovery_label} added")
+                message = " · ".join(mixed_parts)
+            elif discovery_count:
+                title = "Garden discoveries"
+                message = "Added to Garden decorations"
+            else:
+                title = "Standard Finds"
+                message = " · ".join(reward_parts) or "Standard Finds added"
         if not message:
             message = self._aggregate_reward_messages(unique)
 
@@ -4612,7 +5167,13 @@ class ReviewerHookHandler:
                     "findTier",
                     str(getattr(event, "tier", "") or "").strip().lower(),
                 )
-                tier.setAccessibleName(f"Garden Find tier: {tier_text}")
+                tier_kind = (
+                    "Garden discovery"
+                    if str(getattr(event, "asset_category", "") or "")
+                    == "environment"
+                    else "Standard Find"
+                )
+                tier.setAccessibleName(f"{tier_kind} tier: {tier_text}")
                 header.addWidget(
                     tier,
                     0,
@@ -4790,8 +5351,14 @@ class ReviewerHookHandler:
 
     @staticmethod
     def _reward_title(event: Any) -> str:
+        if str(getattr(event, "kind", "")) == "garden_find":
+            return (
+                "Garden discovery"
+                if str(getattr(event, "asset_category", "") or "")
+                == "environment"
+                else "Standard Find"
+            )
         return {
-            "garden_find": "Garden Find",
             "reward_summary": "Review rewards",
         }.get(str(getattr(event, "kind", "")), "Garden reward")
 

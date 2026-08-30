@@ -74,7 +74,7 @@ def build_capabilities_source(mode: str) -> str:
         f'BUILD_MODE = "{normalized}"\n'
         f"CAPTURE_HARNESS_ENABLED = {capture_enabled!r}\n"
         f"DEVELOPMENT_MUTATION_ENABLED = {capture_enabled!r}\n\n"
-        f"CAPTURE_CONTRACT_VERSION = {25 if capture_enabled else 0}\n"
+        f"CAPTURE_CONTRACT_VERSION = {26 if capture_enabled else 0}\n"
         f"CAPTURE_RUNTIME_PACKAGE = {('capture' if capture_enabled else '')!r}\n\n"
     )
 

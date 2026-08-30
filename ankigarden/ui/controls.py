@@ -63,10 +63,9 @@ def _switch_icon(checked: bool, enabled: bool) -> QIcon:
         if checked else 11.0
     )
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(
-        GARDEN_THEME["action_text"]
-        if checked else GARDEN_THEME["text_primary"]
-    ))
+    # The enabled mint track always uses the same light thumb as the off
+    # state. A dark thumb reads as a hole rather than a movable control.
+    painter.setBrush(QColor(GARDEN_THEME["text_primary"]))
     painter.drawEllipse(
         QPointF(thumb_x, TOGGLE_VISUAL_HEIGHT / 2),
         thumb_radius,
@@ -103,6 +102,7 @@ class GardenToggleSwitch(QCheckBox):
     def _sync_state(self, checked: bool) -> None:
         self.setIcon(_switch_icon(bool(checked), self.isEnabled()))
         self.setProperty("switchState", "on" if checked else "off")
+        self.setProperty("switchThumbTone", "light")
         name = str(self.accessibleName() or self.text() or "Garden setting")
         self.setAccessibleDescription(
             f"{name} is {'on' if checked else 'off'}."
@@ -151,10 +151,7 @@ class GardenToggleSwitch(QCheckBox):
             radius = TOGGLE_VISUAL_HEIGHT / 2 - 0.5
             painter.drawRoundedRect(bounds, radius, radius)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(
-                GARDEN_THEME["action_text"]
-                if checked else GARDEN_THEME["text_primary"]
-            ))
+            painter.setBrush(QColor(GARDEN_THEME["text_primary"]))
             painter.drawEllipse(
                 QPointF(
                     TOGGLE_VISUAL_WIDTH - 11.0 if checked else 11.0,

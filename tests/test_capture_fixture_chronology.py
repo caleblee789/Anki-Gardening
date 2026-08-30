@@ -9,8 +9,16 @@ from ankigarden.capture.fixtures import (
     CAPTURE_DATE,
     STREAK_MILESTONE_DATES,
     achievement_completion_schedule,
+    representative_collection_inventory_plan,
     validate_achievement_completion_schedule,
 )
+from ankigarden.collectibles import collectible_views
+from ankigarden.models.state import (
+    CURRENT_CATALOG_SPECIES_ORDER,
+    MAX_GARDEN_SLOTS,
+    GardenState,
+)
+from ankigarden.presentation import project_collection
 
 
 @pytest.mark.parametrize(
@@ -62,3 +70,56 @@ def test_runtime_capture_fixture_uses_the_shared_frozen_schedule() -> None:
     assert "achievement_completion_schedule(" in runtime
     assert "validate_achievement_completion_schedule(" in runtime
     assert "date(2026, 8, 28)" not in runtime
+
+
+def test_representative_collection_fixture_derives_truthful_30_of_39() -> None:
+    state = GardenState()
+    state.unlocked_species = list(CURRENT_CATALOG_SPECIES_ORDER)
+    state.unlocked_slots = MAX_GARDEN_SLOTS
+    plan = representative_collection_inventory_plan()
+    state.inventory["garden_features"] = list(plan["garden_features"])
+    state.inventory["scenery"] = list(plan["scenery"])
+    state.consumables.update(dict(plan["consumables"]))
+
+    views = collectible_views(state)
+    projection = project_collection(state)
+
+    assert len(views) == 39
+    assert sum(1 for view in views if view.owned) == 30
+    assert projection.species_text == "10 of 10 species discovered"
+    assert (
+        projection.collection_entries_text
+        == "30 of 39 collection entries discovered"
+    )
+    assert {
+        view.definition.source_id
+        for view in views
+        if view.definition.category == "growth_items" and not view.owned
+    } == {
+        "fertilizer_basic",
+        "fertilizer_quality",
+        "fertilizer_premium",
+    }
+
+
+def test_collection_purchase_fixture_truthfully_advances_29_to_30_entries() -> None:
+    state = GardenState()
+    state.unlocked_slots = MAX_GARDEN_SLOTS
+    state.unlocked_species = [
+        species
+        for species in CURRENT_CATALOG_SPECIES_ORDER
+        if species != "sunflower"
+    ]
+    plan = representative_collection_inventory_plan()
+    state.inventory["garden_features"] = list(plan["garden_features"])
+    state.inventory["scenery"] = list(plan["scenery"])
+    state.consumables.update(dict(plan["consumables"]))
+
+    before = project_collection(state)
+    state.unlocked_species.append("sunflower")
+    after = project_collection(state)
+
+    assert before.species_text == "9 of 10 species discovered"
+    assert before.collection_entries_text == "29 of 39 collection entries discovered"
+    assert after.species_text == "10 of 10 species discovered"
+    assert after.collection_entries_text == "30 of 39 collection entries discovered"

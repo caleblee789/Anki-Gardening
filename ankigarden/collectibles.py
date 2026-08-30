@@ -24,7 +24,7 @@ CollectibleCategory = Literal[
 CATEGORY_LABELS: dict[CollectibleCategory, str] = {
     "plants": "Plants",
     "scenery": "Scenery",
-    "garden_features": "Garden Decorations",
+    "garden_features": "Garden decorations",
     "garden_beds": "Garden beds",
     "growth_items": "Growth items",
 }
@@ -329,7 +329,7 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                 descriptor=EffectDescriptor(
                     function=f"Adds one {spec.name} to Growth Items inventory.",
                     buff=(
-                        f"+{spec.growth_per_answer:,} Growth per card while active."
+                        f"+{spec.growth_per_answer:,} Growth per eligible card answer while active."
                     ),
                     activation_condition=(
                         "Use on a nurtured plant that is still growing."
