@@ -9,10 +9,19 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from .balance_catalog import (
+    GROWTH_UNITS_PER_POINT,
+    STAGES as BALANCE_STAGES,
+    StageId,
+)
 
-GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
-GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
-GROWTH_UNITS_PER_POINT = 100
+# ``rare`` remains the durable runtime/artwork identifier for Full Bloom.
+# Every threshold and presentation name comes from the canonical catalog.
+GROWTH_STAGES = [
+    "rare" if stage.stage_id is StageId.FULL_BLOOM else str(stage.stage_id)
+    for stage in BALANCE_STAGES
+]
+GROWTH_THRESHOLDS = [stage.threshold_growth for stage in BALANCE_STAGES]
 
 
 @dataclass(frozen=True)
@@ -27,14 +36,8 @@ class StagePresentation:
 
 
 _STAGE_DISPLAY_NAMES = {
-    "seed": "Seed",
-    "sprout": "Sprout",
-    "young": "Young",
-    "mature": "Mature",
-    "flowering": "Flowering",
-    # ``rare`` remains the durable engine/artwork identifier. Presentation
-    # code must never expose it as the name of the sixth stage.
-    "rare": "Full Bloom",
+    runtime_id: stage.display_name
+    for runtime_id, stage in zip(GROWTH_STAGES, BALANCE_STAGES)
 }
 
 CANONICAL_STAGE_PROJECTION = tuple(
@@ -213,11 +216,14 @@ class GrowthGrantResult:
     original_target_id: str = ""
     active_target_id: str = ""
     auto_selected_target_id: str = ""
+    landmark_units: int = 0
 
     @property
     def conserved(self) -> bool:
         return max(0, int(self.requested_units)) == (
-            max(0, int(self.applied_units)) + max(0, int(self.stored_units))
+            max(0, int(self.applied_units))
+            + max(0, int(self.stored_units))
+            + max(0, int(self.landmark_units))
         )
 
     @property

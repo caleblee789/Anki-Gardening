@@ -253,21 +253,32 @@ def build_sync_reward_summary(
         "stored_growth_units", results[-1].stored_growth_after_units
     ) or 0))
     stored_delta = max(0, stored_after - stored_before)
+    landmark_before = max(0, int(before_facts.get(
+        "landmark_growth_units", results[0].landmark_growth_before_units
+    ) or 0))
+    landmark_after = max(0, int(after_facts.get(
+        "landmark_growth_units", results[-1].landmark_growth_after_units
+    ) or 0))
+    landmark_delta = max(0, landmark_after - landmark_before)
+    accounted_growth_units = stored_delta + landmark_delta + sum(
+        max(
+            0,
+            int(after.get("growth_units", 0) or 0)
+            - int(before_plants.get(plant_id, {}).get("growth_units", 0) or 0),
+        )
+        for plant_id, after in after_plants.items()
+    )
     if "total_growth_units" in before_facts and "total_growth_units" in after_facts:
         growth_total_units = max(
-            0,
-            int(after_facts.get("total_growth_units", 0) or 0)
-            - int(before_facts.get("total_growth_units", 0) or 0),
-        )
-    else:
-        growth_total_units = stored_delta + sum(
+            accounted_growth_units,
             max(
                 0,
-                int(after.get("growth_units", 0) or 0)
-                - int(before_plants.get(plant_id, {}).get("growth_units", 0) or 0),
-            )
-            for plant_id, after in after_plants.items()
+                int(after_facts.get("total_growth_units", 0) or 0)
+                - int(before_facts.get("total_growth_units", 0) or 0),
+            ),
         )
+    else:
+        growth_total_units = accounted_growth_units
     shared_growth_units = sum(max(0, int(result.award.shared_growth_units)) for result in results)
 
     receipts = _new_receipts(engine, results, before_facts)
@@ -598,6 +609,7 @@ def build_sync_reward_summary(
         plant_growth=tuple(plant_rows),
         shared_growth_delta_units=shared_growth_units,
         stored_growth_delta_units=stored_delta,
+        landmark_growth_delta_units=landmark_delta,
         garden_coin_delta=coins,
         finds=finds,
         environment_discoveries=discoveries,
@@ -607,6 +619,10 @@ def build_sync_reward_summary(
             max(0, int(getattr(receipt, "amount", 0) or 0))
             for receipt in all_clear_receipts
             if str(getattr(receipt, "reward_type", "")) == "coins"
+        ),
+        fertilizer_cards_remaining=max(
+            0,
+            int(after_facts.get("fertilizer_cards_remaining", 0) or 0),
         ),
         fertilizer_remaining_seconds=max(0, int(after_facts.get("fertilizer_remaining_seconds", 0) or 0)),
         fertilizer_state_changed=fertilizer_changed,

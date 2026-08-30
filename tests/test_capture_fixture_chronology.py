@@ -72,7 +72,7 @@ def test_runtime_capture_fixture_uses_the_shared_frozen_schedule() -> None:
     assert "date(2026, 8, 28)" not in runtime
 
 
-def test_representative_collection_fixture_derives_truthful_30_of_39() -> None:
+def test_representative_collection_fixture_derives_truthful_30_of_93() -> None:
     state = GardenState()
     state.unlocked_species = list(CURRENT_CATALOG_SPECIES_ORDER)
     state.unlocked_slots = MAX_GARDEN_SLOTS
@@ -84,12 +84,12 @@ def test_representative_collection_fixture_derives_truthful_30_of_39() -> None:
     views = collectible_views(state)
     projection = project_collection(state)
 
-    assert len(views) == 39
+    assert len(views) == 93
     assert sum(1 for view in views if view.owned) == 30
     assert projection.species_text == "10 of 10 species discovered"
     assert (
         projection.collection_entries_text
-        == "30 of 39 collection entries discovered"
+        == "30 of 93 collection entries discovered"
     )
     assert {
         view.definition.source_id
@@ -120,6 +120,6 @@ def test_collection_purchase_fixture_truthfully_advances_29_to_30_entries() -> N
     after = project_collection(state)
 
     assert before.species_text == "9 of 10 species discovered"
-    assert before.collection_entries_text == "29 of 39 collection entries discovered"
+    assert before.collection_entries_text == "29 of 93 collection entries discovered"
     assert after.species_text == "10 of 10 species discovered"
-    assert after.collection_entries_text == "30 of 39 collection entries discovered"
+    assert after.collection_entries_text == "30 of 93 collection entries discovered"

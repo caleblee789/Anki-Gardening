@@ -344,12 +344,15 @@ class PlantStateSnapshot:
 class FertilizerSnapshot:
     effect_id: str
     name: str
-    remaining_seconds: int
+    # Schema-25 capture/runtime callers may still supply seconds while their
+    # state is migrated, but release UI never presents or decrements them.
+    remaining_seconds: int = 0
     plant_id: str = ""
     plant_name: str = ""
     source_event_id: str = ""
     active: bool = True
     expires_at_epoch_seconds: int = 0
+    remaining_cards: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "effect_id", _event_id(self.effect_id, "effect_id"))
@@ -357,6 +360,11 @@ class FertilizerSnapshot:
             self,
             "remaining_seconds",
             _nonnegative(self.remaining_seconds, "remaining_seconds"),
+        )
+        object.__setattr__(
+            self,
+            "remaining_cards",
+            _nonnegative(self.remaining_cards, "remaining_cards"),
         )
         object.__setattr__(
             self,
@@ -799,6 +807,7 @@ class CommittedSessionEvent:
     environment_discoveries: tuple[EnvironmentDiscovery, ...] = ()
     reward_receipts: tuple[RewardReceipt, ...] = ()
     total_finds: int = 0
+    landmark_growth_delta_units: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "event_id", _event_id(self.event_id))
@@ -827,6 +836,14 @@ class CommittedSessionEvent:
             self,
             "stored_growth_delta_units",
             int(self.stored_growth_delta_units),
+        )
+        object.__setattr__(
+            self,
+            "landmark_growth_delta_units",
+            _nonnegative(
+                self.landmark_growth_delta_units,
+                "landmark_growth_delta_units",
+            ),
         )
         object.__setattr__(
             self,
@@ -1072,6 +1089,7 @@ class SessionDaySummary:
     effects_at_end: EffectsSnapshot
     effects_remaining: tuple[EffectRow, ...]
     total_finds: int = 0
+    landmark_growth_delta_units: int = 0
     coin_sources_reconciled: bool = field(default=True, init=False)
     additional_coins_earned: int = field(default=0, init=False)
     garden_coins_total: int = field(default=0, init=False)
@@ -1118,6 +1136,14 @@ class SessionDaySummary:
 
         total_finds = _nonnegative(self.total_finds, "total_finds")
         object.__setattr__(self, "total_finds", total_finds)
+        object.__setattr__(
+            self,
+            "landmark_growth_delta_units",
+            _nonnegative(
+                self.landmark_growth_delta_units,
+                "landmark_growth_delta_units",
+            ),
+        )
         find_items, reconciled = _reconcile_find_items(
             self.standard_finds,
             total_finds,
@@ -1163,6 +1189,7 @@ class SessionDaySummary:
             self.plant_growth_total_units,
             self.shared_growth_total_units,
             self.stored_growth.delta_units,
+            self.landmark_growth_delta_units,
             self.garden_coins_earned,
             self.total_finds,
             self.milestones,
@@ -1225,6 +1252,8 @@ class LiveSessionSnapshot:
     Session Summary contract retain each component and its detailed records.
     Stored Growth contributes only the amount earned during the session; using
     previously stored Growth must not reduce the celebratory footer total.
+    Landmark Growth is the exact committed overflow routed to the selected
+    project during the session.
     """
 
     session_id: str
@@ -1241,6 +1270,7 @@ class LiveSessionSnapshot:
     milestones: tuple[PlantMilestone, ...]
     environment_discoveries: tuple[EnvironmentDiscovery, ...]
     reward_receipts: tuple[RewardReceipt, ...]
+    landmark_growth_delta_units: int = 0
 
     @property
     def footer_growth_units(self) -> int:
@@ -1250,6 +1280,7 @@ class LiveSessionSnapshot:
             self.plant_growth_total_units
             + self.shared_growth_total_units
             + self.stored_growth.added_units
+            + self.landmark_growth_delta_units
         )
 
     @property
@@ -1363,6 +1394,7 @@ class SessionDayProjection:
     highlights: HighlightProjection = field(default_factory=HighlightProjection)
     growth_applied_total_units: int = 0
     continue_reviews_available: bool = False
+    landmark_growth_delta_units: int = 0
 
 
 def _limited(
@@ -1647,6 +1679,15 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
             format_growth_units(summary.growth_applied_total_units, signed=True),
             bool(growth_rows or summary.shared_growth_total_units),
         ))
+    if summary.landmark_growth_delta_units:
+        rows.append(ResultRow(
+            "landmark_progress",
+            "Landmark progress",
+            format_growth_units(
+                summary.landmark_growth_delta_units,
+                signed=True,
+            ),
+        ))
     if summary.garden_coins_total:
         rows.append(ResultRow(
             "garden_coins",
@@ -1720,6 +1761,7 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
         highlights=_session_highlights(summary),
         growth_applied_total_units=summary.growth_applied_total_units,
         continue_reviews_available=summary.continue_reviews_available,
+        landmark_growth_delta_units=summary.landmark_growth_delta_units,
     )
 
 
@@ -1948,13 +1990,13 @@ class SessionSummaryAccumulator:
                     for item in unmatched_start_fertilizers.values()
                     if item.name == final.name
                     and item.active
-                    and item.remaining_seconds >= final.remaining_seconds
+                    and item.remaining_cards >= final.remaining_cards
                 ]
                 if candidates:
                     initial = min(
                         candidates,
                         key=lambda item: (
-                            item.remaining_seconds - final.remaining_seconds,
+                            item.remaining_cards - final.remaining_cards,
                             item.effect_id,
                         ),
                     )
@@ -1964,15 +2006,14 @@ class SessionSummaryAccumulator:
                 final.source_event_id
                 and final.source_event_id in session_event_ids
             )
-            if final.active and final.remaining_seconds > 0 and (existed or session_created):
+            if final.active and final.remaining_cards > 0 and (existed or session_created):
                 rows.append(EffectRow(
                     "fertilizer",
                     effect_id,
                     final.name,
-                    _format_duration(final.remaining_seconds),
+                    f"{_plural_cards(final.remaining_cards)} remaining",
                     plant_id=final.plant_id,
-                    remaining_seconds=final.remaining_seconds,
-                    expires_at_epoch_seconds=final.expires_at_epoch_seconds,
+                    remaining_cards=final.remaining_cards,
                 ))
 
         start_boosters = {item.effect_id: item for item in start.boosters}
@@ -2032,6 +2073,9 @@ class SessionSummaryAccumulator:
             delta for event in events for delta in event.shared_growth
         )
         stored_deltas = [event.stored_growth_delta_units for event in events]
+        landmark_growth_delta_units = sum(
+            event.landmark_growth_delta_units for event in events
+        )
         stored_added = sum(value for value in stored_deltas if value > 0)
         stored_used = sum(-value for value in stored_deltas if value < 0)
         coin_sources = tuple(
@@ -2111,6 +2155,7 @@ class SessionSummaryAccumulator:
             ),
             reward_receipts=reward_receipts,
             total_finds=total_finds,
+            landmark_growth_delta_units=landmark_growth_delta_units,
             direct_growth_total_units=plant_total,
             growth_applied_total_units=plant_total + shared_total,
         )
@@ -2185,6 +2230,9 @@ class SessionSummaryAccumulator:
                 receipt
                 for segment in segments
                 for receipt in segment.reward_receipts
+            ),
+            landmark_growth_delta_units=sum(
+                segment.landmark_growth_delta_units for segment in segments
             ),
         )
 

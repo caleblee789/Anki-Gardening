@@ -913,7 +913,6 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             >= dashboard.customize_btn.sizeHint().width()
         )
 
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()
@@ -990,7 +989,6 @@ def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
     assert_owner_does_not_adopt(customize)
 
     customize.hide()
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()
@@ -1038,7 +1036,6 @@ def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
         dashboard.scene.minimumHeight()
     )
 
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()
@@ -1684,7 +1681,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         "ankigarden.ui.dashboard.project_collection",
         lambda _state: SimpleNamespace(
             species_text="10 of 10 species discovered",
-            collection_entries_text="30 of 39 collection entries discovered",
+            collection_entries_text="30 of 93 collection entries discovered",
             collection_complete=True,
         ),
     )
@@ -1706,7 +1703,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         if button.isVisibleTo(final_nursery)
     ]
     assert "10 of 10 species discovered" in final_labels
-    assert "30 of 39 collection entries discovered" in final_labels
+    assert "30 of 93 collection entries discovered" in final_labels
     assert final_actions.count("View collection") == 1
     final_nursery.hide()
     assert_surface(fertilizer_selection, "Fertilizer selection")
@@ -1748,7 +1745,6 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
 
     for timer in fertilizer_selection.findChildren(QTimer):
         timer.stop()
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()

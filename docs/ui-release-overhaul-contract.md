@@ -1,6 +1,6 @@
 # Anki Garden UI release contract
 
-Status: implemented contract for Anki Garden 2.1.0, state schema 25, and UI
+Status: implemented working-tree contract for Anki Garden 2.2.0, state schema 26, and UI
 capture contract v26, contract schema 2 and scenario schema 3. Source code and
 persisted behavior are authoritative.
 
@@ -9,7 +9,9 @@ persisted behavior are authoritative.
 - `GardenStorage` owns SQLite initialization/import, verification, backup, and
   atomic replacement of the materialized `GardenState` snapshot.
 - `GardenGameEngine` owns progression, purchases, Growth Charges, loadout
-  mutation, reward transitions, and rollback boundaries.
+  mutation, Landmark, Mastery, reward transitions, and rollback boundaries.
+- `ankigarden.balance_catalog` is the immutable numeric and catalog authority
+  consumed by runtime, presentation, capture, tests, and simulation.
 - The SQLite reward ledger owns unbounded reward-event, completed-card-lineage,
   Garden-Find-outcome, and finalized-day idempotency.
 - `achievement_presentations()`, `recent_garden_finds()`, and
@@ -58,10 +60,10 @@ landmark activation.
   Garden, Progress, and transaction surfaces.
 - Collection counts are deliberately orthogonal. The canonical fixture renders
   `10 of 10 species discovered` and separately
-  `30 of 39 collection entries discovered`; 30 is never labeled as plants.
-- Appearance projects Scenery, Displayed decoration, Active garden bonus, and
-  Visual effects as four independent rows. Displayed decoration remains
-  cosmetic and independent of the locked or queued Garden Bonus.
+  `30 of 93 collection entries discovered`; 30 is never labeled as plants.
+- Appearance projects Displayed decoration, Active garden bonus, Displayed
+  scenery, and Active scenery effect independently. Appearance remains
+  cosmetic and independent of the snapshotted or queued mechanics.
 - Standard Finds and Garden discoveries use distinct player-facing labels while
   the engine and ledger retain their stable internal event IDs.
 
@@ -70,9 +72,10 @@ landmark activation.
 One eligible completed card creates one engine-owned transaction:
 
 1. Review ingestion normalizes the card event and stable lineage identity.
-2. The nurtured unfinished plant receives full Answer Growth: the base award plus eligible
-   streak, Fertilizer, Booster, Garden Bonus, and Scenery modifiers.
-3. Every other planted plant creates one exact 20% Shared Growth share. A plant
+2. The nurtured unfinished plant receives full Answer Growth: 10 base plus
+   snapshotted Garden Rhythm, card-counted Fertilizer and Booster, Garden Bonus,
+   and Scenery Effect.
+3. Every other planted plant creates one exact 10% Shared Growth lane. A plant
    still growing receives its own share; a Full Bloom plant’s share is divided
    among all planted plants still growing, including the nurtured plant.
 4. Overflow continues through planted unfinished plants in stable slot order;
@@ -104,8 +107,9 @@ The HUD shows global Today’s Cards progress, prominent current-stage art,
 checkpoint progress, next-answer Growth, and at most two compact active-effect
 chips. It hides Find caps and protection state, raw shares and Shared Growth,
 environment names, and irrelevant Stored Growth. In progress, Today’s Cards
-emphasizes the global number left; completion becomes `All cards complete`, the
-exact Coin reward, and `176 reviewed today`. Internal scheduler and obligation
+   emphasizes the global number of cards left; completion becomes **Today’s
+   Cards Complete**, the exact Coin reward, and the committed cards-complete
+   total. Internal scheduler and obligation
 identifiers never become player copy.
 
 The canonical HUD fixture reconciles `176 + 18 = 194` cards due at the start
@@ -129,40 +133,40 @@ per-event X buttons do not exist.
 
 ## Purchase and loadout flow
 
-Every species, Growth Charge, Fertilizer, Garden Decoration, Scenery, and Garden-bed
+Every species, Growth Charge, Fertilizer, Garden Bonus, Scenery, and cosmetic
 purchase follows the same quote/confirm/commit boundary:
 
 1. The engine issues a typed quote with request ID, price, balance, target,
    disposition, and consequences.
 2. Confirmation renders only that quote; it performs no calculation.
 3. Submission revalidates price, balance, target, availability, and ownership.
-4. Debit and grant/application/unlock commit atomically with the completed
+4. Debit and grant/application commit atomically with the completed
    request record.
 5. Exact replay returns the recorded outcome; typed stale or terminal errors do
    not mutate state; persistence failure restores the pre-request snapshot.
 
-Collection owns Garden Decoration/Scenery inspection, reversible preview,
-equipment, and visibility drafts. The displayed Decoration is an independent
-cosmetic choice and may change or hide at any time. The first eligible answer
-locks the active Garden Bonus for that Anki day; the first progression action
-locks Scenery. Later mechanical selections queue for the next Anki day.
-`apply_garden_loadout()` is the sole atomic mutation path. Nursery purchases
-never auto-equip an environment item, and visibility never changes mechanics.
+Collection owns Decoration/Scenery inspection, reversible preview, effect and
+appearance drafts. The first eligible answer immutably snapshots Garden Rhythm,
+the active Garden Bonus, and active Scenery Effect. Later mechanical selections
+queue for the next Anki day; both appearance choices may change immediately.
+`apply_garden_appearance()` is the sole atomic combined mutation path. Nursery
+purchases never auto-equip or auto-display, and visibility never changes
+mechanics.
 
 Fertilizer binds one immutable source `plant_id` through selection, quote,
-confirmation, application, and a queued period. Owned actions are **Apply** or
+confirmation, application, and a queued card batch. Owned actions are **Apply** or
 **Queue**; purchases are **Buy and apply** or **Buy and queue**. **Extend** is
 reserved for the existing same-tier extension disposition. A different tier
-queues without changing the source plant or discarding remaining time.
+queues FIFO without changing the source plant or discarding remaining cards.
 
 ## Persistence and failure behavior
 
-- Schema 25 persists resumable `OnboardingProgress`, exact hundredth-Growth
+- Schema 26 persists resumable `OnboardingProgress`, exact hundredth-Growth
   units, Stored Growth, checkpoint and Full Bloom metadata, Today’s Cards
-  projection state, independent displayed Decoration and locked/queued Garden
-  Bonus/Scenery loadouts, independent environment guarantees, timed Fertilizer
-  periods/queues, card-counted Booster batches,
-  inventory, bounded purchase/Growth-Charge replay records, and the durable
+  projection state, immutable Rhythm/effect snapshots, independent appearance
+  and effect choices, dual environment guarantees, card-counted Fertilizer and
+  Booster queues, earned beds, Landmark, Mastery, lifetime aggregates,
+  inventory, bounded UI receipts plus permanent economy identities, and the durable
   pending Sync Rewards receipt.
 - Schema-21 JSON and authoritative SQLite profiles are backed up before the
   migration; established reward authorities and historical identities remain
@@ -178,9 +182,10 @@ queues without changing the source plant or discarding remaining time.
 
 ## Visual, responsive, and accessibility contract
 
-- Verdant Twilight V6, its geometry-compatible Scenery reskins, seven static
-  Garden Decorations with one shared pad, six fixed planter spaces, and the
-  current plant/item art remain the visual foundation.
+- Verdant Twilight V6, its geometry-compatible Scenery reskins, seven Garden
+  Bonus masters with one shared pad, eight Display Decorations, six Landmark
+  assets, four Mastery overlays, six fixed beds, and current plant/item art
+  remain the visual foundation.
 - One shared Home-card shell renders starter, empty, active, zero, partial, and
   complete states. Individual progression and the species artwork gallery use
   two distinct six-stage strips rather than overloading one component.

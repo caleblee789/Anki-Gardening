@@ -239,7 +239,13 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
         growth_remainder_units=0,
         planted=True,
         fully_grown=False,
-        fertilizer=SimpleNamespace(tier="quality", expires_at=4_600),
+        fertilizer_card_batches=(SimpleNamespace(
+            effect_id="fertilizer_quality",
+            growth_per_card_units=200,
+            total_cards=200,
+            remaining_cards=84,
+        ),),
+        fertilizer_card_queue=(),
         booster_card_batches=(SimpleNamespace(remaining_cards=38),),
     )
     state = state_for("in_progress")
@@ -267,30 +273,30 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     nurture = project_reviewer_hud(engine, state, now_ms=1_000_000).nurture
 
     assert nurture.plant_name == "Juniper of the Moonlit Terrace"
-    assert nurture.stage_label == "Young · 3 of 6 stages"
+    assert nurture.stage_label == "Mature · 4 of 6 stages"
     assert nurture.species_name == "Bonsai"
     assert nurture.next_answer_value == "+13.5 growth"
     assert nurture.next_card_line == "Next answer · +13.5 growth"
-    assert nurture.checkpoint_line == "605 growth to next checkpoint"
-    assert nurture.estimate_line == "~45 cards"
-    assert nurture.checkpoint_growth_remaining == 605
-    assert nurture.estimated_cards_to_checkpoint == 45
-    assert nurture.next_checkpoint_percent == 75
-    assert nurture.next_checkpoint_reward_coins == 4
+    assert nurture.checkpoint_line == "2,230 growth to next checkpoint"
+    assert nurture.estimate_line == "~166 cards"
+    assert nurture.checkpoint_growth_remaining == 2_230
+    assert nurture.estimated_cards_to_checkpoint == 166
+    assert nurture.next_checkpoint_percent == 25
+    assert nurture.next_checkpoint_reward_coins == 0
     assert nurture.checkpoint_percents == (25, 50, 75, 100)
-    assert nurture.next_stage_line == "Checkpoint reward · +4 coins"
-    assert nurture.art_path == "/art/bonsai-young.webp"
+    assert nurture.next_stage_line == ""
+    assert nurture.art_path == "/art/bonsai-mature.webp"
     assert nurture.art_placement is placement
     assert nurture.visible_effect_chips == (
-        "Fertilizer · 1h",
+        "Fertilizer · 84 cards",
         "Booster · 38 cards",
     )
     assert nurture.effect_chips == (
-        "Fertilizer · 1h",
+        "Fertilizer · 84 cards",
         "Booster · 38 cards",
         "Garden decoration · +0.5 growth",
         "Scenery · +0.25 growth",
-        "Streak bonus · +1 growth",
+        "Garden Rhythm · +1 growth",
     )
     assert nurture.visible_effect_art_refs == (
         "fertilizer_quality",
@@ -398,10 +404,12 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
     no_target.stored_growth_units = 1_250
     empty = project_reviewer_hud(SimpleNamespace(active_plant=lambda: None), no_target).nurture
     assert empty.empty_heading == "No plant selected"
-    assert empty.empty_message == "Growth earned during review will be stored."
-    assert empty.stored_growth_line == (
-        "12.5 growth stored until a plant is selected"
+    assert empty.empty_message == (
+        "Future review Growth is stored while no plant is selected. "
+        "Your reserve is spent only when you choose a Landmark or "
+        "Cultivation Mastery."
     )
+    assert empty.stored_growth_line == "12.5 Stored Growth in reserve"
 
     full = SimpleNamespace(
         plant_id="plant-1",

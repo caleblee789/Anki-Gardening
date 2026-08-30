@@ -11,7 +11,7 @@ control the normal profile.
    nurtured plant, relative Growth, and **Open Garden**. Today’s Cards, Anki
    streak, Garden Coins, and achievements must remain in the full Garden and
    Garden Progress. Plant and Nursery clicks must do nothing there.
-3. With fresh schema-25 state, choose **Open Garden**, verify the introduction,
+3. With fresh schema-26 state, choose **Open Garden**, verify the introduction,
    and proceed to the Starter Nursery. It must offer every release-ready species
    as a free starter and show no hard-coded collection denominator. Complete
    confirmation, placement, nurture, and completion; the other unlocked
@@ -39,10 +39,13 @@ control the normal profile.
    lines, while seeded legacy-owned species remain visible and usable. Audit all
    60 species-stage assets for serialized `visual_scale_correction`, calibrated
    thumbnail scaling, and valid placement in each of the six bed positions.
-8. Purchase, move to Collection, and plant in garden a species; unlock spaces
-   three through six sequentially; purchase Small/Standard Growth Charges and
-   use both; purchase a Garden Decoration and Scenery and confirm neither auto-activates.
-   Confirm Grand shows no current acquisition path. For every Coin purchase,
+8. Choose any starter for free, then purchase, move to Collection, and plant a
+   second species for exactly 250 Coins. Earn Beds 3–6 at first Mature and
+   one/three/six unique Full Bloom species; confirm Bed purchase quotes are
+   unavailable. Purchase Small/Standard Growth Charges and use both; purchase a
+   Garden Bonus, Scenery, and cosmetic Display Decoration and confirm none
+   auto-activates or auto-displays. Confirm Grand identifies Botanical
+   Collection and Old Growth as acquisition routes. For every Coin purchase,
    inspect artwork, item/category/quantity,
    exact mechanics, target where applicable, price, current/resulting balance,
    Cancel focus, disabled submission, and receipt. Exercise insufficient
@@ -64,24 +67,26 @@ control the normal profile.
     the previous arrangement, and the temporary **Undo** action restores the
     last successful move. There is no destination dropdown or Done button.
 11. Open Fertilize and verify Basic, Quality, and Magical cards show exact
-    Garden Coin cost, Growth per card, one/two/four-hour duration, and labeled
-    item art. Extend the same tier’s remaining wall-clock time, then queue a
-    different tier without discarding either duration. Confirm the active and
+    Garden Coin cost, Growth per card, 100/200/400-card value, and labeled
+    item art. Extend the same tier’s remaining card count, then queue a
+    different tier without discarding either value. Confirm the active and
     queued effects reflow cleanly at narrow and wide widths. The selected
     source, engine quote, confirmation, and active or queued period must retain
     the same immutable `plant_id`. Verify **Apply/Queue** and
     **Buy and apply/Buy and queue** labels; **Extend** appears only for the
     same-tier extension disposition. Fill the five-dose
-    limit; the next rejected dose must remain in inventory. Verify Fertilizer
-    time continues outside the reviewer and transfers at Full Bloom. Seed a
+    limit; the next rejected dose must remain in inventory. Verify pausing and
+    time outside the reviewer consume no Fertilizer cards and value transfers
+    at Full Bloom. Seed a
     Booster Potion, use and extend it, and verify +5 stacks with Fertilizer for
     100 applicable cards.
-    Select Herbalist’s Hourglass and Full Moon before the day’s locks, complete
-    the first eligible answer, and verify a newly used Potion grants 150 cards.
+    Select Herbalist’s Hourglass before the first eligible answer and verify a
+    newly activated Potion grants 125 cards. Separately verify Full Moon awards
+    one Potion every sixth active completion and does not extend it.
 12. Complete real Again and Good cards. Each eligible card gives the full 10
-    base Growth plus displayed streak, Fertilizer, Booster, the locked Garden Bonus, and Scenery
+    base Growth plus snapshotted Garden Rhythm, Fertilizer, Booster, Garden Bonus, and Scenery
     bonuses to the nurtured unfinished plant. Every other planted plant creates
-    an exact 20% Shared Growth share. Verify a growing source receives its own
+    an exact 10% Shared Growth lane. Verify a growing source receives its own
     share and a Full Bloom source divides its share among all planted plants
     still growing, including the nurtured plant. Switch with
     **Nurture** and verify old Growth never moves. Confirm Growth details
@@ -91,11 +96,12 @@ control the normal profile.
 13. Cross 25/50/75/100 stage-local checkpoints and one stage threshold. Confirm
     concise image-led feedback, artwork transition, Garden Coin reason, and no
     disruptive modal. Exercise the Standard Find registry, rising protection,
-    guaranteed next-card state, guaranteed Uncommon-or-better result, three-per-day
-    cap, and pause/resume behavior. The full Garden may explain those mechanics;
+    guaranteed next-card state, guaranteed Uncommon-or-better result, stepped
+    3/4/5 daily caps, and same-day pause/resume behavior. The full Garden may explain those mechanics;
     the persistent HUD shows a Find only as a committed reward reveal and never
     shows the cap, limit, protection state, or internal gap count. Independently exercise each environment tier's finite
-    guarantee and all completion gifts. Confirm Standard and environment Finds
+    10k/40k/50k-card and 60/180/365-completion guarantees and all completion
+    gifts. Confirm Standard and environment Finds
     can stack with predictable rewards, yet each stable card/pool identity is
     consumed once with no reroll. At Full Bloom, confirm overflow and remaining
     effects continue to the next planted unfinished plant or Stored Growth.
@@ -107,7 +113,7 @@ control the normal profile.
     exact inclusion, exclusions, new-to-learning continuity, repeated-answer
     stability, the at-least-one-eligible-card guard, one award, and no
     revocation. Verify in-progress copy emphasizes the global number left and
-    completion becomes `All cards complete`, the exact Coin reward, and the
+    completion becomes **Today’s Cards Complete**, the exact Coin reward, and the
     scheduler-owned completed-card count. Waiting, ineligible, and unavailable engine states remain
     truthful and compact without exposing internal obligation names. In a
     maximized Anki window, verify the clean expanded right-docked HUD hugs its
@@ -149,18 +155,20 @@ control the normal profile.
 16. In the cottage's **Collection** page, inspect every shared exact mechanic,
     textual Equipped state, how-to-earn entry, locked silhouette, ordered odds,
     and deterministic progress to each environment guarantee. Before any
-    progression action, change the displayed Garden Decoration, selected Garden
-    Bonus, and Scenery freely. Confirm the displayed prop changes immediately.
-    Complete the first eligible answer, then confirm Garden Bonus and Scenery
-    changes queue for the next Anki day while displayed art may still change.
-    In a separate fresh-day case, use a Growth Charge or consumable before
-    answering and confirm it locks only Scenery; the Garden Bonus remains ready
-    to change until the first eligible answer.
+    eligible answer, change displayed Decoration, active Garden Bonus, displayed
+    Scenery, and active Scenery Effect independently. Confirm appearance changes
+    immediately. Complete the first eligible answer, then confirm both
+    mechanical changes queue for the next Anki day while both appearance choices
+    may still change. A pre-answer Growth Charge must not create or rewrite the
+    daily economy snapshot.
     Confirm completion copy says `10 of 10 species discovered` and separately
-    `30 of 39 collection entries discovered`; 30 is never labeled as plants.
+    `30 of 93 collection entries discovered`; 30 is never labeled as plants.
     Toggle each visual layer and confirm its passive still applies. Verify static
     Decorations only in Home and the native 3:2 scene using covered 4:3 source
-    art; do not create a 16:9 or standalone 4:3 release route.
+    art; do not create a 16:9 or standalone 4:3 release route. Select,
+    contribute to, complete, and display the first Garden Landmark; purchase a
+    Bronze Mastery rank for one Full Bloom species. Restart and confirm both
+    exact resource receipts and cosmetic state without a power increase.
 17. Open Plant Story and confirm enlarged actual-stage art, distinct editable
     name/species/stage labels, relative Growth bar, inline rename, oldest-to-newest
     timeline, warm early-story state, **Up next**, keyboard flow, rename
@@ -185,15 +193,16 @@ control the normal profile.
 20. Repeat the Garden, Nursery, Story, movement, and Settings journeys with
     keyboard only, visible focus, reduced motion, minimum supported window size,
     Home, and native 3:2 compositions.
-21. Restart only the disposable Anki process and re-verify the schema-25 SQLite
+21. Restart only the disposable Anki process and re-verify the schema-26 SQLite
     reward authority, `starter_selection_complete`, nurtured plant, exact
     hundredth-Growth units, Stored Growth, checkpoint/Full Bloom metadata,
     streak, Garden Coin
     transactions, reward events, stable card lineages, achievement finalization,
     Garden Find outcomes/daily cap, per-tier environment guarantees, Today’s
-    Cards projection, environment entitlements/locked and queued loadout/
-    visibility, Growth Charge inventory, timed Fertilizer periods/queues,
-    Booster card batches, collection,
+    Cards projection, immutable Rhythm/effect snapshot, dual environment pity,
+    independent appearance/effect choices and queue, Growth Charge inventory,
+    card-counted Fertilizer/Booster queues, earned beds, Landmark, Mastery,
+    permanent economy identities and lifetime aggregates, collection,
     placements, stories, display preferences, pending sync receipt,
     completed-purchase replay history,
     and home visibility. Re-submit one completed purchase request and confirm

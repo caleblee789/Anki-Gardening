@@ -9,9 +9,7 @@ the card remains usable.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from math import ceil
 from pathlib import Path
-from time import monotonic, time
 from typing import Any
 
 from ..environment import (
@@ -219,44 +217,12 @@ def session_effect_remaining_text(
 ) -> str:
     """Return concise, correctly pluralized live copy for an effect row."""
 
+    del now_epoch_seconds, fallback_remaining_seconds
     kind = str(getattr(effect, "kind", "") or "")
     if not kind:
-        kind = "fertilizer" if hasattr(effect, "remaining_seconds") else "booster"
-    if kind == "fertilizer":
-        expires_at = float(
-            getattr(effect, "expires_at_epoch_seconds", 0.0) or 0.0
-        )
-        if expires_at > 0:
-            now_value = (
-                time()
-                if now_epoch_seconds is None
-                else float(now_epoch_seconds)
-            )
-            remaining_seconds = max(
-                0,
-                int(ceil(expires_at - now_value)),
-            )
-        else:
-            remaining_seconds = max(
-                0,
-                int(
-                    fallback_remaining_seconds
-                    if fallback_remaining_seconds is not None
-                    else getattr(effect, "remaining_seconds", 0) or 0
-                ),
-            )
-        if remaining_seconds <= 0:
-            return ""
-        minutes = max(1, int(ceil(remaining_seconds / 60)))
-        hours, remaining_minutes = divmod(minutes, 60)
-        if hours and remaining_minutes:
-            return (
-                f"{hours:,} {'hr' if hours == 1 else 'hrs'} "
-                f"{remaining_minutes:,} min left"
-            )
-        if hours:
-            return f"{hours:,} {'hr' if hours == 1 else 'hrs'} left"
-        return f"{minutes:,} min left"
+        kind = "fertilizer" if "fertilizer" in str(
+            getattr(effect, "effect_id", "") or ""
+        ) else "booster"
 
     remaining_cards = max(0, int(getattr(effect, "remaining_cards", 0) or 0))
     if remaining_cards <= 0:
@@ -576,10 +542,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self.setAccessibleName("Anki Garden Session Summary")
         self.setMinimumWidth(1)
         self.setMaximumWidth(SESSION_SUMMARY_MAX_WIDTH)
-
-        self._effect_timer = QTimer(self)
-        self._effect_timer.setInterval(30_000)
-        self._effect_timer.timeout.connect(self._refresh_active_effects)
 
         self._apply_style()
         self._build_shell()
@@ -1525,6 +1487,16 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 format_growth_units(applied, signed=True),
                 "growth",
             ))
+        landmark_growth = max(
+            0, int(getattr(summary, "landmark_growth_delta_units", 0) or 0)
+        )
+        if landmark_growth:
+            metrics.append((
+                "landmark_progress",
+                "Landmark",
+                format_growth_units(landmark_growth, signed=True),
+                "growth",
+            ))
         if summary.garden_coins_total:
             metrics.append((
                 "garden_coins",
@@ -1800,6 +1772,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             summary.plant_growth_total_units
             or summary.shared_growth_total_units
             or summary.stored_growth.delta_units
+            or int(getattr(summary, "landmark_growth_delta_units", 0) or 0)
             or summary.coin_sources
             or self._find_items(summary)
             or self._minor_checkpoints(summary)
@@ -1904,7 +1877,16 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             )
             or 0
         )
-        if direct or summary.shared_growth_total_units or applied or summary.stored_growth.delta_units:
+        landmark_growth = max(
+            0, int(getattr(summary, "landmark_growth_delta_units", 0) or 0)
+        )
+        if (
+            direct
+            or summary.shared_growth_total_units
+            or applied
+            or summary.stored_growth.delta_units
+            or landmark_growth
+        ):
             layout.addWidget(self._section_heading("Growth"))
         if direct:
             self._breakdown_total_row(
@@ -1927,14 +1909,28 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 "Total applied",
                 format_growth_units(applied, signed=True),
             )
-        if summary.stored_growth.delta_units:
+        if summary.stored_growth.delta_units or landmark_growth:
             layout.addWidget(self._divider())
+        if summary.stored_growth.delta_units:
             self._breakdown_total_row(
                 layout,
                 "stored_growth",
                 "Stored for later" if summary.stored_growth.delta_units > 0 else "Used from storage",
                 format_growth_units(summary.stored_growth.delta_units, signed=True),
-                supporting_text="Stored Growth remains available for a future plant.",
+                supporting_text=(
+                    "Stored Growth stays in reserve until you explicitly spend "
+                    "it on a Landmark or Cultivation Mastery."
+                ),
+            )
+        if landmark_growth:
+            self._breakdown_total_row(
+                layout,
+                "landmark_progress",
+                "Garden Landmark progress",
+                format_growth_units(landmark_growth, signed=True),
+                supporting_text=(
+                    "Overflow Growth committed to the selected Landmark."
+                ),
             )
         if summary.plant_growth_by_plant or summary.shared_growth_by_plant:
             totals: dict[str, tuple[PlantGrowthTotal, int]] = {}
@@ -2104,7 +2100,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         kind = str(getattr(effect, "kind", "") or "")
         if kind:
             return kind
-        return "fertilizer" if hasattr(effect, "remaining_seconds") else "booster"
+        return "fertilizer" if "fertilizer" in str(
+            getattr(effect, "effect_id", "") or ""
+        ) else "booster"
 
     def _effect_art_reference(self, effect: Any) -> str:
         """Map one active effect to its bundled item artwork without using instance IDs."""
@@ -2135,26 +2133,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         return f"fertilizer_{tier}" if tier in {"basic", "quality", "premium"} else ""
 
     def _effect_value(self, effect: Any) -> str:
-        kind = self._effect_kind(effect)
-        fallback_remaining: int | None = None
-        if kind == "fertilizer" and not float(
-            getattr(effect, "expires_at_epoch_seconds", 0.0) or 0.0
-        ):
-            identity = str(getattr(effect, "effect_id", "") or id(effect))
-            if identity not in self._effect_deadlines:
-                remaining = max(
-                    0,
-                    int(getattr(effect, "remaining_seconds", 0) or 0),
-                )
-                self._effect_deadlines[identity] = monotonic() + remaining
-            fallback_remaining = max(
-                0,
-                int(ceil(self._effect_deadlines[identity] - monotonic())),
-            )
-        return session_effect_remaining_text(
-            effect,
-            fallback_remaining_seconds=fallback_remaining,
-        )
+        return session_effect_remaining_text(effect)
 
     def _add_active_boosts(self, layout: Any, effects: Sequence[Any]) -> None:
         section = QFrame()
@@ -2171,7 +2150,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         card_layout.setContentsMargins(0, 0, 0, 0)
         card_layout.setSpacing(0)
         self._boost_rows = {}
-        has_timed_effect = False
         for index, effect in enumerate(effects):
             kind = self._effect_kind(effect)
             divider = None
@@ -2213,16 +2191,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             card_layout.addWidget(row_widget)
             identity = str(getattr(effect, "effect_id", "") or id(effect))
             self._boost_rows[identity] = (effect, row_widget, value, divider)
-            has_timed_effect = has_timed_effect or kind == "fertilizer"
         section_layout.addWidget(card)
         self._active_boosts_section = section
         layout.addWidget(section)
-        if has_timed_effect and not self._effect_timer.isActive():
-            self._effect_timer.start()
 
     def _refresh_active_effects(self) -> None:
         any_visible = False
-        has_timed_effect = False
         previous_visible = False
         for effect, row_widget, value_label, divider in tuple(
             self._boost_rows.values()
@@ -2238,13 +2212,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 continue
             any_visible = any_visible or visible
             previous_visible = previous_visible or visible
-            has_timed_effect = has_timed_effect or (
-                visible and self._effect_kind(effect) == "fertilizer"
-            )
         if self._active_boosts_section is not None:
             self._active_boosts_section.setVisible(any_visible)
-        if not has_timed_effect:
-            self._effect_timer.stop()
         self.reposition()
 
     def _toggle_details(self) -> None:
@@ -2907,10 +2876,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if self._dismissed:
             return True
         self._dismissed = True
-        try:
-            self._effect_timer.stop()
-        except Exception:
-            pass
         for animation in tuple(self._animations):
             try:
                 animation.stop()

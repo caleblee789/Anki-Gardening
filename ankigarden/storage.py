@@ -16,6 +16,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Iterable, Mapping
 
+from .balance_catalog import STANDARD_FIND_MAXIMUM_DAILY_CAP
 from .environment import (
     DEFAULT_GARDEN_FEATURE_ID,
     DEFAULT_SCENERY_ID,
@@ -25,24 +26,34 @@ from .environment import (
 )
 from .models.state import (
     ActivePlantPeriod,
+    Achievement,
+    CurrencyTransaction,
+    COSMETIC_DISPLAY_IDS,
+    DailyEconomySnapshot,
     GardenFindOutcome,
     GardenState,
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
+    LifetimeEconomyAggregates,
     MAX_PROCESSED_REVLOG_IDS,
+    MAX_TRANSACTION_HISTORY,
     OnboardingProgress,
     OnboardingStep,
     Plant,
     PlantMemory,
     PLANT_MEMORY_KINDS,
     PLANT_SPECIES,
+    PendingEconomyMigrationGrant,
     STATE_VERSION,
 )
 from .reward_ledger import (
     AnswerConsumptionRecord,
     AnswerLineageRecord,
+    DailyEconomySnapshotRecord,
+    EconomyEventRecord,
     FinalizedDayRecord,
     FindOutcomeRecord,
+    IdempotencyRecord,
     LedgerCheckpoint,
     RevlogAliasRecord,
     RewardEventRecord,
@@ -56,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
 MODERN_PREVIOUS_STATE_VERSIONS = frozenset({
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 })
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 MAX_HISTORICAL_REVLOG_ENTRIES = 1_000_000
@@ -716,15 +727,14 @@ def _legacy_booster_card_effect_batch(
     }
 
 
-# Schema 22 briefly stored Fertilizer as card-counted batches. Timed
-# Fertilizer is authoritative again. These values intentionally live beside
-# the migration instead of importing the game engine and creating a storage
-# dependency cycle.
+# Schema 26 makes Fertilizer card-counted. These values intentionally live
+# beside the migration instead of importing the game engine and creating a
+# storage dependency cycle.
 _TIMED_FERTILIZER_MIGRATION_SPECS: dict[str, tuple[str, int, int, int]] = {
-    # effect id: (tier, Growth per card, full duration seconds, default cards)
-    "fertilizer_basic": ("basic", 1, 60 * 60, 100),
-    "fertilizer_quality": ("quality", 2, 2 * 60 * 60, 150),
-    "fertilizer_premium": ("premium", 3, 4 * 60 * 60, 250),
+    # effect id: (tier, Growth units per card, full duration seconds, cards)
+    "fertilizer_basic": ("basic", 100, 60 * 60, 100),
+    "fertilizer_quality": ("quality", 200, 2 * 60 * 60, 200),
+    "fertilizer_premium": ("premium", 300, 4 * 60 * 60, 400),
 }
 
 
@@ -747,19 +757,12 @@ def _timed_fertilizer_interval(value: Any) -> tuple[float, float] | None:
     return started_at, expires_at
 
 
-def _restore_timed_fertilizer_payload(
+def _migrate_timed_fertilizer_to_card_queue(
     payload: dict[str, Any],
     *,
     migrated_at: float,
 ) -> bool:
-    """Convert experimental card batches into lossless timed windows.
-
-    Every recognized batch keeps the same fraction of its full paid duration
-    as its remaining-card fraction. Converted windows begin after both the
-    migration instant and every existing unexpired timed window, preserving
-    legacy schedules and queue order. Compatibility batch fields are cleared
-    only for rows whose value was understood.
-    """
+    """Convert each unexpired timed Fertilizer interval to a FIFO card batch."""
 
     migration_time = max(0.0, float(migrated_at))
     changed = False
@@ -767,85 +770,118 @@ def _restore_timed_fertilizer_payload(
     for plant in plants if isinstance(plants, list) else []:
         if not isinstance(plant, dict):
             continue
-
-        cursor = migration_time
-        current = plant.get("fertilizer")
-        current_interval = _timed_fertilizer_interval(current)
-        if current_interval is not None and current_interval[1] > migration_time:
-            cursor = max(cursor, current_interval[1])
-        raw_history = plant.get("fertilizer_history")
-        history = list(raw_history) if isinstance(raw_history, list) else []
-        for existing in history:
-            interval = _timed_fertilizer_interval(existing)
-            if interval is not None and interval[1] > migration_time:
-                cursor = max(cursor, interval[1])
-
-        converted: list[dict[str, Any]] = []
-        for field_name in ("fertilizer_card_batches", "fertilizer_card_queue"):
-            raw_rows = plant.get(field_name)
-            if not isinstance(raw_rows, list):
-                continue
-            retained_rows: list[Any] = []
-            for raw in raw_rows:
-                if not isinstance(raw, dict):
-                    retained_rows.append(raw)
-                    continue
-                spec = _TIMED_FERTILIZER_MIGRATION_SPECS.get(
-                    str(raw.get("effect_id", ""))
-                )
-                if spec is None:
-                    retained_rows.append(raw)
-                    continue
-                tier, growth_per_card, full_duration, default_cards = spec
-                raw_total = raw.get("total_cards")
-                total_cards = (
-                    int(raw_total)
-                    if isinstance(raw_total, int)
-                    and not isinstance(raw_total, bool)
-                    and raw_total > 0
-                    else default_cards
-                )
-                raw_remaining = raw.get("remaining_cards")
-                remaining_cards = (
-                    int(raw_remaining)
-                    if isinstance(raw_remaining, int)
-                    and not isinstance(raw_remaining, bool)
-                    else total_cards
-                )
-                remaining_cards = max(0, min(total_cards, remaining_cards))
-                if remaining_cards:
-                    duration = (
-                        float(full_duration) * float(remaining_cards) / float(total_cards)
+        queue = plant.get("card_effect_queue")
+        if not isinstance(queue, dict):
+            queue = {}
+        raw_batches = queue.get("fertilizer_batches")
+        batches = list(raw_batches) if isinstance(raw_batches, list) else []
+        if not batches:
+            for field_name in ("fertilizer_card_batches", "fertilizer_card_queue"):
+                compatibility = plant.get(field_name)
+                if isinstance(compatibility, list):
+                    batches.extend(
+                        row for row in compatibility if isinstance(row, dict)
                     )
-                    period = {
-                        "tier": tier,
-                        "growth_per_answer": growth_per_card,
-                        "started_at": cursor,
-                        "expires_at": cursor + duration,
-                    }
-                    converted.append(period)
-                    cursor = float(period["expires_at"])
-                # A recognized row, including a fully consumed one, no longer
-                # belongs to the obsolete compatibility authority.
-                changed = True
-            if retained_rows != raw_rows:
-                plant[field_name] = retained_rows
 
-        if not converted:
-            continue
+        # A retained timed effect was the active dose. Preserve that position
+        # ahead of schema-22 experimental queued batches. Previously migrated
+        # v26 rows remain a stable prefix so rerunning migration is idempotent.
+        migration_prefix = [
+            row for row in batches
+            if str(row.get("source_event_key", "")).startswith(
+                "migration:v26:fertilizer:"
+            )
+        ]
+        compatibility_suffix = [
+            row for row in batches if row not in migration_prefix
+        ]
+        batches = [*migration_prefix, *compatibility_suffix]
+        migration_insert_index = len(migration_prefix)
 
-        current_is_live_or_queued = (
-            current_interval is not None and current_interval[1] > migration_time
-        )
-        if not current_is_live_or_queued and converted[0]["started_at"] <= migration_time:
-            # Keep an expired legacy current window in history before using the
-            # compatibility slot for the newly active paid effect.
-            if current_interval is not None:
-                history.append(current)
-            plant["fertilizer"] = converted.pop(0)
-        history.extend(converted)
-        plant["fertilizer_history"] = history
-        changed = True
+        seen_keys = {
+            str(row.get("source_event_key"))
+            for row in batches
+            if isinstance(row, dict) and row.get("source_event_key")
+        }
+        periods: list[dict[str, Any]] = []
+        current = plant.get("fertilizer")
+        if isinstance(current, dict):
+            periods.append(current)
+        history = plant.get("fertilizer_history")
+        if isinstance(history, list):
+            periods.extend(row for row in history if isinstance(row, dict))
+        periods.sort(key=lambda row: (
+            _finite_timestamp(row.get("started_at")) or 0.0,
+            _finite_timestamp(row.get("expires_at")) or 0.0,
+        ))
+        plant_id = str(plant.get("plant_id") or "plant")
+        for index, period in enumerate(periods):
+            tier = period.get("tier")
+            effect_id = f"fertilizer_{tier}"
+            spec = _TIMED_FERTILIZER_MIGRATION_SPECS.get(effect_id)
+            interval = _timed_fertilizer_interval(period)
+            if spec is None or interval is None:
+                continue
+            started_at, expires_at = interval
+            if expires_at <= migration_time:
+                continue
+            _tier, growth_units, full_duration, full_cards = spec
+            remaining_seconds = max(
+                0.0, expires_at - max(migration_time, started_at)
+            )
+            remaining_cards = min(
+                full_cards,
+                int(math.ceil(
+                    float(full_cards) * remaining_seconds / float(full_duration)
+                )),
+            )
+            if remaining_cards <= 0:
+                continue
+            source_event_key = (
+                "migration:v26:fertilizer:"
+                f"{plant_id}:{int(started_at * 1000)}:{index}"
+            )
+            if source_event_key in seen_keys:
+                continue
+            seen_keys.add(source_event_key)
+            batches.insert(migration_insert_index, {
+                "effect_id": effect_id,
+                "growth_per_card_units": growth_units,
+                "total_cards": full_cards,
+                "remaining_cards": remaining_cards,
+                "activated_at": datetime.fromtimestamp(
+                    started_at, tz=timezone.utc
+                ).isoformat(),
+                "source_event_key": source_event_key,
+            })
+            migration_insert_index += 1
+            changed = True
+
+        booster_remaining = queue.get("booster_remaining_cards", 0)
+        if isinstance(booster_remaining, bool) or not isinstance(booster_remaining, int):
+            booster_remaining = 0
+        if booster_remaining <= 0:
+            for field_name in ("booster_card_batches", "booster_card_queue"):
+                compatibility = plant.get(field_name)
+                if isinstance(compatibility, list):
+                    booster_remaining += sum(
+                        max(0, int(row.get("remaining_cards", 0)))
+                        for row in compatibility
+                        if isinstance(row, dict)
+                        and isinstance(row.get("remaining_cards", 0), int)
+                        and not isinstance(row.get("remaining_cards", 0), bool)
+                    )
+        queue["fertilizer_batches"] = batches
+        queue["booster_remaining_cards"] = max(0, booster_remaining)
+        plant["card_effect_queue"] = queue
+        plant["fertilizer"] = None
+        plant["fertilizer_history"] = []
+        plant["fertilizer_card_batches"] = []
+        plant["fertilizer_card_queue"] = []
+        plant["booster"] = None
+        plant["booster_history"] = []
+        plant["booster_card_batches"] = []
+        plant["booster_card_queue"] = []
     return changed
 
 
@@ -929,8 +965,6 @@ def _migrate_schema22_progression_payload(
             [booster_batch] if booster_batch is not None else [],
         )
         plant.setdefault("booster_card_queue", [])
-
-    _restore_timed_fertilizer_payload(payload, migrated_at=migration_time)
 
     payload.setdefault("streak_growth_remainder_units", active_remainder)
 
@@ -1163,6 +1197,290 @@ def _migrate_schema25_decoration_bonus_payload(payload: dict[str, Any]) -> None:
     schedule["garden_feature_id"] = ""
 
 
+_BED_MIGRATION = {
+    3: (150, "first_canopy", "First Canopy", "Grow any plant to Mature."),
+    4: (
+        300,
+        "first_full_bloom",
+        "First Full Bloom",
+        "Grow one unique species to Full Bloom.",
+    ),
+    5: (
+        500,
+        "growing_garden",
+        "Growing Garden",
+        "Grow three unique species to Full Bloom.",
+    ),
+    6: (
+        800,
+        "flourishing_garden",
+        "Flourishing Garden",
+        "Grow six unique species to Full Bloom.",
+    ),
+}
+
+
+def _migrate_schema26_economy_payload(
+    payload: dict[str, Any],
+    *,
+    migrated_at: float | None = None,
+) -> None:
+    """Apply the one-way schema-26 economy foundation without inventing history."""
+
+    migration_time = time.time() if migrated_at is None else max(
+        0.0, float(migrated_at)
+    )
+    migrated_iso = datetime.fromtimestamp(
+        migration_time, tz=timezone.utc
+    ).isoformat()
+
+    loadout = payload.get("loadout")
+    if not isinstance(loadout, dict):
+        loadout = {}
+        payload["loadout"] = loadout
+    legacy_feature = canonical_garden_feature_id(
+        loadout.get(
+            "active_garden_bonus_id",
+            loadout.get(
+                "active_bonus_garden_feature_id",
+                loadout.get("garden_feature_id", loadout.get("weather_id", "")),
+            ),
+        )
+    ) or DEFAULT_GARDEN_FEATURE_ID
+    display_feature = canonical_garden_feature_id(
+        loadout.get(
+            "display_decoration_id",
+            loadout.get("displayed_garden_feature_id", legacy_feature),
+        )
+    ) or legacy_feature
+    legacy_scenery = str(
+        loadout.get(
+            "display_scenery_id",
+            loadout.get("scenery_id", DEFAULT_SCENERY_ID),
+        )
+        or DEFAULT_SCENERY_ID
+    )
+    loadout["display_decoration_id"] = display_feature
+    loadout["active_garden_bonus_id"] = legacy_feature
+    loadout["display_scenery_id"] = legacy_scenery
+    loadout["active_scenery_effect_id"] = str(
+        loadout.get("active_scenery_effect_id", legacy_scenery) or legacy_scenery
+    )
+    for retired_key in (
+        "weather_id",
+        "garden_feature_id",
+        "displayed_garden_feature_id",
+        "active_bonus_garden_feature_id",
+        "scenery_id",
+    ):
+        loadout.pop(retired_key, None)
+
+    inventory = payload.get("inventory")
+    if not isinstance(inventory, dict):
+        inventory = {}
+        payload["inventory"] = inventory
+    legacy_cosmetics = inventory.pop("decorations", [])
+    current_cosmetics = inventory.get("cosmetics", [])
+    cosmetics = list(dict.fromkeys(
+        item_id
+        for item_id in [
+            *(legacy_cosmetics if isinstance(legacy_cosmetics, list) else []),
+            *(current_cosmetics if isinstance(current_cosmetics, list) else []),
+            *( [display_feature] if display_feature in COSMETIC_DISPLAY_IDS else [] ),
+        ]
+        if isinstance(item_id, str) and item_id in COSMETIC_DISPLAY_IDS
+    ))
+    inventory["cosmetics"] = cosmetics
+
+    # The schema-26 Full Bloom threshold is lower than schema 25's. Preserve
+    # every valid hundredth-Growth unit by routing only the excess to Stored
+    # Growth; this is conservation, not a player-visible compensation grant.
+    stored_growth_units = _legacy_nonnegative_int(
+        payload.get("stored_growth_units")
+    )
+    plant_rows = payload.get("plants")
+    for plant in plant_rows if isinstance(plant_rows, list) else []:
+        if not isinstance(plant, dict):
+            continue
+        growth_points = _legacy_nonnegative_int(plant.get("growth_points"))
+        remainder_units = min(
+            99,
+            _legacy_nonnegative_int(plant.get("growth_remainder_units")),
+        )
+        if growth_points < GROWTH_THRESHOLDS[-1]:
+            continue
+        overflow_points = max(0, growth_points - GROWTH_THRESHOLDS[-1])
+        stored_growth_units += overflow_points * 100 + remainder_units
+        plant["growth_points"] = GROWTH_THRESHOLDS[-1]
+        plant["growth_remainder_units"] = 0
+    payload["stored_growth_units"] = stored_growth_units
+
+    _migrate_timed_fertilizer_to_card_queue(
+        payload, migrated_at=migration_time
+    )
+    consumables = payload.get("consumables")
+    if not isinstance(consumables, dict):
+        consumables = {}
+        payload["consumables"] = consumables
+    rich_compost = sum(
+        _legacy_nonnegative_int(consumables.pop(key, 0))
+        for key in ("rich_compost", "fertilizer_rich")
+    )
+    consumables["fertilizer_basic"] = (
+        _legacy_nonnegative_int(consumables.get("fertilizer_basic"))
+        + rich_compost
+    )
+
+    payload.setdefault("daily_economy_snapshot", None)
+    payload.setdefault("garden_project", {
+        "selected_project_id": "",
+        "contributed_growth_units": 0,
+        "ready_to_complete": False,
+        "completed_project_ids": [],
+        "displayed_project_id": "",
+        "auto_contribute": False,
+    })
+    payload.setdefault("cultivation_mastery", {
+        "highest_rank_by_species": {},
+    })
+    payload.setdefault("lifetime_economy_aggregates", {
+        "coins_earned_by_source": {},
+        "coins_spent_by_sink": {},
+        "growth_earned_by_source": {},
+        "growth_spent_on_landmarks": 0,
+        "growth_spent_on_mastery": 0,
+        "finds_by_outcome": {},
+        "environment_discoveries": {},
+        "consumables_earned": {},
+        "consumables_used": {},
+        "plants_completed": 0,
+        "today_cards_completions": 0,
+    })
+    payload.setdefault("hourglass_completion_progress", 0)
+    payload.setdefault("snow_completion_progress", 0)
+    if "full_moon_completion_progress" not in payload:
+        legacy_completion_counts = payload.get("environment_completion_counts")
+        legacy_full_moon_count = (
+            _legacy_nonnegative_int(
+                legacy_completion_counts.get("full_moon", 0)
+            )
+            if isinstance(legacy_completion_counts, dict)
+            else 0
+        )
+        # Schema 25 granted Full Moon's Potion every fourth completion; schema
+        # 26 grants it every sixth.  Carry the old remainder forward at the
+        # same fractional position and round up so a positive earned fraction
+        # is never erased by migration: 1/4 -> 2/6, 2/4 -> 3/6, 3/4 -> 5/6.
+        legacy_remainder = legacy_full_moon_count % 4
+        payload["full_moon_completion_progress"] = min(
+            5,
+            (legacy_remainder * 6 + 3) // 4,
+        )
+    payload["prism_pending_growth_units"] = min(
+        30_000,
+        max(
+            _legacy_nonnegative_int(payload.get("prism_pending_growth_units")),
+            _legacy_nonnegative_int(payload.pop("prism_banked_growth", 0)),
+        ),
+    )
+    payload["environment_completion_pity_misses"] = {
+        "rare": 0,
+        "very_rare": 0,
+        "ultra": 0,
+    }
+
+    unlocked_slots = min(
+        6, max(2, _legacy_nonnegative_int(payload.get("unlocked_slots"), 2))
+    )
+    existing_unlocks = payload.get("earned_bed_unlocks")
+    earned_unlocks = {
+        int(value)
+        for value in existing_unlocks
+        if isinstance(value, int)
+        and not isinstance(value, bool)
+        and 3 <= int(value) <= 6
+    } if isinstance(existing_unlocks, list) else set()
+    earned_unlocks.update(range(3, unlocked_slots + 1))
+    payload["earned_bed_unlocks"] = sorted(earned_unlocks)
+
+    achievements = payload.get("achievements")
+    if not isinstance(achievements, dict):
+        achievements = {}
+        payload["achievements"] = achievements
+    pending = payload.get("pending_economy_migration_grants")
+    pending_rows = list(pending) if isinstance(pending, list) else []
+    pending_keys = {
+        str(row.get("event_key"))
+        for row in pending_rows
+        if isinstance(row, dict) and row.get("event_key")
+    }
+    for bed_number in sorted(earned_unlocks):
+        price, achievement_id, name, description = _BED_MIGRATION[bed_number]
+        existing_achievement = achievements.get(achievement_id)
+        achievement = (
+            dict(existing_achievement)
+            if isinstance(existing_achievement, dict)
+            else {}
+        )
+        achievement.setdefault("achievement_id", achievement_id)
+        achievement.setdefault("name", name)
+        achievement.setdefault("description", description)
+        achievement["unlocked"] = True
+        achievement["progress"] = 1.0
+        achievement.setdefault("unlocked_at", migrated_iso)
+        achievement.setdefault("category", "completion")
+        achievement.setdefault("requirement", description)
+        achievement.setdefault("reward_summary", f"Bed {bed_number}")
+        achievement.setdefault("rewarded_at", migrated_iso)
+        achievement.setdefault(
+            "reward_event_key", f"migration:v26:bed_claim:{bed_number}"
+        )
+        achievement.setdefault("historical_backfill", True)
+        achievements[achievement_id] = achievement
+        event_key = f"migration:v26:bed_refund:{bed_number}"
+        if event_key not in pending_keys:
+            pending_rows.append({
+                "event_key": event_key,
+                "coins": price,
+                "reason": f"Schema 26 Bed {bed_number} purchase refund",
+                "source_id": "bed_refund",
+            })
+            pending_keys.add(event_key)
+
+    completed_requests = payload.get("completed_purchase_requests")
+    for row in completed_requests if isinstance(completed_requests, list) else []:
+        if not isinstance(row, dict):
+            continue
+        request_id = row.get("request_id")
+        outcome = row.get("outcome")
+        if (
+            not isinstance(request_id, str)
+            or not isinstance(outcome, dict)
+            or outcome.get("status") != "success"
+            or outcome.get("category") != "Plant"
+        ):
+            continue
+        amount_spent = outcome.get("amount_spent")
+        if (
+            isinstance(amount_spent, bool)
+            or not isinstance(amount_spent, int)
+            or amount_spent <= 250
+        ):
+            continue
+        event_key = f"migration:v26:plant_refund:{request_id}"
+        if event_key in pending_keys:
+            continue
+        pending_rows.append({
+            "event_key": event_key,
+            "coins": amount_spent - 250,
+            "reason": "Schema 26 recorded plant-price refund",
+            "source_id": "plant_price_refund",
+        })
+        pending_keys.add(event_key)
+    payload["pending_economy_migration_grants"] = pending_rows
+    payload["version"] = STATE_VERSION
+
+
 def migrate_previous_state(raw: Any) -> GardenState:
     """Convert the supported schema-10 release into the current state contract.
 
@@ -1270,6 +1588,7 @@ def migrate_previous_state(raw: Any) -> GardenState:
     _migrate_loadout_payload(payload)
     _migrate_reward_state_payload(payload)
     _migrate_schema22_progression_payload(payload)
+    _migrate_schema26_economy_payload(payload)
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
@@ -1292,34 +1611,42 @@ def migrate_modern_state(
         raise ValueError("only previous modern schemas can use the modern migration")
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
+    def finish(*, materialize: bool = True) -> GardenState:
+        _migrate_schema26_economy_payload(payload, migrated_at=migrated_at)
+        state = GardenState.from_dict(payload)
+        return _materialize_unlocked_species(state) if materialize else state
+
+    if source_version == 25:
+        payload.setdefault("pending_sync_reward_summary", None)
+        return finish()
     if source_version == 24:
         _migrate_schema25_decoration_bonus_payload(payload)
         payload.setdefault("pending_sync_reward_summary", None)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 23:
         _migrate_schema25_decoration_bonus_payload(payload)
         payload.setdefault("pending_sync_reward_summary", None)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 22:
         _migrate_schema23_garden_features_payload(payload)
         payload.setdefault("pending_sync_reward_summary", None)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 21:
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 20:
         payload["version"] = STATE_VERSION
         payload.setdefault("completed_purchase_requests", [])
         _migrate_reward_state_payload(payload)
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return GardenState.from_dict(payload)
+        return finish(materialize=False)
     if source_version == 19:
         payload["version"] = STATE_VERSION
         payload.setdefault("completed_purchase_requests", [])
         _migrate_growth_accounting_payload(payload)
         _migrate_reward_state_payload(payload)
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return GardenState.from_dict(payload)
+        return finish(materialize=False)
     if source_version in {17, 18}:
         # Schemas 17 and 18 already own every progression, onboarding, and
         # revlog field. Preserve their bounded purchase replay history while
@@ -1330,7 +1657,7 @@ def migrate_modern_state(
         _migrate_growth_accounting_payload(payload)
         _migrate_reward_state_payload(payload)
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return GardenState.from_dict(payload)
+        return finish(materialize=False)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
         time.time() if migrated_at is None else migrated_at,
@@ -1404,7 +1731,7 @@ def migrate_modern_state(
     _migrate_loadout_payload(payload)
     _migrate_reward_state_payload(payload)
     _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-    return _materialize_unlocked_species(GardenState.from_dict(payload))
+    return finish()
 
 
 @dataclass(frozen=True)
@@ -1590,6 +1917,8 @@ class GardenStorage:
                     state = migrate_modern_state(
                         dict(snapshot.payload), migrated_at=time.time()
                     )
+                    self._stage_legacy_economy_idempotency(ledger, state)
+                    self._apply_pending_economy_migration_grants(ledger, state)
                     committed = ledger.commit_state(
                         self._bounded_state_payload(state),
                         schema_version=STATE_VERSION,
@@ -1612,25 +1941,10 @@ class GardenStorage:
                     )
                 self._reward_ledger = ledger
                 payload = deepcopy(dict(snapshot.payload))
-                restored_timed_fertilizer = _restore_timed_fertilizer_payload(
-                    payload,
-                    migrated_at=time.time(),
-                )
                 state = _materialize_unlocked_species(
                     GardenState.from_dict(payload)
                 )
-                if restored_timed_fertilizer:
-                    committed = ledger.commit_state(
-                        self._bounded_state_payload(state),
-                        schema_version=STATE_VERSION,
-                        expected_revision=snapshot.revision,
-                    )
-                    self._ledger_revision = committed.revision
-                    logger.info(
-                        "Anki Garden: restored timed Fertilizer from experimental schema-22 card effects"
-                    )
-                else:
-                    self._ledger_revision = snapshot.revision
+                self._ledger_revision = snapshot.revision
                 self._refresh_reanswer_hint_cache(state)
                 self._refresh_recent_find_cache(state)
                 return state
@@ -1689,6 +2003,74 @@ class GardenStorage:
         state.garden_find_reward_daily_counts = {}
         state.garden_find_outcomes = {}
 
+    @staticmethod
+    def _apply_pending_economy_migration_grants(
+        ledger: RewardLedger,
+        state: GardenState,
+    ) -> None:
+        """Stage deterministic migration refunds with the state that receives them."""
+
+        retained: list[PendingEconomyMigrationGrant] = []
+        for grant in state.pending_economy_migration_grants:
+            existing = ledger.idempotency_record("migration", grant.event_key)
+            if existing is not None:
+                continue
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    {
+                        "event_key": grant.event_key,
+                        "coins": grant.coins,
+                        "source_id": grant.source_id,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            occurred_at = datetime.now(timezone.utc).isoformat()
+            balance = max(0, int(state.currency_balance)) + grant.coins
+            transaction_id = str(uuid.uuid5(
+                uuid.NAMESPACE_URL, "anki-garden:" + grant.event_key
+            ))
+            state.currency_balance = balance
+            state.currency_transactions.append(CurrencyTransaction(
+                transaction_id=transaction_id,
+                event_key=grant.event_key,
+                reason=grant.reason,
+                delta=grant.coins,
+                balance=balance,
+                occurred_at=occurred_at,
+                transaction_type="credit",
+                source="migration",
+                source_id=grant.source_id,
+                correlation_id=grant.event_key,
+            ))
+            state.currency_transactions = state.currency_transactions[
+                -MAX_TRANSACTION_HISTORY:
+            ]
+            current = state.lifetime_economy_aggregates.coins_earned_by_source
+            current[grant.source_id] = (
+                max(0, int(current.get(grant.source_id, 0))) + grant.coins
+            )
+            ledger.stage_idempotency_record(IdempotencyRecord(
+                operation_kind="migration",
+                operation_id=grant.event_key,
+                request_fingerprint=fingerprint,
+                outcome={
+                    "status": "applied",
+                    "coins": grant.coins,
+                    "balance": balance,
+                },
+                occurred_at=occurred_at,
+            ))
+            ledger.stage_economy_event(EconomyEventRecord(
+                event_key=grant.event_key,
+                event_kind="migration_refund",
+                source_id=grant.source_id,
+                occurred_at=occurred_at,
+                coins_earned=grant.coins,
+            ))
+        state.pending_economy_migration_grants = retained
+
     def _install_reward_database(self, state: GardenState) -> None:
         """Import one JSON state into a temporary database, then install it."""
 
@@ -1702,6 +2084,8 @@ class GardenStorage:
         try:
             ledger = RewardLedger(temporary)
             self._stage_legacy_authorities(ledger, state)
+            self._stage_legacy_economy_idempotency(ledger, state)
+            self._apply_pending_economy_migration_grants(ledger, state)
             committed = ledger.commit_state(
                 self._bounded_state_payload(state),
                 schema_version=STATE_VERSION,
@@ -1829,6 +2213,45 @@ class GardenStorage:
             ))
 
     @staticmethod
+    def _stage_legacy_economy_idempotency(
+        ledger: RewardLedger,
+        state: GardenState,
+    ) -> None:
+        """Promote bounded v25 request receipts into permanent ledger identities."""
+
+        records = (
+            (
+                "purchase",
+                request.request_id,
+                request.request_fingerprint,
+                request.outcome.to_dict(),
+                request.occurred_at,
+            )
+            for request in state.completed_purchase_requests
+        )
+        growth_records = (
+            (
+                "growth_charge",
+                request.request_id,
+                request.request_fingerprint,
+                request.outcome.to_dict(),
+                request.occurred_at,
+            )
+            for request in state.completed_growth_charge_requests
+        )
+        for kind, request_id, fingerprint, outcome, occurred_at in (
+            *records,
+            *growth_records,
+        ):
+            ledger.stage_idempotency_record(IdempotencyRecord(
+                operation_kind=kind,
+                operation_id=request_id,
+                request_fingerprint=fingerprint,
+                outcome=outcome,
+                occurred_at=occurred_at,
+            ))
+
+    @staticmethod
     def _domain_find_outcome(record: FindOutcomeRecord) -> GardenFindOutcome:
         payload = dict(record.hit_payload or {})
         return GardenFindOutcome(
@@ -1887,13 +2310,214 @@ class GardenStorage:
             return str(event_key) in self.state.applied_reward_event_keys
         return self._reward_ledger.reward_applied(str(event_key))
 
-    def stage_reward_event(self, event_key: str) -> None:
+    def stage_reward_event(
+        self,
+        event_key: str,
+        *,
+        source: str = "",
+        scheduler_day: str = "",
+        occurred_at: str = "",
+    ) -> None:
         if self._reward_ledger is None:
             if event_key not in self.state.applied_reward_event_keys:
                 self.state.applied_reward_event_keys.append(event_key)
             return
         if not self._reward_ledger.reward_applied(event_key):
-            self._reward_ledger.stage_reward_event(RewardEventRecord(event_key))
+            self._reward_ledger.stage_reward_event(RewardEventRecord(
+                event_key,
+                source,
+                scheduler_day,
+                occurred_at,
+            ))
+
+    def idempotency_record(
+        self,
+        operation_kind: str,
+        operation_id: str,
+    ) -> IdempotencyRecord | None:
+        if self._reward_ledger is None:
+            return None
+        return self._reward_ledger.idempotency_record(
+            operation_kind, operation_id
+        )
+
+    def stage_idempotency_record(self, record: IdempotencyRecord) -> None:
+        if self._reward_ledger is None:
+            return
+        self._reward_ledger.stage_idempotency_record(record)
+
+    def economy_event(self, event_key: str) -> EconomyEventRecord | None:
+        if self._reward_ledger is None:
+            return None
+        return self._reward_ledger.economy_event(event_key)
+
+    def stage_economy_event(self, record: EconomyEventRecord) -> None:
+        if self._reward_ledger is None:
+            return
+        self._reward_ledger.stage_economy_event(record)
+
+    def lifetime_economy_aggregates(self) -> Mapping[str, Any]:
+        if self._reward_ledger is None:
+            return self.state.lifetime_economy_aggregates.to_dict()
+        return self._reward_ledger.lifetime_economy_aggregates()
+
+    def refresh_lifetime_economy_aggregates(
+        self,
+    ) -> LifetimeEconomyAggregates:
+        """Rebuild and persist the state projection from permanent events."""
+
+        values = self.lifetime_economy_aggregates()
+        aggregate = LifetimeEconomyAggregates(
+            coins_earned_by_source=dict(
+                values.get("coins_earned_by_source", {})
+            ),
+            coins_spent_by_sink=dict(values.get("coins_spent_by_sink", {})),
+            growth_earned_by_source=dict(
+                values.get("growth_earned_by_source", {})
+            ),
+            growth_spent_on_landmarks=int(
+                values.get("growth_spent_on_landmarks", 0)
+            ),
+            growth_spent_on_mastery=int(
+                values.get("growth_spent_on_mastery", 0)
+            ),
+            finds_by_outcome=dict(values.get("finds_by_outcome", {})),
+            environment_discoveries=dict(
+                values.get("environment_discoveries", {})
+            ),
+            consumables_earned=dict(values.get("consumables_earned", {})),
+            consumables_used=dict(values.get("consumables_used", {})),
+            plants_completed=int(values.get("plants_completed", 0)),
+            today_cards_completions=int(
+                values.get("today_cards_completions", 0)
+            ),
+        )
+        self.state.lifetime_economy_aggregates = aggregate
+        return aggregate
+
+    def rebuild_lifetime_economy_aggregates(
+        self,
+    ) -> LifetimeEconomyAggregates:
+        """Compatibility alias for callers that describe refresh as rebuild."""
+
+        return self.refresh_lifetime_economy_aggregates()
+
+    def daily_economy_snapshot(
+        self,
+        anki_day: str,
+    ) -> DailyEconomySnapshot | None:
+        if self._reward_ledger is None:
+            snapshot = self.state.daily_economy_snapshot
+            return (
+                snapshot
+                if snapshot is not None and snapshot.anki_day == anki_day
+                else None
+            )
+        record = self._reward_ledger.daily_economy_snapshot(anki_day)
+        if record is None:
+            return None
+        return DailyEconomySnapshot(
+            anki_day=record.anki_day,
+            garden_rhythm_percent=record.garden_rhythm_percent,
+            active_garden_bonus_id=record.active_garden_bonus_id,
+            active_scenery_effect_id=record.active_scenery_effect_id,
+            snapshot_source=record.snapshot_source,
+            snapshot_id=record.snapshot_id,
+        )
+
+    def stage_daily_economy_snapshot(
+        self,
+        snapshot: DailyEconomySnapshot | DailyEconomySnapshotRecord | None = None,
+        *,
+        anki_day: str = "",
+        garden_rhythm_percent: int = 0,
+        active_garden_bonus_id: str = "",
+        active_scenery_effect_id: str = "",
+        snapshot_source: str = "",
+        snapshot_id: str = "",
+    ) -> DailyEconomySnapshot:
+        if snapshot is None:
+            value = DailyEconomySnapshot(
+                anki_day=anki_day,
+                garden_rhythm_percent=garden_rhythm_percent,
+                active_garden_bonus_id=active_garden_bonus_id,
+                active_scenery_effect_id=active_scenery_effect_id,
+                snapshot_source=snapshot_source,
+                snapshot_id=snapshot_id,
+            )
+        else:
+            value = DailyEconomySnapshot(
+                anki_day=snapshot.anki_day,
+                garden_rhythm_percent=snapshot.garden_rhythm_percent,
+                active_garden_bonus_id=snapshot.active_garden_bonus_id,
+                active_scenery_effect_id=snapshot.active_scenery_effect_id,
+                snapshot_source=snapshot.snapshot_source,
+                snapshot_id=snapshot.snapshot_id,
+            )
+        existing = self.daily_economy_snapshot(value.anki_day)
+        if existing is not None:
+            if existing != value:
+                raise ValueError(
+                    "That Anki day already has a different economy snapshot."
+                )
+            return existing
+        if self._reward_ledger is not None:
+            self._reward_ledger.stage_daily_economy_snapshot(
+                DailyEconomySnapshotRecord(
+                    anki_day=value.anki_day,
+                    garden_rhythm_percent=value.garden_rhythm_percent,
+                    active_garden_bonus_id=value.active_garden_bonus_id,
+                    active_scenery_effect_id=value.active_scenery_effect_id,
+                    snapshot_source=value.snapshot_source,
+                    snapshot_id=value.snapshot_id,
+                )
+            )
+        self.state.daily_economy_snapshot = value
+        return value
+
+    def eligible_study_days_before(
+        self,
+        anki_day: str,
+        *,
+        limit: int = 7,
+    ) -> tuple[str, ...]:
+        if self._reward_ledger is not None:
+            return self._reward_ledger.eligible_study_days_before(
+                anki_day, limit=limit
+            )
+        candidates: set[str] = set()
+        snapshot = self.state.daily_economy_snapshot
+        if snapshot is not None and snapshot.anki_day < anki_day:
+            candidates.add(snapshot.anki_day)
+        if self.state.daily_stats.reviewed > 0 and self.state.daily_stats.day < anki_day:
+            candidates.add(self.state.daily_stats.day)
+        return tuple(sorted(candidates, reverse=True)[:max(0, int(limit))])
+
+    def verified_today_cards_completion_days_before(
+        self,
+        anki_day: str,
+    ) -> frozenset[str]:
+        if self._reward_ledger is not None:
+            return self._reward_ledger.verified_today_cards_completion_days_before(
+                anki_day
+            )
+        result: set[str] = set()
+        if (
+            self.state.daily_completion.status == "complete"
+            and self.state.daily_completion.reward_claimed
+            and self.state.daily_completion.scheduler_day < anki_day
+        ):
+            result.add(self.state.daily_completion.scheduler_day)
+        for transaction in self.state.currency_transactions:
+            if transaction.event_key.startswith("all_due:"):
+                candidate = transaction.event_key.partition(":")[2]
+                try:
+                    parsed = date.fromisoformat(candidate).isoformat()
+                except ValueError:
+                    continue
+                if parsed < anki_day:
+                    result.add(parsed)
+        return frozenset(result)
 
     def answer_consumed(self, answer_key: str) -> bool:
         if self._reward_ledger is None:
@@ -2025,7 +2649,7 @@ class GardenStorage:
                     )
                 ))
                 self.state.garden_find_daily_counts[outcome.scheduler_day] = min(
-                    3, finds_today + 1
+                    STANDARD_FIND_MAXIMUM_DAILY_CAP, finds_today + 1
                 )
                 reward_counts = (
                     self.state.garden_find_reward_daily_counts.setdefault(
@@ -2033,7 +2657,7 @@ class GardenStorage:
                     )
                 )
                 reward_counts[outcome.reward_id] = min(
-                    3,
+                    STANDARD_FIND_MAXIMUM_DAILY_CAP,
                     max(0, int(reward_counts.get(outcome.reward_id, 0))) + 1,
                 )
             return
@@ -2140,10 +2764,6 @@ class GardenStorage:
                     )
                     return GardenState()
                 payload = deepcopy(raw)
-                _restore_timed_fertilizer_payload(
-                    payload,
-                    migrated_at=time.time(),
-                )
                 return _materialize_unlocked_species(GardenState.from_dict(payload))
         except StatePreservationError:
             raise
@@ -2222,10 +2842,6 @@ class GardenStorage:
                     "That development backup uses an unsupported schema."
                 )
             payload = deepcopy(dict(snapshot.payload))
-            _restore_timed_fertilizer_payload(
-                payload,
-                migrated_at=time.time(),
-            )
             state = GardenState.from_dict(payload)
             state.pending_reanswer_lineages = reanswer_hints
             return state
@@ -2233,10 +2849,6 @@ class GardenStorage:
         if not isinstance(raw, dict) or int(raw.get("version", -1)) != STATE_VERSION:
             raise StatePreservationError("That development backup uses an unsupported schema.")
         payload = deepcopy(raw)
-        _restore_timed_fertilizer_payload(
-            payload,
-            migrated_at=time.time(),
-        )
         return GardenState.from_dict(payload)
 
     def restore_development_backup(self, path: Path) -> GardenState:
@@ -2282,20 +2894,8 @@ class GardenStorage:
                     "The restored database uses an unsupported schema."
                 )
             payload = deepcopy(dict(snapshot.payload))
-            restored_timed_fertilizer = _restore_timed_fertilizer_payload(
-                payload,
-                migrated_at=time.time(),
-            )
             restored = GardenState.from_dict(payload)
-            if restored_timed_fertilizer:
-                committed = self._reward_ledger.commit_state(
-                    self._bounded_state_payload(restored),
-                    schema_version=STATE_VERSION,
-                    expected_revision=snapshot.revision,
-                )
-                self._ledger_revision = committed.revision
-            else:
-                self._ledger_revision = snapshot.revision
+            self._ledger_revision = snapshot.revision
             self._refresh_reanswer_hint_cache(restored)
             self._refresh_recent_find_cache(restored)
             self.state = restored

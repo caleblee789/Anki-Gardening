@@ -170,7 +170,7 @@ def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_
 
     migrated = storage_at(state_path)._load()
 
-    assert migrated.version == STATE_VERSION == 25
+    assert migrated.version == STATE_VERSION == 26
     assert migrated.currency_balance == 777
     assert migrated.completed_purchase_requests == []
     assert migrated.onboarding.step is OnboardingStep.NURTURE
@@ -327,7 +327,7 @@ def test_previous_release_schema_is_backed_up_and_progress_is_migrated(tmp_path)
     assert state.active_plant_id == "legacy_lavender"
     assert state.last_processed_revlog_id == 1_786_100_000_123
     assert state.plants[0].name == "Violet Friend"
-    assert state.plants[0].growth_points == 5_250
+    assert state.plants[0].growth_points == 4_000
     assert [memory.kind for memory in state.plants[0].memories] == ["planted", "first_nurture"]
     assert state.daily_stats.reviewed == 70
     assert state.daily_stats.growth_earned == 0
@@ -346,17 +346,17 @@ def test_previous_release_schema_is_backed_up_and_progress_is_migrated(tmp_path)
     ("legacy_growth", "expected_growth"),
     [
         (0, 0),
-        (40, 250),
-        (80, 500),
-        (150, 1_500),
-        (220, 2_500),
-        (350, 5_250),
-        (480, 8_000),
-        (690, 14_000),
-        (900, 20_000),
-        (1_150, 35_000),
-        (1_400, 50_000),
-        (99_999, 50_000),
+        (40, 200),
+        (80, 400),
+        (150, 1_200),
+        (220, 2_000),
+        (350, 4_000),
+        (480, 6_000),
+        (690, 10_500),
+        (900, 15_000),
+        (1_150, 25_000),
+        (1_400, 35_000),
+        (99_999, 35_000),
     ],
 )
 def test_previous_release_growth_keeps_stage_and_within_stage_percentage(legacy_growth, expected_growth):
@@ -512,12 +512,19 @@ def test_modern_migration_preserves_every_historical_species_story_and_progress(
         assert plant.planted_on == f"2026-07-{index + 1:02d}"
         assert [memory.memory_id for memory in plant.memories] == [f"stage:{species}"]
         assert plant.memories[0].new_stage == "young"
-        assert plant.fertilizer == Fertilizer(
-            tier="quality",
-            growth_per_answer=2,
-            expires_at=1_900_000_000.0 + index,
-            started_at=1_800_000_000.0,
-        )
+        assert plant.fertilizer is None
+        assert plant.fertilizer_history == []
+        assert len(plant.fertilizer_card_batches) == 1
+        assert plant.fertilizer_card_queue == []
+        batches = plant.card_effect_queue.fertilizer_batches
+        assert len(batches) == 1
+        assert plant.fertilizer_card_batches[0] == batches[0]
+        assert (
+            batches[0].effect_id,
+            batches[0].growth_per_card_units,
+            batches[0].total_cards,
+            batches[0].remaining_cards,
+        ) == ("fertilizer_quality", 200, 200, 200)
 
 
 def test_modern_migration_resumes_an_empty_preexisting_garden_at_introduction():
@@ -533,7 +540,7 @@ def test_modern_migration_resumes_an_empty_preexisting_garden_at_introduction():
     assert state.onboarding.step is OnboardingStep.INTRODUCTION
 
 
-def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor():
+def test_schema13_fertilizer_migration_converts_remaining_time_to_cards():
     payload = GardenState(
         plants=[Plant(
             "p1",
@@ -548,16 +555,25 @@ def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor()
     payload.pop("starter_selection_complete")
 
     state = migrate_modern_state(payload, migrated_at=1_000.0)
-    fertilizer = state.plants[0].fertilizer
+    plant = state.plants[0]
 
-    assert fertilizer == Fertilizer("quality", 2, 2_000.0, 1_000.0)
-    assert not fertilizer.active(999.999)
-    assert fertilizer.active(1_000.0)
-    assert not fertilizer.active(2_000.0)
+    assert plant.fertilizer is None
+    assert plant.fertilizer_history == []
+    assert len(plant.fertilizer_card_batches) == 1
+    assert plant.fertilizer_card_queue == []
+    batch = plant.card_effect_queue.fertilizer_batches[0]
+    assert plant.fertilizer_card_batches[0] == batch
+    # 1,000 seconds of a 7,200-second dose: ceil(200 * 1000 / 7200) = 28.
+    assert (
+        batch.effect_id,
+        batch.growth_per_card_units,
+        batch.total_cards,
+        batch.remaining_cards,
+    ) == ("fertilizer_quality", 200, 200, 28)
     assert state.revlog_ledger_migration_pending
 
 
-def test_current_json_restores_multiple_experimental_fertilizer_batches_as_time(
+def test_schema25_json_preserves_experimental_fertilizer_batches_as_cards(
     tmp_path,
     monkeypatch,
 ):
@@ -566,6 +582,7 @@ def test_current_json_restores_multiple_experimental_fertilizer_batches_as_time(
         plants=[Plant("p1", "bonsai", "Moss", 0)],
         active_plant_id="p1",
     ).to_dict()
+    payload["version"] = 25
     payload["plants"][0]["fertilizer_card_batches"] = [{
         "effect_id": "fertilizer_quality",
         "growth_per_card_units": 200,
@@ -588,12 +605,22 @@ def test_current_json_restores_multiple_experimental_fertilizer_batches_as_time(
     restored = storage_at(state_path)._load()
 
     plant = restored.plants[0]
-    assert plant.fertilizer == Fertilizer("quality", 2, 5_100.0, 1_500.0)
-    assert plant.fertilizer_history == [
-        Fertilizer("premium", 3, 12_300.0, 5_100.0)
+    assert plant.fertilizer is None
+    assert plant.fertilizer_history == []
+    assert len(plant.fertilizer_card_batches) == 1
+    assert len(plant.fertilizer_card_queue) == 1
+    assert [
+        (
+            batch.effect_id,
+            batch.growth_per_card_units,
+            batch.total_cards,
+            batch.remaining_cards,
+        )
+        for batch in plant.card_effect_queue.fertilizer_batches
+    ] == [
+        ("fertilizer_quality", 200, 150, 75),
+        ("fertilizer_premium", 300, 250, 125),
     ]
-    assert plant.fertilizer_card_batches == []
-    assert plant.fertilizer_card_queue == []
 
 
 @pytest.mark.parametrize(

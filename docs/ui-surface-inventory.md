@@ -1,6 +1,6 @@
 # Anki Garden UI interface inventory
 
-Status: current Release 2.1.0 capture contract v26, contract schema 2 and
+Status: current Anki Garden 2.2.0 working-tree capture contract v26, contract schema 2 and
 scenario schema 3. The exact ordered source is the Qt-free `SurfaceSpec`
 registry compiled into
 `ankigarden/capture/capture-contract-v26.json`. Inspect it without mutation via
@@ -35,7 +35,7 @@ geometry authority; the sheets are review aids.
 | Home | Deck Browser preview | One renderer-neutral Home-card projection and shared preview snapshot | Render starter, empty, active, zero, partial, and complete states in one shell; Open Garden or retry without scene mutation |
 | Garden | Dashboard, scene, plant card, Move, and Story | Plants, slots, active plant, Growth, effects, scene geometry | Select, Nurture, Move, Story, Progress, Collection, Nursery, Settings |
 | Fertilizer | Application dialog | Engine quote, immutable source `plant_id`, target status, interval history, balance, and replay record | Keep one source through selection, quote, confirmation, and queued period; use Apply/Queue, Buy-and-apply/Buy-and-queue, and Extend only for the same-tier extension disposition |
-| Progress | Today’s Cards, Plant Growth, Anki streak, Garden Coins, Achievements, and Collection | Canonical stage, `PlantIdentity`, Today’s Cards, reward, catalog, ownership, collection-count, and appearance projections | Open on Today’s Cards, inspect all six pages, and keep `10 of 10 species discovered` separate from `30 of 39 collection entries discovered` |
+| Progress | Today’s Cards, Plant Growth, Anki streak, Garden Coins, Achievements, and Collection | Canonical stage, `PlantIdentity`, Today’s Cards, reward, catalog, ownership, collection-count, appearance/effect, Landmark, and Mastery projections | Open on Today’s Cards, inspect all six pages, and keep `10 of 10 species discovered` separate from `30 of 93 collection entries discovered` |
 | Collection | Species overview and loadout details | Inventory, entitlements and one reversible loadout draft | Inspect, preview, apply atomically, cancel and restore |
 | Nursery | Four commerce tabs plus a normal-flow receipt | Engine catalogs, quotes, ownership, inventory, slots, manifest readiness | Purchase, use, unlock, plant, route to Collection |
 | Growth Charge | Targeted Charge confirmation | Inventory, eligible target, quote/request/outcome, stage reward | Select Charge, use, retry, open Nursery |

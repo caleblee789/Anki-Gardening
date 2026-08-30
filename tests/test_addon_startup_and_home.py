@@ -1409,6 +1409,8 @@ def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
         "stage": "flowering",
         "is_active": True,
         "url": "",
+        "mastery_rank_id": "",
+        "mastery_url": "",
         "placement": {},
         "canvas_aspect": 1.0,
         "background_placement": {},

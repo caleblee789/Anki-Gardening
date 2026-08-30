@@ -2,14 +2,15 @@
 
 ## Fresh garden and starter
 
-- Schema 25 begins with two unlocked direct-soil spaces, no plants, Seedling Sign
+- Schema 26 begins with two unlocked direct-soil beds, no plants, Seedling Sign
   plus Verdant Twilight entitlements, visible environment layers,
   `starter_selection_complete=false`, and onboarding at `introduction`.
 - Anki Home is the unnumbered entry/resume surface. The Garden counts six saved
   steps: introduction, Starter Nursery, confirmation, placement, nurture
   selection, and completion. Closing a dialog or Anki preserves the current
   step; `Not now` appears only where resuming is safe.
-- Every release-ready species is offered as one free starter; the current bundle
+- Every release-ready species is offered as one free starter with identical
+  mechanics; every later current species costs 250 Coins. The current bundle
   supplies complete Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony,
   Foxglove, Japanese Maple, Wisteria, and Dahlia lines.
 - Species choice and confirmation do not create a plant. Placement atomically
@@ -33,9 +34,9 @@
   Bloom. Persisted `rare` remains compatible but is never visible; the compact
   HUD says `Sprout · 2 of 6 stages`.
 - Collection completion reports `10 of 10 species discovered` separately from
-  `30 of 39 collection entries discovered`; 30 is never labeled as plants.
-- Garden appearance presents four independent rows: Scenery, Displayed
-  decoration, Active garden bonus, and Visual effects.
+  `30 of 93 collection entries discovered`; 30 is never labeled as plants.
+- Garden appearance independently presents Displayed decoration, Active garden
+  bonus, Displayed scenery, and Active scenery effect.
 - Standard Finds and Garden discoveries retain their internal ledger/event IDs
   but use distinct player-facing labels.
 
@@ -68,16 +69,17 @@
 
 ## Active study day
 
-- Each eligible completed card credits exact Answer Growth—10 base plus streak,
-  active Fertilizer, Booster, the Anki-day-locked Garden Bonus, and locked Scenery—to the nurtured
-  plant. Every other planted plant creates exact 20% Shared Growth. A growing
+- Each eligible completed card credits exact Answer Growth—10 base plus
+  snapshotted Garden Rhythm, active Fertilizer, Booster, Garden Bonus, and
+  Scenery Effect—to the nurtured plant. Every other planted bed creates one
+  exact 10% Shared Growth lane. A growing
   source receives its share; a Full Bloom source divides its share across all
   planted plants still growing, including the nurtured plant. Instant Growth
   receives no card modifiers and is not shared. Every lane
   redirects or enters Stored Growth instead of losing value.
 - Choosing **Nurture** changes only future routing. Previously earned Growth
   never moves.
-- Reviewer HUD, full Garden, selected-plant card, and the persisted schema-25
+- Reviewer HUD, full Garden, selected-plant card, and the persisted schema-26
   state snapshot agree after refresh.
 - The expanded HUD reserves 296 px at top 44/right 16, measures its lower edge
   from Anki's answer controls with a 72 px fallback, and collapses rather than
@@ -110,9 +112,10 @@
   excluded while unavailable.
   Restoring a due card before completion makes it an obligation; later due work
   never revokes an already-earned award.
-- Completion credits +10 Garden Coins once. Cloudy Drift adds +5 Coins;
-  Rainbow Sunshower adds +100 Instant Growth. The locked Scenery grants its
-  completion gift.
+- Completion credits +10 Garden Coins once. Harvest Bell adds +5 Coins and
+  Autumn Hearth adds +4 Coins when those effects are in the day’s snapshot.
+  Other snapshotted completion effects grant their catalog-defined items or
+  bank release.
 - The first eligible completed card grants +2 Garden Coins, every seventh consecutive
   eligible day grants +10, and day 7 integrates that recurring payout with its
   one-time achievement. The first valid Today’s Cards completion also grants
@@ -121,7 +124,7 @@
   the independent daily total `126 + 19 = 145`.
 - The 30-Day Anki Streak reward is **100 Garden Coins + 1 Small Growth Charge**
   in achievement cards, receipts, and summaries.
-- Standard Finds use centralized protection and a three-per-day cap. The full
+- Standard Finds use centralized protection and stepped 3/4/5 daily caps. The full
   Garden may explain those mechanics; the persistent HUD shows a Find only as a
   committed reward reveal and never shows the cap, guarantee, daily limit, or
   internal gap counter. Either Find pool may stack with
@@ -130,7 +133,7 @@
 
 Exact presentation states:
 
-- In progress: `18 cards remaining` and `176 cards complete`.
+- In progress: `18 cards left` and `176 cards complete`.
 - Waiting: `2 more cards will be due in 6 minutes`.
 - Complete: `TODAY’S CARDS COMPLETE`, `+10 Garden Coins earned`, and
   `176 cards complete`.
@@ -161,31 +164,32 @@ Exact presentation states:
   Separate painted cases prove no transition and no stage reward; Full Bloom
   rejection and overflow conservation retain their existing engine behavior.
 
-## Anki streak, Fertilizer, and Booster Potions
+## Garden Rhythm, Anki streak, Fertilizer, and Booster Potions
 
-- Startup, sync, rollover, and completed cards reconstruct the current consecutive
-  Anki-day streak from review history. Growth tiers are 0%, 5%, 10%, 15%, 20%,
-  and 25% at days 1, 7, 14, 30, 100, and 365.
+- Anki streak remains consecutive review history for streak Coins and
+  achievements. The first answer separately snapshots Garden Rhythm at
+  0/2/4/6/8/10% from 0–1/2/3/4/5/6–7 verified completions among the prior seven
+  eligible study days.
 - Fertilize opens the dedicated Fertilizer dialog. Basic, Quality, and Magical
-  cards show exact Garden Coin cost and `+1 for 1 hour`, `+2 for 2 hours`, or
-  `+3 for 4 hours`.
-- Selection, quote, confirmation, and the active or queued period retain one
+  cards show exact Garden Coin cost and `+1 for 100 cards`, `+2 for 200 cards`,
+  or `+3 for 400 cards`.
+- Selection, quote, confirmation, and the active or queued batch retain one
   immutable source `plant_id`. Actions use **Apply/Queue** and
   **Buy and apply/Buy and queue**. **Extend** is reserved for the same-tier
   extension disposition.
-- Fertilizer uses wall-clock time, including time outside review. Purchasing the
-  same tier extends its remaining time. Another tier queues without discarding
-  either duration. A sixth queued/active dose is rejected without consuming
+- Fertilizer is card-counted; time outside review consumes nothing. Purchasing
+  the same tier extends its remaining cards. Another tier queues FIFO without
+  discarding either value. A sixth queued/active dose is rejected without consuming
   inventory.
 - A rare Booster Potion is not sold. It adds +5 Growth for 100 applicable
-  cards, stacks with Fertilizer, and another Potion extends the count. Herbalist’s
-  Hourglass or Full Moon changes one activation to 125 cards; together they
-  provide 150 cards.
-- At Full Bloom, remaining Fertilizer time and Booster cards transfer to the
+  cards, stacks with Fertilizer, and another Potion extends the count.
+  Herbalist’s Hourglass changes one activation to 125 cards. Full Moon awards a
+  Potion every sixth active completion and does not extend it.
+- At Full Bloom, remaining Fertilizer and Booster cards transfer to the
   automatic next plant or wait for the next Nurture choice.
 - Small and Standard Growth Charges are repeat purchases for 30 and 125 Coins;
-  Grand is not currently obtainable. If already present in imported development
-  state, it remains usable. They add 100, 500, or 2,000 Instant Growth, follow
+  Grand is earned from Botanical Collection and Old Growth. They add 100, 500,
+  or 2,000 Instant Growth, follow
   milestone rewards, and consume only if the state saves. Overflow redirects
   or becomes Stored Growth.
 
@@ -210,30 +214,43 @@ Exact presentation states:
 - Moving to Collection preserves Growth, memories, Fertilizer, and Booster
   state. The plant currently being nurtured must be changed before it can be
   moved to Collection.
-- Space unlocks are contiguous and transactional. Only the next bed is priced
-  and enabled; its confirmation revalidates the next index before debit. All
-  six V6 spaces accept direct-soil plants.
+- Bed unlocks are contiguous achievement grants: Beds 1–2 are included and Beds
+  3–6 unlock at first Mature and one/three/six unique Full Bloom species. Bed
+  purchase attempts explain progression and never debit. All six V6 beds accept
+  direct-soil plants.
 
 ## Garden Decorations, Scenery, and reward Collection
 
 - Nursery offers only free/purchasable environment choices. Each one-time
   purchase is transactional and remains unequipped until the learner chooses it
   through Collection's loadout detail.
-- Collection shows the decoration displayed in Garden, today’s locked Garden
-  Bonus, any bonus queued for the next Anki day, today’s locked Scenery,
-  queued Scenery for tomorrow, exact
+- Collection shows displayed Decoration, today’s snapshotted Garden Bonus,
+  displayed Scenery, today’s snapshotted Scenery Effect, queued next-day
+  mechanics, exact
   effect/cap/acquisition, and finite tier-discovery progress. It owns reversible
   previews plus atomic selection, queue, and visibility changes.
 - The one Garden Bonus stacks with the Scenery passive. Turning off a visual
   layer or displaying another prop does not turn off its mechanical bonus.
-- The first eligible answer locks the Garden Bonus for the Anki day. Scenery
-  locks independently on the first progression action; later mechanical
-  selections queue for the next Anki day.
+- The first eligible answer atomically snapshots Garden Rhythm, Garden Bonus,
+  and Scenery Effect; later mechanical selections queue for the next Anki day.
+  Displayed Decoration and Scenery remain immediately changeable.
 - Scenery gifts require Today’s Cards completion and never backfill. Halloween
-  chooses Small 85%, Standard 10%, or Booster 5%; Full Moon grants a Booster
-  every fourth qualifying completion.
-- Rare, Very Rare, and Ultra discoveries have independent 5,000, 20,000, and
-  50,000 hard guarantees. An unlock resets only its tier.
+  chooses Small 95%, Standard 4%, or Booster 1%; Full Moon grants a Booster
+  every sixth active completion.
+- Rare, Very Rare, and each Ultra discovery use independent 10,000/40,000/50,000
+  card and 60/180/365 completion guarantees. An unlock resets only its tier.
+
+## Garden Landmark and Cultivation Mastery
+
+- First Full Bloom unlocks the sequential Garden Landmark. Selecting is free;
+  manual or explicitly enabled overflow contribution spends Stored Growth;
+  completing a ready project spends its Coin cost atomically and unlocks a
+  persistent selectable appearance.
+- Each Full Bloom current species may buy Bronze, Silver, Gold, and Iridescent
+  Mastery in order. Stored Growth and Coins commit together; duplicate,
+  out-of-order, insufficient-resource, and save-failure cases change nothing.
+- Landmark and Mastery are cosmetic. They do not change Growth, Coins, Finds,
+  bed progress, or loadout-slot count.
 
 ## Plant selection and direct Move
 
@@ -295,18 +312,22 @@ Exact presentation states:
   Schema 17 then upgrades through the purchase, loadout, and exact-Growth
   boundaries in schemas 18-20. Schema 21 imports the state into SQLite. Schema
   22 backs up either schema-21 JSON or authoritative SQLite before adding Stored
-  Growth, milestone/completion state, timed Fertilizer queues, Booster card
+  Growth, milestone/completion state, legacy timed Fertilizer queues, Booster card
   effects, loadout schedules, and
   finite discovery counters. Schemas 23–25 replace Weather identities with
   Garden Decorations, split displayed artwork from the active Garden Bonus,
   add independent Anki-day Bonus locking, and add the durable pending sync
-  receipt. All supported schema-10–24 paths converge on schema 25.
+  receipt. Schema 26 conserves over-cap Growth, converts Fertilizer to cards,
+  refunds previously purchased beds and recorded plant overpayment, separates
+  both appearance/effect choices, adds dual pity, earned beds, Landmark,
+  Mastery, permanent idempotency, and lifetime aggregates. All supported
+  schema-10–25 paths converge on schema 26.
   Cutoff, database, backup, and state-write failures preserve the original data
   and retry without advancing review state.
 - The first transition to scene geometry 6 refreshes incompatible visual
   placement only; it does not change plant progression. The migration notice
   explains any plant returned to Collection.
-- Schema 25 repairs bounded numeric values, duplicate IDs/species/slots, invalid
+- Schema 26 repairs bounded numeric values, duplicate IDs/species/slots, invalid
   `active_plant_id`, and malformed story/economy/reward records.
 - Unreadable state is copied to `garden_state.invalid.json`; other unsupported
   schemas are backed up before recovery.

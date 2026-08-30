@@ -26,12 +26,18 @@ def test_production_asset_catalog_passes_retina_density_gate() -> None:
 
     assert counts == {
         "backgrounds": 9,
+        "cosmetics": 8,
         "garden_features": 8,
+        "landmarks": 6,
+        "mastery": 4,
         "plants": 60,
         "ui": 19,
     }
     assert RETINA_RASTER_MAX_CSS_SIZE == {
         "plants": (300, 300),
+        "cosmetics": (300, 300),
+        "landmarks": (300, 300),
+        "mastery": (300, 300),
         "garden_features": (210, 59),
         "ui": (96, 96),
     }

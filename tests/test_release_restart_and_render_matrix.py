@@ -264,13 +264,75 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert storage.state.active_plant_id == starter_id
     assert engine.plant_story(starter_id).growth_points == growth_before_move
 
-    engine._now_seconds = lambda: 1_000.0
     assert engine.purchase_fertilizer(starter_id, "quality")[0]
+    assert engine.purchase_fertilizer(starter_id, "premium")[0]
     fertilizer_balance = storage.state.currency_balance
+    fertilized_starter = engine.plant_story(starter_id)
+    assert fertilized_starter is not None
+    assert fertilized_starter.fertilizer is None
+    assert fertilized_starter.fertilizer_history == []
+    assert [
+        (
+            batch.effect_id,
+            batch.growth_per_card_units,
+            batch.total_cards,
+            batch.remaining_cards,
+        )
+        for batch in fertilized_starter.fertilizer_card_batches
+    ] == [("fertilizer_quality", 200, 200, 200)]
+    assert [
+        (
+            batch.effect_id,
+            batch.growth_per_card_units,
+            batch.total_cards,
+            batch.remaining_cards,
+        )
+        for batch in fertilized_starter.fertilizer_card_queue
+    ] == [("fertilizer_premium", 300, 400, 400)]
+    fertilizer_queue = [
+        batch.__dict__.copy()
+        for batch in (
+            *fertilized_starter.fertilizer_card_batches,
+            *fertilized_starter.fertilizer_card_queue,
+        )
+    ]
+    persisted_state = json.loads(storage.data_path.read_text("utf-8"))
+    persisted_starter = next(
+        plant
+        for plant in persisted_state["plants"]
+        if plant["plant_id"] == starter_id
+    )
+    assert persisted_starter["card_effect_queue"] == {
+        "fertilizer_batches": fertilizer_queue,
+        "booster_remaining_cards": 0,
+    }
+
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     starter = engine.plant_story(starter_id)
-    assert starter is not None and starter.fertilizer is not None
-    assert starter.fertilizer.tier == "quality"
+    assert starter is not None
+    assert starter.fertilizer is None
+    assert starter.fertilizer_history == []
+    assert [batch.__dict__ for batch in starter.fertilizer_card_batches] == [
+        fertilizer_queue[0]
+    ]
+    assert [batch.__dict__ for batch in starter.fertilizer_card_queue] == [
+        fertilizer_queue[1]
+    ]
+    assert starter.card_effect_queue.to_dict() == {
+        "fertilizer_batches": fertilizer_queue,
+        "booster_remaining_cards": 0,
+    }
+    far_future = (storage.now_ms + 365 * 24 * 60 * 60 * 1_000) / 1_000
+    projected = engine.project_review_growth(starter, now=far_future)
+    assert projected.fertilizer_growth == 2
+    assert projected.fertilizer_growth_units == 200
+    assert [
+        batch.remaining_cards
+        for batch in (
+            *starter.fertilizer_card_batches,
+            *starter.fertilizer_card_queue,
+        )
+    ] == [200, 400]
     assert storage.state.currency_balance == fertilizer_balance
     fertilizer_requests = [
         record
@@ -279,11 +341,30 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
         and record.outcome.category == "Fertilizer"
     ]
     assert len(fertilizer_requests) == 1
+    premium_requests = [
+        record
+        for record in storage.state.completed_purchase_requests
+        if record.outcome.item_id == "premium"
+        and record.outcome.category == "Fertilizer"
+    ]
+    assert len(premium_requests) == 1
+    assert fertilizer_queue[0]["source_event_key"] == (
+        f"purchase-request:{fertilizer_requests[0].request_id}"
+    )
+    assert fertilizer_queue[1]["source_event_key"] == (
+        f"purchase-request:{premium_requests[0].request_id}"
+    )
     assert len([
         transaction
         for transaction in storage.state.currency_transactions
         if transaction.event_key
         == f"purchase-request:{fertilizer_requests[0].request_id}"
+    ]) == 1
+    assert len([
+        transaction
+        for transaction in storage.state.currency_transactions
+        if transaction.event_key
+        == f"purchase-request:{premium_requests[0].request_id}"
     ]) == 1
 
     assert engine.purchase_environment("scenery", "spring")[0]
@@ -308,18 +389,20 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
 
     equipped, message = engine.equip_environment("scenery", "spring")
     assert equipped
-    assert message == "Spring Bloom queued for tomorrow."
+    assert message == "Spring Bloom effect is ready for today."
     engine, storage = _restart(engine, storage)
     assert storage.state.selected_background == "default"
     assert storage.state.equipped["background"] == "default"
-    assert storage.state.daily_loadout.queued_scenery_id == "spring"
-    assert storage.state.daily_loadout.queued_for_day == "2026-08-09"
+    assert storage.state.loadout.active_scenery_effect_id == "spring"
+    assert storage.state.daily_loadout.queued_scenery_id == ""
+    assert storage.state.daily_loadout.queued_for_day == ""
 
     storage.day = "2026-08-09"
     engine.rollover_if_needed()
     engine, storage = _restart(engine, storage)
-    assert storage.state.selected_background == "spring"
-    assert storage.state.equipped["background"] == "spring"
+    assert storage.state.selected_background == "default"
+    assert storage.state.equipped["background"] == "default"
+    assert storage.state.loadout.active_scenery_effect_id == "spring"
 
     assert engine.rename_garden("Moss and Moon")[0]
     engine, storage = _restart(engine, storage)

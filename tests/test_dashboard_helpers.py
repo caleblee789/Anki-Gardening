@@ -6,8 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
 
-from ankigarden.game import GROWTH_THRESHOLDS
+from ankigarden.game import GROWTH_THRESHOLDS, GardenGameEngine
 from ankigarden.purchases import PurchaseDisposition, fertilizer_action_label
+from ankigarden.ui.copy import NURSERY_STARTER_RATIONALE
 from ankigarden.ui.plant_presenters import fertilizer_status
 
 
@@ -90,7 +91,7 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     assert receipt_actions(True) == ("Place in garden",)
     complete_collection = SimpleNamespace(
         species_text="10 of 10 species discovered",
-        collection_entries_text="30 of 39 collection entries discovered",
+        collection_entries_text="30 of 93 collection entries discovered",
     )
     assert empty_copy(
         starter_mode=False,
@@ -98,7 +99,7 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
         collection_projection=complete_collection,
     ) == (
         "10 of 10 species discovered",
-        "30 of 39 collection entries discovered",
+        "30 of 93 collection entries discovered",
     )
     assert empty_copy(
         starter_mode=False,
@@ -155,7 +156,34 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     ) == (None, 0, True)
 
 
-def test_nursery_bed_actions_include_the_exact_price() -> None:
+def test_nursery_starter_copy_and_uniform_plant_price_presentation() -> None:
+    assert NURSERY_STARTER_RATIONALE == (
+        "Your first plant is free and will be added to your collection. "
+        "Appearance only. Every plant grows at the same rate."
+    )
+    assert set(GardenGameEngine.SPECIES_PRICES.values()) == {250}
+
+    compact_cost = _compiled_function("_compact_catalog_cost")
+    assert compact_cost(250) == "250 coins"
+
+    source = DASHBOARD.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    nursery = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "NurseryDialog"
+    )
+    available_card = next(
+        node
+        for node in nursery.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_available_card"
+    )
+    method_source = ast.get_source_segment(source, available_card) or ""
+    assert "price = presentation.price" in method_source
+    assert "meta = QLabel(_compact_catalog_cost(price))" in method_source
+
+
+def test_nursery_beds_are_earned_without_coin_purchase_actions() -> None:
     source = DASHBOARD.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(DASHBOARD))
     owner = next(
@@ -167,12 +195,14 @@ def test_nursery_bed_actions_include_the_exact_price() -> None:
         node.name: ast.get_source_segment(source, node) or ""
         for node in owner.body
         if isinstance(node, ast.FunctionDef)
-        and node.name in {"_space_card", "_space_progression"}
+        and node.name == "_space_progression"
     }
 
-    assert methods.keys() == {"_space_card", "_space_progression"}
-    for method_source in methods.values():
-        assert 'f"Unlock for {_garden_coin_count(price)}"' in method_source
+    assert methods.keys() == {"_space_progression"}
+    method_source = methods["_space_progression"]
+    assert "bed_unlock_rows" in method_source
+    assert "earned through plant progression" in method_source
+    assert "_garden_coin_count" not in method_source
 
 
 def test_recent_find_rows_render_canonical_artwork_refs() -> None:
@@ -281,12 +311,20 @@ def test_rare_stage_visibility_uses_species_specific_progress() -> None:
     assert not rare_stage_unlocked(engine, "rose")
     engine.state = {
         "plants": [
-            {"species": "rose", "stage": "flowering", "growth_points": 49_999},
-            {"species": "bonsai", "stage": "rare", "growth_points": 50_000},
+            {
+                "species": "rose",
+                "stage": "flowering",
+                "growth_points": GROWTH_THRESHOLDS[-1] - 1,
+            },
+            {
+                "species": "bonsai",
+                "stage": "rare",
+                "growth_points": GROWTH_THRESHOLDS[-1],
+            },
         ]
     }
     assert not rare_stage_unlocked(engine, "rose")
-    engine.state["plants"][0]["growth_points"] = 50_000
+    engine.state["plants"][0]["growth_points"] = GROWTH_THRESHOLDS[-1]
     assert rare_stage_unlocked(engine, "rose")
 
 
@@ -356,7 +394,7 @@ def test_progress_layout_helpers_use_real_row_and_transaction_geometry() -> None
     )
 
 
-def test_shared_plant_presenter_covers_fertilizer_time() -> None:
+def test_shared_plant_presenter_covers_fertilizer_cards() -> None:
     engine = SimpleNamespace(
         FERTILIZERS={"basic": SimpleNamespace(name="Basic Fertilizer")}
     )
@@ -365,23 +403,21 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
         growth_stage="seed",
         growth_points=0,
         fully_grown=False,
-        fertilizer=SimpleNamespace(
-            tier="basic",
-            growth_per_answer=1,
-            expires_at=7_900.0,
-        ),
+        fertilizer_card_batches=[SimpleNamespace(
+            effect_id="fertilizer_basic",
+            growth_per_card_units=100,
+            total_cards=100,
+            remaining_cards=55,
+        )],
+        fertilizer_card_queue=[],
     )
 
     active = fertilizer_status(engine, plant, now=1_000.0)
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
         "+1 Growth per eligible card answer",
-        "1h 55m left",
+        "55 cards left",
     )
-    plant.fertilizer.expires_at = 1_030.0
-    assert (
-        fertilizer_status(engine, plant, now=1_000.0).duration
-        == "30 seconds left"
-    )
-    plant.fertilizer.expires_at = 999.0
-    assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"
+    assert fertilizer_status(engine, plant, now=9_999_999_999.0).duration == "55 cards left"
+    plant.fertilizer_card_batches[0].remaining_cards = 0
+    assert fertilizer_status(engine, plant, now=1_000.0).phase == "inactive"

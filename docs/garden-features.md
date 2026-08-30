@@ -5,9 +5,10 @@ the legacy migration path. Normal runtime rendering draws one static prop and on
 shared stone pad; it does not request a scene overlay, create particles, or run
 a decoration animation loop.
 
-See the [illustrated Garden Decorations reference](references/garden-decorations-reference.docx)
-for the current catalog, acquisition methods, Garden Find rates, bonuses, and
-runtime artwork.
+The [illustrated 2.1.0 Garden Decorations reference](references/garden-decorations-reference.docx)
+is retained as a visual prerequisite record. The current 2.2.0 effects and
+acquisition rules come from `ankigarden/balance_catalog.py` and the
+[progression reference](progression-rewards-effects-reference.md).
 
 ## Registry and preserved value
 
@@ -16,16 +17,16 @@ runtime artwork.
 | `seedling_sign` | Common | Included | — | `none` |
 | `wind_chime` | Common | Nursery | 100 | `growth_every_10_plus_1` |
 | `harvest_bell` | Common | Nursery | 175 | `completion_coins_plus_5` |
-| `watering_station` | Uncommon | Nursery | 250 | `growth_every_5_plus_1` |
-| `herbalist_hourglass` | Uncommon | Nursery | 350 | `booster_cards_multiplier_1_25` |
-| `firefly_lantern` | Rare | Garden Find | — | `growth_every_4_plus_3` |
-| `prism_trellis` | Very Rare | Garden Find | — | `prism_bank_per_answer_1_5` |
+| `watering_station` | Uncommon | Nursery | 250 | `growth_every_5_first_100_plus_1` |
+| `herbalist_hourglass` | Uncommon | Nursery | 350 | `hourglass_completion_booster` + `booster_cards_plus_25` |
+| `firefly_lantern` | Rare | Garden discovery | — | `instant_growth_every_5_plus_3_closest_checkpoint` |
+| `prism_trellis` | Very Rare | Garden discovery | — | `prism_bank_per_answer_1` |
 
 Names, prices, rarity, acquisition paths, and ownership value are preserved
 from the migrated catalog; the revised recurring effects are authoritative in
 the reward engine. Cards, previews, and summaries display its committed data.
-The shared appearance projection keeps **Scenery**, **Displayed decoration**,
-**Active garden bonus**, and **Visual effects** as four independent facts.
+The shared appearance projection independently keeps **Displayed decoration**,
+**Active garden bonus**, **Displayed scenery**, and **Active scenery effect**.
 
 ## One layout contract
 
@@ -52,10 +53,9 @@ discovery. Missing or invalid IDs fall back to Seedling Sign.
 
 Legacy IDs and the old `weather` purchase kind are accepted only at migration
 boundaries. Canonical saves contain `garden_features`,
-`displayed_garden_feature_id`, `active_bonus_garden_feature_id`,
-`pending_garden_feature_id`, and `garden_feature`
-visibility. Migration maps the old IDs directly and does not require legacy
-visual assets.
+`display_decoration_id`, `active_garden_bonus_id`, `display_scenery_id`,
+`active_scenery_effect_id`, immutable daily snapshots, and visual-layer
+visibility. Migration maps old IDs directly and does not require legacy assets.
 
 ## Intentional limitations
 
@@ -64,7 +64,7 @@ visual assets.
   per-theme/per-decoration position.
 - One light/dark local contrast treatment; no recolored scene variants.
 - No decoration opacity, intensity, particle, or animation control.
-- Decoration visibility is cosmetic. The Anki-day-locked Garden Bonus remains
+- Decoration visibility is cosmetic. The Anki-day-snapshotted Garden Bonus remains
   active when the art is hidden or a different prop is displayed.
 - Manual visual approval remains required before release.
 
@@ -116,7 +116,7 @@ Growth and Garden Coin totals and does not create an empty decoration section.
 Standard Finds remain a separate player-facing taxonomy from Garden
 discoveries even though both retain their stable internal ledger and event IDs.
 Collection completion reports `10 of 10 species discovered` and separately
-`30 of 39 collection entries discovered`.
+`30 of 93 collection entries discovered`.
 
 ### Tests and evidence
 
@@ -127,8 +127,8 @@ Weather-compositor tests were deleted instead of being treated as active product
 requirements. Deterministic decoration-matrix raw frames remain available, but
 their superseded review sheets were removed. The current retained full UI
 contact-sheet set and its remaining acceptance gates are recorded in the
-[2.1.0 UI evidence record](ui/final-ui-audit-2.1.0.md). It remains review
-evidence rather than release approval.
+[2.1.0 UI evidence record](ui/final-ui-audit-2.1.0.md). It is frozen
+prerequisite review evidence and does not approve 2.2.0.
 
 Capture contract v26 uses contract schema 2 and scenario schema 3. Its
 18-surface representative and 34-surface full profiles render two and five

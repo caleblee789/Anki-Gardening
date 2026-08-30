@@ -1,9 +1,9 @@
 {
-  "contract_digest": "17d3b81df9351a4aec6e0ffc9ecc2fe5233c0211c9ef103f2819e707f6a1bf07",
+  "contract_digest": "684025a6fb463559333628daa4d475b9277ff62652c680049493ece5bdc947d4",
   "contract_version": 26,
   "profiles": {
     "full": {
-      "contact_sheet_page_count": 5,
+      "contact_sheet_page_count": 6,
       "groups": [
         {
           "labels": [
@@ -68,10 +68,19 @@
             "growth-charge-success-stage-reward"
           ],
           "name": "Settings, rewards, and transactions"
+        },
+        {
+          "labels": [
+            "landmark-contribution-completion",
+            "mastery-rank-completion",
+            "cosmetic-purchase-display-independent",
+            "earned-bed-unlock-celebration"
+          ],
+          "name": "Economy progression transactions"
         }
       ],
-      "surface_count": 34,
-      "topology_digest": "b90de1d797fe4e75ef338785b4bb45980c0400d4d0ceb3c827b6c66b136179a2"
+      "surface_count": 38,
+      "topology_digest": "09b21358367db10f2837a345ed655f4aca51efa058733b78b6daf3f5857d32e7"
     },
     "representative": {
       "contact_sheet_page_count": 2,
@@ -232,7 +241,7 @@
   ],
   "scenario_schema_version": 3,
   "schema_version": 2,
-  "surface_count": 34,
+  "surface_count": 38,
   "surfaces": [
     {
       "acquisition_policy": "qt-shell-webview-verified",
@@ -488,7 +497,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "44978542f9bce3d50ddbb4f492e24b0db6fa0848829d52b9489f0b612a3e6141",
+      "dependency_digest": "940db2514420d62e7bff7ad252d6b23b5db9e88310e8ece10ad355a9c72c9ffb",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -557,7 +566,8 @@
           "window_family",
           "nursery_tab",
           "starter_mode",
-          "onboarding_step"
+          "onboarding_step",
+          "starter_economy"
         ]
       }
     },
@@ -4599,7 +4609,7 @@
         "visible-nonzero-geometry"
       ],
       "renderer_family": "FertilizerReplacementDialog",
-      "retired_reason": "Timed Fertilizer tiers queue without discarding paid time; the replacement confirmation is no longer reachable.",
+      "retired_reason": "Fixed-card Fertilizer tiers queue without discarding paid cards; the replacement confirmation is no longer reachable.",
       "scenario_id": "fertilizer-replacement-confirmation",
       "scenario_step": 1,
       "state_contract": {
@@ -7030,7 +7040,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "16b3cff14ca422955adce01b9494bbca06088d63efafeeb0a6e1edce1d758212",
+      "dependency_digest": "c29108a30b6b435d002c953b53cd235aaa1817e8c2759f0161c51973c8dbf19f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7112,7 +7122,8 @@
           "reviewer_hud_content_matrix",
           "reviewer_hud_resilience_matrix",
           "reviewer_dom_identity",
-          "reviewer_window_screen_filling"
+          "reviewer_window_screen_filling",
+          "garden_rhythm_effect"
         ]
       }
     },
@@ -8280,7 +8291,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4c75f68b1c3419db428410e93219917d519816cc143219cda45817aaaa30df66",
+      "dependency_digest": "6dfe6967ad464840525ae6707411f752f2e5f103013055539a2926a15a39521e",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -8330,7 +8341,8 @@
           "state_profile_declared",
           "window_family",
           "dialog_title",
-          "purchase_confirmation_state"
+          "purchase_confirmation_state",
+          "species_uniform_price"
         ]
       }
     },
@@ -10214,6 +10226,326 @@
           "growth_charge_confirmation_state",
           "growth_charge_seed_to_sprout_receipt",
           "growth_charge_no_transition_and_reward_free_success"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "be36529dd920e6e732c6106f1f25c00ab35feef89650f611efd034bd07e87fe5",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "rendered-pixels:landmark-completed-row",
+        "scroll:GardenProgressDialog:collection"
+      ],
+      "executor": "_capture_landmark_contribution_completion",
+      "fixture_id": "landmark-contribution-completion-v1",
+      "id": "landmark-contribution-completion",
+      "internal_setups": [
+        "development-stress",
+        "transaction-snapshot"
+      ],
+      "owned_dependency_groups": [
+        "progress",
+        "collection"
+      ],
+      "owned_module_dependencies": [
+        "ui/dashboard.py",
+        "ui/scene.py",
+        "ui/landmark_display.py",
+        "economy_progression.py"
+      ],
+      "placements": [
+        {
+          "group": "Economy progression transactions",
+          "group_order": 6,
+          "order": 34,
+          "profile": "full",
+          "within_group_order": 0
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "GardenProgressDialog",
+      "retired_reason": "",
+      "scenario_id": "landmark-contribution-completion",
+      "scenario_step": 1,
+      "state_contract": {
+        "expected_fact_values": {
+          "ordered_fixture_label": "landmark-contribution-completion",
+          "progress_page": "collection",
+          "state_profile_declared": "landmark-contribution-completion",
+          "window_family": "GardenProgressDialog"
+        },
+        "fact_constraints": {},
+        "kind": "progress",
+        "profile": {
+          "kind": "progress",
+          "page": "collection",
+          "profile_id": "landmark-contribution-completion",
+          "state": "landmark-contribution-completion",
+          "window_family": "GardenProgressDialog"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "progress_page",
+          "landmark_transaction_state"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "e5a719176c9d8377e859e7bfce6803d248d427ebbca1c17f0f27620e9cdfc5be",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "rendered-pixels:mastery-rank-card",
+        "scroll:GardenProgressDialog:collection"
+      ],
+      "executor": "_capture_mastery_rank_completion",
+      "fixture_id": "mastery-rank-completion-v1",
+      "id": "mastery-rank-completion",
+      "internal_setups": [
+        "development-stress",
+        "transaction-snapshot"
+      ],
+      "owned_dependency_groups": [
+        "progress",
+        "collection"
+      ],
+      "owned_module_dependencies": [
+        "economy_progression.py",
+        "ui/economy_presenters.py"
+      ],
+      "placements": [
+        {
+          "group": "Economy progression transactions",
+          "group_order": 6,
+          "order": 35,
+          "profile": "full",
+          "within_group_order": 1
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "GardenProgressDialog",
+      "retired_reason": "",
+      "scenario_id": "mastery-rank-completion",
+      "scenario_step": 1,
+      "state_contract": {
+        "expected_fact_values": {
+          "ordered_fixture_label": "mastery-rank-completion",
+          "progress_page": "collection",
+          "state_profile_declared": "mastery-rank-completion",
+          "window_family": "GardenProgressDialog"
+        },
+        "fact_constraints": {},
+        "kind": "progress",
+        "profile": {
+          "kind": "progress",
+          "page": "collection",
+          "profile_id": "mastery-rank-completion",
+          "state": "mastery-rank-completion",
+          "window_family": "GardenProgressDialog"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "progress_page",
+          "mastery_transaction_state"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "e9ba5d7dd12c964b625074541376362da1770a5d03341496388a7f19ccc2436e",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "rendered-pixels:cosmetic-display-preview",
+        "scroll:CollectibleDetailDialog:loadout"
+      ],
+      "executor": "_capture_cosmetic_purchase_display_independent",
+      "fixture_id": "cosmetic-purchase-display-independent-v1",
+      "id": "cosmetic-purchase-display-independent",
+      "internal_setups": [
+        "development-stress",
+        "transaction-snapshot"
+      ],
+      "owned_dependency_groups": [
+        "collection"
+      ],
+      "owned_module_dependencies": [
+        "ui/economy_presenters.py"
+      ],
+      "placements": [
+        {
+          "group": "Economy progression transactions",
+          "group_order": 6,
+          "order": 36,
+          "profile": "full",
+          "within_group_order": 2
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "CollectibleDetailDialog",
+      "retired_reason": "",
+      "scenario_id": "cosmetic-purchase-display-independent",
+      "scenario_step": 1,
+      "state_contract": {
+        "expected_fact_values": {
+          "ordered_fixture_label": "cosmetic-purchase-display-independent",
+          "state_profile_declared": "cosmetic-purchase-display-independent",
+          "window_family": "CollectibleDetailDialog"
+        },
+        "fact_constraints": {},
+        "kind": "collectible-detail",
+        "profile": {
+          "kind": "collectible-detail",
+          "profile_id": "cosmetic-purchase-display-independent",
+          "state": "cosmetic-purchase-display-independent",
+          "window_family": "CollectibleDetailDialog"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "cosmetic_purchase_display_independence"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "e6234ec95a8ea9e9bb62bbe28306309bb56a780e09d1f42ba6fa02b08d442432",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "rendered-pixels:earned-bed-unlock-card"
+      ],
+      "executor": "_capture_earned_bed_unlock_celebration",
+      "fixture_id": "earned-bed-unlock-celebration-v1",
+      "id": "earned-bed-unlock-celebration",
+      "internal_setups": [
+        "development-stress",
+        "transaction-snapshot"
+      ],
+      "owned_dependency_groups": [
+        "nursery-spaces",
+        "progress-achievements"
+      ],
+      "owned_module_dependencies": [
+        "economy_progression.py",
+        "reward_presentation.py",
+        "ui/session_summary.py"
+      ],
+      "placements": [
+        {
+          "group": "Economy progression transactions",
+          "group_order": 6,
+          "order": 37,
+          "profile": "full",
+          "within_group_order": 3
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "NurseryDialog",
+      "retired_reason": "",
+      "scenario_id": "earned-bed-unlock-celebration",
+      "scenario_step": 1,
+      "state_contract": {
+        "expected_fact_values": {
+          "nursery_tab": 2,
+          "ordered_fixture_label": "earned-bed-unlock-celebration",
+          "starter_mode": false,
+          "state_profile_declared": "earned-bed-unlock-celebration",
+          "window_family": "NurseryDialog"
+        },
+        "fact_constraints": {},
+        "kind": "nursery",
+        "profile": {
+          "kind": "nursery",
+          "profile_id": "earned-bed-unlock-celebration",
+          "starter_mode": false,
+          "state": "earned-bed-unlock-celebration",
+          "tab": 2,
+          "window_family": "NurseryDialog"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "nursery_tab",
+          "starter_mode",
+          "earned_bed_unlock_celebration"
         ]
       }
     }

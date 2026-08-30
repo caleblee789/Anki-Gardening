@@ -149,7 +149,7 @@ def test_detailed_engine_commit_returns_exact_awards_and_keeps_compatibility_tot
         for allocation in awards[0].allocations
     ] == [
         ("p1", "nurtured", 1_000),
-        ("p2", "passive", 200),
+        ("p2", "passive", 100),
     ]
 
     compatibility_engine, compatibility_storage = _engine()
@@ -209,6 +209,36 @@ def test_engine_committed_result_contains_causal_receipts_and_due_rewards(monkey
         for transaction in result.currency_transactions
         if transaction.delta > 0
     )
+
+
+def test_typed_committed_result_carries_exact_landmark_progress(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(state=SimpleNamespace()),
+    )
+    result = CommittedAnswerResult(
+        event_id="answer:landmark",
+        correlation_id="answer:landmark",
+        scheduler_day=DAY,
+        occurred_at_ms=1_788_000_010_000,
+        origin="local",
+        award=ReviewAward(
+            None,
+            10,
+            0,
+            0,
+            0,
+            correlation_id="answer:landmark",
+        ),
+        landmark_growth_before_units=125,
+        landmark_growth_after_units=425,
+    )
+
+    event = handler._session_event_from_result(result)
+
+    assert event is not None
+    assert event.landmark_growth_delta_units == 300
 
 
 def test_engine_committed_result_owns_standard_find_count():
@@ -1090,6 +1120,7 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
     state = SimpleNamespace(
         plants=[p1, p2],
         stored_growth_units=75,
+        garden_project=SimpleNamespace(contributed_growth_units=425),
         currency_transactions=[positive_coin, checkpoint_coin, excluded_spend],
         garden_find_outcomes={"standard:local": find},
         inventory={
@@ -1120,6 +1151,7 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
         baseline={
             "plant_units": {"p1": 0, "p2": 0},
             "stored_units": 0,
+            "landmark_units": 125,
             "transaction_ids": set(),
             "find_outcome_ids": set(),
             "owned_environment_ids": {"default"},
@@ -1134,6 +1166,7 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
         ("p2", 200)
     ]
     assert event.stored_growth_delta_units == 75
+    assert event.landmark_growth_delta_units == 300
     assert [(item.event_id, item.amount) for item in event.coin_awards] == [
         ("coin:daily", 2),
         ("coin:checkpoint", 1),

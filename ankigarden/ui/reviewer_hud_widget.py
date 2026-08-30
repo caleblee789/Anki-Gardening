@@ -430,7 +430,7 @@ def _effect_display_text(value: Any) -> str:
         return text
     for prefix in (
         "Garden decoration",
-        "Streak bonus",
+        "Garden Rhythm",
         "Fertilizer",
         "Booster",
         "Scenery",

@@ -71,8 +71,8 @@ crossfades to the completed layout, applies the engine-confirmed reward, and
 settles after about 1.5 seconds.
 
 ```text
-check icon  All cards complete
-176 reviewed today                    +10 coins
+check icon  Today’s Cards Complete
+176 cards complete                    +10 coins
 ```
 
 The completed state does not primarily show `0 cards left` or `176 / 176`.
@@ -276,7 +276,7 @@ macOS review at 100 percent scaling exercises these transient states:
 
 1. 18 cards left.
 2. 1 card left.
-3. All cards complete.
+3. Today’s Cards Complete.
 4. No session rewards yet.
 5. Growth only.
 6. Growth and Coins.

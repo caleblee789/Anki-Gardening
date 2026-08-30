@@ -5,6 +5,7 @@ from dataclasses import replace
 import ankigarden.garden_finds as garden_finds
 from ankigarden.garden_finds import (
     ENVIRONMENT_POOL_VERSION,
+    ENVIRONMENT_TIER_COMPLETION_PITY,
     ENVIRONMENT_TIER_RULES,
     FALLBACK_REWARD_ID,
     KNOWN_INVENTORY_ITEM_IDS,
@@ -19,11 +20,13 @@ from ankigarden.garden_finds import (
     eligible_standard_rewards,
     prepare_reward_registry,
     resolve_environment_find,
+    resolve_environment_completion_pity,
     resolve_standard_find,
     simulate_standard_find_economy,
     stable_answer_event_identity,
     standard_find_artwork_ref,
     standard_find_status,
+    standard_daily_cap,
     standard_chance_for_answer,
     ultra_denominator,
 )
@@ -175,6 +178,96 @@ def test_standard_roll_is_deterministic_namespaced_and_pauses_at_daily_cap():
     capped_status = standard_find_status(finds_today=3, drought_misses=74)
     assert capped_status.daily_limit_reached and capped_status.rolls_paused
     assert not capped_status.next_card_guaranteed
+
+
+def test_stepped_daily_cap_pauses_and_resumes_the_preserved_drought(
+    monkeypatch,
+) -> None:
+    assert [
+        (answers, standard_daily_cap(answers))
+        for answers in (0, 199, 200, 399, 400, 10_000)
+    ] == [
+        (0, 3),
+        (199, 3),
+        (200, 4),
+        (399, 4),
+        (400, 5),
+        (10_000, 5),
+    ]
+    identity = stable_answer_event_identity(909)
+    paused = resolve_standard_find(
+        secret="profile-secret",
+        answer_identity=identity,
+        drought_misses=37,
+        finds_today=3,
+        eligible_answers_today=199,
+    )
+    assert paused.capped and not paused.attempted
+    assert paused.next_drought_misses == 37
+
+    monkeypatch.setattr(garden_finds, "_draw_below", lambda *args, **kwargs: False)
+    resumed = resolve_standard_find(
+        secret="profile-secret",
+        answer_identity=identity,
+        drought_misses=paused.next_drought_misses,
+        finds_today=3,
+        eligible_answers_today=200,
+    )
+    assert resumed.attempted and not resumed.capped and not resumed.hit
+    assert resumed.drought_answer_number == 38
+    assert resumed.next_drought_misses == 38
+
+
+def test_natural_environment_ties_award_rarest_only_but_forced_ties_award_all(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(garden_finds, "_draw_below", lambda *args, **kwargs: True)
+    natural = resolve_environment_find(
+        secret="profile-secret",
+        answer_identity=stable_answer_event_identity(910),
+        owned_environment_ids=(),
+        tier_pity_misses={tier: 0 for tier in ENVIRONMENT_TIER_RULES},
+    )
+    assert natural.hit and not natural.forced_by_pity
+    assert len(natural.items) == 1
+    assert natural.tier == "ultra_environment"
+
+    forced = resolve_environment_find(
+        secret="profile-secret",
+        answer_identity=stable_answer_event_identity(911),
+        owned_environment_ids=(),
+        tier_pity_misses={
+            tier: rule.hard_pity_answers - 1
+            for tier, rule in ENVIRONMENT_TIER_RULES.items()
+        },
+    )
+    assert forced.forced_by_pity
+    assert {item.tier for item in forced.items} == set(ENVIRONMENT_TIER_RULES)
+
+
+def test_completion_day_environment_pity_uses_60_180_365_and_forces_all_ties() -> None:
+    assert ENVIRONMENT_TIER_COMPLETION_PITY == {
+        "rare_environment": 60,
+        "very_rare_environment": 180,
+        "ultra_environment": 365,
+    }
+    decision = resolve_environment_completion_pity(
+        secret="profile-secret",
+        completion_identity="today-cards:2026-08-30",
+        owned_environment_ids=(),
+        tier_completion_misses={
+            tier: threshold - 1
+            for tier, threshold in ENVIRONMENT_TIER_COMPLETION_PITY.items()
+        },
+    )
+    assert set(decision.forced_tiers) == set(ENVIRONMENT_TIER_COMPLETION_PITY)
+    assert {item.tier for item in decision.items} == set(
+        ENVIRONMENT_TIER_COMPLETION_PITY
+    )
+    assert all(
+        decision.next_tier_completion_misses[tier] == 0
+        for tier in ENVIRONMENT_TIER_COMPLETION_PITY
+    )
 
 
 def test_registry_validation_disables_bad_entries_and_restores_a_safe_fallback():
@@ -339,8 +432,8 @@ def test_special_environment_denominators_hard_pity_and_pool_are_exact_and_indep
         tier: (rule.base_denominator, rule.hard_pity_answers)
         for tier, rule in ENVIRONMENT_TIER_RULES.items()
     } == {
-        "rare_environment": (2_500, 5_000),
-        "very_rare_environment": (10_000, 20_000),
+        "rare_environment": (2_500, 10_000),
+        "very_rare_environment": (10_000, 40_000),
         "ultra_environment": (25_000, 50_000),
     }
     assert ultra_denominator(0) == ultra_denominator(1_000_000) == 25_000
@@ -351,7 +444,7 @@ def test_special_environment_denominators_hard_pity_and_pool_are_exact_and_indep
         answer_identity=stable_answer_event_identity(605),
         owned_environment_ids=(),
         tier_pity_misses={
-            "rare_environment": 4_999,
+            "rare_environment": 9_999,
             "very_rare_environment": 2,
             "ultra_environment": 3,
         },

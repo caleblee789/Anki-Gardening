@@ -89,6 +89,8 @@ class FakeStorage:
         self.save_count = 0
         self.fail_save = False
         self.due_status = DueObligationStatus()
+        self.eligible_study_days = ()
+        self.today_cards_completion_days = set()
 
     def save(self):
         self.save_count += 1
@@ -112,6 +114,12 @@ class FakeStorage:
 
     def save_asset_metadata(self, _data):
         return None
+
+    def eligible_study_days_before(self, _scheduler_day, *, limit=7):
+        return tuple(self.eligible_study_days)[-max(0, int(limit)):]
+
+    def verified_today_cards_completion_days_before(self, _scheduler_day):
+        return set(self.today_cards_completion_days)
 
 
 def make_engine(*, goal: int = 50):
@@ -321,7 +329,8 @@ def test_closed_day_delayed_ingestion_uses_durable_cutoffs_target_and_effects():
 
     assert reconciled and repeated
     assert storage.state.plants[0].growth_points == 16
-    assert storage.state.plants[1].growth_points == 3
+    assert storage.state.plants[1].growth_points == 1
+    assert storage.state.plants[1].growth_remainder_units == 60
     assert storage.state.currency_balance == 2
     assert set(storage.state.processed_answer_keys) == {
         consumption_id(stable_answer_event_identity(
@@ -487,7 +496,7 @@ def test_suppressed_sync_restores_the_preexisting_stage_transition_queue() -> No
     storage.state.reward_activation_ms = 100
     storage.state.progression_activation_ms = 100
     storage.state.garden_find_activation_ms = storage.now_ms + 100_000
-    storage.state.plants[0].growth_points = 490
+    storage.state.plants[0].growth_points = 390
     storage.state.active_plant_periods = [
         ActivePlantPeriod(storage.day, "p1", 100)
     ]
@@ -523,7 +532,7 @@ def test_suppressed_sync_restores_the_preexisting_stage_transition_queue() -> No
     reconciled, _message = engine.reconcile_reward_history(emit_feedback=False)
 
     assert reconciled
-    assert storage.state.plants[0].growth_points >= 500
+    assert storage.state.plants[0].growth_points >= 400
     assert engine.peek_stage_transitions() == [existing]
 
 
@@ -563,12 +572,12 @@ def test_progress_export_reports_growth_reconciliation_without_mutation():
 
     report = json.loads(engine.export_progress_summary())
 
-    assert report["schema_version"] == STATE_VERSION == 25
+    assert report["schema_version"] == STATE_VERSION == 26
     assert report["growth_reconciliation"]["study_source_total"] == 10
     assert report["growth_reconciliation"]["study_growth_generated"] == 10
     assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 10}
     assert report["growth_reconciliation"]["passive_exact_fifths_by_plant"] == {
-        "p2": 10,
+        "p2": 5,
     }
     assert report["plants"][1]["passive_growth_remainder_fifths"] == 0
     assert report["growth_charge_replay_ledger"]["healthy"] is True
@@ -577,16 +586,7 @@ def test_progress_export_reports_growth_reconciliation_without_mutation():
 
 def test_catalog_price_name_and_personality_tables_match_exact_species_contract():
     expected_prices = {
-        "bonsai": 100,
-        "rose": 100,
-        "sunflower": 150,
-        "lavender": 200,
-        "hydrangea": 250,
-        "peony": 300,
-        "foxglove": 350,
-        "japanese_maple": 400,
-        "wisteria": 500,
-        "dahlia": 600,
+        species: 250 for species in CURRENT_CATALOG_SPECIES_ORDER
     }
 
     assert tuple(expected_prices) == CURRENT_CATALOG_SPECIES_ORDER
@@ -605,7 +605,7 @@ def test_multiword_species_uses_learner_facing_label_in_messages():
 
     assert not ok
     assert message == (
-        "You need 400 more Garden Coins to buy Japanese Maple Seed."
+        "You need 250 more Garden Coins to buy Japanese Maple Seed."
     )
 
 
@@ -720,19 +720,21 @@ def test_missed_day_resets_streak_before_awarding_growth():
     assert award.bonus_growth == 0
 
 
-def test_streak_growth_bonus_is_fractional_and_never_reduces_base():
+def test_garden_rhythm_bonus_is_fractional_and_never_reduces_base():
     engine, storage = make_engine()
-    storage.state.streak_days = 7
-    storage.state.last_active_day = "2026-08-07"
+    storage.eligible_study_days = tuple(
+        f"2026-08-{day:02d}" for day in range(1, 8)
+    )
+    storage.today_cards_completion_days = set(storage.eligible_study_days[:3])
 
     first = answer(engine, storage)
     second = answer(engine, storage)
 
-    assert first.bonus_percent == second.bonus_percent == 5
+    assert first.bonus_percent == second.bonus_percent == 4
     assert first.base_growth == second.base_growth == 10
-    assert first.streak_growth_units == second.streak_growth_units == 50
-    assert first.total_growth_units == second.total_growth_units == 1_050
-    assert storage.state.plants[0].growth_points == 21
+    assert first.streak_growth_units == second.streak_growth_units == 40
+    assert first.total_growth_units == second.total_growth_units == 1_040
+    assert storage.state.plants[0].growth_units == 2_080
 
 
 def test_growth_routes_full_to_active_and_passive_to_other_planted_plants():
@@ -744,15 +746,155 @@ def test_growth_routes_full_to_active_and_passive_to_other_planted_plants():
     assert ok
     answer(engine, storage)
 
-    assert storage.state.plants[0].growth_points == before + 2
+    assert storage.state.plants[0].growth_points == before + 1
     assert storage.state.plants[1].growth_points > 0
     assert storage.state.daily_stats.plant_growth.keys() == {"p1", "p2"}
+
+
+@pytest.mark.parametrize("planted_beds", range(1, 7))
+def test_one_through_six_planted_beds_create_exact_ten_percent_lanes(
+    planted_beds,
+):
+    engine, storage = make_engine()
+    storage.state.plants = [
+        Plant(
+            f"p{index + 1}",
+            CURRENT_CATALOG_SPECIES_ORDER[index],
+            f"Plant {index + 1}",
+            index,
+        )
+        for index in range(planted_beds)
+    ]
+    storage.state.active_plant_id = "p1"
+    storage.state.active_plant_periods = [
+        ActivePlantPeriod(storage.day, "p1", storage.day_start_ms)
+    ]
+
+    award = answer(engine, storage)
+
+    assert award.total_growth_units == 1_000
+    assert award.shared_growth_units == (planted_beds - 1) * 100
+    assert award.applied_growth_units == 1_000 + award.shared_growth_units
+    assert storage.state.plants[0].growth_units == 1_000
+    assert all(
+        plant.growth_units == 100 for plant in storage.state.plants[1:]
+    )
+
+
+def test_shared_growth_preserves_exact_hundredth_units_from_garden_rhythm() -> None:
+    engine, storage = make_engine()
+    storage.state.plants.extend(
+        Plant(
+            f"p{index + 1}",
+            CURRENT_CATALOG_SPECIES_ORDER[index],
+            f"Plant {index + 1}",
+            index,
+        )
+        for index in range(2, 6)
+    )
+    storage.eligible_study_days = tuple(
+        f"2026-08-{day:02d}" for day in range(1, 8)
+    )
+    storage.today_cards_completion_days = set(storage.eligible_study_days[:3])
+
+    award = answer(engine, storage)
+
+    assert award.bonus_percent == 4
+    assert award.total_growth_units == 1_040
+    assert award.shared_growth_units == 5 * 104
+    assert all(
+        (plant.growth_points, plant.growth_remainder_units) == (1, 4)
+        for plant in storage.state.plants[1:]
+    )
+
+
+def test_full_bloom_shared_lane_routes_whole_lane_in_bed_order() -> None:
+    engine, storage = make_engine()
+    active, completed = storage.state.plants
+    completed.growth_points = GROWTH_THRESHOLDS[-1]
+    continuation = Plant("p3", "sunflower", "Sunny", 2)
+    storage.state.plants.append(continuation)
+
+    award = answer(engine, storage)
+
+    assert award.total_growth_units == 1_000
+    assert award.shared_growth_units == 200
+    assert active.growth_units == 1_000
+    assert completed.growth_units == GROWTH_THRESHOLDS[-1] * 100
+    assert continuation.growth_units == 200
+
+
+def test_garden_rhythm_uses_prior_seven_eligible_days_without_a_reset_cliff() -> None:
+    engine, storage = make_engine()
+    storage.eligible_study_days = (
+        "2026-08-01",
+        "2026-08-03",
+        "2026-08-04",
+        "2026-08-08",
+        "2026-08-11",
+        "2026-08-12",
+        "2026-08-20",
+    )
+    storage.today_cards_completion_days = set(storage.eligible_study_days[:6])
+    assert engine._garden_rhythm_percent_for_day("2026-08-21") == 10
+
+    storage.today_cards_completion_days.remove("2026-08-01")
+    assert engine._garden_rhythm_percent_for_day("2026-08-21") == 8
+
+    first = answer(engine, storage)
+    assert first.bonus_percent == 8
+    assert storage.state.daily_economy_snapshot is not None
+    assert storage.state.daily_economy_snapshot.garden_rhythm_percent == 8
+
+
+def test_historical_closed_day_without_snapshot_fails_permanent_effects_closed() -> None:
+    engine, storage = make_engine()
+    storage.state.reward_state_initialized = True
+    storage.state.reward_activation_ms = 1
+    storage.state.progression_activation_ms = 1
+    storage.state.garden_find_activation_ms = storage.now_ms + 100_000
+    storage.state.inventory["garden_features"].append("wind_chime")
+    storage.state.inventory["scenery"].append("spring")
+    storage.state.loadout.active_garden_bonus_id = "wind_chime"
+    storage.state.loadout.active_scenery_effect_id = "spring"
+    storage.state.wind_chime_progress = 9
+    plant = storage.state.plants[0]
+    plant.fertilizer_card_batches = [CardEffectBatch(
+        "fertilizer_quality", 200, 200, 200
+    )]
+    plant.booster_card_batches = [CardEffectBatch(
+        "booster_potion", 500, 100, 100
+    )]
+
+    storage.now_ms += 1_000
+    award = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "revlog_id": storage.now_ms,
+        "answered_at_ms": storage.now_ms,
+        "scheduler_day": "2026-08-07",
+        "historical_sync": True,
+    })
+
+    assert award.base_growth_units == 1_000
+    assert award.fertilizer_growth_units == 200
+    assert award.booster_growth_units == 500
+    assert award.streak_growth_units == 0
+    assert award.weather_growth_units == 0
+    assert award.scenery_growth_units == 0
+    assert award.total_growth_units == 1_700
+    snapshot = storage.state.daily_economy_snapshot
+    assert snapshot is not None
+    assert snapshot.anki_day == "2026-08-07"
+    assert snapshot.snapshot_source == "sync_fail_closed"
+    assert snapshot.active_garden_bonus_id == "seedling_sign"
+    assert snapshot.active_scenery_effect_id == "default"
 
 
 def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
     modifier_bits = ("streak", "fertilizer", "booster", "weather", "scenery")
     expected_units = {
-        "streak": 50,
+        "streak": 40,
         "fertilizer": 200,
         "booster": 500,
         "weather": 100,
@@ -768,22 +910,30 @@ def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
         passive_two = Plant("p3", "lavender", "Violet", 2)
         storage.state.plants.append(passive_two)
         storage.state.daily_stats.reviewed = 1
-        storage.state.streak_days = 7 if "streak" in enabled else 0
-        nurtured.bonus_remainder = 50 if "streak" in enabled else 0
-        event_seconds = (storage.now_ms + 1_000) / 1_000
+        storage.eligible_study_days = tuple(
+            f"2026-08-{day:02d}" for day in range(1, 8)
+        )
+        storage.today_cards_completion_days = (
+            set(storage.eligible_study_days[:3])
+            if "streak" in enabled else set()
+        )
         if "fertilizer" in enabled:
-            nurtured.fertilizer = Fertilizer(
-                "quality", 2, event_seconds + 60, event_seconds - 60
-            )
+            nurtured.fertilizer_card_batches = [CardEffectBatch(
+                "fertilizer_quality", 200, 200, 200
+            )]
         if "booster" in enabled:
-            nurtured.booster = Booster(5, event_seconds + 60, event_seconds - 60)
+            nurtured.booster_card_batches = [CardEffectBatch(
+                "booster_potion", 500, 100, 100
+            )]
         storage.state.selected_weather = "breeze" if "weather" in enabled else "sunny"
         storage.state.wind_chime_progress = 9 if "weather" in enabled else 0
-        storage.state.selected_background = "spring" if "scenery" in enabled else "default"
+        storage.state.loadout.active_scenery_effect_id = (
+            "summer" if "scenery" in enabled else "default"
+        )
 
         award = answer(engine, storage)
         final_units = 1_000 + sum(expected_units[name] for name in enabled)
-        shared_units = final_units // 5
+        shared_units = final_units // 10
 
         assert award.total_growth_units == final_units
         assert award.applied_growth_units == final_units + shared_units * 2
@@ -817,7 +967,7 @@ def test_shared_growth_units_survive_batch_restart_switch_and_duplicate_replay()
 
     first = answer(engine, storage, revlog_id=first_id)
     assert first.total_growth == 10
-    assert storage.state.plants[1].growth_points == 2
+    assert storage.state.plants[1].growth_points == 1
     assert storage.state.plants[1].growth_remainder_units == 0
 
     restarted_storage = FakeStorage()
@@ -834,7 +984,7 @@ def test_shared_growth_units_survive_batch_restart_switch_and_duplicate_replay()
         latest_revlog_id=third_id,
     )
     assert gained == 20
-    assert restarted_storage.state.plants[1].growth_points == 6
+    assert restarted_storage.state.plants[1].growth_points == 3
     assert restarted_storage.state.plants[1].growth_remainder_units == 0
 
     restarted_storage.now_ms = third_id + 1_000
@@ -850,7 +1000,7 @@ def test_shared_growth_units_survive_batch_restart_switch_and_duplicate_replay()
     assert restarted_storage.state.to_dict() == snapshot
 
 
-def test_multiple_full_bloom_shares_are_divided_across_every_unfinished_plant():
+def test_multiple_full_bloom_shares_route_as_whole_lanes_in_bed_order():
     engine, storage = make_engine()
     active, unfinished_one = storage.state.plants
     unfinished_two = Plant("p3", "lavender", "Violet", 2)
@@ -866,15 +1016,15 @@ def test_multiple_full_bloom_shares_are_divided_across_every_unfinished_plant():
 
     award = answer(engine, storage)
 
-    # Four other planted beds create four 20% shares (800 units total).
-    # The two Full Bloom shares (400 units) divide across all three plants
-    # still growing; the one-unit remainder follows bed order.
+    # Four other planted beds create four exact 10% lanes (400 units total).
+    # Each Full Bloom lane skips completed beds and carries forward as one
+    # whole lane. In this slot order both completed lanes reach the active bed.
     assert award.total_growth_units == 1_000
-    assert award.shared_growth_units == 800
-    assert active.growth_units == 1_134
-    assert unfinished_one.growth_units == 333
-    assert unfinished_two.growth_units == 333
-    assert full_one.growth_units == full_two.growth_units == 5_000_000
+    assert award.shared_growth_units == 400
+    assert active.growth_units == 1_200
+    assert unfinished_one.growth_units == 100
+    assert unfinished_two.growth_units == 100
+    assert full_one.growth_units == full_two.growth_units == 3_500_000
 
 
 def test_full_bloom_shares_return_to_active_when_it_is_the_only_unfinished_plant():
@@ -890,9 +1040,9 @@ def test_full_bloom_shares_return_to_active_when_it_is_the_only_unfinished_plant
     award = answer(engine, storage)
 
     assert award.total_growth_units == 1_000
-    assert award.shared_growth_units == 400
-    assert active.growth_units == 1_400
-    assert full_one.growth_units == full_two.growth_units == 5_000_000
+    assert award.shared_growth_units == 200
+    assert active.growth_units == 1_200
+    assert full_one.growth_units == full_two.growth_units == 3_500_000
 
 
 def test_shared_growth_excludes_ineligible_plants_and_redirects_overflow_exactly():
@@ -917,26 +1067,26 @@ def test_shared_growth_excludes_ineligible_plants_and_redirects_overflow_exactly
     assert unplanted.growth_points == 0
     assert finished.growth_points == GROWTH_THRESHOLDS[-1]
     assert {allocation.plant_id for allocation in award.allocations} == {"p1", "p2"}
-    # The Full Bloom bed contributes a second 20% share. Its share is split
-    # across both growing plants, then the passive plant's over-cap Growth is
-    # redirected without losing any value.
-    assert nurtured.growth_units == 1_440
-    assert award.shared_growth_units == 440
-    assert award.redirected_growth_units == 230
+    # The Full Bloom bed contributes a second exact 10% lane. That whole lane,
+    # plus the other passive lane's over-cap remainder, routes forward in bed
+    # order without losing any value.
+    assert nurtured.growth_units == 1_220
+    assert award.shared_growth_units == 220
+    assert award.redirected_growth_units == 120
 
     capped_engine, capped_storage = make_engine()
     capped_storage.state.plants[0].growth_points = GROWTH_THRESHOLDS[-1] - 5
     capped = answer(capped_engine, capped_storage)
     assert capped.total_growth_units == 1_000
-    assert capped_storage.state.plants[1].growth_points == 7
+    assert capped_storage.state.plants[1].growth_points == 6
     assert capped_storage.state.plants[1].growth_remainder_units == 0
 
 
 def test_simultaneous_nurtured_and_passive_stage_rewards_are_once_per_plant():
     engine, storage = make_engine()
     nurtured, passive = storage.state.plants
-    nurtured.growth_points = 490
-    passive.growth_points = 498
+    nurtured.growth_points = 390
+    passive.growth_points = 399
     revlog_id = storage.now_ms + 1_000
 
     answer(engine, storage, revlog_id=revlog_id)
@@ -974,9 +1124,14 @@ def test_growth_charge_quote_confirm_targets_one_plant_without_fanout_or_buffs(
     engine, storage = make_engine()
     target = engine.plant_story(target_id)
     other = next(plant for plant in storage.state.plants if plant.plant_id != target_id)
-    target.growth_points = 490
-    target.fertilizer = Fertilizer("premium", 3, 9_999_999_999.0, 0.0)
-    storage.state.streak_days = 365
+    target.growth_points = 390
+    target.fertilizer_card_batches = [
+        CardEffectBatch("fertilizer_premium", 300, 400, 400)
+    ]
+    # Garden Rhythm is history-based in 2.2. Keep legacy streak achievements
+    # out of this transaction-only assertion so their one-time inventory
+    # grants cannot be mistaken for charge rollback.
+    storage.state.streak_days = 0
     storage.state.selected_weather = "fireflies"
     storage.state.selected_background = "eclipse"
     storage.state.consumables[charge_id] = 1
@@ -1000,7 +1155,7 @@ def test_growth_charge_quote_confirm_targets_one_plant_without_fanout_or_buffs(
     assert target.growth_points == quote.projected_growth
     assert other.growth_points == other_before
     assert [transition.source for transition in engine.peek_stage_transitions()] == [
-        "charge"
+        "charge" for _stage in quote.completed_stages
     ]
     assert storage.state.consumables[charge_id] == 0
     assert storage.state.daily_stats.plant_charge_growth == {
@@ -1089,7 +1244,7 @@ def test_growth_charge_quote_exposes_authoritative_target_state() -> None:
 def test_growth_charge_routes_its_full_value_before_consuming_the_item():
     engine, storage = make_engine()
     target, continuation = storage.state.plants
-    target.growth_points = 49_997
+    target.growth_points = 34_997
     storage.state.consumables["growth_charge_standard"] = 1
 
     quote = engine.quote_growth_charge("growth_charge_standard", target.plant_id)
@@ -1128,17 +1283,17 @@ def test_same_day_events_route_by_active_period_timestamp():
 
 def test_stage_thresholds_and_stage_local_progress_are_exact():
     assert GROWTH_STAGES == ["seed", "sprout", "young", "mature", "flowering", "rare"]
-    assert GROWTH_THRESHOLDS == [0, 500, 2_500, 8_000, 20_000, 50_000]
-    plant = Plant("p", "lavender", "Violet", 0, growth_points=7_999)
+    assert GROWTH_THRESHOLDS == [0, 400, 2_000, 6_000, 15_000, 35_000]
+    plant = Plant("p", "lavender", "Violet", 0, growth_points=5_999)
     assert plant.growth_stage == "young"
-    plant.growth_points = 8_000
+    plant.growth_points = 6_000
     assert plant.growth_stage == "mature"
 
 
 def test_stage_completion_uses_the_final_checkpoint_split_and_is_durable():
     engine, storage = make_engine()
     plant = storage.state.plants[0]
-    plant.growth_points = 490
+    plant.growth_points = 390
 
     answer(engine, storage)
 
@@ -1175,13 +1330,13 @@ def test_day_7_achievement_and_weekly_reward_are_one_integrated_payout() -> None
 def test_twenty_five_fifty_and_seventy_five_percent_feedback_uses_stage_interval():
     engine, storage = make_engine()
     plant = storage.state.plants[0]
-    plant.growth_points = 119
+    plant.growth_points = 99
     answer(engine, storage)
     assert any("25%" in event.message for event in engine.peek_feedback())
-    plant.growth_points = 249
+    plant.growth_points = 199
     answer(engine, storage)
     assert any("50%" in event.message for event in engine.peek_feedback())
-    plant.growth_points = 369
+    plant.growth_points = 299
     answer(engine, storage)
     assert any("75%" in event.message for event in engine.peek_feedback())
 
@@ -1189,10 +1344,10 @@ def test_twenty_five_fifty_and_seventy_five_percent_feedback_uses_stage_interval
 @pytest.mark.parametrize(
     ("before", "event_key", "reward"),
     [
-        (124, "stage_checkpoint:p1:sprout:25", 1),
-        (249, "stage_checkpoint:p1:sprout:50", 1),
-        (374, "stage_checkpoint:p1:sprout:75", 1),
-        (499, "stage:p1:sprout", 2),
+        (99, "stage_checkpoint:p1:sprout:25", 1),
+        (199, "stage_checkpoint:p1:sprout:50", 1),
+        (299, "stage_checkpoint:p1:sprout:75", 1),
+        (399, "stage:p1:sprout", 2),
     ],
 )
 def test_seed_stage_coin_pool_is_split_across_checkpoints_and_completion(
@@ -1230,17 +1385,18 @@ def test_one_large_charge_grants_every_crossed_checkpoint_once_in_order():
         "stage_checkpoint:p1:young:25",
         "stage_checkpoint:p1:young:50",
         "stage_checkpoint:p1:young:75",
+        "stage:p1:young",
     ]
     assert sum(
         item.delta for item in storage.state.currency_transactions
         if item.event_key in milestone_keys
-    ) == 11
+    ) == 15
 
 
 def test_full_bloom_grants_the_completion_package_once():
     engine, storage = make_engine()
     plant = storage.state.plants[0]
-    plant.growth_points = 49_990
+    plant.growth_points = 34_990
     event_id = storage.now_ms + 1_000
 
     answer(engine, storage, revlog_id=event_id)
@@ -1271,43 +1427,41 @@ def test_full_bloom_grants_the_completion_package_once():
 def test_exact_fractional_growth_is_conserved_when_every_plant_fills():
     engine, storage = make_engine()
     active, shared = storage.state.plants
-    active.growth_points = 49_995
-    shared.growth_points = 49_998
+    active.growth_points = 34_995
+    shared.growth_points = 34_998
     storage.state.daily_stats.reviewed = 1
-    storage.state.streak_days = 7
-    storage.state.last_active_day = storage.day
 
     award = answer(engine, storage)
 
-    assert award.total_growth_units == 1_050
+    assert award.total_growth_units == 1_000
     assert award.applied_growth_units == 700
     assert award.shared_growth_units == 0
-    assert award.stored_growth_units == 560
-    assert storage.state.stored_growth_units == 560
+    assert award.stored_growth_units == 400
+    assert storage.state.stored_growth_units == 400
     assert active.fully_grown and shared.fully_grown
     assert award.applied_growth_units + award.stored_growth_units == (
-        award.total_growth_units + award.total_growth_units // 5
+        award.total_growth_units + award.total_growth_units // 10
     )
 
 
 def test_full_bloom_conserves_growth_and_auto_continues_to_the_next_plant():
     engine, storage = make_engine()
     completed, next_plant = storage.state.plants
-    completed.growth_points = 49_995
+    completed.growth_points = 34_995
 
     award = answer(engine, storage)
     first_event_ms = storage.now_ms
     continued = answer(engine, storage)
 
-    assert completed.growth_points == 50_000
+    assert completed.growth_points == 35_000
     assert award.total_growth_units == 1_000
-    assert award.applied_growth_units == 1_200
+    assert award.applied_growth_units == 1_100
     assert award.redirected_growth_units == 500
-    assert award.shared_growth_units == 200
+    assert award.shared_growth_units == 100
     assert award.stored_growth_units == 0
-    # Once the first plant reaches Full Bloom, its 20% share continues and is
+    # Once the first plant reaches Full Bloom, its 10% share continues and is
     # redistributed to the only plant still growing on the second card.
-    assert next_plant.growth_points == 19
+    assert next_plant.growth_points == 17
     assert storage.state.active_plant_id == next_plant.plant_id
     assert storage.state.active_plant_periods[-1] == ActivePlantPeriod(
         storage.day, next_plant.plant_id, first_event_ms
@@ -1316,11 +1470,11 @@ def test_full_bloom_conserves_growth_and_auto_continues_to_the_next_plant():
     assert continued.total_growth_units == 1_000
 
 
-def test_no_target_stores_growth_across_restart_until_a_plant_is_selected(
+def test_no_target_reserve_survives_restart_and_target_selection_without_spending(
     tmp_path,
 ):
     storage = FakeStorage()
-    storage.state.plants[0].growth_points = 50_000
+    storage.state.plants[0].growth_points = 35_000
     storage.state.active_plant_id = None
     paused_at_ms = storage.now_ms - 1_000
     storage.state.active_plant_periods = [
@@ -1348,12 +1502,19 @@ def test_no_target_stores_growth_across_restart_until_a_plant_is_selected(
     assert award.stored_growth_units == 1_000
     assert unfinished.growth_points == before
     assert storage.state.stored_growth_units == 1_000
-    assert award.paused_reason == "Growth is being stored. Choose a plant when you’re ready."
+    assert award.paused_reason == (
+        "No plant is selected. This card’s Growth is being stored."
+    )
 
     assert engine.plant_from_collection(unfinished.plant_id, 0)[0]
     assert engine.set_active_plant(unfinished.plant_id)[0]
+    assert unfinished.growth_points == before
+    assert storage.state.stored_growth_units == 1_000
+
+    next_award = answer(engine, storage)
+    assert next_award.applied_growth_units == 1_000
     assert unfinished.growth_points == before + 10
-    assert storage.state.stored_growth_units == 0
+    assert storage.state.stored_growth_units == 1_000
 
 
 def test_dangling_non_null_saved_active_reference_repairs_deterministically_with_period(
@@ -1727,28 +1888,38 @@ def test_progress_estimates_recalculate_from_the_effective_growth_rate():
     engine._now_seconds = lambda: storage.now_ms / 1_000
     plant = storage.state.plants[0]
     plant.growth_points = 500
-    assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 10)
-    now = storage.now_ms / 1_000
-    plant.fertilizer = Fertilizer("quality", 2, now + 2 * 60 * 60, now)
-    assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 12)
+    assert engine.progress_estimates(plant) == math.ceil((2_000 - 500) / 10)
+    plant.fertilizer_card_batches = [CardEffectBatch(
+        "fertilizer_quality", 200, 200, 200
+    )]
+    assert engine.progress_estimates(plant) == math.ceil((2_000 - 500) / 12)
 
 
 def test_sync_reward_baseline_identifies_active_boost_items():
     engine, storage = make_engine()
     engine._now_seconds = lambda: storage.now_ms / 1_000
-    now = storage.now_ms / 1_000
     plant = storage.state.plants[0]
-    plant.fertilizer = Fertilizer("quality", 2, now + 1_080, now)
+    plant.fertilizer_card_batches = [
+        CardEffectBatch("fertilizer_quality", 200, 200, 90)
+    ]
     plant.booster_card_batches = [
         CardEffectBatch("booster_potion", 500, 100, 12)
     ]
+    storage.state.garden_project.contributed_growth_units = 250
 
     baseline = engine.sync_reward_baseline()
 
     assert baseline["fertilizer_item_id"] == "fertilizer_quality"
-    assert baseline["fertilizer_remaining_seconds"] == 1_080
+    assert baseline["fertilizer_cards_remaining"] == 90
+    assert baseline["fertilizer_remaining_seconds"] == 0
     assert baseline["booster_item_id"] == "booster_potion"
     assert baseline["booster_cards_remaining"] == 12
+    assert baseline["landmark_growth_units"] == 250
+    assert baseline["total_growth_units"] == (
+        sum(item.growth_units for item in storage.state.plants)
+        + storage.state.stored_growth_units
+        + 250
+    )
 
 
 def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
@@ -1759,8 +1930,9 @@ def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
     storage.state.streak_days = 7
     storage.state.selected_weather = "breeze"
     storage.state.selected_background = "spring"
-    now = storage.now_ms / 1_000
-    plant.fertilizer = Fertilizer("quality", 2, now + 2 * 60 * 60, now)
+    plant.fertilizer_card_batches = [
+        CardEffectBatch("fertilizer_quality", 200, 200, 200)
+    ]
     before_state = storage.state.to_dict()
     before_saves = storage.save_count
     next_event_seconds = (storage.now_ms + 1_000) / 1_000
@@ -1773,26 +1945,21 @@ def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
     assert awarded == projected
 
 
-def test_fertilizer_dose_is_timed_and_projection_does_not_change_its_window():
+def test_fertilizer_dose_is_card_counted_and_projection_does_not_consume_it():
     engine, storage = make_engine()
     engine._now_seconds = lambda: storage.now_ms / 1_000
     storage.state.consumables["fertilizer_quality"] = 1
-    activated_at = storage.now_ms / 1_000
-
     ok, message = engine.use_fertilizer_item("p1", tier="quality")
     plant = storage.state.plants[0]
 
     assert ok
     assert "card" in message.lower()
-    assert "2 hours" in message.lower()
-    current, queued = engine.fertilizer_schedule(plant, now=activated_at)
-    assert current == Fertilizer(
-        "quality",
-        2,
-        activated_at + 2 * 60 * 60,
-        activated_at,
-    )
-    assert queued == ()
+    assert "200 eligible cards" in message.lower()
+    assert [
+        (batch.effect_id, batch.total_cards, batch.remaining_cards)
+        for batch in plant.fertilizer_card_batches
+    ] == [("fertilizer_quality", 200, 200)]
+    assert plant.fertilizer_card_queue == []
     before = storage.state.to_dict()
     projected = engine.project_review_growth(plant)
     assert projected.fertilizer_growth_units == 200
@@ -1801,14 +1968,14 @@ def test_fertilizer_dose_is_timed_and_projection_does_not_change_its_window():
     award = answer(engine, storage)
 
     assert award.fertilizer_growth_units == 200
-    assert plant.fertilizer == current
+    assert plant.fertilizer_card_batches[0].remaining_cards == 199
     assert storage.state.plants[1].fertilizer is None
 
-    after_expiry = engine.project_review_growth(
+    after_elapsed_time = engine.project_review_growth(
         plant,
-        now=activated_at + 2 * 60 * 60,
+        now=storage.now_ms / 1_000 + 86_400,
     )
-    assert after_expiry.fertilizer_growth_units == 0
+    assert after_elapsed_time.fertilizer_growth_units == 200
 
 
 def test_same_fertilizer_extends_while_a_different_tier_queues_without_loss():
@@ -1828,27 +1995,76 @@ def test_same_fertilizer_extends_while_a_different_tier_queues_without_loss():
     assert "replace" not in message.lower()
     assert "discard" not in message.lower()
     assert "queued" in message.lower()
-    now = storage.now_ms / 1_000
-    current, queued = engine.fertilizer_schedule(plant, now=now)
-    assert current is not None and current.tier == "basic"
-    periods = engine._fertilizer_periods(plant)
-    assert [(period.tier, period.expires_at - period.started_at) for period in periods] == [
-        ("basic", 60 * 60),
-        ("basic", 60 * 60),
-        ("quality", 2 * 60 * 60),
+    assert [
+        (batch.effect_id, batch.total_cards, batch.remaining_cards)
+        for batch in plant.fertilizer_card_batches
+    ] == [
+        ("fertilizer_basic", 100, 100),
+        ("fertilizer_basic", 100, 100),
     ]
-    assert [period.tier for period in queued] == ["basic", "quality"]
-    assert periods[0].expires_at == periods[1].started_at
-    assert periods[1].expires_at == periods[2].started_at
+    assert [
+        (batch.effect_id, batch.total_cards, batch.remaining_cards)
+        for batch in plant.fertilizer_card_queue
+    ] == [("fertilizer_quality", 200, 200)]
 
 
-def test_fertilizer_queue_changes_tier_only_when_the_previous_time_expires():
+def test_fertilizer_fifo_survives_restart_and_is_independent_of_elapsed_time() -> None:
+    engine, storage = make_engine()
+    storage.state.consumables.update({
+        "fertilizer_basic": 2,
+        "fertilizer_quality": 1,
+    })
+    assert engine.use_fertilizer_item("p1", tier="basic")[0]
+    assert engine.use_fertilizer_item("p1", tier="basic")[0]
+    assert engine.use_fertilizer_item("p1", tier="quality")[0]
+
+    restarted_storage = FakeStorage()
+    restarted_storage.state = GardenState.from_dict(storage.state.to_dict())
+    restarted_storage.now_ms = storage.now_ms + 30 * 86_400_000
+    restarted = GardenGameEngine(FakeConfig(), restarted_storage)
+    plant = restarted_storage.state.plants[0]
+
+    first = answer(restarted, restarted_storage)
+    assert first.fertilizer_growth_units == 100
+    assert plant.fertilizer_card_batches[0].remaining_cards == 99
+    for _ in range(199):
+        award = answer(restarted, restarted_storage)
+        assert award.fertilizer_growth_units == 100
+    assert [batch.effect_id for batch in plant.fertilizer_card_batches] == [
+        "fertilizer_quality"
+    ]
+    assert plant.fertilizer_card_queue == []
+    quality = answer(restarted, restarted_storage)
+    assert quality.fertilizer_growth_units == 200
+    assert plant.fertilizer_card_batches[0].remaining_cards == 199
+
+
+def test_booster_and_fertilizer_concurrently_consume_one_committed_card() -> None:
+    engine, storage = make_engine()
+    storage.state.consumables["fertilizer_quality"] = 1
+    storage.state.consumables["booster_potion"] = 1
+    assert engine.use_fertilizer_item("p1", tier="quality")[0]
+    assert engine.use_booster_potion("p1")[0]
+
+    award = answer(engine, storage)
+    plant = storage.state.plants[0]
+
+    assert award.base_growth_units == 1_000
+    assert award.fertilizer_growth_units == 200
+    assert award.booster_growth_units == 500
+    assert award.total_growth_units == 1_700
+    assert plant.fertilizer_card_batches[0].remaining_cards == 199
+    assert plant.booster_card_batches[0].remaining_cards == 99
+
+
+def test_fertilizer_queue_changes_tier_only_when_the_previous_cards_are_used():
     engine, storage = make_engine()
     plant = storage.state.plants[0]
-    now = storage.now_ms / 1_000
-    plant.fertilizer = Fertilizer("basic", 1, now + 1.5, now)
-    plant.fertilizer_history = [
-        Fertilizer("quality", 2, now + 2 * 60 * 60 + 1.5, now + 1.5)
+    plant.fertilizer_card_batches = [
+        CardEffectBatch("fertilizer_basic", 100, 1, 1)
+    ]
+    plant.fertilizer_card_queue = [
+        CardEffectBatch("fertilizer_quality", 200, 200, 200)
     ]
 
     final_basic = answer(engine, storage)
@@ -1856,12 +2072,11 @@ def test_fertilizer_queue_changes_tier_only_when_the_previous_time_expires():
 
     assert final_basic.fertilizer_growth_units == 100
     assert first_quality.fertilizer_growth_units == 200
-    current, queued = engine.fertilizer_schedule(
-        plant,
-        now=storage.now_ms / 1_000,
-    )
-    assert current is not None and current.tier == "quality"
-    assert queued == ()
+    assert [batch.effect_id for batch in plant.fertilizer_card_batches] == [
+        "fertilizer_quality"
+    ]
+    assert plant.fertilizer_card_batches[0].remaining_cards == 199
+    assert plant.fertilizer_card_queue == []
 
 
 def test_booster_count_pauses_without_a_target_and_resumes_when_growth_applies():
@@ -1889,6 +2104,7 @@ def test_booster_uses_the_locked_loadout_to_set_its_exact_card_count():
     storage.state.inventory["scenery"].append("full_moon")
     storage.state.selected_weather = "snow_flurry"
     storage.state.selected_background = "full_moon"
+    storage.state.loadout.active_scenery_effect_id = "full_moon"
     storage.state.consumables["booster_potion"] = 1
 
     ok, message = engine.use_booster_potion()
@@ -1897,22 +2113,51 @@ def test_booster_uses_the_locked_loadout_to_set_its_exact_card_count():
     assert ok
     assert "card" in message.lower()
     assert "hour" not in message.lower()
-    assert batch.total_cards == batch.remaining_cards == 150
+    assert batch.total_cards == batch.remaining_cards == 125
     assert engine.locked_environment_id("garden_feature") == "herbalist_hourglass"
     assert engine.locked_environment_id("scenery") == "full_moon"
 
 
-def test_full_bloom_transfers_remaining_timed_fertilizer_and_card_booster():
+def test_daily_effect_snapshot_is_independent_from_appearance_and_immutable() -> None:
+    engine, storage = make_engine()
+    storage.state.inventory["scenery"].extend(["spring", "summer"])
+    assert engine.equip_environment("scenery", "spring")[0]
+    assert engine.display_scenery("summer")[0]
+    assert storage.state.loadout.display_scenery_id == "summer"
+    assert storage.state.loadout.active_scenery_effect_id == "spring"
+
+    first = answer(engine, storage)
+    assert first.scenery_growth == 2
+    assert storage.state.daily_economy_snapshot is not None
+    assert storage.state.daily_economy_snapshot.active_scenery_effect_id == "spring"
+
+    assert engine.equip_environment("scenery", "summer")[0]
+    assert engine.display_scenery("default")[0]
+    second = answer(engine, storage)
+    assert second.scenery_growth == 2
+    assert storage.state.loadout.display_scenery_id == "default"
+    assert storage.state.daily_loadout.queued_scenery_id == "summer"
+    assert storage.state.daily_economy_snapshot.active_scenery_effect_id == "spring"
+
+    storage.day = "2026-08-09"
+    storage.day_start_ms += 86_400_000
+    storage.now_ms += 86_400_000
+    engine.rollover_if_needed()
+    assert storage.state.loadout.active_scenery_effect_id == "summer"
+    next_day_first = answer(engine, storage)
+    next_day_second = answer(engine, storage)
+    assert (next_day_first.scenery_growth, next_day_second.scenery_growth) == (
+        0, 1
+    )
+
+
+def test_full_bloom_transfers_remaining_card_fertilizer_and_booster():
     engine, storage = make_engine()
     completed, continuation = storage.state.plants
-    completed.growth_points = 49_990
-    started_at = storage.now_ms / 1_000
-    completed.fertilizer = Fertilizer(
-        "basic",
-        1,
-        started_at + 20 * 60,
-        started_at,
-    )
+    completed.growth_points = 34_990
+    completed.fertilizer_card_batches = [CardEffectBatch(
+        "fertilizer_basic", 100, 30, 30, source_event_key="fertilizer-transfer"
+    )]
     completed.booster_card_batches = [CardEffectBatch(
         "booster_potion", 500, 30, 30, source_event_key="booster-transfer"
     )]
@@ -1921,23 +2166,13 @@ def test_full_bloom_transfers_remaining_timed_fertilizer_and_card_booster():
 
     assert award.fertilizer_growth_units == 100
     assert award.booster_growth_units == 500
+    assert completed.fertilizer_card_batches == []
+    assert completed.fertilizer_card_queue == []
     assert completed.booster_card_batches == []
     assert storage.state.active_plant_id == continuation.plant_id
-    event_time = storage.now_ms / 1_000
-    completed_current, completed_queue = engine.fertilizer_schedule(
-        completed,
-        now=event_time,
-    )
-    continuation_current, continuation_queue = engine.fertilizer_schedule(
-        continuation,
-        now=event_time,
-    )
-    assert completed_current is None and completed_queue == ()
-    assert continuation_current is not None
-    assert continuation_current.tier == "basic"
-    assert continuation_current.started_at == event_time
-    assert continuation_current.expires_at == started_at + 20 * 60
-    assert continuation_queue == ()
+    assert continuation.fertilizer_card_batches[0].effect_id == "fertilizer_basic"
+    assert continuation.fertilizer_card_batches[0].remaining_cards == 29
+    assert continuation.fertilizer_card_queue == []
     assert continuation.booster_card_batches[0].remaining_cards == 29
 
 
@@ -1950,7 +2185,8 @@ def test_effect_dose_cap_keeps_unaccepted_items_in_inventory():
 
     assert [ok for ok, _message in results] == [True, True, True, True, True, False]
     plant = storage.state.plants[0]
-    assert len(engine._fertilizer_periods(plant)) == 5
+    assert len(plant.fertilizer_card_batches) == 5
+    assert plant.fertilizer_card_queue == []
     assert storage.state.consumables["fertilizer_basic"] == 1
 
 
@@ -1975,7 +2211,7 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
     assert duplicate.total_growth == 0
     assert first.garden_find_ids == ("find_morning_dew",)
     assert storage.state.plants[0].growth_points == 50
-    assert storage.state.plants[1].growth_points == 2
+    assert storage.state.plants[1].growth_points == 1
     assert storage.state.garden_find_drought_count == 0
     outcomes = list(storage.state.garden_find_outcomes.values())
     assert {outcome.pool_id for outcome in outcomes} == {"standard", "environment"}
@@ -2043,23 +2279,25 @@ def test_garden_finds_wait_for_their_own_activation_boundary():
 def test_engine_persists_and_resets_only_the_winning_environment_pity_tier():
     engine, storage = make_engine()
     engine.initialize_reward_state()
-    storage.state.inventory["weather"].append("rainbow_sunshower")
+    storage.state.inventory["scenery"].append("rainbow_horizon")
     storage.state.inventory["scenery"].extend([
         "halloween", "full_moon", "eclipse",
     ])
     storage.state.environment_pity_misses = {
-        "rare": 4_999,
+        "rare": 9_999,
         "very_rare": 123,
         "ultra": 456,
     }
 
     award = answer(engine, storage)
 
-    discovered = set(award.garden_find_ids) & {"fireflies", "rainbow_horizon"}
+    discovered = set(award.garden_find_ids) & {
+        "firefly_lantern", "rainbow_horizon"
+    }
     assert len(discovered) == 1
     assert storage.state.environment_pity_misses == {
         "rare": 0,
-        "very_rare": 123,
+        "very_rare": 124,
         "ultra": 456,
     }
     environment = next(
@@ -2071,7 +2309,7 @@ def test_engine_persists_and_resets_only_the_winning_environment_pity_tier():
     assert environment.tier == "rare_environment"
 
 
-def test_synced_answers_only_receive_timed_fertilizer_at_or_after_activation(monkeypatch):
+def test_synced_answers_only_consume_card_fertilizer_at_or_after_activation(monkeypatch):
     engine, storage = make_engine()
     activation_ms = storage.now_ms
     monkeypatch.setattr(engine, "_now_seconds", lambda: activation_ms / 1_000)
@@ -2105,15 +2343,11 @@ def test_synced_answers_only_receive_timed_fertilizer_at_or_after_activation(mon
     assert gained == 34
     assert storage.state.daily_stats.base_growth == 30
     assert storage.state.daily_stats.fertilizer_growth == 4
-    current, queued = engine.fertilizer_schedule(
-        storage.state.plants[0],
-        now=(activation_ms + 1_000) / 1_000,
-    )
-    assert current is not None
-    assert current.tier == "quality"
-    assert current.started_at == activation_ms / 1_000
-    assert current.expires_at == activation_ms / 1_000 + 2 * 60 * 60
-    assert queued == ()
+    batches = storage.state.plants[0].fertilizer_card_batches
+    assert len(batches) == 1
+    assert batches[0].effect_id == "fertilizer_quality"
+    assert batches[0].remaining_cards == 198
+    assert storage.state.plants[0].fertilizer_card_queue == []
 
 
 def test_out_of_order_same_day_revlog_id_uses_ledger_not_scalar_cursor():
@@ -2197,7 +2431,8 @@ def test_species_bed_and_collection_economy_preserves_plant_progress():
 
     ok, _message, sunflower = engine.purchase_species("sunflower")
     assert ok and sunflower is not None and not sunflower.planted
-    assert engine.purchase_next_bed()[0]
+    assert not engine.purchase_next_bed()[0]
+    storage.state.unlocked_slots = 3
     assert engine.plant_from_collection(sunflower.plant_id)[0]
     sunflower.growth_points = 777
     assert engine.move_to_collection("p2")[0]
@@ -2255,8 +2490,7 @@ def test_species_beds_capacity_and_duplicate_purchases_are_enforced():
     assert len(storage.state.plants) == 10
     assert not engine.purchase_species("sunflower")[0]
 
-    while storage.state.unlocked_slots < 6:
-        assert engine.purchase_next_bed()[0]
+    storage.state.unlocked_slots = 6
     assert engine.next_bed_price() is None
     assert not engine.purchase_next_bed()[0]
 
@@ -2434,7 +2668,7 @@ def test_failed_save_rolls_back_review_and_currency_state():
 
 def test_failed_same_day_batch_rolls_back_growth_cursor_and_transitions():
     engine, storage = make_engine()
-    storage.state.plants[0].growth_points = 490
+    storage.state.plants[0].growth_points = 390
     before = storage.state.to_dict()
     storage.fail_save = True
 
@@ -2581,10 +2815,10 @@ def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
 @pytest.mark.parametrize(
     ("reviews_per_day", "stage_days"),
     [
-        (50, [1, 5, 16, 40, 100]),
-        (150, [1, 2, 6, 14, 34]),
-        (300, [1, 1, 3, 7, 17]),
-        (500, [1, 1, 2, 4, 10]),
+        (50, [1, 4, 12, 30, 70]),
+        (150, [1, 2, 4, 10, 24]),
+        (300, [1, 1, 2, 5, 12]),
+        (500, [1, 1, 2, 3, 7]),
     ],
 )
 def test_progression_balance_profiles(reviews_per_day, stage_days):
@@ -2604,25 +2838,26 @@ def test_background_time_band_uses_local_clock_boundaries(hour, expected):
 
 
 @pytest.mark.parametrize(
-    ("tier", "growth_per_card", "hours", "price"),
+    ("tier", "growth_per_card", "cards", "price"),
     [
-        ("basic", 1, 1, 30),
-        ("quality", 2, 2, 100),
-        ("premium", 3, 4, 300),
+        ("basic", 1, 100, 30),
+        ("quality", 2, 200, 100),
+        ("premium", 3, 400, 300),
     ],
 )
-def test_timed_fertilizer_balance_and_daily_currency_limit(
+def test_card_counted_fertilizer_balance_and_equal_value_per_card(
     tier,
     growth_per_card,
-    hours,
+    cards,
     price,
 ):
     spec = GardenGameEngine.FERTILIZERS[tier]
     assert spec.growth_per_answer == growth_per_card
-    assert spec.duration_seconds == hours * 60 * 60
+    assert spec.card_count == cards
     assert spec.price == price
-    sustainable_hours_per_day = (15 / spec.price) * (spec.duration_seconds / 3600)
-    assert sustainable_hours_per_day < 1
+    assert spec.growth_per_answer * spec.card_count / spec.price == pytest.approx(
+        10 / 3 if tier == "basic" else 4
+    )
 
 
 def test_currency_is_never_awarded_per_review():

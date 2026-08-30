@@ -18,6 +18,7 @@ class PurchaseKind(str, Enum):
     FERTILIZER = "fertilizer"
     GARDEN_FEATURE = "garden_feature"
     SCENERY = "scenery"
+    COSMETIC = "cosmetic"
     BED = "bed"
 
     @classmethod
@@ -484,12 +485,18 @@ def purchase_presentation(
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
         next_actions = ("View collection", "Keep browsing")
+    elif quote.kind is PurchaseKind.COSMETIC:
+        title = f"Buy {item_name}?"
+        outcome = "Adds a cosmetic-only Display Decoration to your collection."
+        preview_style = PurchasePreviewStyle.SQUARE
+        success_message = f"{item_name} added to your collection."
+        next_actions = ("View collection", "Keep browsing")
     else:
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
         title = f"Unlock {bed_name}?"
         outcome = (
-            "Adds one permanent garden bed. Each planted plant adds a 20% "
+            "Adds one permanent garden bed. Each other planted bed adds a 10% "
             "Shared Growth share. A Full Bloom plant still adds its share."
         )
         preview_style = PurchasePreviewStyle.GARDEN_BED

@@ -345,7 +345,7 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         for stable_id in REGISTRY.profile_labels("full")
     )
     assert len(REGISTRY.profile_labels("representative")) == 18
-    assert len(REGISTRY.profile_labels("full")) == 34
+    assert len(REGISTRY.profile_labels("full")) == 38
     assert REGISTRY.profile_labels("full")[23] == (
         "nursery-garden-decorations-scenery"
     )
@@ -357,7 +357,7 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
     assert representative_labels[14] == "sync-rewards-summary"
     assert representative_labels[15] == "reviewer-reward-dock-bundle"
     assert REGISTRY.profile_page_count("representative") == 2
-    assert REGISTRY.profile_page_count("full") == 5
+    assert REGISTRY.profile_page_count("full") == 6
     assert "starter-selection-confirmation" in compiled["retired_ids"]
     assert REGISTRY["starter-selection-confirmation"].placements == ()
     runtime_source = (
@@ -507,7 +507,7 @@ def test_session_summary_responsive_evidence_is_transient_not_new_surfaces() -> 
     )
     assert set(content_states).isdisjoint(labels)
     assert len(REGISTRY.profile_labels("representative")) == 18
-    assert len(REGISTRY.profile_labels("full")) == 34
+    assert len(REGISTRY.profile_labels("full")) == 38
 
 
 def test_reward_presentation_surfaces_own_session_summary_import() -> None:
@@ -674,7 +674,7 @@ def test_reviewer_hud_acceptance_matrix_is_transient_and_complete() -> None:
     assert "min(right - 2.5, natural_x)" in widget_source
     assert '"Checkpoint reward", self._checkpoint_reward_row' in widget_source
     assert len(REGISTRY.profile_labels("representative")) == 18
-    assert len(REGISTRY.profile_labels("full")) == 34
+    assert len(REGISTRY.profile_labels("full")) == 38
 
 
 def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
@@ -984,7 +984,7 @@ def test_sync_reward_capture_fixture_is_rich_multiday_and_nonmodal() -> None:
         "environment_count": 1,
         "progression_event_count": 2,
         "all_clear_coin_reward": 0,
-        "fertilizer_remaining_seconds": 0,
+        "fertilizer_cards_remaining": 0,
         "fertilizer_item_id": "",
         "booster_cards_remaining": 0,
         "booster_item_id": "",
@@ -1200,7 +1200,7 @@ def test_collection_capture_summary_matches_current_catalog_fixture() -> None:
         "_capture_fixture_postcondition",
     )
     assert "expected_collected_count = 30" in postcondition
-    assert "expected_collectible_count = 39" in postcondition
+    assert "expected_collectible_count = 93" in postcondition
     assert 'count_widget.property("collectedCount")' in postcondition
     assert 'count_widget.property("collectibleCount")' in postcondition
 
@@ -1394,7 +1394,7 @@ def test_selected_plant_capture_runs_matrix_without_expanding_registry() -> None
     assert '"bottom-right"' in matrix_source
     assert "for toast_visible in (False, True)" in matrix_source
     assert "expected_case_count" in matrix_source
-    assert len(REGISTRY.profile_labels("full")) == 34
+    assert len(REGISTRY.profile_labels("full")) == 38
     assert "selected-plant-nurtured" in REGISTRY.profile_labels("full")
 
 

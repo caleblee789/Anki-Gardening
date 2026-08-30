@@ -13,7 +13,7 @@ from ..growth import GROWTH_STAGES, stage_presentation
 MAX_SYNC_SUMMARY_ROWS = 256
 MAX_SYNC_SUMMARY_DAYS = 366
 MAX_SYNC_SUMMARY_TEXT = 240
-SYNC_REWARD_MODEL_VERSION = 2
+SYNC_REWARD_MODEL_VERSION = 3
 
 
 def _text(value: Any, *, limit: int = MAX_SYNC_SUMMARY_TEXT) -> str:
@@ -344,6 +344,9 @@ class SyncRewardSummary:
     progression_events: tuple[dict[str, Any], ...] = ()
     all_clear_earned: bool = False
     all_clear_coin_reward: int = 0
+    fertilizer_cards_remaining: int = 0
+    # Compatibility-only projection for pre-2.2.0 retained receipts. New
+    # summaries always commit card-counted Fertilizer value above.
     fertilizer_remaining_seconds: int = 0
     fertilizer_state_changed: bool = False
     fertilizer_item_id: str = ""
@@ -354,6 +357,9 @@ class SyncRewardSummary:
     booster_art_asset: str = ""
     source_batch_ids: tuple[str, ...] = ()
     additional_answer_count: int = 0
+    # Appended for positional compatibility with retained v1/v2 callers.
+    # Older persisted receipts omit this field and load it as zero.
+    landmark_growth_delta_units: int = 0
 
     @property
     def first_anki_day(self) -> str:
@@ -369,6 +375,7 @@ class SyncRewardSummary:
             self.eligible_answer_count > 0
             and (
                 self.growth_total_units > 0
+                or self.landmark_growth_delta_units > 0
                 or self.garden_coin_delta > 0
                 or self.finds
                 or self.environment_discoveries
@@ -390,7 +397,7 @@ class SyncRewardSummary:
 
     @property
     def grouped_plant_results(self) -> tuple[SyncPlantResult, ...]:
-        """Return canonical plant-grouped presentation data for v1 or v2 receipts."""
+        """Return canonical plant-grouped presentation data for retained receipts."""
 
         results = self.plant_results or _group_legacy_plant_results(
             self.plant_growth,
@@ -413,6 +420,7 @@ class SyncRewardSummary:
             "plant_growth": [dict(item) for item in self.plant_growth],
             "shared_growth_delta_units": self.shared_growth_delta_units,
             "stored_growth_delta_units": self.stored_growth_delta_units,
+            "landmark_growth_delta_units": self.landmark_growth_delta_units,
             "garden_coin_delta": self.garden_coin_delta,
             "finds": [dict(item) for item in self.finds],
             "environment_discoveries": [
@@ -421,6 +429,7 @@ class SyncRewardSummary:
             "progression_events": [dict(item) for item in self.progression_events],
             "all_clear_earned": self.all_clear_earned,
             "all_clear_coin_reward": self.all_clear_coin_reward,
+            "fertilizer_cards_remaining": self.fertilizer_cards_remaining,
             "fertilizer_remaining_seconds": self.fertilizer_remaining_seconds,
             "fertilizer_state_changed": self.fertilizer_state_changed,
             "fertilizer_item_id": self.fertilizer_item_id,
@@ -482,12 +491,18 @@ class SyncRewardSummary:
             stored_growth_delta_units=_nonnegative(
                 raw.get("stored_growth_delta_units")
             ),
+            landmark_growth_delta_units=_nonnegative(
+                raw.get("landmark_growth_delta_units")
+            ),
             garden_coin_delta=_nonnegative(raw.get("garden_coin_delta")),
             finds=_records(raw.get("finds")),
             environment_discoveries=_records(raw.get("environment_discoveries")),
             progression_events=_records(raw.get("progression_events")),
             all_clear_earned=bool(raw.get("all_clear_earned", False)),
             all_clear_coin_reward=_nonnegative(raw.get("all_clear_coin_reward")),
+            fertilizer_cards_remaining=_nonnegative(
+                raw.get("fertilizer_cards_remaining")
+            ),
             fertilizer_remaining_seconds=_nonnegative(
                 raw.get("fertilizer_remaining_seconds")
             ),
@@ -538,6 +553,10 @@ class SyncRewardSummary:
             stored_growth_delta_units=(
                 self.stored_growth_delta_units + newer.stored_growth_delta_units
             ),
+            landmark_growth_delta_units=(
+                self.landmark_growth_delta_units
+                + newer.landmark_growth_delta_units
+            ),
             garden_coin_delta=self.garden_coin_delta + newer.garden_coin_delta,
             finds=finds,
             environment_discoveries=environments,
@@ -545,6 +564,11 @@ class SyncRewardSummary:
             all_clear_earned=self.all_clear_earned or newer.all_clear_earned,
             all_clear_coin_reward=(
                 self.all_clear_coin_reward + newer.all_clear_coin_reward
+            ),
+            fertilizer_cards_remaining=(
+                newer.fertilizer_cards_remaining
+                if newer.fertilizer_state_changed
+                else self.fertilizer_cards_remaining
             ),
             fertilizer_remaining_seconds=(
                 newer.fertilizer_remaining_seconds

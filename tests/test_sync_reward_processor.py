@@ -26,6 +26,8 @@ def _result(
     scheduler_day: str,
     before_units: int,
     after_units: int,
+    landmark_before_units: int = 0,
+    landmark_after_units: int = 0,
     receipts: tuple[RewardReceipt, ...] = (),
 ) -> CommittedAnswerResult:
     before = CommittedPlantSnapshot(
@@ -59,11 +61,20 @@ def _result(
             0,
             0,
             correlation_id=event_id,
-            base_growth_units=max(0, after_units - before_units),
+            base_growth_units=max(
+                0,
+                (after_units - before_units)
+                + (landmark_after_units - landmark_before_units),
+            ),
+            landmark_growth_units=max(
+                0, landmark_after_units - landmark_before_units
+            ),
         ),
         reward_receipts=receipts,
         plants_before=(before,),
         plants_after=(after,),
+        landmark_growth_before_units=landmark_before_units,
+        landmark_growth_after_units=landmark_after_units,
         active_plant_before_id="bluebell",
         active_plant_after_id="bluebell",
     )
@@ -165,7 +176,34 @@ def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id(
     assert summary.plant_growth[0]["growth_delta_units"] == 2_000
     assert summary.plant_results[0].plant_id == "bluebell"
     assert summary.plant_results[0].growth_delta_units == 2_000
-    assert summary.to_dict()["model_version"] == 2
+    assert summary.to_dict()["model_version"] == 3
+
+
+def test_landmark_only_import_preserves_total_growth_and_allocation() -> None:
+    result = _result(
+        event_id="answer:300",
+        scheduler_day=CURRENT_DAY,
+        before_units=3_500_000,
+        after_units=3_500_000,
+        landmark_before_units=25_000,
+        landmark_after_units=26_000,
+    )
+
+    summary = build_sync_reward_summary(
+        "sync-landmark-only",
+        (result,),
+        baseline={},
+        engine=SimpleNamespace(_scheduler_day=lambda: CURRENT_DAY),
+    )
+
+    assert summary is not None
+    assert summary.eligible_answer_count == 1
+    assert summary.plant_results == ()
+    assert summary.plant_growth == ()
+    assert summary.stored_growth_delta_units == 0
+    assert summary.landmark_growth_delta_units == 1_000
+    assert summary.growth_total_units == 1_000
+    assert summary.meaningful is True
 
 
 def test_sync_named_find_replaces_legacy_category_icon_with_canonical_art() -> None:
@@ -217,7 +255,7 @@ def test_sync_active_boosts_keep_canonical_item_art_in_pending_summary() -> None
         _scheduler_day=lambda: CURRENT_DAY,
         sync_reward_baseline=lambda: {
             "fertilizer_signature": ("quality-after",),
-            "fertilizer_remaining_seconds": 1_080,
+            "fertilizer_cards_remaining": 90,
             "fertilizer_item_id": "fertilizer_quality",
             "booster_signature": ("booster-after",),
             "booster_cards_remaining": 12,
@@ -243,6 +281,8 @@ def test_sync_active_boosts_keep_canonical_item_art_in_pending_summary() -> None
 
     assert summary is not None
     assert summary.fertilizer_item_id == "fertilizer_quality"
+    assert summary.fertilizer_cards_remaining == 90
+    assert summary.fertilizer_remaining_seconds == 0
     assert summary.fertilizer_art_asset == "/art/fertilizer_quality.webp"
     assert summary.booster_item_id == "booster_potion"
     assert summary.booster_art_asset == "/art/booster_potion.webp"

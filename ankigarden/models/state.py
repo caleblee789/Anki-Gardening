@@ -27,7 +27,7 @@ from ..growth import (
 from ..purchases import CompletedPurchaseRequest
 from .sync_reward import SyncRewardSummary
 
-STATE_VERSION = 25
+STATE_VERSION = 26
 
 
 class GardenFeatureIdList(list[str]):
@@ -89,6 +89,20 @@ ONBOARDING_PROGRESS_VERSION = 1
 GROWTH_UNITS_PER_POINT = 100
 GARDEN_FEATURE_TYPES = set(GARDEN_FEATURE_CATALOG)
 WEATHER_TYPES = GARDEN_FEATURE_TYPES
+COSMETIC_DISPLAY_IDS = frozenset({
+    "garden_bench",
+    "birdhouse",
+    "butterfly_house",
+    "stone_lantern",
+    "sundial",
+    "botanists_plaque",
+    "garden_journal",
+    "golden_trowel",
+})
+DECORATION_DISPLAY_IDS = frozenset({
+    *GARDEN_FEATURE_CATALOG,
+    *COSMETIC_DISPLAY_IDS,
+})
 CURRENT_CATALOG_SPECIES_ORDER = (
     "bonsai",
     "rose",
@@ -145,11 +159,30 @@ DAILY_COMPLETION_STATUSES = frozenset({
 ENVIRONMENT_PITY_TIERS = ("rare", "very_rare", "ultra")
 STAGE_CHECKPOINT_PERCENTAGES = (25, 50, 75)
 MAX_CARD_EFFECT_BATCHES = 5
+MAX_ECONOMY_MIGRATION_GRANTS = 64
+GARDEN_RHYTHM_PERCENTAGES = frozenset({0, 2, 4, 6, 8, 10})
+GARDEN_PROJECT_IDS = (
+    "mossy_stone_path",
+    "birdbath_terrace",
+    "lily_pond",
+    "wooden_footbridge",
+    "garden_pergola",
+    "glasshouse_conservatory",
+)
+GARDEN_PROJECT_GROWTH_COST_UNITS = {
+    "mossy_stone_path": 2_500_000,
+    "birdbath_terrace": 7_500_000,
+    "lily_pond": 17_500_000,
+    "wooden_footbridge": 35_000_000,
+    "garden_pergola": 65_000_000,
+    "glasshouse_conservatory": 120_000_000,
+}
+CULTIVATION_MASTERY_RANKS = ("bronze", "silver", "gold", "iridescent")
 CARD_EFFECT_SPECS = {
     "fertilizer_basic": (100, 100, 100),
-    "fertilizer_quality": (200, 150, 150),
-    "fertilizer_premium": (300, 250, 250),
-    "booster_potion": (500, 100, 135),
+    "fertilizer_quality": (200, 200, 200),
+    "fertilizer_premium": (300, 400, 400),
+    "booster_potion": (500, 100, 125),
 }
 
 logger = logging.getLogger(__name__)
@@ -212,6 +245,134 @@ class CardEffectBatch:
     remaining_cards: int
     activated_at: str = ""
     source_event_key: str = ""
+
+
+@dataclass
+class CardEffectQueue:
+    """Card-counted effects attached to one plant.
+
+    Fertilizer batches are consumed in list order. Booster has one additive
+    remaining-card counter, so stacking cannot create a second ordering
+    authority.
+    """
+
+    fertilizer_batches: List[CardEffectBatch] = field(default_factory=list)
+    booster_remaining_cards: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fertilizer_batches": [
+                batch.__dict__ for batch in self.fertilizer_batches
+            ],
+            "booster_remaining_cards": max(0, int(self.booster_remaining_cards)),
+        }
+
+
+@dataclass(frozen=True)
+class DailyEconomySnapshot:
+    """Immutable mechanical choices captured by the first eligible answer."""
+
+    anki_day: str
+    garden_rhythm_percent: int = 0
+    active_garden_bonus_id: str = DEFAULT_GARDEN_FEATURE_ID
+    active_scenery_effect_id: str = DEFAULT_SCENERY_ID
+    snapshot_source: str = ""
+    snapshot_id: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "anki_day": self.anki_day,
+            "garden_rhythm_percent": self.garden_rhythm_percent,
+            "active_garden_bonus_id": self.active_garden_bonus_id,
+            "active_scenery_effect_id": self.active_scenery_effect_id,
+            "snapshot_source": self.snapshot_source,
+            "snapshot_id": self.snapshot_id,
+        }
+
+
+@dataclass
+class GardenProjectState:
+    selected_project_id: str = ""
+    contributed_growth_units: int = 0
+    ready_to_complete: bool = False
+    completed_project_ids: List[str] = field(default_factory=list)
+    displayed_project_id: str = ""
+    auto_contribute: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "selected_project_id": self.selected_project_id,
+            "contributed_growth_units": max(0, int(self.contributed_growth_units)),
+            "ready_to_complete": bool(self.ready_to_complete),
+            "completed_project_ids": list(self.completed_project_ids),
+            "displayed_project_id": self.displayed_project_id,
+            "auto_contribute": bool(self.auto_contribute),
+        }
+
+
+@dataclass
+class CultivationMasteryState:
+    highest_rank_by_species: Dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"highest_rank_by_species": dict(self.highest_rank_by_species)}
+
+
+@dataclass
+class LifetimeEconomyAggregates:
+    """Fast state projection of the rebuildable permanent economy ledger.
+
+    All Growth values are exact hundredth-Growth integer units.
+    """
+
+    coins_earned_by_source: Dict[str, int] = field(default_factory=dict)
+    coins_spent_by_sink: Dict[str, int] = field(default_factory=dict)
+    growth_earned_by_source: Dict[str, int] = field(default_factory=dict)
+    growth_spent_on_landmarks: int = 0
+    growth_spent_on_mastery: int = 0
+    finds_by_outcome: Dict[str, int] = field(default_factory=dict)
+    environment_discoveries: Dict[str, int] = field(default_factory=dict)
+    consumables_earned: Dict[str, int] = field(default_factory=dict)
+    consumables_used: Dict[str, int] = field(default_factory=dict)
+    plants_completed: int = 0
+    today_cards_completions: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "coins_earned_by_source": dict(self.coins_earned_by_source),
+            "coins_spent_by_sink": dict(self.coins_spent_by_sink),
+            "growth_earned_by_source": dict(self.growth_earned_by_source),
+            "growth_spent_on_landmarks": max(
+                0, int(self.growth_spent_on_landmarks)
+            ),
+            "growth_spent_on_mastery": max(0, int(self.growth_spent_on_mastery)),
+            "finds_by_outcome": dict(self.finds_by_outcome),
+            "environment_discoveries": dict(self.environment_discoveries),
+            "consumables_earned": dict(self.consumables_earned),
+            "consumables_used": dict(self.consumables_used),
+            "plants_completed": max(0, int(self.plants_completed)),
+            "today_cards_completions": max(
+                0, int(self.today_cards_completions)
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class PendingEconomyMigrationGrant:
+    """Deterministic grant awaiting the SQLite migration transaction."""
+
+    event_key: str
+    coins: int
+    reason: str
+    source_id: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event_key": self.event_key,
+            "coins": self.coins,
+            "reason": self.reason,
+            "source_id": self.source_id,
+        }
 
 
 @dataclass
@@ -343,6 +504,7 @@ class Plant:
     fertilizer_card_queue: List[CardEffectBatch] = field(default_factory=list)
     booster_card_batches: List[CardEffectBatch] = field(default_factory=list)
     booster_card_queue: List[CardEffectBatch] = field(default_factory=list)
+    card_effect_queue: CardEffectQueue = field(default_factory=CardEffectQueue)
 
     @property
     def growth_units(self) -> int:
@@ -790,11 +952,12 @@ class OnboardingProgress:
 
 @dataclass(init=False)
 class GardenLoadoutState:
-    """Persisted cosmetic selection and pre-lock Garden Bonus selection."""
+    """Independent cosmetic display and mechanical-effect selections."""
 
-    displayed_garden_feature_id: str = DEFAULT_GARDEN_FEATURE_ID
-    active_bonus_garden_feature_id: str = DEFAULT_GARDEN_FEATURE_ID
-    scenery_id: str = DEFAULT_SCENERY_ID
+    display_decoration_id: str = DEFAULT_GARDEN_FEATURE_ID
+    active_garden_bonus_id: str = DEFAULT_GARDEN_FEATURE_ID
+    display_scenery_id: str = DEFAULT_SCENERY_ID
+    active_scenery_effect_id: str = DEFAULT_SCENERY_ID
     visibility: Dict[str, bool] = field(default_factory=lambda: {
         "garden_feature": True,
         "scenery": True,
@@ -809,21 +972,39 @@ class GardenLoadoutState:
         visibility: Dict[str, bool] | None = None,
         *,
         weather_id: str | None = None,
+        display_decoration_id: str | None = None,
+        active_garden_bonus_id: str | None = None,
+        display_scenery_id: str | None = None,
+        active_scenery_effect_id: str | None = None,
     ) -> None:
         legacy_feature = canonical_garden_feature_id(
             weather_id if weather_id is not None else garden_feature_id
         ) or DEFAULT_GARDEN_FEATURE_ID
-        self.displayed_garden_feature_id = canonical_garden_feature_id(
-            displayed_garden_feature_id
+        self.display_decoration_id = canonical_garden_feature_id(
+            display_decoration_id
+            if display_decoration_id is not None
+            else displayed_garden_feature_id
             if displayed_garden_feature_id is not None
             else legacy_feature
         ) or DEFAULT_GARDEN_FEATURE_ID
-        self.active_bonus_garden_feature_id = canonical_garden_feature_id(
-            active_bonus_garden_feature_id
+        self.active_garden_bonus_id = canonical_garden_feature_id(
+            active_garden_bonus_id
+            if active_garden_bonus_id is not None
+            else active_bonus_garden_feature_id
             if active_bonus_garden_feature_id is not None
             else legacy_feature
         ) or DEFAULT_GARDEN_FEATURE_ID
-        self.scenery_id = str(scenery_id)
+        legacy_scenery = str(scenery_id or DEFAULT_SCENERY_ID)
+        self.display_scenery_id = str(
+            display_scenery_id
+            if display_scenery_id is not None
+            else legacy_scenery
+        )
+        self.active_scenery_effect_id = str(
+            active_scenery_effect_id
+            if active_scenery_effect_id is not None
+            else legacy_scenery
+        )
         raw_visibility = dict(visibility or {})
         self.visibility = {
             "garden_feature": bool(
@@ -837,9 +1018,10 @@ class GardenLoadoutState:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "displayed_garden_feature_id": self.displayed_garden_feature_id,
-            "active_bonus_garden_feature_id": self.active_bonus_garden_feature_id,
-            "scenery_id": self.scenery_id,
+            "display_decoration_id": self.display_decoration_id,
+            "active_garden_bonus_id": self.active_garden_bonus_id,
+            "display_scenery_id": self.display_scenery_id,
+            "active_scenery_effect_id": self.active_scenery_effect_id,
             "visibility": {
                 "garden_feature": bool(self.visibility.get("garden_feature", True)),
                 "scenery": bool(self.visibility.get("scenery", True)),
@@ -848,21 +1030,47 @@ class GardenLoadoutState:
 
     @property
     def weather_id(self) -> str:
-        return self.active_bonus_garden_feature_id
+        return self.active_garden_bonus_id
 
     @weather_id.setter
     def weather_id(self, value: str) -> None:
-        self.active_bonus_garden_feature_id = canonical_garden_feature_id(value)
+        self.active_garden_bonus_id = canonical_garden_feature_id(value)
 
     @property
     def garden_feature_id(self) -> str:
         """Compatibility alias for the mechanical Garden Bonus selection."""
 
-        return self.active_bonus_garden_feature_id
+        return self.active_garden_bonus_id
 
     @garden_feature_id.setter
     def garden_feature_id(self, value: str) -> None:
-        self.active_bonus_garden_feature_id = canonical_garden_feature_id(value)
+        self.active_garden_bonus_id = canonical_garden_feature_id(value)
+
+    @property
+    def displayed_garden_feature_id(self) -> str:
+        return self.display_decoration_id
+
+    @displayed_garden_feature_id.setter
+    def displayed_garden_feature_id(self, value: str) -> None:
+        self.display_decoration_id = canonical_garden_feature_id(value)
+
+    @property
+    def active_bonus_garden_feature_id(self) -> str:
+        return self.active_garden_bonus_id
+
+    @active_bonus_garden_feature_id.setter
+    def active_bonus_garden_feature_id(self, value: str) -> None:
+        self.active_garden_bonus_id = canonical_garden_feature_id(value)
+
+    @property
+    def scenery_id(self) -> str:
+        """Compatibility alias for the cosmetic Scenery selection."""
+
+        return self.display_scenery_id
+
+    @scenery_id.setter
+    def scenery_id(self, value: str) -> None:
+        self.display_scenery_id = str(value)
 
 
 @dataclass
@@ -875,6 +1083,7 @@ class GardenState:
     total_correct: int = 0
     total_wrong: int = 0
     unlocked_slots: int = 2
+    earned_bed_unlocks: List[int] = field(default_factory=list)
     unlocked_species: List[str] = field(default_factory=list)
     starter_selection_complete: bool = False
     onboarding: OnboardingProgress = field(default_factory=OnboardingProgress)
@@ -884,12 +1093,26 @@ class GardenState:
     daily_stats: DailyStats = field(default_factory=DailyStats)
     daily_completion: DailyCompletionState = field(default_factory=DailyCompletionState)
     daily_loadout: DailyLoadoutSchedule = field(default_factory=DailyLoadoutSchedule)
+    daily_economy_snapshot: Optional[DailyEconomySnapshot] = None
     wind_chime_progress: int = 0
     watering_station_progress: int = 0
     firefly_lantern_progress: int = 0
     prism_pending_growth_units: int = 0
     prism_released_anki_day_id: str = ""
+    hourglass_completion_progress: int = 0
+    snow_completion_progress: int = 0
+    full_moon_completion_progress: int = 0
     stored_growth_units: int = 0
+    garden_project: GardenProjectState = field(default_factory=GardenProjectState)
+    cultivation_mastery: CultivationMasteryState = field(
+        default_factory=CultivationMasteryState
+    )
+    lifetime_economy_aggregates: LifetimeEconomyAggregates = field(
+        default_factory=LifetimeEconomyAggregates
+    )
+    pending_economy_migration_grants: List[PendingEconomyMigrationGrant] = field(
+        default_factory=list
+    )
     streak_growth_remainder_units: int = 0
     checkpoint_coin_carry_units: int = 0
     first_daily_completion_reward_claimed: bool = False
@@ -905,6 +1128,9 @@ class GardenState:
     ultra_pity_misses: int = 0
     daily_environment_claims: Dict[str, str] = field(default_factory=dict)
     environment_completion_counts: Dict[str, int] = field(default_factory=dict)
+    environment_completion_pity_misses: Dict[str, int] = field(
+        default_factory=lambda: {tier: 0 for tier in ENVIRONMENT_PITY_TIERS}
+    )
     # Schema-21 reward ownership. Visible histories are bounded, while the
     # event and answer ledgers deliberately are not: pruning either authority
     # would make an old reward or answer eligible again.
@@ -943,6 +1169,7 @@ class GardenState:
         "pots": ["ceramic_minimal"],
         "scenery": [DEFAULT_SCENERY_ID],
         "garden_features": [DEFAULT_GARDEN_FEATURE_ID],
+        "cosmetics": [],
     }))
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
     active_plant_id: Optional[str] = None
@@ -971,9 +1198,14 @@ class GardenState:
                 *(canonical_garden_feature_id(item) for item in canonical_features),
             )))
             self.inventory = InventoryState(source_inventory)
-        # Ignore remnants of the retired standalone prop slot instead of
-        # persisting a dead development-only category.
-        self.inventory.pop("decorations", None)
+        legacy_cosmetics = self.inventory.pop("decorations", [])
+        self.inventory["cosmetics"] = list(dict.fromkeys([
+            *self.inventory.get("cosmetics", []),
+            *(
+                item_id for item_id in legacy_cosmetics
+                if item_id in COSMETIC_DISPLAY_IDS
+            ),
+        ]))
         # A state constructed around an existing collection represents an
         # established garden, even when the caller predates the starter flag.
         if self.plants:
@@ -1061,6 +1293,13 @@ class GardenState:
             "total_correct": self.total_correct,
             "total_wrong": self.total_wrong,
             "unlocked_slots": self.unlocked_slots,
+            "earned_bed_unlocks": sorted({
+                int(bed_number)
+                for bed_number in self.earned_bed_unlocks
+                if isinstance(bed_number, int)
+                and not isinstance(bed_number, bool)
+                and 3 <= bed_number <= MAX_GARDEN_SLOTS
+            }),
             "unlocked_species": list(self.unlocked_species),
             "starter_selection_complete": self.starter_selection_complete,
             "onboarding": self.onboarding.to_dict(),
@@ -1123,12 +1362,39 @@ class GardenState:
             },
             "daily_completion": self.daily_completion.__dict__,
             "daily_loadout": self.daily_loadout.to_dict(),
+            "daily_economy_snapshot": (
+                self.daily_economy_snapshot.to_dict()
+                if self.daily_economy_snapshot is not None
+                else None
+            ),
             "wind_chime_progress": max(0, min(9, int(self.wind_chime_progress))),
             "watering_station_progress": max(0, min(4, int(self.watering_station_progress))),
-            "firefly_lantern_progress": max(0, min(3, int(self.firefly_lantern_progress))),
-            "prism_pending_growth_units": max(0, int(self.prism_pending_growth_units)),
+            "firefly_lantern_progress": max(0, min(4, int(self.firefly_lantern_progress))),
+            "prism_pending_growth_units": max(
+                0, min(30_000, int(self.prism_pending_growth_units))
+            ),
             "prism_released_anki_day_id": str(self.prism_released_anki_day_id or ""),
+            "hourglass_completion_progress": max(
+                0, min(29, int(self.hourglass_completion_progress))
+            ),
+            "snow_completion_progress": max(
+                0, min(1, int(self.snow_completion_progress))
+            ),
+            "full_moon_completion_progress": max(
+                0, min(5, int(self.full_moon_completion_progress))
+            ),
             "stored_growth_units": self.stored_growth_units,
+            "garden_project": self.garden_project.to_dict(),
+            "cultivation_mastery": self.cultivation_mastery.to_dict(),
+            "lifetime_economy_aggregates": (
+                self.lifetime_economy_aggregates.to_dict()
+            ),
+            "pending_economy_migration_grants": [
+                grant.to_dict()
+                for grant in self.pending_economy_migration_grants[
+                    -MAX_ECONOMY_MIGRATION_GRANTS:
+                ]
+            ],
             "streak_growth_remainder_units": self.streak_growth_remainder_units,
             "checkpoint_coin_carry_units": self.checkpoint_coin_carry_units,
             "first_daily_completion_reward_claimed": bool(
@@ -1159,6 +1425,12 @@ class GardenState:
                 str(item_id): max(0, int(count))
                 for item_id, count in self.environment_completion_counts.items()
                 if str(item_id) in SCENERY_CATALOG
+            },
+            "environment_completion_pity_misses": {
+                tier: max(
+                    0, int(self.environment_completion_pity_misses.get(tier, 0))
+                )
+                for tier in ENVIRONMENT_PITY_TIERS
             },
             "reward_state_initialized": bool(self.reward_state_initialized),
             "reward_activation_ms": self.reward_activation_ms,
@@ -1255,6 +1527,9 @@ class GardenState:
         state.daily_loadout = _daily_loadout_schedule(
             data.get("daily_loadout"), issues
         )
+        state.daily_economy_snapshot = _daily_economy_snapshot(
+            data.get("daily_economy_snapshot"), issues
+        )
         state.wind_chime_progress = _bounded_int(
             data.get("wind_chime_progress"), 0, 0, 9, "wind_chime_progress", issues
         )
@@ -1263,20 +1538,60 @@ class GardenState:
             "watering_station_progress", issues
         )
         state.firefly_lantern_progress = _bounded_int(
-            data.get("firefly_lantern_progress"), 0, 0, 3,
+            data.get("firefly_lantern_progress"), 0, 0, 4,
             "firefly_lantern_progress", issues
         )
-        state.prism_pending_growth_units = _nonnegative_int(
-            data.get("prism_pending_growth_units"), 0,
-            "prism_pending_growth_units", issues
+        state.prism_pending_growth_units = _bounded_int(
+            data.get("prism_pending_growth_units"),
+            0,
+            0,
+            30_000,
+            "prism_pending_growth_units",
+            issues,
         )
         raw_prism_day = data.get("prism_released_anki_day_id", "")
         state.prism_released_anki_day_id = (
             _iso_date(raw_prism_day, "", "prism_released_anki_day_id", issues)
             if raw_prism_day not in (None, "") else ""
         )
+        state.hourglass_completion_progress = _bounded_int(
+            data.get("hourglass_completion_progress"),
+            0,
+            0,
+            29,
+            "hourglass_completion_progress",
+            issues,
+        )
+        state.snow_completion_progress = _bounded_int(
+            data.get("snow_completion_progress"),
+            0,
+            0,
+            1,
+            "snow_completion_progress",
+            issues,
+        )
+        state.full_moon_completion_progress = _bounded_int(
+            data.get("full_moon_completion_progress"),
+            0,
+            0,
+            5,
+            "full_moon_completion_progress",
+            issues,
+        )
         state.stored_growth_units = _nonnegative_int(
             data.get("stored_growth_units"), 0, "stored_growth_units", issues
+        )
+        state.garden_project = _garden_project_state(
+            data.get("garden_project"), issues
+        )
+        state.cultivation_mastery = _cultivation_mastery_state(
+            data.get("cultivation_mastery"), issues
+        )
+        state.lifetime_economy_aggregates = _lifetime_economy_aggregates(
+            data.get("lifetime_economy_aggregates"), issues
+        )
+        state.pending_economy_migration_grants = _pending_migration_grants(
+            data.get("pending_economy_migration_grants"), issues
         )
         state.streak_growth_remainder_units = _bounded_int(
             data.get("streak_growth_remainder_units"),
@@ -1305,6 +1620,13 @@ class GardenState:
         state.unlocked_slots = _bounded_int(
             data.get("unlocked_slots"), 2, 2, MAX_GARDEN_SLOTS, "unlocked_slots", issues
         )
+        state.earned_bed_unlocks = _earned_bed_unlocks(
+            data.get("earned_bed_unlocks"), issues
+        )
+        if state.earned_bed_unlocks:
+            state.unlocked_slots = max(
+                state.unlocked_slots, max(state.earned_bed_unlocks)
+            )
         occupied = [plant.slot_index for plant in state.plants if plant.slot_index is not None]
         required_slots = max(occupied, default=1) + 1
         if required_slots > state.unlocked_slots:
@@ -1374,6 +1696,11 @@ class GardenState:
         )
         state.environment_completion_counts = _environment_completion_counts(
             data.get("environment_completion_counts"), issues
+        )
+        state.environment_completion_pity_misses = _environment_pity_misses(
+            data.get("environment_completion_pity_misses"),
+            issues,
+            label="environment_completion_pity_misses",
         )
         initialized = data.get("reward_state_initialized", False)
         if not isinstance(initialized, bool):
@@ -1517,15 +1844,29 @@ class GardenState:
         state.inventory["garden_features"] = [
             item_id for item_id in feature_owned if item_id in GARDEN_FEATURE_CATALOG
         ]
+        state.inventory["cosmetics"] = list(dict.fromkeys(
+            item_id
+            for item_id in state.inventory.get("cosmetics", [])
+            if item_id in COSMETIC_DISPLAY_IDS
+        ))
         if state.selected_background not in state.inventory["scenery"]:
             issues.append("selected_background: repaired to an owned scenery")
             state.selected_background = DEFAULT_SCENERY_ID
         if state.selected_garden_feature not in state.inventory["garden_features"]:
             issues.append("selected_garden_feature: repaired to an owned Garden Decoration")
             state.selected_garden_feature = DEFAULT_GARDEN_FEATURE_ID
-        if state.displayed_garden_feature not in state.inventory["garden_features"]:
+        displayed_is_owned = (
+            state.displayed_garden_feature in state.inventory["garden_features"]
+            or state.displayed_garden_feature in state.inventory["cosmetics"]
+        )
+        if not displayed_is_owned:
             issues.append("displayed_garden_feature: repaired to an owned Garden Decoration")
             state.displayed_garden_feature = DEFAULT_GARDEN_FEATURE_ID
+        if state.loadout.active_scenery_effect_id not in state.inventory["scenery"]:
+            issues.append(
+                "loadout.active_scenery_effect_id: repaired to an owned scenery"
+            )
+            state.loadout.active_scenery_effect_id = DEFAULT_SCENERY_ID
         if (
             state.daily_loadout.garden_feature_id
             and state.daily_loadout.garden_feature_id not in state.inventory["garden_features"]
@@ -1621,6 +1962,7 @@ class GardenState:
 
 
 def _plant_to_dict(plant: Plant) -> dict[str, Any]:
+    card_effect_queue = _plant_card_effect_queue(plant)
     return {
         "plant_id": plant.plant_id,
         "species": plant.species,
@@ -1676,6 +2018,7 @@ def _plant_to_dict(plant: Plant) -> dict[str, Any]:
         "booster_card_queue": [
             batch.__dict__ for batch in plant.booster_card_queue
         ],
+        "card_effect_queue": card_effect_queue.to_dict(),
     }
 
 
@@ -2046,16 +2389,318 @@ def _daily_loadout_schedule(value: Any, issues: list[str]) -> DailyLoadoutSchedu
     )
 
 
-def _environment_pity_misses(value: Any, issues: list[str]) -> dict[str, int]:
+def _daily_economy_snapshot(
+    value: Any,
+    issues: list[str],
+) -> Optional[DailyEconomySnapshot]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        issues.append("daily_economy_snapshot: expected object or null")
+        return None
+    anki_day = _iso_date(
+        value.get("anki_day"), "", "daily_economy_snapshot.anki_day", issues
+    )
+    if not anki_day:
+        return None
+    rhythm = _nonnegative_int(
+        value.get("garden_rhythm_percent"),
+        0,
+        "daily_economy_snapshot.garden_rhythm_percent",
+        issues,
+    )
+    if rhythm not in GARDEN_RHYTHM_PERCENTAGES:
+        issues.append(
+            "daily_economy_snapshot.garden_rhythm_percent: unsupported value"
+        )
+        rhythm = 0
+    garden_bonus = canonical_garden_feature_id(
+        value.get("active_garden_bonus_id")
+    )
+    if garden_bonus not in GARDEN_FEATURE_CATALOG:
+        issues.append(
+            "daily_economy_snapshot.active_garden_bonus_id: unsupported value"
+        )
+        garden_bonus = DEFAULT_GARDEN_FEATURE_ID
+    scenery_effect = value.get("active_scenery_effect_id")
+    if scenery_effect not in SCENERY_CATALOG:
+        issues.append(
+            "daily_economy_snapshot.active_scenery_effect_id: unsupported value"
+        )
+        scenery_effect = DEFAULT_SCENERY_ID
+    source = value.get("snapshot_source", "")
+    snapshot_id = value.get("snapshot_id", "")
+    if not isinstance(source, str) or not source.strip():
+        issues.append("daily_economy_snapshot.snapshot_source: expected string")
+        return None
+    if not isinstance(snapshot_id, str) or not snapshot_id.strip():
+        issues.append("daily_economy_snapshot.snapshot_id: expected string")
+        return None
+    return DailyEconomySnapshot(
+        anki_day=anki_day,
+        garden_rhythm_percent=rhythm,
+        active_garden_bonus_id=str(garden_bonus),
+        active_scenery_effect_id=str(scenery_effect),
+        snapshot_source=source.strip()[:80],
+        snapshot_id=snapshot_id.strip()[:160],
+    )
+
+
+def _garden_project_state(value: Any, issues: list[str]) -> GardenProjectState:
+    if value is None:
+        return GardenProjectState()
+    if not isinstance(value, dict):
+        issues.append("garden_project: expected object")
+        return GardenProjectState()
+    raw_completed = value.get("completed_project_ids", [])
+    completed_candidates = (
+        {item for item in raw_completed if isinstance(item, str)}
+        if isinstance(raw_completed, list)
+        else set()
+    )
+    if not isinstance(raw_completed, list):
+        issues.append("garden_project.completed_project_ids: expected list")
+    completed: list[str] = []
+    for project_id in GARDEN_PROJECT_IDS:
+        if project_id not in completed_candidates:
+            break
+        completed.append(project_id)
+    if completed_candidates.difference(completed):
+        issues.append("garden_project.completed_project_ids: repaired to a prefix")
+    selected = value.get("selected_project_id", "")
+    if not isinstance(selected, str) or selected not in {"", *GARDEN_PROJECT_IDS}:
+        issues.append("garden_project.selected_project_id: unsupported value")
+        selected = ""
+    if selected in completed:
+        selected = ""
+    first_incomplete = next(
+        (item for item in GARDEN_PROJECT_IDS if item not in completed), ""
+    )
+    if selected and selected != first_incomplete:
+        issues.append("garden_project.selected_project_id: repaired to strict order")
+        selected = first_incomplete
+    contributed = _nonnegative_int(
+        value.get("contributed_growth_units"),
+        0,
+        "garden_project.contributed_growth_units",
+        issues,
+    )
+    target = GARDEN_PROJECT_GROWTH_COST_UNITS.get(selected, 0)
+    contributed = min(contributed, target) if target else 0
+    ready = value.get("ready_to_complete", False)
+    if not isinstance(ready, bool):
+        issues.append("garden_project.ready_to_complete: expected bool")
+        ready = False
+    ready = bool(selected and target and contributed >= target)
+    displayed = value.get("displayed_project_id", "")
+    if not isinstance(displayed, str) or displayed not in {"", *GARDEN_PROJECT_IDS}:
+        issues.append("garden_project.displayed_project_id: unsupported value")
+        displayed = ""
+    auto_contribute = value.get("auto_contribute", False)
+    if not isinstance(auto_contribute, bool):
+        issues.append("garden_project.auto_contribute: expected bool")
+        auto_contribute = False
+    return GardenProjectState(
+        selected_project_id=selected,
+        contributed_growth_units=contributed,
+        ready_to_complete=ready,
+        completed_project_ids=completed,
+        displayed_project_id=displayed,
+        auto_contribute=auto_contribute,
+    )
+
+
+def _cultivation_mastery_state(
+    value: Any,
+    issues: list[str],
+) -> CultivationMasteryState:
+    if value is None:
+        return CultivationMasteryState()
+    if not isinstance(value, dict):
+        issues.append("cultivation_mastery: expected object")
+        return CultivationMasteryState()
+    raw = value.get("highest_rank_by_species", {})
+    if not isinstance(raw, dict):
+        issues.append("cultivation_mastery.highest_rank_by_species: expected object")
+        return CultivationMasteryState()
+    result: dict[str, str] = {}
+    for species, rank in raw.items():
+        if species in PLANT_SPECIES and rank in CULTIVATION_MASTERY_RANKS:
+            result[str(species)] = str(rank)
+        else:
+            issues.append(
+                "cultivation_mastery.highest_rank_by_species: unsupported entry"
+            )
+    return CultivationMasteryState(result)
+
+
+def _economy_count_map(
+    value: Any,
+    label: str,
+    issues: list[str],
+) -> dict[str, int]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append(f"{label}: expected object")
+        return {}
+    result: dict[str, int] = {}
+    for raw_key, raw_count in value.items():
+        if not isinstance(raw_key, str) or not raw_key.strip():
+            issues.append(f"{label}: expected nonempty string keys")
+            continue
+        result[raw_key.strip()[:160]] = _nonnegative_int(
+            raw_count, 0, f"{label}.{raw_key}", issues
+        )
+    return result
+
+
+def _lifetime_economy_aggregates(
+    value: Any,
+    issues: list[str],
+) -> LifetimeEconomyAggregates:
+    if value is None:
+        return LifetimeEconomyAggregates()
+    if not isinstance(value, dict):
+        issues.append("lifetime_economy_aggregates: expected object")
+        return LifetimeEconomyAggregates()
+    return LifetimeEconomyAggregates(
+        coins_earned_by_source=_economy_count_map(
+            value.get("coins_earned_by_source"),
+            "lifetime_economy_aggregates.coins_earned_by_source",
+            issues,
+        ),
+        coins_spent_by_sink=_economy_count_map(
+            value.get("coins_spent_by_sink"),
+            "lifetime_economy_aggregates.coins_spent_by_sink",
+            issues,
+        ),
+        growth_earned_by_source=_economy_count_map(
+            value.get("growth_earned_by_source"),
+            "lifetime_economy_aggregates.growth_earned_by_source",
+            issues,
+        ),
+        growth_spent_on_landmarks=_nonnegative_int(
+            value.get("growth_spent_on_landmarks"),
+            0,
+            "lifetime_economy_aggregates.growth_spent_on_landmarks",
+            issues,
+        ),
+        growth_spent_on_mastery=_nonnegative_int(
+            value.get("growth_spent_on_mastery"),
+            0,
+            "lifetime_economy_aggregates.growth_spent_on_mastery",
+            issues,
+        ),
+        finds_by_outcome=_economy_count_map(
+            value.get("finds_by_outcome"),
+            "lifetime_economy_aggregates.finds_by_outcome",
+            issues,
+        ),
+        environment_discoveries=_economy_count_map(
+            value.get("environment_discoveries"),
+            "lifetime_economy_aggregates.environment_discoveries",
+            issues,
+        ),
+        consumables_earned=_economy_count_map(
+            value.get("consumables_earned"),
+            "lifetime_economy_aggregates.consumables_earned",
+            issues,
+        ),
+        consumables_used=_economy_count_map(
+            value.get("consumables_used"),
+            "lifetime_economy_aggregates.consumables_used",
+            issues,
+        ),
+        plants_completed=_nonnegative_int(
+            value.get("plants_completed"),
+            0,
+            "lifetime_economy_aggregates.plants_completed",
+            issues,
+        ),
+        today_cards_completions=_nonnegative_int(
+            value.get("today_cards_completions"),
+            0,
+            "lifetime_economy_aggregates.today_cards_completions",
+            issues,
+        ),
+    )
+
+
+def _pending_migration_grants(
+    value: Any,
+    issues: list[str],
+) -> list[PendingEconomyMigrationGrant]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("pending_economy_migration_grants: expected list")
+        return []
+    result: list[PendingEconomyMigrationGrant] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(value[-MAX_ECONOMY_MIGRATION_GRANTS:]):
+        if not isinstance(raw, dict):
+            continue
+        event_key = raw.get("event_key")
+        reason = raw.get("reason")
+        source_id = raw.get("source_id")
+        coins = raw.get("coins")
+        if (
+            not isinstance(event_key, str)
+            or not event_key.startswith("migration:v26:")
+            or event_key in seen
+            or not isinstance(reason, str)
+            or not reason.strip()
+            or not isinstance(source_id, str)
+            or not source_id.strip()
+            or isinstance(coins, bool)
+            or not isinstance(coins, int)
+            or coins <= 0
+        ):
+            issues.append(
+                f"pending_economy_migration_grants[{index}]: invalid grant"
+            )
+            continue
+        seen.add(event_key)
+        result.append(PendingEconomyMigrationGrant(
+            event_key=event_key,
+            coins=coins,
+            reason=reason.strip()[:240],
+            source_id=source_id.strip()[:160],
+        ))
+    return result
+
+
+def _earned_bed_unlocks(value: Any, issues: list[str]) -> list[int]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("earned_bed_unlocks: expected list")
+        return []
+    return sorted({
+        int(item)
+        for item in value
+        if isinstance(item, int)
+        and not isinstance(item, bool)
+        and 3 <= int(item) <= MAX_GARDEN_SLOTS
+    })
+
+
+def _environment_pity_misses(
+    value: Any,
+    issues: list[str],
+    *,
+    label: str = "environment_pity_misses",
+) -> dict[str, int]:
     result = {tier: 0 for tier in ENVIRONMENT_PITY_TIERS}
     if value is None:
         return result
     if not isinstance(value, dict):
-        issues.append("environment_pity_misses: expected object")
+        issues.append(f"{label}: expected object")
         return result
     for tier in ENVIRONMENT_PITY_TIERS:
         result[tier] = _nonnegative_int(
-            value.get(tier), 0, f"environment_pity_misses.{tier}", issues
+            value.get(tier), 0, f"{label}.{tier}", issues
         )
     return result
 
@@ -2146,6 +2791,47 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             issues=issues,
             limit=max(0, MAX_CARD_EFFECT_BATCHES - len(booster_card_batches)),
         )
+        has_schema26_queue = isinstance(raw.get("card_effect_queue"), dict)
+        card_effect_queue = _card_effect_queue(
+            raw.get("card_effect_queue"),
+            label=f"plants[{index}].card_effect_queue",
+            issues=issues,
+        )
+        if has_schema26_queue:
+            fertilizer_card_batches = list(
+                card_effect_queue.fertilizer_batches[:1]
+            )
+            fertilizer_card_queue = list(
+                card_effect_queue.fertilizer_batches[1:]
+            )
+            # The schema-26 counter is the quantity authority, while the
+            # mirrored batch rows retain activation boundaries needed to
+            # decide whether a late synced answer predates a Potion. Preserve
+            # those rows only when their exact remaining-card total agrees
+            # with the authority; otherwise repair from the counter.
+            compatibility_booster = [
+                *booster_card_batches,
+                *booster_card_queue,
+            ]
+            if sum(
+                batch.remaining_cards for batch in compatibility_booster
+            ) != card_effect_queue.booster_remaining_cards:
+                compatibility_booster = _compatibility_booster_batches(
+                    card_effect_queue.booster_remaining_cards
+                )
+            booster_card_batches = compatibility_booster[:1]
+            booster_card_queue = compatibility_booster[1:]
+        else:
+            card_effect_queue = CardEffectQueue(
+                fertilizer_batches=[
+                    *fertilizer_card_batches,
+                    *fertilizer_card_queue,
+                ],
+                booster_remaining_cards=sum(
+                    batch.remaining_cards
+                    for batch in [*booster_card_batches, *booster_card_queue]
+                ),
+            )
         name_customized = raw.get("name_customized", False)
         if not isinstance(name_customized, bool):
             issues.append(f"plants[{index}].name_customized: expected bool")
@@ -2231,6 +2917,7 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             fertilizer_card_queue=fertilizer_card_queue,
             booster_card_batches=booster_card_batches,
             booster_card_queue=booster_card_queue,
+            card_effect_queue=card_effect_queue,
         ))
         accepted = result[-1]
         if accepted.growth_points >= GROWTH_THRESHOLDS[-1]:
@@ -2375,6 +3062,80 @@ def _card_effect_batches(
             activated_at=str(activated_at),
             source_event_key=source_event_key,
         ))
+    return result
+
+
+def _card_effect_queue(
+    value: Any,
+    *,
+    label: str,
+    issues: list[str],
+) -> CardEffectQueue:
+    if value is None:
+        return CardEffectQueue()
+    if not isinstance(value, dict):
+        issues.append(f"{label}: expected object")
+        return CardEffectQueue()
+    fertilizer_batches = _card_effect_batches(
+        value.get("fertilizer_batches"),
+        family="fertilizer",
+        label=f"{label}.fertilizer_batches",
+        issues=issues,
+    )
+    booster_maximum = (
+        MAX_CARD_EFFECT_BATCHES * CARD_EFFECT_SPECS["booster_potion"][2]
+    )
+    booster_remaining = _bounded_int(
+        value.get("booster_remaining_cards"),
+        0,
+        0,
+        booster_maximum,
+        f"{label}.booster_remaining_cards",
+        issues,
+    )
+    return CardEffectQueue(fertilizer_batches, booster_remaining)
+
+
+def _plant_card_effect_queue(plant: Plant) -> CardEffectQueue:
+    """Project compatibility effect lists into the schema-26 authority."""
+
+    legacy_fertilizer = [
+        *plant.fertilizer_card_batches,
+        *plant.fertilizer_card_queue,
+    ]
+    fertilizer = (
+        legacy_fertilizer
+        if legacy_fertilizer
+        else list(plant.card_effect_queue.fertilizer_batches)
+    )
+    legacy_booster = sum(
+        max(0, int(batch.remaining_cards))
+        for batch in [*plant.booster_card_batches, *plant.booster_card_queue]
+    )
+    booster_remaining = (
+        legacy_booster
+        if legacy_booster
+        else max(0, int(plant.card_effect_queue.booster_remaining_cards))
+    )
+    return CardEffectQueue(
+        fertilizer_batches=list(fertilizer[:MAX_CARD_EFFECT_BATCHES]),
+        booster_remaining_cards=booster_remaining,
+    )
+
+
+def _compatibility_booster_batches(remaining_cards: int) -> list[CardEffectBatch]:
+    remaining = max(0, int(remaining_cards))
+    maximum = CARD_EFFECT_SPECS["booster_potion"][2]
+    result: list[CardEffectBatch] = []
+    while remaining and len(result) < MAX_CARD_EFFECT_BATCHES:
+        cards = min(maximum, remaining)
+        result.append(CardEffectBatch(
+            effect_id="booster_potion",
+            growth_per_card_units=CARD_EFFECT_SPECS["booster_potion"][0],
+            total_cards=cards,
+            remaining_cards=cards,
+        ))
+        remaining -= cards
     return result
 
 
@@ -3192,40 +3953,64 @@ def _garden_loadout(value: Any, issues: list[str]) -> GardenLoadoutState:
     if not isinstance(value, dict):
         issues.append("loadout: expected object")
         return GardenLoadoutState()
-    feature = canonical_garden_feature_id(_string(
+    active_feature = canonical_garden_feature_id(_string(
         value.get(
-            "active_bonus_garden_feature_id",
-            value.get("garden_feature_id", value.get("weather_id")),
+            "active_garden_bonus_id",
+            value.get(
+                "active_bonus_garden_feature_id",
+                value.get("garden_feature_id", value.get("weather_id")),
+            ),
         ),
         DEFAULT_GARDEN_FEATURE_ID,
-        "loadout.garden_feature_id",
+        "loadout.active_garden_bonus_id",
         issues,
     ))
-    scenery = _string(
-        value.get("scenery_id"), DEFAULT_SCENERY_ID, "loadout.scenery_id", issues
+    display_scenery = _string(
+        value.get("display_scenery_id", value.get("scenery_id")),
+        DEFAULT_SCENERY_ID,
+        "loadout.display_scenery_id",
+        issues,
     )
-    if feature not in GARDEN_FEATURE_CATALOG:
-        issues.append(f"loadout.garden_feature_id: unexpected value {feature!r}")
-        feature = DEFAULT_GARDEN_FEATURE_ID
+    active_scenery = _string(
+        value.get("active_scenery_effect_id", value.get("scenery_id")),
+        display_scenery,
+        "loadout.active_scenery_effect_id",
+        issues,
+    )
+    if active_feature not in GARDEN_FEATURE_CATALOG:
+        issues.append(
+            f"loadout.active_garden_bonus_id: unexpected value {active_feature!r}"
+        )
+        active_feature = DEFAULT_GARDEN_FEATURE_ID
     displayed = canonical_garden_feature_id(_string(
-        value.get("displayed_garden_feature_id", feature),
-        feature,
-        "loadout.displayed_garden_feature_id",
+        value.get(
+            "display_decoration_id",
+            value.get("displayed_garden_feature_id", active_feature),
+        ),
+        active_feature,
+        "loadout.display_decoration_id",
         issues,
     ))
-    if displayed not in GARDEN_FEATURE_CATALOG:
+    if displayed not in DECORATION_DISPLAY_IDS:
         issues.append(
-            f"loadout.displayed_garden_feature_id: unexpected value {displayed!r}"
+            f"loadout.display_decoration_id: unexpected value {displayed!r}"
         )
         displayed = DEFAULT_GARDEN_FEATURE_ID
-    if scenery not in SCENERY_CATALOG:
-        issues.append(f"loadout.scenery_id: unexpected value {scenery!r}")
-        scenery = DEFAULT_SCENERY_ID
+    if display_scenery not in SCENERY_CATALOG:
+        issues.append(
+            f"loadout.display_scenery_id: unexpected value {display_scenery!r}"
+        )
+        display_scenery = DEFAULT_SCENERY_ID
+    if active_scenery not in SCENERY_CATALOG:
+        issues.append(
+            f"loadout.active_scenery_effect_id: unexpected value {active_scenery!r}"
+        )
+        active_scenery = DEFAULT_SCENERY_ID
     return GardenLoadoutState(
-        garden_feature_id=feature,
-        displayed_garden_feature_id=displayed,
-        active_bonus_garden_feature_id=feature,
-        scenery_id=scenery,
+        display_decoration_id=displayed,
+        active_garden_bonus_id=active_feature,
+        display_scenery_id=display_scenery,
+        active_scenery_effect_id=active_scenery,
         visibility=_environment_visibility(value.get("visibility"), issues),
     )
 
@@ -3321,13 +4106,10 @@ def _inventory(value: Any, default: dict[str, list[str]], issues: list[str]) -> 
         return default
     result = {key: list(items) for key, items in default.items()}
     for key, raw in value.items():
-        if key == "decorations":
-            # Tolerate schema-23 development saves without retaining the
-            # retired, unreleased standalone prop inventory slot.
-            continue
         normalized_key = (
             "scenery" if key == "backgrounds"
             else "garden_features" if key == "weather"
+            else "cosmetics" if key == "decorations"
             else str(key)
         )
         if isinstance(raw, list):
@@ -3344,6 +4126,11 @@ def _inventory(value: Any, default: dict[str, list[str]], issues: list[str]) -> 
             else:
                 # Preserve extension-owned and historical inventory lists even
                 # when the current Collection has no renderer for them.
+                if normalized_key == "cosmetics":
+                    parsed = [
+                        item_id for item_id in parsed
+                        if item_id in COSMETIC_DISPLAY_IDS
+                    ]
                 result[normalized_key] = parsed
         else:
             issues.append(f"inventory.{key}: expected list")

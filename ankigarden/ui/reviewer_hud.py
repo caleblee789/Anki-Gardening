@@ -371,20 +371,6 @@ def _next_checkpoint(
     return None
 
 
-def _remaining_time_label(seconds: Any) -> str:
-    try:
-        remaining = max(0, int(math.ceil(float(seconds))))
-    except (TypeError, ValueError):
-        remaining = 0
-    if remaining < 60:
-        return "<1m"
-    minutes = math.ceil(remaining / 60)
-    if minutes < 60:
-        return f"{minutes}m"
-    hours, extra_minutes = divmod(minutes, 60)
-    return f"{hours}h" if extra_minutes == 0 else f"{hours}h {extra_minutes}m"
-
-
 def _active_effect_rows(
     engine: Any,
     plant: Any,
@@ -411,21 +397,23 @@ def _active_effect_rows(
         "growth_every_10_plus_1": (
             f"{max(0, int(getattr(state, 'wind_chime_progress', 0) or 0))} / 10 cards to next +1 Growth"
         ),
-        "growth_every_5_plus_1": (
+        "growth_every_5_first_100_plus_1": (
             f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 5 cards to next +1 Growth"
         ),
-        "growth_every_4_plus_3": (
-            f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 4 cards to next +3 Growth"
+        "instant_growth_every_5_plus_3_closest_checkpoint": (
+            f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 5 cards to next +3 Growth"
         ),
-        "completion_coins_plus_5": "+5 Coins when Today’s Cards are complete",
-        "booster_cards_multiplier_1_25": "Booster Potions add 25% more cards",
+        "completion_coins_plus_5": "Today’s Cards Complete · +5 Coins",
+        "hourglass_completion_booster": (
+            f"{max(0, int(getattr(state, 'hourglass_completion_progress', 0) or 0))} / 30 completions to a Booster Potion · activated Potions add 25 cards"
+        ),
         "none": "No mechanical bonus",
     }.get(effect, "")
-    if effect == "prism_bank_per_answer_1_5":
+    if effect == "prism_bank_per_answer_1":
         day = str(getattr(getattr(state, "daily_stats", None), "day", "") or "")
         released = str(getattr(state, "prism_released_anki_day_id", "") or "") == day
         progress_copy = (
-            "+1.5 direct Growth per eligible card · Today’s Prism Harvest released"
+            "+1 Growth banked per eligible card · Today’s Prism bank released"
             if released else
             f"{format_growth_units(getattr(state, 'prism_pending_growth_units', 0))} Growth banked"
         )
@@ -437,39 +425,23 @@ def _active_effect_rows(
         if active_item is not None and progress_copy
         else None
     )
-    current_seconds = (
-        float(time.time())
-        if now_ms is None
-        else max(0, int(now_ms)) / 1_000
+    del now_ms
+    fertilizer_batches = tuple(
+        batch
+        for batch in (getattr(plant, "fertilizer_card_batches", ()) or ())
+        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
     )
-    fertilizer = None
-    queued_fertilizer: tuple[Any, ...] = ()
-    scheduler = getattr(engine, "fertilizer_schedule", None)
-    if callable(scheduler):
-        try:
-            fertilizer, queued_fertilizer = scheduler(plant, now=current_seconds)
-        except Exception:
-            fertilizer, queued_fertilizer = None, ()
-    else:
-        candidate = getattr(plant, "fertilizer", None)
-        if candidate is not None and float(getattr(candidate, "expires_at", 0) or 0) > current_seconds:
-            fertilizer = candidate
-    if fertilizer is not None:
-        tier = str(getattr(fertilizer, "tier", "") or "")
-        effective_end = float(getattr(fertilizer, "expires_at", 0) or 0)
-        for period in queued_fertilizer:
-            if (
-                str(getattr(period, "tier", "") or "") == tier
-                and float(getattr(period, "started_at", 0) or 0) <= effective_end
-            ):
-                effective_end = max(
-                    effective_end,
-                    float(getattr(period, "expires_at", 0) or 0),
-                )
-            else:
-                break
+    if fertilizer_batches:
+        fertilizer = fertilizer_batches[0]
+        effect_id = str(getattr(fertilizer, "effect_id", "") or "")
+        tier = effect_id.removeprefix("fertilizer_")
+        cards = sum(
+            max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+            for batch in fertilizer_batches
+            if str(getattr(batch, "effect_id", "") or "") == effect_id
+        )
         rows.append((
-            f"Fertilizer · {_remaining_time_label(effective_end - current_seconds)}",
+            f"Fertilizer · {plural_cards(cards)}",
             f"fertilizer_{tier}" if tier in {"basic", "quality", "premium"} else "",
         ))
 
@@ -485,7 +457,7 @@ def _active_effect_rows(
         ))
 
     # Garden Decoration and Scenery contributions are active per-card modifiers,
-    # so they precede the derived streak bonus while remaining behind timed
+    # so they precede the derived Garden Rhythm bonus while remaining behind
     # Fertilizer and card-limited Booster effects.
     for label, units in (
         ("Garden decoration", getattr(award, "weather_growth_units", 0)),
@@ -510,7 +482,7 @@ def _active_effect_rows(
     streak_units = max(0, int(getattr(award, "streak_growth_units", 0) or 0))
     if streak_units:
         rows.append((
-            f"Streak bonus · {format_growth_units(streak_units, signed=True)} growth",
+            f"Garden Rhythm · {format_growth_units(streak_units, signed=True)} growth",
             "",
         ))
     if feature_row is not None and effect == "none":
@@ -648,7 +620,7 @@ def project_nurture(
     target = _active_target(engine, state)
     if target is None:
         stored_line = (
-            f"{format_growth_units(stored_units)} growth stored until a plant is selected"
+            f"{format_growth_units(stored_units)} Stored Growth in reserve"
             if stored_units
             else ""
         )
@@ -656,7 +628,11 @@ def project_nurture(
             False,
             stored_growth_line=stored_line,
             empty_heading="No plant selected",
-            empty_message="Growth earned during review will be stored.",
+            empty_message=(
+                "Future review Growth is stored while no plant is selected. "
+                "Your reserve is spent only when you choose a Landmark or "
+                "Cultivation Mastery."
+            ),
         )
 
     total_growth = max(0, int(getattr(target, "growth_points", 0) or 0))

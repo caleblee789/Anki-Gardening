@@ -2,113 +2,82 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.simulate_balance_profiles import (
-    PROFILE_CARDS_PER_DAY,
-    REVIEW_SPEEDS_CARDS_PER_HOUR,
-    simulate_profiles,
-)
+from scripts.simulate_balance_profiles import simulate_profiles
 
 
 @pytest.fixture(scope="module")
-def balance_report():
-    return simulate_profiles()
+def short_report():
+    return simulate_profiles(seeds=2, days=30)
 
 
-def test_365_day_profiles_cover_release_volumes_and_progression_targets(balance_report):
-    assert tuple(profile.cards_per_day for profile in balance_report.profiles) == (
-        PROFILE_CARDS_PER_DAY
+def _stat(report, scenario_id: str, metric_id: str, day: int = 30):
+    return next(
+        row for row in report["statistics"]
+        if row["scenario_id"] == scenario_id
+        and row["metric_id"] == metric_id
+        and row["checkpoint_day"] == day
     )
 
-    for profile in balance_report.profiles:
-        assert profile.cards_completed == profile.cards_per_day * 365
-        assert profile.first_plant_stage_cards["sprout"] <= 50
-        assert profile.first_plant_full_bloom_day is not None
 
-    hundred = next(
-        profile for profile in balance_report.profiles
-        if profile.cards_per_day == 100
-    )
-    assert 30 <= hundred.first_plant_full_bloom_day <= 60
-
-
-def test_standard_find_release_limits_hold_for_every_profile(balance_report):
-    for profile in balance_report.profiles:
-        assert profile.finds.maximum_attempted_card_gap <= 75
-        assert profile.finds.maximum_per_day <= 3
-        assert profile.finds.total == sum(profile.finds.reward_counts.values())
-        assert 0 < profile.finds.average_per_day <= 3
-
-
-def test_coin_sources_purchase_policy_and_completion_share_are_reconciled(balance_report):
-    for profile in balance_report.profiles:
-        assert profile.gross_coins == sum(profile.coins_by_source.values())
-        assert profile.coins_by_source["Today’s Cards"] == 3_650
-        assert 0 < profile.completion_reward_share_percent < 60
-        assert profile.purchase_completion_day["all species"] is not None
-        assert profile.purchase_completion_day["all beds"] is not None
-        assert (
-            profile.purchase_completion_day["purchasable Garden Decorations"]
-            is not None
-        )
-
-    for profile in balance_report.profiles:
-        if profile.cards_per_day >= 100:
-            assert profile.purchase_completion_day["all modeled Coin unlocks"] <= 365
-
-
-def test_consumable_acquisition_use_and_inventory_are_conserved(balance_report):
-    for profile in balance_report.profiles:
-        consumables = profile.consumables
-        for item_id, acquired in consumables.acquired.items():
-            assert acquired == (
-                consumables.used.get(item_id, 0)
-                + consumables.inventory_remaining.get(item_id, 0)
-            )
-        assert all(value >= 0 for value in consumables.effect_cards_remaining.values())
-        assert all(
-            value >= 0
-            for value in consumables.timed_effect_seconds_remaining.values()
-        )
-
-
-def test_six_beds_keep_200_percent_output_until_every_plant_is_complete(balance_report):
-    for profile in balance_report.profiles:
-        six_beds = profile.six_bed_garden
-        assert six_beds.passive_plants_at_start == 5
-        assert six_beds.output_percent_while_growth_available == 200
-        assert six_beds.first_full_bloom_day is not None
-        if profile.cards_per_day >= 50:
-            assert six_beds.plants_in_full_bloom_after_365_days == 6
-            assert six_beds.all_six_full_bloom_day is not None
-
-
-def test_environment_pity_and_random_power_are_bounded_and_visible(balance_report):
-    assert {
-        pity.tier: pity.force_threshold_cards
-        for pity in balance_report.environment_pity
-    } == {
-        "rare_environment": 5_000,
-        "very_rare_environment": 20_000,
-        "ultra_environment": 50_000,
+def test_all_approved_scenarios_run_and_acceptance_assertions_pass(short_report):
+    scenarios = short_report["scenario_matrix"]["scenarios"]
+    assert len(scenarios) == 6 * 11
+    assert {row["case_id"] for row in scenarios} == {
+        "baseline",
+        "incomplete_days",
+        "missed_week",
+        "all_environments",
+        "all_plants_complete",
+        "landmark_mastery",
     }
-    assert max(balance_report.environment_growth_equivalent_at_100_cards.values()) == 200
-    hundred = next(
-        profile for profile in balance_report.profiles
-        if profile.cards_per_day == 100
+    assert all(row["status"] == "pass" for row in short_report["assertions"])
+
+
+def test_no_spend_ledger_reconciles_and_growth_is_exact_integer_units(short_report):
+    scenario_id = "headline:no_spend:baseline"
+    gross = _stat(short_report, scenario_id, "coins.gross")
+    spent = _stat(short_report, scenario_id, "coins.spent")
+    ending = _stat(short_report, scenario_id, "coins.ending")
+    growth = _stat(short_report, scenario_id, "growth.total_units")
+
+    assert spent["min"] == spent["max"] == 0
+    assert gross["mean"] == ending["mean"]
+    assert growth["min"].is_integer()
+    assert growth["max"].is_integer()
+
+
+def test_edge_cases_are_modeled_as_separate_rows(short_report):
+    baseline = _stat(
+        short_report,
+        "headline:collection_first:baseline",
+        "days.studied",
     )
-    assert hundred.maximum_random_environment_advantage_percent <= 20
+    incomplete = _stat(
+        short_report,
+        "headline:collection_first:incomplete_days",
+        "days.completed",
+    )
+    all_environments = _stat(
+        short_report,
+        "headline:optimal_growth:all_environments",
+        "environments.discovered",
+    )
+    all_plants = _stat(
+        short_report,
+        "headline:no_spend:all_plants_complete",
+        "growth.stored_units",
+    )
+
+    assert baseline["mean"] == 30
+    assert incomplete["mean"] == 24
+    assert all_environments["min"] == all_environments["max"] == 6
+    assert all_plants["min"] > 0
 
 
-def test_timed_fertilizer_prices_anchor_to_growth_charges_at_100_cards_per_hour(
-    balance_report,
-):
-    assert REVIEW_SPEEDS_CARDS_PER_HOUR == (30, 100, 300)
-    by_tier = {row.tier: row for row in balance_report.timed_fertilizer_value}
-
-    assert by_tier["Basic"].growth_per_coin_by_speed[100] == pytest.approx(100 / 30)
-    assert by_tier["Quality"].growth_per_coin_by_speed[100] == 4
-    assert by_tier["Magical"].growth_per_coin_by_speed[100] == 4
-
-    for row in by_tier.values():
-        assert row.growth_per_coin_by_speed[30] < row.growth_per_coin_by_speed[100]
-        assert row.growth_per_coin_by_speed[300] > row.growth_per_coin_by_speed[100]
+def test_find_caps_and_guarantee_hold_for_every_scenario(short_report):
+    guarantee_rows = [
+        row for row in short_report["statistics"]
+        if row["metric_id"] == "finds.maximum_attempted_gap"
+    ]
+    assert guarantee_rows
+    assert all(row["max"] <= 75 for row in guarantee_rows)

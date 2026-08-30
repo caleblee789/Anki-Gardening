@@ -3,14 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal
 
+from .balance_catalog import COSMETICS, LANDMARKS, MASTERY_RANKS
 from .environment import GARDEN_FEATURE_CATALOG, GROWTH_CHARGES, SCENERY_CATALOG
 from .garden_finds import (
+    ENVIRONMENT_TIER_COMPLETION_PITY,
     ENVIRONMENT_TIER_RULES,
     SPECIAL_ENVIRONMENT_POOL,
     STANDARD_FIND_REGISTRY,
 )
 from .models.state import CURRENT_CATALOG_SPECIES_ORDER, GROWTH_THRESHOLDS
-from .purchases import EffectDescriptor, compact_duration
+from .purchases import EffectDescriptor
 
 
 CollectibleCategory = Literal[
@@ -19,6 +21,9 @@ CollectibleCategory = Literal[
     "garden_features",
     "garden_beds",
     "growth_items",
+    "cosmetics",
+    "landmarks",
+    "mastery",
 ]
 
 CATEGORY_LABELS: dict[CollectibleCategory, str] = {
@@ -27,6 +32,9 @@ CATEGORY_LABELS: dict[CollectibleCategory, str] = {
     "garden_features": "Garden decorations",
     "garden_beds": "Garden beds",
     "growth_items": "Growth items",
+    "cosmetics": "Display decorations",
+    "landmarks": "Garden Landmark",
+    "mastery": "Cultivation Mastery",
 }
 
 
@@ -92,6 +100,9 @@ class EnvironmentDiscoveryProgress:
     collected_items: int
     total_items: int
     completed: bool
+    hard_guarantee_completions: int = 0
+    progress_completions: int = 0
+    completions_until_guaranteed: int = 0
 
     @property
     def base_chance_text(self) -> str:
@@ -114,10 +125,26 @@ class EnvironmentDiscoveryProgress:
 
     @property
     def guarantee_text(self) -> str:
-        return (
-            f"Next {self.label} discovery guaranteed within "
+        card_text = (
             f"{self.cards_until_guaranteed:,} "
             f"{'card' if self.cards_until_guaranteed == 1 else 'cards'}"
+        )
+        if self.completions_until_guaranteed <= 0:
+            return f"Next {self.label} discovery guaranteed within {card_text}"
+        completion_text = (
+            f"{self.completions_until_guaranteed:,} Today’s Cards "
+            f"{'completion' if self.completions_until_guaranteed == 1 else 'completions'}"
+        )
+        return (
+            f"Next {self.label} discovery guaranteed within {card_text} "
+            f"or {completion_text}, whichever comes first"
+        )
+
+    @property
+    def completion_progress_value_text(self) -> str:
+        return (
+            f"{self.progress_completions:,} of "
+            f"{self.hard_guarantee_completions:,} Today’s Cards completions"
         )
 
     @property
@@ -128,7 +155,7 @@ class EnvironmentDiscoveryProgress:
 _ENVIRONMENT_DISCOVERY_TIERS: tuple[tuple[str, str, str], ...] = (
     ("rare", "rare_environment", "Rare"),
     ("very_rare", "very_rare_environment", "Very Rare"),
-    ("ultra", "ultra_environment", "Ultra"),
+    ("ultra", "ultra_environment", "Ultra Rare"),
 )
 
 
@@ -162,6 +189,13 @@ def environment_discovery_progress(
         if isinstance(getattr(state, "environment_pity_misses", None), dict)
         else {}
     )
+    completion_misses = (
+        state.environment_completion_pity_misses
+        if isinstance(
+            getattr(state, "environment_completion_pity_misses", None), dict
+        )
+        else {}
+    )
     result: list[EnvironmentDiscoveryProgress] = []
     for state_key, drop_tier, label in _ENVIRONMENT_DISCOVERY_TIERS:
         items = tuple(
@@ -187,6 +221,13 @@ def environment_discovery_progress(
             max(0, int(rule.hard_pity_answers) - 1),
         )
         cards_until = max(1, int(rule.hard_pity_answers) - progress_cards)
+        completion_guarantee = max(
+            1, int(ENVIRONMENT_TIER_COMPLETION_PITY[drop_tier])
+        )
+        progress_completions = min(
+            max(0, int(completion_misses.get(state_key, 0) or 0)),
+            completion_guarantee - 1,
+        )
         result.append(EnvironmentDiscoveryProgress(
             tier=state_key,
             label=label,
@@ -197,6 +238,11 @@ def environment_discovery_progress(
             collected_items=collected,
             total_items=len(items),
             completed=completed,
+            hard_guarantee_completions=completion_guarantee,
+            progress_completions=progress_completions,
+            completions_until_guaranteed=max(
+                1, completion_guarantee - progress_completions
+            ),
         ))
     return tuple(result)
 
@@ -255,6 +301,85 @@ def _environment_definitions() -> Iterable[CollectibleDefinition]:
             )
 
 
+def _cosmetic_definitions() -> Iterable[CollectibleDefinition]:
+    for item in COSMETICS:
+        source_id = str(item.cosmetic_id)
+        yield CollectibleDefinition(
+            item_id=f"cosmetics:{source_id}",
+            name=item.display_name,
+            category="cosmetics",
+            rarity="Cosmetic",
+            descriptor=EffectDescriptor(
+                function="Adds an optional Display Decoration appearance.",
+                buff="Cosmetic only. It never changes Growth, Coins, or Finds.",
+                activation_condition="Select it as the displayed decoration after unlocking it.",
+                duration="Stays owned permanently.",
+                stacking="One Display Decoration is shown at a time.",
+                replacement="Changing the artwork never changes the active Garden Bonus.",
+                unlock_requirement=(
+                    f"Buy in the Nursery for {int(item.price_coins):,} Garden Coins."
+                    if item.purchasable and item.price_coins is not None
+                    else "Earn from its cumulative achievement."
+                ),
+            ),
+            source_kind="cosmetic",
+            source_id=source_id,
+        )
+
+
+def _landmark_definitions() -> Iterable[CollectibleDefinition]:
+    for item in LANDMARKS:
+        source_id = str(item.landmark_id)
+        yield CollectibleDefinition(
+            item_id=f"landmarks:{source_id}",
+            name=item.display_name,
+            category="landmarks",
+            rarity="Landmark",
+            descriptor=EffectDescriptor(
+                function="Permanently transforms the shared Garden Landmark anchor.",
+                buff="Cosmetic only. Landmark completion creates no economic multiplier.",
+                activation_condition="Complete each Landmark project in sequence after the first Full Bloom.",
+                duration="Completed appearances remain selectable permanently.",
+                stacking="One completed Landmark appearance is displayed at a time.",
+                replacement="Completing a later tier never removes earlier appearances.",
+                unlock_requirement=(
+                    f"Contribute {item.growth_cost:,} Stored Growth, then "
+                    f"complete it for {item.coin_cost:,} Garden Coins."
+                ),
+            ),
+            source_kind="landmark",
+            source_id=source_id,
+        )
+
+
+def _mastery_definitions() -> Iterable[CollectibleDefinition]:
+    for species in CURRENT_CATALOG_SPECIES_ORDER:
+        species_name = species.replace("_", " ").title()
+        for rank in MASTERY_RANKS:
+            rank_id = str(rank.rank_id)
+            source_id = f"{species}:{rank_id}"
+            yield CollectibleDefinition(
+                item_id=f"mastery:{source_id}",
+                name=f"{species_name} — {rank.display_name} Cultivation",
+                category="mastery",
+                rarity="Mastery",
+                descriptor=EffectDescriptor(
+                    function=f"Unlocks the {rank.display_name} cosmetic mastery treatment for {species_name}.",
+                    buff="Cosmetic only. Mastery never changes Growth, Coins, or Find odds.",
+                    activation_condition="The species must have reached Full Bloom.",
+                    duration="The mastery treatment remains unlocked permanently.",
+                    stacking="Ranks unlock sequentially for each species.",
+                    replacement="A higher rank never repeats normal plant progression rewards.",
+                    unlock_requirement=(
+                        f"Spend {rank.growth_cost:,} Stored Growth and "
+                        f"{rank.coin_cost:,} Garden Coins."
+                    ),
+                ),
+                source_kind="mastery",
+                source_id=source_id,
+            )
+
+
 def collectible_registry() -> tuple[CollectibleDefinition, ...]:
     """Return the complete ordered registry used by Collection categories."""
 
@@ -266,9 +391,12 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
         if reward.inventory_item_id == "fertilizer_basic"
     )
     basic_fertilizer = GardenGameEngine.FERTILIZERS["basic"]
-    basic_duration = compact_duration(basic_fertilizer.duration_seconds)
+    basic_duration = f"{basic_fertilizer.card_count:,} eligible cards"
     plants = tuple(_species_definition(species) for species in CURRENT_CATALOG_SPECIES_ORDER)
     environments = tuple(_environment_definitions())
+    cosmetics = tuple(_cosmetic_definitions())
+    landmarks = tuple(_landmark_definitions())
+    mastery = tuple(_mastery_definitions())
     beds = tuple(
         CollectibleDefinition(
             item_id=f"garden_beds:{index}",
@@ -278,7 +406,7 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
             descriptor=EffectDescriptor(
                 function="Provides one garden location for a collected plant.",
                 buff=(
-                    "Each planted plant adds a 20% Shared Growth share. When a "
+                    "Each planted plant adds a 10% Shared Growth share. When a "
                     "plant reaches Full Bloom, its share is divided among planted "
                     "plants still growing."
                 ),
@@ -286,7 +414,9 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                 duration="Stays unlocked.",
                 stacking="Each unlocked bed adds one location, up to six.",
                 replacement="Replaces nothing.",
-                unlock_requirement="Unlock the next bed in the Nursery.",
+                unlock_requirement=(
+                    "Included." if index < 2 else "Earn from plant progression."
+                ),
             ),
             source_kind="garden_bed",
             source_id=str(index),
@@ -313,8 +443,8 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                     "Use on a nurtured plant that is still growing."
                 ),
                 duration=basic_duration,
-                stacking="Same tier adds time; a different tier waits its turn.",
-                replacement="Remaining paid time is never replaced.",
+                stacking="Same tier adds cards; a different tier waits its turn.",
+                replacement="Remaining paid cards are never replaced.",
                 unlock_requirement="Found while reviewing.",
             ),
             source_kind="growth_item",
@@ -334,11 +464,11 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                     activation_condition=(
                         "Use on a nurtured plant that is still growing."
                     ),
-                    duration=compact_duration(spec.duration_seconds),
+                    duration=f"{spec.card_count:,} eligible cards",
                     stacking=(
-                        "Same tier adds time; a different tier waits its turn."
+                        "Same tier adds cards; a different tier waits its turn."
                     ),
-                    replacement="Remaining paid time is never replaced.",
+                    replacement="Remaining paid cards are never replaced.",
                     unlock_requirement="Buy in the Nursery.",
                 ),
                 source_kind="growth_item",
@@ -369,7 +499,15 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
         )
         for charge in GROWTH_CHARGES.values()
     )
-    return (*plants, *environments, *beds, *growth_items)
+    return (
+        *plants,
+        *environments,
+        *beds,
+        *growth_items,
+        *cosmetics,
+        *landmarks,
+        *mastery,
+    )
 
 
 def collection_categories(
@@ -392,6 +530,17 @@ def collectible_views(state: Any) -> tuple[CollectibleView, ...]:
     owned_species = {
         str(value) for value in getattr(state, "unlocked_species", []) or []
     } | {str(getattr(plant, "species", "")) for plant in plants}
+    loadout = getattr(state, "loadout", None)
+    project = getattr(state, "garden_project", None)
+    completed_landmarks = set(
+        getattr(project, "completed_project_ids", ()) or ()
+    )
+    mastery_state = getattr(state, "cultivation_mastery", None)
+    highest_mastery = dict(
+        getattr(mastery_state, "highest_rank_by_species", {}) or {}
+    )
+    mastery_order = tuple(str(rank.rank_id) for rank in MASTERY_RANKS)
+    landmark_by_id = {str(item.landmark_id): item for item in LANDMARKS}
     views: list[CollectibleView] = []
     for definition in collectible_registry():
         source_id = definition.source_id
@@ -408,11 +557,75 @@ def collectible_views(state: Any) -> tuple[CollectibleView, ...]:
         elif definition.category in {"garden_features", "scenery"}:
             owned = source_id in (inventory.get(definition.category, []) or [])
             equipped_id = (
-                state.loadout.garden_feature_id
+                str(getattr(loadout, "active_garden_bonus_id", "") or "")
                 if definition.category == "garden_features"
-                else state.loadout.scenery_id
+                else str(getattr(loadout, "active_scenery_effect_id", "") or "")
             )
-            views.append(CollectibleView(definition, owned, equipped=equipped_id == source_id))
+            displayed_id = (
+                str(getattr(loadout, "display_decoration_id", "") or "")
+                if definition.category == "garden_features"
+                else str(getattr(loadout, "display_scenery_id", "") or "")
+            )
+            views.append(CollectibleView(
+                definition,
+                owned,
+                equipped=equipped_id == source_id,
+                selected=displayed_id == source_id,
+            ))
+        elif definition.category == "cosmetics":
+            owned = source_id in (inventory.get("cosmetics", []) or [])
+            views.append(CollectibleView(
+                definition,
+                owned,
+                selected=(
+                    str(getattr(loadout, "display_decoration_id", "") or "")
+                    == source_id
+                ),
+                quantity=1 if owned else 0,
+            ))
+        elif definition.category == "landmarks":
+            selected_id = str(
+                getattr(project, "selected_project_id", "") or ""
+            )
+            displayed_id = str(
+                getattr(project, "displayed_project_id", "") or ""
+            )
+            item = landmark_by_id[source_id]
+            current_growth = (
+                max(
+                    0,
+                    int(getattr(project, "contributed_growth_units", 0) or 0),
+                ) // 100
+                if selected_id == source_id else 0
+            )
+            views.append(CollectibleView(
+                definition,
+                source_id in completed_landmarks,
+                equipped=displayed_id == source_id,
+                selected=selected_id == source_id,
+                quantity=1 if source_id in completed_landmarks else 0,
+                progress_current=(
+                    item.growth_cost
+                    if source_id in completed_landmarks else current_growth
+                ),
+                progress_target=item.growth_cost,
+            ))
+        elif definition.category == "mastery":
+            species, _separator, rank_id = source_id.partition(":")
+            target_rank_index = mastery_order.index(rank_id)
+            current_rank = highest_mastery.get(species, "")
+            current_rank_index = (
+                mastery_order.index(current_rank)
+                if current_rank in mastery_order else -1
+            )
+            owned = current_rank_index >= target_rank_index
+            views.append(CollectibleView(
+                definition,
+                owned,
+                quantity=1 if owned else 0,
+                progress_current=max(0, current_rank_index + 1),
+                progress_target=target_rank_index + 1,
+            ))
         elif definition.category == "garden_beds":
             index = int(source_id)
             views.append(CollectibleView(

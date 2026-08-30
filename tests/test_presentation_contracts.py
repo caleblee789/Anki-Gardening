@@ -87,11 +87,11 @@ def test_collection_projection_names_exact_species_and_registry_denominators() -
     assert (
         projection.collection_entries_discovered,
         projection.collection_entries_total,
-    ) == (30, 39)
+    ) == (30, 93)
     assert projection.collection_complete
     assert projection.species_text == "10 of 10 species discovered"
     assert projection.collection_entries_text == (
-        "30 of 39 collection entries discovered"
+        "30 of 93 collection entries discovered"
     )
 
 
@@ -152,8 +152,6 @@ def test_environment_pool_unlock_copy_never_calls_a_discovery_a_standard_find() 
         # is the renderer-neutral projection used by shared item details.
         visible_copy = item.how_to_earn
         projected_copy = item.descriptor.unlock_requirement
-        assert visible_copy == (
-            "Discover through an occasional Garden discovery while reviewing."
-        )
+        assert visible_copy == f"{item.rarity} Garden discovery."
         assert projected_copy == visible_copy
         assert "Standard Find" not in visible_copy

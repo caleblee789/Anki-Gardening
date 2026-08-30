@@ -19,6 +19,7 @@ from .copy import (
     HOME_NO_STARTER_TITLE,
 )
 from .formatters import format_growth, format_status_label
+from .landmark_display import GARDEN_LANDMARK_ANCHOR
 from .state import (
     GardenHomePreview,
     garden_preview_from_values,
@@ -56,6 +57,8 @@ class HomeWidgetData:
     garden_overlay_url: str = ""
     weather_url: str = ""
     garden_feature_pad_url: str = ""
+    landmark_id: str = ""
+    landmark_url: str = ""
     nurtured_marker_url: str = ""
     nurtured_marker_spout_right_url: str = ""
     total_reviews: int = 0
@@ -423,9 +426,11 @@ HOME_WIDGET_STYLE = """
 .ag-home__feature-pad,.ag-home__garden-feature { position:absolute; pointer-events:none; object-fit:contain; z-index:3; }
 .ag-home__feature-pad { left:calc(21.5cqw - 14cqh); top:calc(84.2cqh - 3.5cqh); width:28cqh; height:7cqh; }
 .ag-home__garden-feature { left:calc(21.5cqw - 12.5cqh); top:calc(83cqh - 22cqh); width:25cqh; height:25cqh; }
+.ag-home__landmark { position:absolute; pointer-events:none; object-fit:contain; z-index:5; filter:drop-shadow(0 1.2cqh 1.4cqh rgba(8,18,14,.34)); }
 .ag-home__scene-frame[data-feature-scene='light'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.8cqh rgba(35,48,35,.28)); }
 .ag-home__scene-frame[data-feature-scene='dark'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.9cqh rgba(5,10,10,.48)); }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
+.ag-home__mastery { position:absolute; object-fit:contain; pointer-events:none; animation:none !important; transition:none !important; }
 .ag-home__planter { position:absolute; object-fit:contain; pointer-events:none; }
 .ag-home__planter-fallback { position:absolute; display:none; pointer-events:none; }
 .ag-home__planter-fallback--base::before { content:""; position:absolute; left:10%; top:38%; width:80%; height:42%; border-radius:12% 12% 44% 44%; background:linear-gradient(180deg,rgba(132,124,110,.92),rgba(86,82,75,.96)); }
@@ -837,6 +842,29 @@ def _home_weather_markup(
     )
 
 
+def _home_landmark_markup(
+    data: HomeWidgetData,
+    *,
+    phase: str,
+) -> str:
+    """Render only the completed Landmark appearance chosen in saved state."""
+
+    landmark_id = str(data.landmark_id or "")
+    landmark_url = str(data.landmark_url or "")
+    if phase in {"loading", "error", "disabled"} or not landmark_id or not landmark_url:
+        return ""
+    anchor = GARDEN_LANDMARK_ANCHOR
+    return (
+        '<img class="ag-home__landmark" data-testid="home-garden-landmark" '
+        f'data-landmark="{escape(landmark_id, quote=True)}" '
+        f'data-landmark-anchor="{anchor.identity}" '
+        f'src="{escape(landmark_url, quote=True)}" alt="" aria-hidden="true" '
+        f'style="left:{anchor.left * 100:.3f}%;top:{anchor.top * 100:.3f}%;'
+        f'width:{anchor.width * 100:.3f}%;height:{anchor.height * 100:.3f}%" '
+        'onerror="this.onerror=null;this.style.display=\'none\';">'
+    )
+
+
 def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     DISPLAY_TELEMETRY.track_render("home_widget")
     phase = snapshot.phase
@@ -1159,7 +1187,22 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         else:
             plant = fallback_markup
             tint = ""
-        plant_markup[depth_band].append(shadow + plant + tint)
+        mastery_src = escape(str(item.get("mastery_url", "") or ""), quote=True)
+        mastery_rank = escape(
+            str(item.get("mastery_rank_id", "") or ""),
+            quote=True,
+        )
+        mastery = (
+            f'<img class="ag-home__mastery" data-slot-index="{layout.slot_index}" '
+            f'data-mastery-rank="{mastery_rank}" src="{mastery_src}" alt="" '
+            f'aria-hidden="true" style="left:{layout.draw.x/10:.3f}%;'
+            f'top:{layout.draw.y/4.2:.3f}%;width:{layout.draw.width/10:.3f}%;'
+            f'height:{layout.draw.height/4.2:.3f}%;z-index:{depth_index + 2}" '
+            'onerror="this.onerror=null;this.style.display=\'none\';">'
+            if mastery_src and mastery_rank else
+            ""
+        )
+        plant_markup[depth_band].append(shadow + plant + tint + mastery)
 
     planter_markup: dict[str, dict[str, list[str]]] = {
         band: {"base": [], "foreground": []}
@@ -1269,6 +1312,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         source_width=source_width,
         source_height=source_height,
     )
+    landmark_layer = _home_landmark_markup(data, phase=phase)
     starter_selected = bool(data.starter_selected)
     garden_name_value = str(preview.garden_name or FALLBACK_GARDEN_NAME)
     garden_name = escape(garden_name_value)
@@ -1390,6 +1434,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
       <div class=\"ag-home__scene-frame\"{scenery_identity} data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
         {scenery_layer}
         {weather_layer}
+        {landmark_layer}
         <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
       </div>
     </div>
@@ -1420,6 +1465,7 @@ def build_home_widget_success_data(
     garden_overlay_url: str = "",
     weather_url: str = "",
     garden_feature_pad_url: str = "",
+    landmark_url: str = "",
     nurtured_marker_url: str = "",
     nurtured_marker_spout_right_url: str = "",
     status_notice: str = "",
@@ -1515,9 +1561,19 @@ def build_home_widget_success_data(
         bonus_growth=int(getattr(stats, "bonus_growth", 0)),
         all_due_completed=bool(getattr(stats, "completed_due_cards", False)),
         streak_days=int(state.streak_days),
-        streak_bonus_percent=_streak_bonus_percent(int(state.streak_days)),
-        next_streak_day=_next_streak_day(int(state.streak_days)),
-        next_streak_bonus_percent=_next_streak_bonus(int(state.streak_days)),
+        streak_bonus_percent=max(
+            0,
+            int(
+                getattr(
+                    getattr(state, "daily_economy_snapshot", None),
+                    "garden_rhythm_percent",
+                    0,
+                )
+                or 0
+            ),
+        ),
+        next_streak_day=None,
+        next_streak_bonus_percent=None,
         garden_currency=max(0, int(getattr(state, "currency_balance", 0))),
         weather=str(
             getattr(
@@ -1536,6 +1592,11 @@ def build_home_widget_success_data(
         garden_overlay_url=garden_overlay_url,
         weather_url=weather_url,
         garden_feature_pad_url=garden_feature_pad_url,
+        landmark_id=str(
+            getattr(getattr(state, "garden_project", None), "displayed_project_id", "")
+            or ""
+        ),
+        landmark_url=landmark_url,
         nurtured_marker_url=nurtured_marker_url,
         nurtured_marker_spout_right_url=nurtured_marker_spout_right_url,
         total_reviews=max(0, int(getattr(state, "total_reviews", 0) or 0)),

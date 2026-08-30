@@ -214,12 +214,16 @@ def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
         "standard_finds",
         "shared_growth",
         "stored_growth",
+        "landmark_progress",
         "garden_coins_total",
     ):
         assert key in source
     assert "Direct plant growth" in source
     assert "Shared Growth distributed" in source
     assert "Total applied" in source
+    assert "Garden Landmark progress" in source
+    assert "Overflow Growth committed to the selected Landmark." in source
+    assert "Stored Growth remains available for a future plant." not in source
     assert "Reward breakdown" in source
     assert "Additional to the session subtotal; included in " in source
     assert "Total earned." in source
@@ -248,9 +252,28 @@ def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
     reward_art = _method_source("_reward_art_label", "_rebuild_footer")
     assert 'fallback_icon: str = "find"' in reward_art
     assert "fallback_icon=fallback_icon" in reward_art
-    assert "self._effect_timer.setInterval(30_000)" in source
+    assert "_effect_timer" not in source
     assert "row_widget.setVisible(visible)" in source
     assert "×{max(1, int(quantity)):,}" in source
+
+
+def test_landmark_progress_is_a_first_class_reward_metric():
+    summary = SimpleNamespace(
+        plant_growth_total_units=0,
+        shared_growth_total_units=0,
+        landmark_growth_delta_units=350,
+        garden_coins_total=0,
+        total_finds=0,
+        standard_finds=(),
+    )
+    projection = SimpleNamespace(growth_applied_total_units=0)
+
+    assert SessionSummaryCard._reward_metrics(summary, projection) == ((
+        "landmark_progress",
+        "Landmark",
+        "+3.5",
+        "growth",
+    ),)
 
 
 def test_active_boost_art_maps_every_fertilizer_tier_and_booster() -> None:
@@ -532,20 +555,23 @@ def test_motion_is_one_shot_and_honors_the_resolved_reduced_motion_policy():
     assert 'b"blurRadius"' in highlight_motion
 
 
-def test_effect_remaining_copy_is_live_concise_and_pluralized():
+def test_effect_remaining_copy_is_card_counted_and_pluralized():
     fertilizer = SimpleNamespace(
         kind="fertilizer",
         expires_at_epoch_seconds=10_000,
         remaining_seconds=999,
+        remaining_cards=32,
     )
     assert session_effect_remaining_text(
         fertilizer,
         now_epoch_seconds=8_080,
-    ) == "32 min left"
+    ) == "32 cards left"
+    fertilizer.remaining_cards = 1
     assert session_effect_remaining_text(
         fertilizer,
         now_epoch_seconds=4_480,
-    ) == "1 hr 32 min left"
+    ) == "1 card left"
+    fertilizer.remaining_cards = 0
     assert session_effect_remaining_text(
         fertilizer,
         now_epoch_seconds=10_000,
@@ -558,12 +584,12 @@ def test_effect_remaining_copy_is_live_concise_and_pluralized():
     ) == "38 cards left"
 
 
-def test_active_fertilizer_refreshes_every_30_seconds_and_stops_on_close():
+def test_active_fertilizer_uses_committed_card_counts_without_polling():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     refresh = _method_source("_refresh_active_effects", "_toggle_details")
     close = _method_source("close", "__all__")
-    assert "setInterval(30_000)" in source
+    assert "_effect_timer" not in source
     assert "row_widget.setVisible(visible)" in refresh
     assert "self._active_boosts_section.setVisible(any_visible)" in refresh
-    assert "self._effect_timer.stop()" in refresh
-    assert "self._effect_timer.stop()" in close
+    assert "remaining_cards" in source
+    assert "_effect_timer" not in close

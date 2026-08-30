@@ -758,54 +758,63 @@ class ReviewerHookHandler:
 
     def _effects_snapshot(self, *, at_ms: int | None = None) -> EffectsSnapshot:
         state = getattr(self.storage, "state", None)
-        current_ms = self._session_now_ms() if at_ms is None else max(0, int(at_ms))
-        current_seconds = current_ms / 1_000
+        # Effect value is consumed only by committed eligible cards. Keep the
+        # timestamp parameter for call-site compatibility, but never project
+        # paid value from wall-clock time.
+        del at_ms
         fertilizers: list[FertilizerSnapshot] = []
         boosters: list[BoosterSnapshot] = []
         specs = getattr(self.engine, "FERTILIZERS", {}) or {}
-        scheduler = getattr(self.engine, "fertilizer_schedule", None)
         for plant in tuple(getattr(state, "plants", ()) or ()):
             plant_id = str(getattr(plant, "plant_id", "") or "")
             if not plant_id:
                 continue
             plant_name = str(getattr(plant, "name", "") or "Plant")
-            current = None
-            if callable(scheduler):
-                try:
-                    current, _queued = scheduler(plant, now=current_seconds)
-                except Exception:
-                    current = None
-            else:
-                candidate = getattr(plant, "fertilizer", None)
-                if candidate is not None and float(
-                    getattr(candidate, "expires_at", 0) or 0
-                ) > current_seconds:
-                    current = candidate
-            if current is not None:
-                tier = str(getattr(current, "tier", "") or "")
-                started_at = float(getattr(current, "started_at", 0) or 0)
-                expires_at = float(getattr(current, "expires_at", 0) or 0)
-                remaining = max(0, int(math.ceil(expires_at - current_seconds)))
-                if remaining:
+            active_fertilizers = tuple(
+                getattr(plant, "fertilizer_card_batches", ()) or ()
+            )
+            queued_fertilizers = tuple(
+                getattr(plant, "fertilizer_card_queue", ()) or ()
+            )
+            for lane, batches in (
+                ("active", active_fertilizers),
+                ("queued", queued_fertilizers),
+            ):
+                for index, batch in enumerate(batches):
+                    remaining = max(
+                        0,
+                        int(getattr(batch, "remaining_cards", 0) or 0),
+                    )
+                    if not remaining:
+                        continue
+                    item_id = str(
+                        getattr(batch, "effect_id", "") or "fertilizer_basic"
+                    )
+                    tier = item_id.removeprefix("fertilizer_")
                     spec = specs.get(tier)
                     name = str(
                         getattr(spec, "name", "")
                         or f"{tier.replace('_', ' ').title()} Fertilizer"
                     )
+                    source_id = str(
+                        getattr(batch, "source_event_key", "") or ""
+                    )
                     fertilizers.append(FertilizerSnapshot(
                         effect_id=(
-                            f"fertilizer:{plant_id}:{tier}:"
-                            f"{int(round(started_at * 1_000))}:"
-                            f"{int(round(expires_at * 1_000))}"
+                            f"fertilizer:{plant_id}:{item_id}:{lane}:"
+                            f"{source_id or index}"
                         ),
                         name=name,
-                        remaining_seconds=remaining,
-                        expires_at_epoch_seconds=max(0, int(math.ceil(expires_at))),
+                        remaining_cards=remaining,
                         plant_id=plant_id,
                         plant_name=plant_name,
+                        source_event_id=source_id,
+                        active=lane == "active",
                     ))
 
-            batches = tuple(getattr(plant, "booster_card_batches", ()) or ())
+            batches = tuple(
+                getattr(plant, "booster_card_batches", ()) or ()
+            ) + tuple(getattr(plant, "booster_card_queue", ()) or ())
             remaining_cards = sum(
                 max(0, int(getattr(batch, "remaining_cards", 0) or 0))
                 for batch in batches
@@ -1085,6 +1094,17 @@ class ReviewerHookHandler:
                 if str(getattr(plant, "plant_id", "") or "")
             },
             "stored_units": max(0, int(getattr(state, "stored_growth_units", 0) or 0)),
+            "landmark_units": max(
+                0,
+                int(
+                    getattr(
+                        getattr(state, "garden_project", None),
+                        "contributed_growth_units",
+                        0,
+                    )
+                    or 0
+                ),
+            ),
             "transaction_ids": {
                 self._transaction_identity(item)
                 for item in tuple(getattr(state, "currency_transactions", ()) or ())
@@ -1347,6 +1367,9 @@ class ReviewerHookHandler:
             plant_growth=tuple(plant_growth),
             shared_growth=tuple(shared_growth),
             stored_growth_delta_units=int(result.stored_growth_delta_units),
+            landmark_growth_delta_units=max(
+                0, int(result.landmark_growth_delta_units)
+            ),
             coin_awards=coin_awards,
             standard_finds=standard_finds,
             milestones=tuple(milestones),
@@ -1594,6 +1617,20 @@ class ReviewerHookHandler:
 
         stored_after = max(0, int(getattr(state, "stored_growth_units", 0) or 0))
         stored_before = max(0, int(baseline.get("stored_units", 0) or 0))
+        landmark_after = max(
+            0,
+            int(
+                getattr(
+                    getattr(state, "garden_project", None),
+                    "contributed_growth_units",
+                    0,
+                )
+                or 0
+            ),
+        )
+        landmark_before = max(
+            0, int(baseline.get("landmark_units", 0) or 0)
+        )
         previous_receipt_ids = set(
             baseline.get("reward_receipt_ids", set()) or set()
         )
@@ -1612,6 +1649,9 @@ class ReviewerHookHandler:
             plant_growth=tuple(plant_growth),
             shared_growth=tuple(shared_growth),
             stored_growth_delta_units=stored_after - stored_before,
+            landmark_growth_delta_units=max(
+                0, landmark_after - landmark_before
+            ),
             coin_awards=coin_awards,
             standard_finds=tuple(standard_finds),
             milestones=tuple(milestones),

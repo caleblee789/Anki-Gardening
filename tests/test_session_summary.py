@@ -119,6 +119,7 @@ def _event(
     plant_growth: tuple[PlantGrowthDelta, ...] = (),
     shared_growth: tuple[PlantGrowthDelta, ...] = (),
     stored: int = 0,
+    landmark: int = 0,
     coins: tuple[CoinAward, ...] = (),
     finds: tuple[StandardFind, ...] = (),
     milestones: tuple[PlantMilestone, ...] = (),
@@ -134,6 +135,7 @@ def _event(
         plant_growth=plant_growth,
         shared_growth=shared_growth,
         stored_growth_delta_units=stored,
+        landmark_growth_delta_units=landmark,
         coin_awards=coins,
         standard_finds=finds,
         milestones=milestones,
@@ -220,6 +222,44 @@ def test_accumulator_uses_exact_committed_deltas_and_deduplicates_transactions()
     assert summary.garden_coins_earned == 10
     assert [item.find_id for item in summary.standard_finds] == ["morning_dew"]
     assert summary.growth_applied_total_units == 112_450
+
+
+def test_landmark_progress_flows_through_live_final_and_projection_surfaces():
+    accumulator = _accumulator()
+    assert accumulator.accept_committed(_event(
+        "card:landmark-1",
+        plant_growth=(PlantGrowthDelta("rose", "Rose", 1_000),),
+        shared_growth=(PlantGrowthDelta("bonsai", "Bonsai", 200),),
+        stored=50,
+        landmark=250,
+    ))
+    assert accumulator.accept_committed(_event(
+        "card:landmark-2",
+        landmark=50,
+    ))
+
+    end = SessionEndSnapshot(_today(remaining=18, complete=142, total=160))
+    live = accumulator.live_snapshot(
+        ended_at="2026-08-28T10:30:00Z",
+        end_snapshot=end,
+    )
+    assert live.landmark_growth_delta_units == 300
+    assert live.footer_growth_units == 1_550
+
+    payload = _finish(accumulator, end=end)
+    assert payload is not None
+    summary = payload.segments[0]
+    projection = project_session_day(summary)
+    assert summary.landmark_growth_delta_units == 300
+    assert summary.growth_applied_total_units == 1_200
+    assert projection.landmark_growth_delta_units == 300
+    assert (
+        "landmark_progress",
+        "Landmark progress",
+        "+3",
+    ) in [
+        (row.key, row.label, row.value) for row in projection.result_rows
+    ]
 
 
 def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
@@ -1248,8 +1288,12 @@ def test_legacy_owned_weather_alias_filters_canonical_garden_feature_discovery()
 def test_effect_rows_are_frozen_exit_snapshots_and_exclude_external_new_effects():
     start_effects = EffectsSnapshot(
         fertilizers=(
-            FertilizerSnapshot("fert:quality", "Quality Fertilizer", 3_000),
-            FertilizerSnapshot("fert:ended", "Basic Fertilizer", 42),
+            FertilizerSnapshot(
+                "fert:quality", "Quality Fertilizer", remaining_cards=30
+            ),
+            FertilizerSnapshot(
+                "fert:ended", "Basic Fertilizer", remaining_cards=1
+            ),
         ),
         boosters=(BoosterSnapshot("boost:1", 60),),
     )
@@ -1257,13 +1301,17 @@ def test_effect_rows_are_frozen_exit_snapshots_and_exclude_external_new_effects(
     accumulator.accept_committed(_event("card:1"))
     end_effects = EffectsSnapshot(
         fertilizers=(
-            FertilizerSnapshot("fert:quality", "Quality Fertilizer", 2_520),
             FertilizerSnapshot(
-                "fert:manual", "Magical Fertilizer", 7_200,
+                "fert:quality", "Quality Fertilizer", remaining_cards=25
+            ),
+            FertilizerSnapshot(
+                "fert:manual", "Magical Fertilizer",
+                remaining_cards=72,
                 source_event_id="manual:inventory",
             ),
             FertilizerSnapshot(
-                "fert:earned", "Magical Fertilizer", 7_200,
+                "fert:earned", "Magical Fertilizer",
+                remaining_cards=72,
                 source_event_id="card:1",
             ),
         ),
@@ -1276,8 +1324,8 @@ def test_effect_rows_are_frozen_exit_snapshots_and_exclude_external_new_effects(
     assert payload is not None
     rows = payload.segments[0].effects_remaining
     assert [(row.effect_id, row.value, row.secondary) for row in rows] == [
-        ("fert:earned", "2 hr remaining", ""),
-        ("fert:quality", "42 min remaining", ""),
+        ("fert:earned", "72 cards remaining", ""),
+        ("fert:quality", "25 cards remaining", ""),
         ("boost:1", "31 cards remaining", ""),
     ]
     assert all(not row.ended_during_session for row in rows)
@@ -1403,8 +1451,9 @@ def test_effect_snapshots_follow_full_bloom_transfer_without_false_end():
             _today(remaining=2),
             EffectsSnapshot(
                 fertilizers=(FertilizerSnapshot(
-                    "fert:plant-a", "Quality Fertilizer", 3_600,
+                    "fert:plant-a", "Quality Fertilizer",
                     plant_id="plant-a",
+                    remaining_cards=40,
                 ),),
                 boosters=(BoosterSnapshot(
                     "boost:plant-a", 40,
@@ -1420,8 +1469,9 @@ def test_effect_snapshots_follow_full_bloom_transfer_without_false_end():
             _today(remaining=1),
             EffectsSnapshot(
                 fertilizers=(FertilizerSnapshot(
-                    "fert:plant-b", "Quality Fertilizer", 3_540,
+                    "fert:plant-b", "Quality Fertilizer",
                     plant_id="plant-b",
+                    remaining_cards=39,
                 ),),
                 boosters=(BoosterSnapshot(
                     "boost:plant-b", 39,
@@ -1435,6 +1485,6 @@ def test_effect_snapshots_follow_full_bloom_transfer_without_false_end():
         (row.effect_id, row.value, row.ended_during_session)
         for row in payload.segments[0].effects_remaining
     ] == [
-        ("fert:plant-b", "59 min remaining", False),
+        ("fert:plant-b", "39 cards remaining", False),
         ("boost:plant-b", "39 cards remaining", False),
     ]

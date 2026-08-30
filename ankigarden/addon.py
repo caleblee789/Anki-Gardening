@@ -1436,6 +1436,7 @@ class AnkiGardenApp:
                 garden_overlay_url=self._home_garden_overlay_url(),
                 weather_url=self._home_garden_feature_url(),
                 garden_feature_pad_url=self._home_garden_feature_pad_url(),
+                landmark_url=self._home_landmark_url(),
                 nurtured_marker_url=self._home_nurtured_marker_url(),
                 nurtured_marker_spout_right_url=(
                     self._home_nurtured_marker_spout_right_url()
@@ -1519,6 +1520,24 @@ class AnkiGardenApp:
             except Exception:
                 logger.debug("Anki Garden: unable to resolve home scene plant artwork", exc_info=True)
                 asset = None
+            try:
+                mastery_asset = self.engine.resolve_mastery_asset(plant.species)
+            except Exception:
+                logger.debug(
+                    "Anki Garden: unable to resolve home scene Mastery artwork",
+                    exc_info=True,
+                )
+                mastery_asset = None
+            mastery_state = getattr(
+                self.storage.state,
+                "cultivation_mastery",
+                None,
+            )
+            mastery_ranks = getattr(
+                mastery_state,
+                "highest_rank_by_species",
+                {},
+            )
             item = {
                 "plant_id": plant.plant_id,
                 "slot_index": plant.slot_index,
@@ -1527,6 +1546,16 @@ class AnkiGardenApp:
                 "stage": plant.growth_stage,
                 "is_active": plant.plant_id == self.storage.state.active_plant_id,
                 "url": self._asset_web_url(asset.path) if asset is not None else "",
+                "mastery_rank_id": (
+                    str(mastery_ranks.get(str(plant.species), "") or "")
+                    if isinstance(mastery_ranks, dict)
+                    else ""
+                ),
+                "mastery_url": (
+                    self._asset_web_url(mastery_asset.path)
+                    if mastery_asset is not None else
+                    ""
+                ),
                 "placement": asset.placement.to_dict() if asset is not None else {},
                 "canvas_aspect": (
                     float(asset.metadata.get("width", 1)) / max(1.0, float(asset.metadata.get("height", 1)))
@@ -1596,6 +1625,21 @@ class AnkiGardenApp:
         except Exception:
             logger.debug(
                 "Anki Garden: unable to resolve Home Garden Decoration pad",
+                exc_info=True,
+            )
+            return ""
+        return self._asset_web_url(path)
+
+    def _home_landmark_url(self) -> str:
+        """Resolve the saved completed Garden Landmark for the Home scene."""
+
+        resolver = getattr(self.engine, "resolve_landmark_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = asset.path if asset is not None and hasattr(asset, "path") else None
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to resolve Home Garden Landmark",
                 exc_info=True,
             )
             return ""

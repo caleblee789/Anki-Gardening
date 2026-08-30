@@ -137,6 +137,12 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
         "loadout-preview-scene",
         "loadout-persistence-error",
     ),
+    "landmark-contribution-completion": ("landmark-completed-row",),
+    "mastery-rank-completion": ("mastery-rank-card",),
+    "cosmetic-purchase-display-independent": (
+        "cosmetic-display-preview",
+    ),
+    "earned-bed-unlock-celebration": ("earned-bed-unlock-card",),
 }
 _NO_INFERRED_VALUE = object()
 # These are evidence aliases, not broad duplicate exemptions.  A duplicate hash
@@ -260,7 +266,7 @@ def _load_current_contract_payload(
         ]
         active_ids = {str(row.get("id", "")) for row in active}
         retired_ids = set(payload.get("retired_ids", ()))
-        if len(active) != 34 or payload.get("surface_count") != 34:
+        if len(active) != 38 or payload.get("surface_count") != 38:
             issues.append("compiled v26 contract must contain 34 active surfaces")
         if "nursery-garden-decorations-scenery" not in active_ids:
             issues.append("compiled v26 contract is missing renamed nursery surface")
@@ -280,7 +286,7 @@ def _load_current_contract_payload(
     if isinstance(profiles, dict):
         for profile, expected in {
             "representative": (18, 2),
-            "full": (34, 5),
+            "full": (38, 6),
         }.items():
             raw_profile = profiles.get(profile)
             if not isinstance(raw_profile, dict) or (
@@ -3039,6 +3045,21 @@ def v26_capture_semantic_gate_issue_codes(
             and selected == pending
         ):
             issues.append("first-run-selection-transition-not-passed")
+        economy = (
+            audit.get("starter_economy")
+            if isinstance(audit, dict) else None
+        )
+        if not (
+            isinstance(economy, dict)
+            and economy.get("passed") is True
+            and economy.get("appearance_only_copy")
+            == "Appearance only. Every plant grows at the same rate."
+            and economy.get("appearance_only_copy_visible") is True
+            and economy.get("free_starter") is True
+            and economy.get("nonstarter_price") == 250
+            and economy.get("uniform_nonstarter_prices") is True
+        ):
+            issues.append("starter-economy-not-canonical")
     if str(record.get("label", "")) == "nursery-plants":
         counts = audit if isinstance(audit, dict) else {}
         if not (
@@ -3047,11 +3068,26 @@ def v26_capture_semantic_gate_issue_codes(
             and counts.get("species_copy")
             == "10 of 10 species discovered"
             and counts.get("collection_entries_copy")
-            == "30 of 39 collection entries discovered"
+            == "30 of 93 collection entries discovered"
             and counts.get("species_copy_visible") is True
             and counts.get("collection_entries_copy_visible") is True
         ):
             issues.append("nursery-collection-counts-not-canonical")
+    if str(record.get("label", "")) == "purchase-confirmation-species":
+        uniform_price = (
+            audit.get("species_uniform_price")
+            if isinstance(audit, dict) else None
+        )
+        if not (
+            isinstance(uniform_price, dict)
+            and uniform_price.get("passed") is True
+            and uniform_price.get("item_id") == "sunflower"
+            and uniform_price.get("unit_price") == 250
+            and uniform_price.get("price_copy") == "250 coins"
+            and uniform_price.get("primary_action") == "Buy for 250 coins"
+            and uniform_price.get("all_catalog_prices") == [250]
+        ):
+            issues.append("species-uniform-price-not-canonical")
 
     native_layout = record.get("native_layout_telemetry")
     if (
@@ -3998,15 +4034,15 @@ def growth_charge_rendered_value_issue_codes(
         expected = {
             "variant": "ready",
             "growth_label": "Total Growth",
-            "growth_value": "450 → 550",
+            "growth_value": "350 → 450",
             "inventory_label": "Charges remaining",
             "inventory_value": "2 → 1",
             "stage_badge": "Result: Sprout",
             "stage_badge_accessible": "New stage: Sprout",
             "stage_progress": "50 / 2,000 toward Young",
             "primary_action": "Use 1 charge",
-            "current_growth": 450,
-            "projected_growth": 550,
+            "current_growth": 350,
+            "projected_growth": 450,
             "inventory_before": 2,
             "inventory_after": 1,
             "stage_carryover": 50,
@@ -4024,7 +4060,7 @@ def growth_charge_rendered_value_issue_codes(
             "reward_texts": ["Stage reward", "+2 Garden Coins"],
             "primary_action": "View plant",
             "secondary_action": "Close",
-            "resulting_growth": 550,
+            "resulting_growth": 450,
             "stage_carryover": 50,
             "next_stage_goal": 2_000,
             "inventory_remaining": 1,
@@ -4295,21 +4331,26 @@ def collection_loadout_state_matrix_issue_codes(
 def nursery_bed_incomplete_state_issue_codes(
     evidence: Any,
 ) -> tuple[str, ...]:
-    """Independently validate Surface 23's painted Bed 3 expansion."""
+    """Independently validate Surface 23's earned Bed 3 milestone."""
 
     if not isinstance(evidence, dict):
         return ("missing-nursery-bed-incomplete-state",)
     expected = {
         "unlocked_beds": 2,
         "summary": "2 of 6 beds unlocked",
-        "bed_number": 3,
-        "bed_title": "Unlock Bed 3",
-        "price": 150,
-        "price_copy": "150 Garden Coins",
-        "resulting_capacity": 3,
-        "action_copy": "Unlock for 150 Garden Coins",
-        "action_accessible_name": "Unlock Bed 3 for 150 Garden Coins",
-        "action_enabled": True,
+        "next_bed_number": 3,
+        "next_requirement": "First plant reaches Mature",
+        "guidance": (
+            "Next: Bed 3 · First plant reaches Mature. "
+            "Garden beds are earned through plant progression."
+        ),
+        "purchase_action_present": False,
+        "coin_price_present": False,
+        "endgame_title": "Stored Growth projects",
+        "landmark_copy": "Garden Landmark · Unlocks at first Full Bloom",
+        "mastery_copy": "Cultivation Mastery · 0 species eligible",
+        "endgame_action": "Open Collection",
+        "endgame_painted": True,
         "painted": True,
         "contained": True,
     }
@@ -4317,11 +4358,6 @@ def nursery_bed_incomplete_state_issue_codes(
     for key, expected_value in expected.items():
         if evidence.get(key) != expected_value:
             issues.append(f"nursery-bed-incomplete:{key}")
-    if (
-        "Unlocks Bed 3 and increases Garden capacity to 3 plants."
-        not in str(evidence.get("capacity_copy", ""))
-    ):
-        issues.append("nursery-bed-incomplete:capacity_copy")
     if evidence.get("passed") is not True:
         issues.append("nursery-bed-incomplete-state-not-passed")
     return tuple(dict.fromkeys(issues))
@@ -4524,7 +4560,7 @@ def nursery_supplement_state_matrix_issue_codes(
             "action": "Apply",
             "action_disposition": "apply",
             "meta_copy": (
-                "+1 Growth per eligible card answer · Lasts 1 hour"
+                "+1 Growth per eligible card answer · Lasts 100 cards"
             ),
             "artwork_ref": "rich_compost",
             "artwork_source_matches": True,
@@ -4544,7 +4580,7 @@ def nursery_supplement_state_matrix_issue_codes(
             "status_phase": "active",
             "status_copy": (
                 "Basic Fertilizer · +1 Growth per eligible card answer · "
-                "1 hour left"
+                "100 cards left"
             ),
             "painted": True,
         },
@@ -4562,7 +4598,7 @@ def nursery_supplement_state_matrix_issue_codes(
             "final_quality_action_disposition": "extend",
             "final_quality_painted": True,
             "meta_copy": (
-                "+2 Growth per eligible card answer · Lasts 2 hours"
+                "+2 Growth per eligible card answer · Lasts 200 cards"
             ),
             "painted": True,
         },
@@ -4627,6 +4663,28 @@ def nursery_environment_fixture_issue_codes(evidence: Any) -> tuple[str, ...]:
             "reachable": True,
             "painted": True,
         },
+        "cosmetics": {
+            "heading": "Display decorations",
+            "independence_copy": (
+                "Cosmetic appearance is independent from your active Garden Bonus."
+            ),
+            "prices": {
+                "garden_bench": "150 coins",
+                "birdhouse": "200 coins",
+                "butterfly_house": "250 coins",
+                "stone_lantern": "300 coins",
+                "sundial": "400 coins",
+            },
+            "actions": {
+                "garden_bench": "Buy",
+                "birdhouse": "Buy",
+                "butterfly_house": "Buy",
+                "stone_lantern": "Buy",
+                "sundial": "Buy",
+            },
+            "cosmetic_only": True,
+            "all_painted": True,
+        },
     }
     issues: list[str] = []
     for state, expected_values in expected.items():
@@ -4642,6 +4700,165 @@ def nursery_environment_fixture_issue_codes(evidence: Any) -> tuple[str, ...]:
     if evidence.get("reversible") is not True:
         issues.append("nursery-environment-fixture-reversible")
     return tuple(dict.fromkeys(issues))
+
+
+def landmark_transaction_state_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate the committed Landmark capture transaction."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-landmark-transaction-state",)
+    expected = {
+        "landmark_id": "mossy_stone_path",
+        "display_name": "Mossy Stone Path",
+        "selected_applied": True,
+        "partial_spent_units": 1_000_000,
+        "partial_contributed_units": 1_000_000,
+        "partial_ready": False,
+        "finish_requested_units": 2_000_000,
+        "finish_spent_units": 1_500_000,
+        "ready_contributed_units": 2_500_000,
+        "ready_to_complete": True,
+        "completion_applied": True,
+        "completion_growth_spent_units": 0,
+        "completion_coins_spent": 250,
+        "stored_growth_before_units": 3_000_000,
+        "stored_growth_after_units": 500_000,
+        "coin_balance_before": 300,
+        "coin_balance_after": 50,
+        "completed_landmark_ids": ["mossy_stone_path"],
+        "displayed_landmark_id": "mossy_stone_path",
+        "next_landmark_id": "birdbath_terrace",
+        "feedback_kind": "landmark",
+        "feedback_title": "Mossy Stone Path",
+        "feedback_message": "Garden Landmark completed.",
+        "feedback_asset_category": "landmarks",
+        "feedback_asset_key": "mossy_stone_path",
+        "feedback_visible": True,
+        "landmark_scene_painted": True,
+        "completed_row_name": "Mossy Stone Path",
+        "completed_row_status": "Displayed in Garden",
+        "completed_row_fully_visible": True,
+        "completed_row_painted": True,
+        "replay_idempotent": True,
+        "reversible": True,
+        "painted": True,
+    }
+    return tuple(
+        f"landmark-transaction:{key}"
+        for key, expected_value in expected.items()
+        if evidence.get(key) != expected_value
+    )
+
+
+def mastery_transaction_state_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate the committed Bronze Mastery capture."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-mastery-transaction-state",)
+    expected = {
+        "species_id": "bonsai",
+        "rank_id": "bronze",
+        "applied": True,
+        "growth_spent_units": 2_500_000,
+        "coins_spent": 50,
+        "stored_growth_before_units": 3_000_000,
+        "stored_growth_after_units": 500_000,
+        "coin_balance_before": 100,
+        "coin_balance_after": 50,
+        "highest_rank_by_species": {"bonsai": "bronze"},
+        "next_rank_id": "silver",
+        "visible_rank_copy": "Bonsai · Bronze",
+        "visible_next_action": "Unlock Silver",
+        "visible_next_cost": (
+            "Costs 50,000 Stored Growth and 100 Garden Coins."
+        ),
+        "feedback_kind": "mastery",
+        "feedback_title": "Bonsai Bronze",
+        "feedback_message": "Cultivation Mastery unlocked.",
+        "feedback_asset_category": "mastery",
+        "feedback_asset_key": "bronze",
+        "mastery_artwork_painted": True,
+        "mastery_overlay_painted": True,
+        "replay_idempotent": True,
+        "card_fully_visible": True,
+        "reversible": True,
+        "painted": True,
+    }
+    return tuple(
+        f"mastery-transaction:{key}"
+        for key, expected_value in expected.items()
+        if evidence.get(key) != expected_value
+    )
+
+
+def cosmetic_purchase_display_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate cosmetic purchase and display separation."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-cosmetic-display-transaction",)
+    expected = {
+        "item_id": "garden_bench",
+        "item_name": "Garden Bench",
+        "quoted_price": 150,
+        "amount_spent": 150,
+        "balance_before": 500,
+        "balance_after": 350,
+        "purchase_success": True,
+        "purchase_disposition": "owned_not_equipped",
+        "purchase_equipped": False,
+        "displayed_before_purchase": "seedling_sign",
+        "displayed_after_purchase": "seedling_sign",
+        "display_action_succeeded": True,
+        "displayed_after_action": "garden_bench",
+        "active_bonus_before": "watering_station",
+        "active_bonus_after_purchase": "watering_station",
+        "active_bonus_after_display": "watering_station",
+        "visible_displayed_decoration": "Garden Bench",
+        "visible_active_bonus": "Watering Station",
+        "owned_once": True,
+        "preview_painted": True,
+        "reversible": True,
+        "painted": True,
+    }
+    return tuple(
+        f"cosmetic-display-transaction:{key}"
+        for key, expected_value in expected.items()
+        if evidence.get(key) != expected_value
+    )
+
+
+def earned_bed_unlock_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate the Mature milestone that earns Bed 3."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-earned-bed-unlock-transaction",)
+    expected = {
+        "charge_id": "growth_charge_small",
+        "previous_growth": 5_900,
+        "resulting_growth": 6_000,
+        "previous_stage": "young",
+        "resulting_stage": "mature",
+        "growth_granted": 100,
+        "charge_success": True,
+        "first_canopy_unlocked": True,
+        "earned_bed_unlocks": [3],
+        "unlocked_beds_before": 2,
+        "unlocked_beds_after": 3,
+        "achievement_name": "First Canopy",
+        "reward_summary": "Bed 3 unlocked",
+        "celebration_copy": "First Canopy · Bed 3 unlocked",
+        "celebration_visible": True,
+        "visible_status": "Unlocked",
+        "replay_idempotent": True,
+        "card_fully_visible": True,
+        "reversible": True,
+        "painted": True,
+    }
+    return tuple(
+        f"earned-bed-unlock:{key}"
+        for key, expected_value in expected.items()
+        if evidence.get(key) != expected_value
+    )
 
 
 def appearance_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
@@ -6090,12 +6307,12 @@ def _visual_contract_record_issues(
                 and fertilizer_status.get("summary")
                 == (
                     "+1 Growth per eligible card answer · "
-                    "1 hour remaining"
+                    "100 cards remaining"
                 )
                 and fertilizer_status.get("balance_text") == "Balance: 500"
                 and fertilizer_status.get("balance_icon_present") is True
                 and fertilizer_status.get("extend_text")
-                == "Extend 1h · 30 coins"
+                == "Extend 100 cards · 30 coins"
                 and all(
                     isinstance(fertilizer_status.get(key), list)
                     and len(fertilizer_status[key]) == 4
@@ -6150,6 +6367,35 @@ def _visual_contract_record_issues(
             )
         ):
             reject("required state widgets are absent from captured pixels")
+
+    economy_transaction_contracts = {
+        "landmark-contribution-completion": (
+            "landmark_transaction_state",
+            landmark_transaction_state_issue_codes,
+        ),
+        "mastery-rank-completion": (
+            "mastery_transaction_state",
+            mastery_transaction_state_issue_codes,
+        ),
+        "cosmetic-purchase-display-independent": (
+            "cosmetic_purchase_display_independence",
+            cosmetic_purchase_display_issue_codes,
+        ),
+        "earned-bed-unlock-celebration": (
+            "earned_bed_unlock_celebration",
+            earned_bed_unlock_issue_codes,
+        ),
+    }
+    transaction_contract = economy_transaction_contracts.get(label)
+    if transaction_contract is not None:
+        evidence_key, validator = transaction_contract
+        transaction_evidence = audit_object(evidence_key)
+        transaction_issues = validator(transaction_evidence)
+        if transaction_issues:
+            reject(
+                f"{evidence_key} failed: "
+                + ", ".join(transaction_issues)
+            )
 
     if state_kind == "home":
         compact = audit_object("compact_home_copy")
@@ -6603,6 +6849,16 @@ def _visual_contract_record_issues(
             resilience,
         ):
             reject(f"Reviewer HUD acceptance matrix: {issue}")
+        if label == "reviewer-hud-expanded":
+            rhythm = audit_object("garden_rhythm_effect")
+            if not (
+                rhythm.get("passed") is True
+                and rhythm.get("snapshot_percent") == 10
+                and rhythm.get("copy") == "Garden Rhythm · +1 growth"
+            ):
+                reject(
+                    "Reviewer HUD does not prove the daily Garden Rhythm snapshot"
+                )
     if label == "reviewer-reward-dock-bundle":
         bundle = audit_object("reviewer_reward_bundle")
         geometry = audit_object("reviewer_reward_dock_geometry")

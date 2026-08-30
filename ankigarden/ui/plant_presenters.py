@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import ceil
 from typing import Any
 
 def _label(value: Any) -> str:
@@ -18,7 +17,13 @@ class FertilizerStatus:
     duration: str
     description: str
     accessible_text: str
-    seconds_remaining: int
+    # ``seconds_remaining`` remains a compatibility field for schema-25 UI
+    # fixtures.  Release 2.2 Fertilizer is card-counted, so new projections
+    # always leave it at zero and use the exact card fields below.
+    seconds_remaining: int = 0
+    cards_remaining: int = 0
+    total_cards: int = 0
+    queued_doses: int = 0
 
     @property
     def active(self) -> bool:
@@ -31,21 +36,27 @@ def fertilizer_status(
     *,
     now: float,
     description: str = (
-        "Fertilizer adds Growth per eligible card answer for a limited time."
+        "Fertilizer adds Growth per eligible card answer for a fixed number of cards."
     ),
 ) -> FertilizerStatus:
-    """Project one fertilizer into stable visible and accessible fields."""
+    """Project the authoritative FIFO card queue into stable UI fields.
 
-    scheduler = getattr(engine, "fertilizer_schedule", None)
-    queued: tuple[Any, ...] = ()
-    if callable(scheduler):
-        try:
-            fertilizer, queued = scheduler(plant, now=float(now))
-        except Exception:
-            fertilizer, queued = getattr(plant, "fertilizer", None), ()
-    else:
-        fertilizer = getattr(plant, "fertilizer", None)
-    if fertilizer is None:
+    Elapsed wall-clock time is intentionally ignored.  Closing Anki, pausing,
+    or reading slowly cannot change this presentation or consume value.
+    """
+
+    del now
+    active = tuple(
+        batch
+        for batch in (getattr(plant, "fertilizer_card_batches", ()) or ())
+        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
+    )
+    queued = tuple(
+        batch
+        for batch in (getattr(plant, "fertilizer_card_queue", ()) or ())
+        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
+    )
+    if not active:
         return FertilizerStatus(
             "inactive",
             "No active Fertilizer",
@@ -56,54 +67,44 @@ def fertilizer_status(
             0,
         )
 
-    tier = str(getattr(fertilizer, "tier", "") or "")
+    fertilizer = active[0]
+    effect_id = str(getattr(fertilizer, "effect_id", "") or "")
+    tier = effect_id.removeprefix("fertilizer_")
     spec = getattr(engine, "FERTILIZERS", {}).get(tier)
     name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
-    growth = max(0, int(getattr(fertilizer, "growth_per_answer", 0) or 0))
+    growth_units = max(
+        0,
+        int(getattr(fertilizer, "growth_per_card_units", 0) or 0),
+    )
+    growth = growth_units // 100
     effect = f"+{growth:,} Growth per eligible card answer"
-    effective_end = float(getattr(fertilizer, "expires_at", 0) or 0)
-    # Consecutive doses of the same tier are one visible extension even though
-    # their separate windows remain persisted for dose-cap accounting.
-    for period in queued:
-        starts_at = float(getattr(period, "started_at", 0) or 0)
-        if (
-            str(getattr(period, "tier", "") or "") != tier
-            or starts_at > effective_end
-        ):
-            break
-        effective_end = max(
-            effective_end,
-            float(getattr(period, "expires_at", 0) or 0),
-        )
-    seconds = max(0, int(ceil(effective_end - float(now))))
-    if seconds <= 0:
-        return FertilizerStatus(
-            "expired",
-            name,
-            effect,
-            "Expired",
-            description,
-            f"{name}. {effect}. Expired.",
-            0,
-        )
-    if seconds < 60:
-        duration = f"{seconds} {'second' if seconds == 1 else 'seconds'} left"
-    else:
-        total_minutes = int(ceil(seconds / 60))
-        hours, minutes = divmod(total_minutes, 60)
-        duration = (
-            f"{hours}h {minutes:02d}m left"
-            if hours and minutes else
-            f"{hours} {'hour' if hours == 1 else 'hours'} left"
-            if hours else
-            f"{minutes} min left"
-        )
+    matching_active = tuple(
+        batch for batch in active
+        if str(getattr(batch, "effect_id", "") or "") == effect_id
+    )
+    cards = sum(
+        max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+        for batch in matching_active
+    )
+    total_cards = sum(
+        max(0, int(getattr(batch, "total_cards", 0) or 0))
+        for batch in matching_active
+    )
+    duration = f"{cards:,} {'card' if cards == 1 else 'cards'} left"
+    queued_count = len(queued)
+    queue_copy = (
+        f" {queued_count:,} queued {'dose' if queued_count == 1 else 'doses'}."
+        if queued_count else ""
+    )
     return FertilizerStatus(
         "active",
         name,
         effect,
         duration,
         description,
-        f"Fertilized with {name}. {effect}. {duration}.",
-        seconds,
+        f"Fertilized with {name}. {effect}. {duration}.{queue_copy}",
+        0,
+        cards,
+        max(cards, total_cards),
+        queued_count,
     )

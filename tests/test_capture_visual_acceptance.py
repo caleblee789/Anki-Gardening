@@ -214,7 +214,7 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "action": "Apply",
             "action_disposition": "apply",
             "meta_copy": (
-                "+1 Growth per eligible card answer · Lasts 1 hour"
+                "+1 Growth per eligible card answer · Lasts 100 cards"
             ),
             "artwork_ref": "rich_compost",
             "artwork_source_matches": True,
@@ -234,7 +234,7 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "status_phase": "active",
             "status_copy": (
                 "Basic Fertilizer · +1 Growth per eligible card answer · "
-                "1 hour left"
+                "100 cards left"
             ),
             "painted": True,
         },
@@ -252,7 +252,7 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "final_quality_action_disposition": "extend",
             "final_quality_painted": True,
             "meta_copy": (
-                "+2 Growth per eligible card answer · Lasts 2 hours"
+                "+2 Growth per eligible card answer · Lasts 200 cards"
             ),
             "painted": True,
         },
@@ -435,15 +435,15 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "applicable": True,
         "variant": "ready",
         "growth_label": "Total Growth",
-        "growth_value": "450 → 550",
+        "growth_value": "350 → 450",
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
         "stage_badge": "Result: Sprout",
         "stage_badge_accessible": "New stage: Sprout",
         "stage_progress": "50 / 2,000 toward Young",
         "primary_action": "Use 1 charge",
-        "current_growth": 450,
-        "projected_growth": 550,
+        "current_growth": 350,
+        "projected_growth": 450,
         "inventory_before": 2,
         "inventory_after": 1,
         "stage_carryover": 50,
@@ -454,7 +454,7 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "growth-charge-use-ready",
         ready,
     ) == ()
-    stale_ready = {**ready, "stage_progress": "550 total Growth"}
+    stale_ready = {**ready, "stage_progress": "450 total Growth"}
     assert (
         "growth-charge-rendered-value-mismatch:stage_progress"
         in growth_charge_rendered_value_issue_codes(
@@ -475,7 +475,7 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "reward_texts": ["Stage reward", "+2 Garden Coins"],
         "primary_action": "View plant",
         "secondary_action": "Close",
-        "resulting_growth": 550,
+        "resulting_growth": 450,
         "stage_carryover": 50,
         "next_stage_goal": 2_000,
         "inventory_remaining": 1,
@@ -1115,7 +1115,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             ("Discovery", "Firefly Evening", "New", "event:4"),
             ("Discovery", "Morning Dew", "New", "event:5"),
             ("Standard Find", "Moonlit Seed", "Common", "event:6"),
-            ("Additional effect", "Fertilizer", "1h 24m", "event:7"),
+            ("Additional effect", "Fertilizer", "84 cards", "event:7"),
         )
     ]
     visible_detail_rows = [

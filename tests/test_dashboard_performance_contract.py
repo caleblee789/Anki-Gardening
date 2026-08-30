@@ -121,50 +121,12 @@ def test_dashboard_state_refresh_marks_every_progress_domain_dirty() -> None:
     assert metric_marks == ["metrics"]
 
 
-class _Timer:
-    def __init__(self, active: bool = False) -> None:
-        self.active = active
-        self.starts = 0
-        self.stops = 0
+def test_dashboard_has_no_wall_clock_fertilizer_polling() -> None:
+    source = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
 
-    def isActive(self) -> bool:
-        return self.active
-
-    def start(self) -> None:
-        self.active = True
-        self.starts += 1
-
-    def stop(self) -> None:
-        self.active = False
-        self.stops += 1
-
-
-def test_dashboard_timer_runs_only_for_visible_timed_statuses() -> None:
-    sync = _compiled_method(
-        "GardenDashboard",
-        "_sync_fertilizer_timer",
-        {"time": SimpleNamespace(time=lambda: 123.0)},
-    )
-    timer = _Timer()
-    timed_checks: list[float] = []
-    dashboard = SimpleNamespace(
-        _fertilizer_timer=timer,
-        isVisible=lambda: False,
-        _has_visible_timed_plant_status=lambda *, now: timed_checks.append(now) or True,
-    )
-
-    sync(dashboard)
-    assert timer.starts == 0
-    assert timed_checks == []
-
-    dashboard.isVisible = lambda: True
-    sync(dashboard)
-    assert timer.starts == 1
-    assert timed_checks == [123.0]
-
-    dashboard._has_visible_timed_plant_status = lambda *, now: False
-    sync(dashboard)
-    assert timer.stops == 1
+    assert "_fertilizer_timer" not in source
+    assert "_refresh_timed_plant_statuses" not in source
+    assert "_has_visible_timed_plant_status" not in source
 
 
 def test_progress_pages_do_not_poll_when_no_visible_value_uses_wall_time() -> None:
@@ -174,12 +136,11 @@ def test_progress_pages_do_not_poll_when_no_visible_value_uses_wall_time() -> No
     assert "_refresh_timed_fertilizer" not in progress_init
 
 
-def test_dashboard_timer_keeps_one_second_cadence_without_eager_start() -> None:
+def test_card_counted_fertilizer_does_not_create_a_dashboard_timer() -> None:
     dashboard_init = _method_source("GardenDashboard", "__init__")
     progress_open = _method_source("GardenProgressDialog", "open_page")
 
-    assert "self._fertilizer_timer.setInterval(1_000)" in dashboard_init
-    assert "self._fertilizer_timer.start()" not in dashboard_init
+    assert "_fertilizer_timer" not in dashboard_init
     assert "self.refresh()" not in progress_open
     assert "self.navigation.set_current(target)" in progress_open
 

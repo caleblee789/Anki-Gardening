@@ -9,7 +9,6 @@ the card remains usable.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import ceil
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -433,8 +432,11 @@ def _effect_lines(
     summary: SyncRewardSummary,
 ) -> tuple[tuple[str, str, str, str], ...]:
     lines: list[tuple[str, str, str, str]] = []
-    if summary.fertilizer_state_changed and summary.fertilizer_remaining_seconds > 0:
-        minutes = max(1, int(ceil(summary.fertilizer_remaining_seconds / 60)))
+    fertilizer_cards = max(
+        0,
+        int(getattr(summary, "fertilizer_cards_remaining", 0) or 0),
+    )
+    if summary.fertilizer_state_changed and fertilizer_cards > 0:
         fertilizer_names = {
             "fertilizer_basic": "Basic Fertilizer",
             "fertilizer_quality": "Quality Fertilizer",
@@ -452,7 +454,8 @@ def _effect_lines(
         lines.append((
             "fertilizer",
             summary.fertilizer_item_id,
-            f"{name} active · {minutes:,} min remaining",
+            f"{name} active · {fertilizer_cards:,} "
+            f"{'card' if fertilizer_cards == 1 else 'cards'} left",
             summary.fertilizer_art_asset,
         ))
     if summary.booster_state_changed and summary.booster_cards_remaining > 0:
@@ -1344,6 +1347,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 self._summary.stored_growth_delta_units,
                 "Stored Growth",
             ),
+            (
+                "growth_resource",
+                self._summary.landmark_growth_delta_units,
+                "Landmark",
+            ),
         )
         for asset_id, units, label_text in allocations:
             if units <= 0:
@@ -1493,6 +1501,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             or plan.plant_growth
             or self._summary.shared_growth_delta_units
             or self._summary.stored_growth_delta_units
+            or self._summary.landmark_growth_delta_units
         )
         if has_growth:
             layout.addWidget(self._section_heading("GARDEN PROGRESS", self._body_widget))
@@ -1509,21 +1518,38 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                         bloom_key in motion.full_bloom_event_keys
                     ):
                         self._start_full_bloom_emphasis(plant_frame)
-            elif self._summary.stored_growth_delta_units > 0:
-                stored = format_growth_units(
-                    self._summary.stored_growth_delta_units,
-                    signed=True,
-                )
-                layout.addWidget(self._simple_row(
-                    f"{stored} Growth was added to Stored Growth",
-                    self._body_widget,
-                    detail="It will be available when a plant can receive it.",
-                    icon_name="ui",
-                    art_identity="stored_growth",
-                ))
+            else:
+                if self._summary.landmark_growth_delta_units > 0:
+                    landmark = format_growth_units(
+                        self._summary.landmark_growth_delta_units,
+                        signed=True,
+                    )
+                    layout.addWidget(self._simple_row(
+                        f"{landmark} Growth advanced your Garden Landmark",
+                        self._body_widget,
+                        detail="Committed to the selected Landmark.",
+                        icon_name="ui",
+                        art_identity="growth_resource",
+                    ))
+                if self._summary.stored_growth_delta_units > 0:
+                    stored = format_growth_units(
+                        self._summary.stored_growth_delta_units,
+                        signed=True,
+                    )
+                    layout.addWidget(self._simple_row(
+                        f"{stored} Growth was added to Stored Growth",
+                        self._body_widget,
+                        detail=(
+                            "It stays in reserve until you explicitly spend it "
+                            "on a Landmark or Cultivation Mastery."
+                        ),
+                        icon_name="ui",
+                        art_identity="stored_growth",
+                    ))
             if plan.plant_growth and (
                 self._summary.shared_growth_delta_units > 0
                 or self._summary.stored_growth_delta_units > 0
+                or self._summary.landmark_growth_delta_units > 0
             ):
                 layout.addWidget(self._growth_allocation_strip(self._body_widget))
 

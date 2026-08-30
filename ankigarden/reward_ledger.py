@@ -24,7 +24,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 import uuid
 
 
-LEDGER_SCHEMA_VERSION = 1
+LEDGER_SCHEMA_VERSION = 2
 FIND_OUTCOME_STATUSES = frozenset({"miss", "hit", "paused"})
 MAX_RECENT_HITS_QUERY = 1_000
 _SQL_IN_CHUNK = 500
@@ -151,6 +151,44 @@ class FinalizedDayRecord:
 
 
 @dataclass(frozen=True)
+class IdempotencyRecord:
+    operation_kind: str
+    operation_id: str
+    request_fingerprint: str
+    outcome: Mapping[str, Any]
+    occurred_at: str = ""
+    scheduler_day: str = ""
+
+
+@dataclass(frozen=True)
+class EconomyEventRecord:
+    event_key: str
+    event_kind: str
+    source_id: str = ""
+    sink_id: str = ""
+    scheduler_day: str = ""
+    occurred_at: str = ""
+    coins_earned: int = 0
+    coins_spent: int = 0
+    growth_earned_units: int = 0
+    growth_spent_on_landmarks: int = 0
+    growth_spent_on_mastery: int = 0
+    item_id: str = ""
+    quantity: int = 0
+    metric_deltas: Optional[Mapping[str, Any]] = None
+
+
+@dataclass(frozen=True)
+class DailyEconomySnapshotRecord:
+    anki_day: str
+    garden_rhythm_percent: int
+    active_garden_bonus_id: str
+    active_scenery_effect_id: str
+    snapshot_source: str
+    snapshot_id: str
+
+
+@dataclass(frozen=True)
 class _StagedFinalizedDay:
     record: FinalizedDayRecord
     replace: bool
@@ -160,6 +198,67 @@ class _StagedFinalizedDay:
 class _StagedReanswerFloor:
     lineage_key: str
     minimum_revlog_id: int
+
+
+_IDEMPOTENCY_TABLE_SQL = """
+CREATE TABLE idempotency_record (
+    operation_kind TEXT NOT NULL,
+    operation_id TEXT NOT NULL,
+    request_fingerprint TEXT NOT NULL,
+    outcome_json TEXT NOT NULL,
+    occurred_at TEXT NOT NULL DEFAULT '',
+    scheduler_day TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (operation_kind, operation_id)
+)
+"""
+_ECONOMY_EVENT_TABLE_SQL = """
+CREATE TABLE economy_event (
+    event_key TEXT PRIMARY KEY,
+    event_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL DEFAULT '',
+    sink_id TEXT NOT NULL DEFAULT '',
+    scheduler_day TEXT NOT NULL DEFAULT '',
+    occurred_at TEXT NOT NULL DEFAULT '',
+    coins_earned INTEGER NOT NULL DEFAULT 0 CHECK (coins_earned >= 0),
+    coins_spent INTEGER NOT NULL DEFAULT 0 CHECK (coins_spent >= 0),
+    growth_earned_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_earned_units >= 0),
+    growth_spent_on_landmarks INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_spent_on_landmarks >= 0),
+    growth_spent_on_mastery INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_spent_on_mastery >= 0),
+    item_id TEXT NOT NULL DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    metric_deltas_json TEXT NOT NULL DEFAULT '{}'
+)
+"""
+_DAILY_ECONOMY_SNAPSHOT_TABLE_SQL = """
+CREATE TABLE daily_economy_snapshot (
+    anki_day TEXT PRIMARY KEY,
+    garden_rhythm_percent INTEGER NOT NULL
+        CHECK (garden_rhythm_percent IN (0, 2, 4, 6, 8, 10)),
+    active_garden_bonus_id TEXT NOT NULL,
+    active_scenery_effect_id TEXT NOT NULL,
+    snapshot_source TEXT NOT NULL,
+    snapshot_id TEXT NOT NULL UNIQUE
+)
+"""
+_V2_SCHEMA_STATEMENTS = (
+    _IDEMPOTENCY_TABLE_SQL,
+    _ECONOMY_EVENT_TABLE_SQL,
+    _DAILY_ECONOMY_SNAPSHOT_TABLE_SQL,
+    """
+    CREATE INDEX idempotency_record_day_idx
+    ON idempotency_record(scheduler_day, operation_kind)
+    """,
+    """
+    CREATE INDEX economy_event_day_idx
+    ON economy_event(scheduler_day, event_kind)
+    """,
+    """
+    CREATE INDEX daily_economy_snapshot_id_idx
+    ON daily_economy_snapshot(snapshot_id)
+    """,
+)
 
 
 _SCHEMA_STATEMENTS = (
@@ -224,6 +323,7 @@ _SCHEMA_STATEMENTS = (
         fingerprint TEXT NOT NULL
     )
     """,
+    *_V2_SCHEMA_STATEMENTS,
     "CREATE INDEX revlog_alias_lineage_idx ON revlog_alias(lineage_key)",
     "CREATE INDEX answer_lineage_card_idx ON answer_lineage(card_id)",
     """
@@ -241,6 +341,19 @@ _SCHEMA_STATEMENTS = (
 )
 
 _REQUIRED_TABLES = frozenset({
+    "state_snapshot",
+    "reward_event",
+    "answer_lineage",
+    "revlog_alias",
+    "answer_consumption",
+    "find_outcome",
+    "finalized_day",
+    "idempotency_record",
+    "economy_event",
+    "daily_economy_snapshot",
+})
+
+_V1_REQUIRED_TABLES = frozenset({
     "state_snapshot",
     "reward_event",
     "answer_lineage",
@@ -271,6 +384,26 @@ _EXPECTED_COLUMNS = {
         "hit_payload_json",
     ),
     "finalized_day": ("scheduler_day", "fingerprint"),
+    "idempotency_record": (
+        "operation_kind", "operation_id", "request_fingerprint",
+        "outcome_json", "occurred_at", "scheduler_day",
+    ),
+    "economy_event": (
+        "event_key", "event_kind", "source_id", "sink_id", "scheduler_day",
+        "occurred_at", "coins_earned", "coins_spent",
+        "growth_earned_units", "growth_spent_on_landmarks",
+        "growth_spent_on_mastery", "item_id", "quantity",
+        "metric_deltas_json",
+    ),
+    "daily_economy_snapshot": (
+        "anki_day", "garden_rhythm_percent", "active_garden_bonus_id",
+        "active_scenery_effect_id", "snapshot_source", "snapshot_id",
+    ),
+}
+
+_V1_EXPECTED_COLUMNS = {
+    key: value for key, value in _EXPECTED_COLUMNS.items()
+    if key in _V1_REQUIRED_TABLES
 }
 
 _EXPECTED_PRIMARY_KEYS = {
@@ -281,12 +414,26 @@ _EXPECTED_PRIMARY_KEYS = {
     "answer_consumption": ("answer_key",),
     "find_outcome": ("recorded_sequence",),
     "finalized_day": ("scheduler_day",),
+    "idempotency_record": ("operation_kind", "operation_id"),
+    "economy_event": ("event_key",),
+    "daily_economy_snapshot": ("anki_day",),
+}
+
+_V1_EXPECTED_PRIMARY_KEYS = {
+    key: value for key, value in _EXPECTED_PRIMARY_KEYS.items()
+    if key in _V1_REQUIRED_TABLES
 }
 
 _REQUIRED_UNIQUE_KEYS = {
     "answer_lineage": {("original_day", "card_id", "serial")},
     "answer_consumption": {("lineage_key",)},
     "find_outcome": {("answer_key", "pool_id")},
+    "daily_economy_snapshot": {("snapshot_id",)},
+}
+
+_V1_REQUIRED_UNIQUE_KEYS = {
+    key: value for key, value in _REQUIRED_UNIQUE_KEYS.items()
+    if key in _V1_REQUIRED_TABLES
 }
 
 _REQUIRED_FOREIGN_KEYS = {
@@ -300,6 +447,17 @@ _REQUIRED_FOREIGN_KEYS = {
 }
 
 _REQUIRED_NAMED_INDEXES = frozenset({
+    "revlog_alias_lineage_idx",
+    "answer_lineage_card_idx",
+    "answer_lineage_reanswer_idx",
+    "find_outcome_day_idx",
+    "find_outcome_recent_hit_idx",
+    "idempotency_record_day_idx",
+    "economy_event_day_idx",
+    "daily_economy_snapshot_id_idx",
+})
+
+_V1_REQUIRED_NAMED_INDEXES = frozenset({
     "revlog_alias_lineage_idx",
     "answer_lineage_card_idx",
     "answer_lineage_reanswer_idx",
@@ -347,6 +505,13 @@ class RewardLedger:
         self._pending_reanswer_floors: Dict[str, int] = {}
         self._pending_outcomes: Dict[Tuple[str, str], FindOutcomeRecord] = {}
         self._pending_finalized_days: Dict[str, _StagedFinalizedDay] = {}
+        self._pending_idempotency_records: Dict[
+            Tuple[str, str], IdempotencyRecord
+        ] = {}
+        self._pending_economy_events: Dict[str, EconomyEventRecord] = {}
+        self._pending_daily_economy_snapshots: Dict[
+            str, DailyEconomySnapshotRecord
+        ] = {}
         try:
             self._configure_connection()
             self._initialize_or_validate_schema()
@@ -1021,6 +1186,234 @@ class RewardLedger:
             "finalized_day", _StagedFinalizedDay(normalized, bool(replace))
         )
 
+    def idempotency_record(
+        self,
+        operation_kind: str,
+        operation_id: str,
+    ) -> Optional[IdempotencyRecord]:
+        self._ensure_open()
+        identity = (
+            _required_text(operation_kind, "operation_kind"),
+            _required_text(operation_id, "operation_id"),
+        )
+        pending = self._pending_idempotency_records.get(identity)
+        if pending is not None:
+            return pending
+        row = self._connection.execute(
+            "SELECT operation_kind, operation_id, request_fingerprint, "
+            "outcome_json, occurred_at, scheduler_day "
+            "FROM idempotency_record "
+            "WHERE operation_kind = ? AND operation_id = ?",
+            identity,
+        ).fetchone()
+        return _idempotency_from_row(row) if row is not None else None
+
+    def stage_idempotency_record(self, record: IdempotencyRecord) -> None:
+        self._ensure_open()
+        normalized = _normalize_idempotency_record(record)
+        existing = self.idempotency_record(
+            normalized.operation_kind, normalized.operation_id
+        )
+        if existing is not None:
+            if existing == normalized:
+                return
+            raise RewardLedgerConflictError(
+                "That operation identity has a conflicting permanent outcome."
+            )
+        self._append_operation("idempotency_record", normalized)
+
+    def economy_event(self, event_key: str) -> Optional[EconomyEventRecord]:
+        self._ensure_open()
+        key = _required_text(event_key, "event_key")
+        pending = self._pending_economy_events.get(key)
+        if pending is not None:
+            return pending
+        row = self._connection.execute(
+            "SELECT event_key, event_kind, source_id, sink_id, scheduler_day, "
+            "occurred_at, coins_earned, coins_spent, growth_earned_units, "
+            "growth_spent_on_landmarks, growth_spent_on_mastery, item_id, "
+            "quantity, metric_deltas_json FROM economy_event WHERE event_key = ?",
+            (key,),
+        ).fetchone()
+        return _economy_event_from_row(row) if row is not None else None
+
+    def stage_economy_event(self, record: EconomyEventRecord) -> None:
+        self._ensure_open()
+        normalized = _normalize_economy_event(record)
+        existing = self.economy_event(normalized.event_key)
+        if existing is not None:
+            if existing == normalized:
+                return
+            raise RewardLedgerConflictError(
+                "That economy event identity has conflicting deltas."
+            )
+        self._append_operation("economy_event", normalized)
+
+    def daily_economy_snapshot(
+        self,
+        anki_day: str,
+    ) -> Optional[DailyEconomySnapshotRecord]:
+        self._ensure_open()
+        day_value = _iso_day(anki_day, "anki_day")
+        pending = self._pending_daily_economy_snapshots.get(day_value)
+        if pending is not None:
+            return pending
+        row = self._connection.execute(
+            "SELECT anki_day, garden_rhythm_percent, active_garden_bonus_id, "
+            "active_scenery_effect_id, snapshot_source, snapshot_id "
+            "FROM daily_economy_snapshot WHERE anki_day = ?",
+            (day_value,),
+        ).fetchone()
+        return _daily_economy_snapshot_from_row(row) if row is not None else None
+
+    def stage_daily_economy_snapshot(
+        self,
+        record: DailyEconomySnapshotRecord,
+    ) -> None:
+        self._ensure_open()
+        normalized = _normalize_daily_economy_snapshot(record)
+        existing = self.daily_economy_snapshot(normalized.anki_day)
+        if existing is not None:
+            if existing == normalized:
+                return
+            raise RewardLedgerConflictError(
+                "That Anki day already has a different economy snapshot."
+            )
+        pending_id = next((
+            snapshot
+            for snapshot in self._pending_daily_economy_snapshots.values()
+            if snapshot.snapshot_id == normalized.snapshot_id
+        ), None)
+        if pending_id is not None:
+            raise RewardLedgerConflictError(
+                "That economy snapshot identity already belongs to another day."
+            )
+        committed_id = self._connection.execute(
+            "SELECT 1 FROM daily_economy_snapshot WHERE snapshot_id = ?",
+            (normalized.snapshot_id,),
+        ).fetchone()
+        if committed_id is not None:
+            raise RewardLedgerConflictError(
+                "That economy snapshot identity already belongs to another day."
+            )
+        self._append_operation("daily_economy_snapshot", normalized)
+
+    def eligible_study_days_before(
+        self,
+        anki_day: str,
+        *,
+        limit: int = 7,
+    ) -> Tuple[str, ...]:
+        """Return newest eligible answer days strictly before ``anki_day``."""
+
+        self._ensure_open()
+        day_value = _iso_day(anki_day, "anki_day")
+        bounded_limit = _history_limit(limit)
+        if bounded_limit == 0:
+            return ()
+        rows = self._connection.execute(
+            "SELECT DISTINCT scheduler_day FROM answer_consumption "
+            "WHERE scheduler_day <> '' AND scheduler_day < ? "
+            "ORDER BY scheduler_day DESC LIMIT ?",
+            (day_value, bounded_limit),
+        ).fetchall()
+        days = {str(row["scheduler_day"]) for row in rows}
+        days.update(
+            record.scheduler_day
+            for record in self._pending_consumptions.values()
+            if record.scheduler_day and record.scheduler_day < day_value
+        )
+        return tuple(sorted(days, reverse=True)[:bounded_limit])
+
+    def verified_today_cards_completion_days_before(
+        self,
+        anki_day: str,
+    ) -> frozenset[str]:
+        """Return provable completion days strictly before ``anki_day``."""
+
+        self._ensure_open()
+        day_value = _iso_day(anki_day, "anki_day")
+        rows = self._connection.execute(
+            "SELECT event_key, source, scheduler_day FROM reward_event "
+            "WHERE source = 'all_due' OR event_key LIKE 'all_due:%'"
+        ).fetchall()
+        days = {
+            completion_day
+            for row in rows
+            for completion_day in [_completion_day_from_reward_row(row)]
+            if completion_day and completion_day < day_value
+        }
+        for record in self._pending_reward_events.values():
+            completion_day = _completion_day_from_reward_event(record)
+            if completion_day and completion_day < day_value:
+                days.add(completion_day)
+        return frozenset(days)
+
+    def lifetime_economy_aggregates(self) -> Mapping[str, Any]:
+        """Rebuild exact lifetime aggregates from permanent event deltas."""
+
+        self._ensure_open()
+        rows = self._connection.execute(
+            "SELECT event_key, event_kind, source_id, sink_id, scheduler_day, "
+            "occurred_at, coins_earned, coins_spent, growth_earned_units, "
+            "growth_spent_on_landmarks, growth_spent_on_mastery, item_id, "
+            "quantity, metric_deltas_json FROM economy_event ORDER BY rowid"
+        ).fetchall()
+        committed = [_economy_event_from_row(row) for row in rows]
+        pending_keys = set(self._pending_economy_events)
+        events = [
+            event for event in committed if event.event_key not in pending_keys
+        ]
+        events.extend(self._pending_economy_events.values())
+        result: Dict[str, Any] = {
+            "coins_earned_by_source": {},
+            "coins_spent_by_sink": {},
+            "growth_earned_by_source": {},
+            "growth_spent_on_landmarks": 0,
+            "growth_spent_on_mastery": 0,
+            "finds_by_outcome": {},
+            "environment_discoveries": {},
+            "consumables_earned": {},
+            "consumables_used": {},
+            "plants_completed": 0,
+            "today_cards_completions": 0,
+        }
+        for event in events:
+            if event.coins_earned:
+                _increment_count(
+                    result["coins_earned_by_source"],
+                    event.source_id,
+                    event.coins_earned,
+                )
+            if event.coins_spent:
+                _increment_count(
+                    result["coins_spent_by_sink"],
+                    event.sink_id,
+                    event.coins_spent,
+                )
+            if event.growth_earned_units:
+                _increment_count(
+                    result["growth_earned_by_source"],
+                    event.source_id,
+                    event.growth_earned_units,
+                )
+            result["growth_spent_on_landmarks"] += (
+                event.growth_spent_on_landmarks
+            )
+            result["growth_spent_on_mastery"] += event.growth_spent_on_mastery
+            for key, delta in dict(event.metric_deltas or {}).items():
+                if key in {
+                    "finds_by_outcome",
+                    "environment_discoveries",
+                    "consumables_earned",
+                    "consumables_used",
+                }:
+                    for item_id, amount in dict(delta).items():
+                        _increment_count(result[key], item_id, amount)
+                elif key in {"plants_completed", "today_cards_completions"}:
+                    result[key] += int(delta)
+        return result
+
     def commit_state(
         self,
         state_payload: Mapping[str, Any],
@@ -1150,6 +1543,34 @@ class RewardLedger:
                 ) from error
             self._validate_schema_shape()
             return
+        if version == 1:
+            missing = _V1_REQUIRED_TABLES - tables
+            if missing:
+                raise RewardLedgerSchemaError(
+                    "The schema-1 reward ledger is incomplete: "
+                    + ", ".join(sorted(missing))
+                )
+            self._validate_schema_shape(
+                expected_columns=_V1_EXPECTED_COLUMNS,
+                expected_primary_keys=_V1_EXPECTED_PRIMARY_KEYS,
+                required_unique_keys=_V1_REQUIRED_UNIQUE_KEYS,
+                required_named_indexes=_V1_REQUIRED_NAMED_INDEXES,
+            )
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                for statement in _V2_SCHEMA_STATEMENTS:
+                    self._connection.execute(statement)
+                self._connection.execute(
+                    "PRAGMA user_version = " + str(LEDGER_SCHEMA_VERSION)
+                )
+                self._connection.execute("COMMIT")
+            except sqlite3.DatabaseError as error:
+                self._rollback_sql_transaction()
+                raise RewardLedgerSchemaError(
+                    "The reward-ledger schema-2 upgrade could not complete."
+                ) from error
+            self._validate_schema_shape()
+            return
         if version != LEDGER_SCHEMA_VERSION:
             raise RewardLedgerSchemaError(
                 "Unsupported reward-ledger schema version: " + str(version)
@@ -1162,15 +1583,26 @@ class RewardLedger:
             )
         self._validate_schema_shape()
 
-    def _validate_schema_shape(self) -> None:
+    def _validate_schema_shape(
+        self,
+        *,
+        expected_columns: Mapping[str, Tuple[str, ...]] = _EXPECTED_COLUMNS,
+        expected_primary_keys: Mapping[str, Tuple[str, ...]] = (
+            _EXPECTED_PRIMARY_KEYS
+        ),
+        required_unique_keys: Mapping[str, set[Tuple[str, ...]]] = (
+            _REQUIRED_UNIQUE_KEYS
+        ),
+        required_named_indexes: frozenset[str] = _REQUIRED_NAMED_INDEXES,
+    ) -> None:
         """Fail closed if exact identities are not backed by expected SQL keys."""
 
-        for table, expected_columns in _EXPECTED_COLUMNS.items():
+        for table, table_expected_columns in expected_columns.items():
             rows = self._connection.execute(
                 "PRAGMA table_info(" + _quote_identifier(table) + ")"
             ).fetchall()
             columns = tuple(str(row["name"]) for row in rows)
-            if columns != expected_columns:
+            if columns != table_expected_columns:
                 raise RewardLedgerSchemaError(
                     "The reward-ledger table has an unexpected shape: " + table
                 )
@@ -1179,12 +1611,12 @@ class RewardLedger:
                 for row in sorted(rows, key=lambda item: int(item["pk"]))
                 if int(row["pk"]) > 0
             )
-            if primary_key != _EXPECTED_PRIMARY_KEYS[table]:
+            if primary_key != expected_primary_keys[table]:
                 raise RewardLedgerSchemaError(
                     "The reward-ledger primary key is invalid: " + table
                 )
 
-        for table, required_keys in _REQUIRED_UNIQUE_KEYS.items():
+        for table, required_keys in required_unique_keys.items():
             actual_keys = set()
             for index_row in self._connection.execute(
                 "PRAGMA index_list(" + _quote_identifier(table) + ")"
@@ -1228,7 +1660,7 @@ class RewardLedger:
                 "SELECT name FROM sqlite_master WHERE type = 'index'"
             ).fetchall()
         }
-        if not _REQUIRED_NAMED_INDEXES.issubset(index_names):
+        if not required_named_indexes.issubset(index_names):
             raise RewardLedgerSchemaError(
                 "The reward-ledger query indexes are incomplete."
             )
@@ -1261,6 +1693,14 @@ class RewardLedger:
             self._pending_outcomes[(record.answer_key, record.pool_id)] = record
         elif kind == "finalized_day":
             self._pending_finalized_days[record.record.scheduler_day] = record
+        elif kind == "idempotency_record":
+            self._pending_idempotency_records[
+                (record.operation_kind, record.operation_id)
+            ] = record
+        elif kind == "economy_event":
+            self._pending_economy_events[record.event_key] = record
+        elif kind == "daily_economy_snapshot":
+            self._pending_daily_economy_snapshots[record.anki_day] = record
         else:  # pragma: no cover - internal programming error
             raise AssertionError("unsupported staged record: " + str(kind))
 
@@ -1275,6 +1715,9 @@ class RewardLedger:
         self._pending_reanswer_floors.clear()
         self._pending_outcomes.clear()
         self._pending_finalized_days.clear()
+        self._pending_idempotency_records.clear()
+        self._pending_economy_events.clear()
+        self._pending_daily_economy_snapshots.clear()
         for _operation_id, kind, record in operations:
             self._index_operation(kind, record)
 
@@ -1289,6 +1732,9 @@ class RewardLedger:
         self._pending_reanswer_floors.clear()
         self._pending_outcomes.clear()
         self._pending_finalized_days.clear()
+        self._pending_idempotency_records.clear()
+        self._pending_economy_events.clear()
+        self._pending_daily_economy_snapshots.clear()
         if increment_generation:
             self._generation += 1
 
@@ -1392,6 +1838,60 @@ class RewardLedger:
                     "VALUES (?, ?)",
                     (record.scheduler_day, record.fingerprint),
                 )
+        for record in self._pending_idempotency_records.values():
+            self._connection.execute(
+                "INSERT INTO idempotency_record "
+                "(operation_kind, operation_id, request_fingerprint, outcome_json, "
+                "occurred_at, scheduler_day) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    record.operation_kind,
+                    record.operation_id,
+                    record.request_fingerprint,
+                    _canonical_json(record.outcome, "outcome"),
+                    record.occurred_at,
+                    record.scheduler_day,
+                ),
+            )
+        for record in self._pending_economy_events.values():
+            self._connection.execute(
+                "INSERT INTO economy_event "
+                "(event_key, event_kind, source_id, sink_id, scheduler_day, "
+                "occurred_at, coins_earned, coins_spent, growth_earned_units, "
+                "growth_spent_on_landmarks, growth_spent_on_mastery, item_id, "
+                "quantity, metric_deltas_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    record.event_key,
+                    record.event_kind,
+                    record.source_id,
+                    record.sink_id,
+                    record.scheduler_day,
+                    record.occurred_at,
+                    record.coins_earned,
+                    record.coins_spent,
+                    record.growth_earned_units,
+                    record.growth_spent_on_landmarks,
+                    record.growth_spent_on_mastery,
+                    record.item_id,
+                    record.quantity,
+                    _canonical_json(record.metric_deltas or {}, "metric_deltas"),
+                ),
+            )
+        for record in self._pending_daily_economy_snapshots.values():
+            self._connection.execute(
+                "INSERT INTO daily_economy_snapshot "
+                "(anki_day, garden_rhythm_percent, active_garden_bonus_id, "
+                "active_scenery_effect_id, snapshot_source, snapshot_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    record.anki_day,
+                    record.garden_rhythm_percent,
+                    record.active_garden_bonus_id,
+                    record.active_scenery_effect_id,
+                    record.snapshot_source,
+                    record.snapshot_id,
+                ),
+            )
 
     def _rollback_sql_transaction(self) -> None:
         if self._connection.in_transaction:
@@ -1572,6 +2072,145 @@ def _normalize_finalized_day(record: FinalizedDayRecord) -> FinalizedDayRecord:
     )
 
 
+def _canonical_json(value: Mapping[str, Any], label: str) -> str:
+    if not isinstance(value, Mapping):
+        raise ValueError(label + " must be a JSON object")
+    try:
+        encoded = json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        decoded = json.loads(encoded)
+    except (TypeError, ValueError) as error:
+        raise ValueError(label + " must contain valid JSON data") from error
+    if not isinstance(decoded, dict):  # pragma: no cover - dict encoded above
+        raise ValueError(label + " must be a JSON object")
+    return encoded
+
+
+def _json_mapping(value: Mapping[str, Any], label: str) -> Mapping[str, Any]:
+    return json.loads(_canonical_json(value, label))
+
+
+def _normalize_idempotency_record(record: IdempotencyRecord) -> IdempotencyRecord:
+    if not isinstance(record, IdempotencyRecord):
+        raise TypeError("record must be IdempotencyRecord")
+    return IdempotencyRecord(
+        operation_kind=_required_text(record.operation_kind, "operation_kind"),
+        operation_id=_required_text(record.operation_id, "operation_id"),
+        request_fingerprint=_required_text(
+            record.request_fingerprint, "request_fingerprint"
+        ),
+        outcome=_json_mapping(record.outcome, "outcome"),
+        occurred_at=_optional_iso_datetime(record.occurred_at, "occurred_at"),
+        scheduler_day=_optional_iso_day(record.scheduler_day, "scheduler_day"),
+    )
+
+
+_ECONOMY_MAP_METRICS = frozenset({
+    "finds_by_outcome",
+    "environment_discoveries",
+    "consumables_earned",
+    "consumables_used",
+})
+_ECONOMY_SCALAR_METRICS = frozenset({
+    "plants_completed",
+    "today_cards_completions",
+})
+
+
+def _normalize_metric_deltas(value: Any) -> Mapping[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("metric_deltas must be a JSON object")
+    result: Dict[str, Any] = {}
+    for key, raw_delta in value.items():
+        if key in _ECONOMY_MAP_METRICS:
+            if not isinstance(raw_delta, Mapping):
+                raise ValueError(str(key) + " metric delta must be an object")
+            normalized_map: Dict[str, int] = {}
+            for raw_item_id, raw_amount in raw_delta.items():
+                item_id = _required_text(raw_item_id, str(key) + " item_id")
+                amount = _nonnegative_int(raw_amount, str(key) + " amount")
+                if amount:
+                    normalized_map[item_id] = amount
+            if normalized_map:
+                result[str(key)] = normalized_map
+        elif key in _ECONOMY_SCALAR_METRICS:
+            amount = _nonnegative_int(raw_delta, str(key))
+            if amount:
+                result[str(key)] = amount
+        else:
+            raise ValueError("unsupported lifetime economy metric: " + str(key))
+    return _json_mapping(result, "metric_deltas")
+
+
+def _normalize_economy_event(record: EconomyEventRecord) -> EconomyEventRecord:
+    if not isinstance(record, EconomyEventRecord):
+        raise TypeError("record must be EconomyEventRecord")
+    source_id = _optional_text(record.source_id, "source_id")
+    sink_id = _optional_text(record.sink_id, "sink_id")
+    coins_earned = _nonnegative_int(record.coins_earned, "coins_earned")
+    coins_spent = _nonnegative_int(record.coins_spent, "coins_spent")
+    growth_earned = _nonnegative_int(
+        record.growth_earned_units, "growth_earned_units"
+    )
+    if (coins_earned or growth_earned) and not source_id:
+        raise ValueError("earned resources require source_id")
+    if coins_spent and not sink_id:
+        raise ValueError("spent Coins require sink_id")
+    return EconomyEventRecord(
+        event_key=_required_text(record.event_key, "event_key"),
+        event_kind=_required_text(record.event_kind, "event_kind"),
+        source_id=source_id,
+        sink_id=sink_id,
+        scheduler_day=_optional_iso_day(record.scheduler_day, "scheduler_day"),
+        occurred_at=_optional_iso_datetime(record.occurred_at, "occurred_at"),
+        coins_earned=coins_earned,
+        coins_spent=coins_spent,
+        growth_earned_units=growth_earned,
+        growth_spent_on_landmarks=_nonnegative_int(
+            record.growth_spent_on_landmarks,
+            "growth_spent_on_landmarks",
+        ),
+        growth_spent_on_mastery=_nonnegative_int(
+            record.growth_spent_on_mastery,
+            "growth_spent_on_mastery",
+        ),
+        item_id=_optional_text(record.item_id, "item_id"),
+        quantity=_nonnegative_int(record.quantity, "quantity"),
+        metric_deltas=_normalize_metric_deltas(record.metric_deltas),
+    )
+
+
+def _normalize_daily_economy_snapshot(
+    record: DailyEconomySnapshotRecord,
+) -> DailyEconomySnapshotRecord:
+    if not isinstance(record, DailyEconomySnapshotRecord):
+        raise TypeError("record must be DailyEconomySnapshotRecord")
+    rhythm = _nonnegative_int(
+        record.garden_rhythm_percent, "garden_rhythm_percent"
+    )
+    if rhythm not in {0, 2, 4, 6, 8, 10}:
+        raise ValueError("garden_rhythm_percent must be 0, 2, 4, 6, 8, or 10")
+    return DailyEconomySnapshotRecord(
+        anki_day=_iso_day(record.anki_day, "anki_day"),
+        garden_rhythm_percent=rhythm,
+        active_garden_bonus_id=_required_text(
+            record.active_garden_bonus_id, "active_garden_bonus_id"
+        ),
+        active_scenery_effect_id=_required_text(
+            record.active_scenery_effect_id, "active_scenery_effect_id"
+        ),
+        snapshot_source=_required_text(record.snapshot_source, "snapshot_source"),
+        snapshot_id=_required_text(record.snapshot_id, "snapshot_id"),
+    )
+
+
 def _reward_event_from_row(row: sqlite3.Row) -> RewardEventRecord:
     return RewardEventRecord(
         str(row["event_key"]),
@@ -1626,6 +2265,99 @@ def _outcome_from_row(row: sqlite3.Row) -> FindOutcomeRecord:
         reward_id=str(row["reward_id"]),
         hit_payload=payload,
     )
+
+
+def _decode_json_object(raw: Any, label: str) -> Mapping[str, Any]:
+    try:
+        decoded = json.loads(str(raw))
+    except (TypeError, ValueError) as error:
+        raise RewardLedgerCorruptionError(label + " is not valid JSON.") from error
+    if not isinstance(decoded, dict):
+        raise RewardLedgerCorruptionError(label + " must be a JSON object.")
+    return decoded
+
+
+def _idempotency_from_row(row: sqlite3.Row) -> IdempotencyRecord:
+    return IdempotencyRecord(
+        operation_kind=str(row["operation_kind"]),
+        operation_id=str(row["operation_id"]),
+        request_fingerprint=str(row["request_fingerprint"]),
+        outcome=_decode_json_object(
+            row["outcome_json"], "An idempotency outcome"
+        ),
+        occurred_at=str(row["occurred_at"]),
+        scheduler_day=str(row["scheduler_day"]),
+    )
+
+
+def _economy_event_from_row(row: sqlite3.Row) -> EconomyEventRecord:
+    return EconomyEventRecord(
+        event_key=str(row["event_key"]),
+        event_kind=str(row["event_kind"]),
+        source_id=str(row["source_id"]),
+        sink_id=str(row["sink_id"]),
+        scheduler_day=str(row["scheduler_day"]),
+        occurred_at=str(row["occurred_at"]),
+        coins_earned=int(row["coins_earned"]),
+        coins_spent=int(row["coins_spent"]),
+        growth_earned_units=int(row["growth_earned_units"]),
+        growth_spent_on_landmarks=int(row["growth_spent_on_landmarks"]),
+        growth_spent_on_mastery=int(row["growth_spent_on_mastery"]),
+        item_id=str(row["item_id"]),
+        quantity=int(row["quantity"]),
+        metric_deltas=_decode_json_object(
+            row["metric_deltas_json"], "Economy metric deltas"
+        ),
+    )
+
+
+def _daily_economy_snapshot_from_row(
+    row: sqlite3.Row,
+) -> DailyEconomySnapshotRecord:
+    return DailyEconomySnapshotRecord(
+        anki_day=str(row["anki_day"]),
+        garden_rhythm_percent=int(row["garden_rhythm_percent"]),
+        active_garden_bonus_id=str(row["active_garden_bonus_id"]),
+        active_scenery_effect_id=str(row["active_scenery_effect_id"]),
+        snapshot_source=str(row["snapshot_source"]),
+        snapshot_id=str(row["snapshot_id"]),
+    )
+
+
+def _completion_day_from_reward_event(record: RewardEventRecord) -> str:
+    if record.source == "all_due" and record.scheduler_day:
+        return record.scheduler_day
+    if record.event_key.startswith("all_due:"):
+        candidate = record.event_key.partition(":")[2]
+        try:
+            return date.fromisoformat(candidate).isoformat()
+        except ValueError:
+            return ""
+    return ""
+
+
+def _completion_day_from_reward_row(row: sqlite3.Row) -> str:
+    return _completion_day_from_reward_event(RewardEventRecord(
+        event_key=str(row["event_key"]),
+        source=str(row["source"]),
+        scheduler_day=str(row["scheduler_day"]),
+    ))
+
+
+def _increment_count(target: Dict[str, int], key: Any, amount: Any) -> None:
+    normalized_key = str(key)
+    normalized_amount = int(amount)
+    if not normalized_key or normalized_amount <= 0:
+        return
+    target[normalized_key] = target.get(normalized_key, 0) + normalized_amount
+
+
+def _history_limit(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("limit must be a nonnegative integer")
+    if value > 366:
+        raise ValueError("limit cannot exceed 366")
+    return int(value)
 
 
 def _query_limit(value: Any) -> int:

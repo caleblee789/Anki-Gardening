@@ -18,7 +18,8 @@ GARDEN_NURTURE_ACTION = "Open plant"
 
 NURSERY_STARTER_TITLE = "Choose your starter"
 NURSERY_STARTER_RATIONALE = (
-    "Your first plant is free and will be added to your collection."
+    "Your first plant is free and will be added to your collection. "
+    "Appearance only. Every plant grows at the same rate."
 )
 NURSERY_STARTER_COUNT = ""
 DISABLED_STARTER_TABS = "More Nursery sections are available after choosing a starter."

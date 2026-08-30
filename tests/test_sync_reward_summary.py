@@ -109,6 +109,24 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     ) == ("garden-discovery:event-1", "garden-discovery:event-2")
 
 
+def test_landmark_only_metric_reports_growth_once_with_learner_facing_copy() -> None:
+    summary = _summary(
+        eligible_answer_count=1,
+        growth_total_units=1_000,
+        plant_growth=(),
+        shared_growth_delta_units=0,
+        stored_growth_delta_units=0,
+        landmark_growth_delta_units=1_000,
+        garden_coin_delta=0,
+    )
+
+    assert sync_reward_metric_plan(summary) == (
+        ("1", "Card answers", "sync_review_cards"),
+        ("+10", "Growth", "growth_resource"),
+    )
+    assert summary.meaningful is True
+
+
 def test_visibility_uses_one_disclosure_and_keeps_full_bloom_visible() -> None:
     plants = tuple({
         "plant_id": f"plant-{index}",
@@ -163,7 +181,7 @@ def test_exact_generalized_subtitle_copy() -> None:
 
 def test_current_boost_projection_keeps_names_and_art_references_aligned() -> None:
     summary = _summary(
-        fertilizer_remaining_seconds=1_080,
+        fertilizer_cards_remaining=180,
         fertilizer_state_changed=True,
         fertilizer_item_id="fertilizer_quality",
         fertilizer_art_asset="/art/fertilizer_quality.webp",
@@ -177,7 +195,7 @@ def test_current_boost_projection_keeps_names_and_art_references_aligned() -> No
         (
             "fertilizer",
             "fertilizer_quality",
-            "Quality Fertilizer active · 18 min remaining",
+            "Quality Fertilizer active · 180 cards left",
             "/art/fertilizer_quality.webp",
         ),
         (
@@ -250,6 +268,49 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     application.processEvents()
 
 
+def test_landmark_allocation_uses_explicit_learner_copy_when_qt_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QFrame, QLabel, QWidget
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is unavailable")
+
+    application = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    parent.resize(900, 700)
+    card = SyncRewardSummaryCard(
+        parent,
+        _summary(
+            growth_total_units=53_000,
+            landmark_growth_delta_units=1_000,
+        ),
+        on_dismiss=lambda: None,
+        on_open_garden=lambda: None,
+        animations_enabled=False,
+    )
+    card.show()
+    application.processEvents()
+
+    allocation_copy = {
+        tuple(
+            label.text()
+            for label in frame.findChildren(QLabel)
+            if label.text()
+        )
+        for frame in card.findChildren(QFrame)
+        if frame.property("syncAllocationItem") is True
+    }
+    assert ("+10", "Landmark") in allocation_copy
+
+    card.close()
+    parent.close()
+    card.deleteLater()
+    parent.deleteLater()
+    application.processEvents()
+
+
 def test_presentation_model_round_trip_is_normalized_and_bounded() -> None:
     start = date(2025, 1, 1)
     raw = _summary().to_dict()
@@ -277,6 +338,30 @@ def test_presentation_model_round_trip_is_normalized_and_bounded() -> None:
     assert len(restored.source_batch_ids) == MAX_SYNC_SUMMARY_ROWS
     assert len(restored.plant_growth[0]["plant_name"]) == MAX_SYNC_SUMMARY_TEXT
     assert SyncRewardSummary.from_dict(restored.to_dict()) == restored
+
+
+def test_landmark_growth_v3_round_trip_and_v2_missing_field_default() -> None:
+    current = _summary(
+        growth_total_units=53_000,
+        landmark_growth_delta_units=1_000,
+    )
+
+    encoded = current.to_dict()
+    assert encoded["model_version"] == SYNC_REWARD_MODEL_VERSION == 3
+    assert encoded["landmark_growth_delta_units"] == 1_000
+    restored = SyncRewardSummary.from_dict(encoded)
+    assert restored is not None
+    assert restored.landmark_growth_delta_units == 1_000
+    assert restored.to_dict()["landmark_growth_delta_units"] == 1_000
+
+    retained_v2 = dict(encoded)
+    retained_v2["model_version"] = 2
+    retained_v2.pop("landmark_growth_delta_units")
+    migrated = SyncRewardSummary.from_dict(retained_v2)
+    assert migrated is not None
+    assert migrated.model_version == SYNC_REWARD_MODEL_VERSION == 3
+    assert migrated.landmark_growth_delta_units == 0
+    assert migrated.to_dict()["landmark_growth_delta_units"] == 0
 
 
 def test_v1_rows_are_grouped_and_superseded_checkpoints_are_removed() -> None:
@@ -362,7 +447,7 @@ def test_merge_aggregates_batches_while_preserving_progress_boundaries() -> None
             "stage_progress_after": 5,
         },),
         finds=({"reward_id": "small_charge", "quantity": 1},),
-        fertilizer_remaining_seconds=900,
+        fertilizer_cards_remaining=90,
         fertilizer_state_changed=True,
         fertilizer_item_id="fertilizer_quality",
         fertilizer_art_asset="/art/fertilizer_quality.webp",
@@ -408,7 +493,7 @@ def test_merge_aggregates_batches_while_preserving_progress_boundaries() -> None
     assert merged.plant_growth[0]["stage_after"] == "flowering"
     assert merged.all_clear_earned
     assert merged.all_clear_coin_reward == 10
-    assert merged.fertilizer_remaining_seconds == 900
+    assert merged.fertilizer_cards_remaining == 90
     assert merged.fertilizer_state_changed
     assert merged.fertilizer_item_id == "fertilizer_quality"
     assert merged.fertilizer_art_asset == "/art/fertilizer_quality.webp"
@@ -418,9 +503,44 @@ def test_merge_aggregates_batches_while_preserving_progress_boundaries() -> None
     assert merged.booster_art_asset == "/art/booster_potion.webp"
 
 
+def test_merge_adds_landmark_growth_without_double_counting_total_growth() -> None:
+    older = _summary(
+        batch_id="batch-landmark-a",
+        eligible_answer_count=1,
+        growth_total_units=400,
+        plant_growth=(),
+        shared_growth_delta_units=0,
+        stored_growth_delta_units=0,
+        landmark_growth_delta_units=400,
+        garden_coin_delta=0,
+        source_batch_ids=("batch-landmark-a",),
+    )
+    newer = _summary(
+        batch_id="batch-landmark-b",
+        eligible_answer_count=1,
+        growth_total_units=600,
+        plant_growth=(),
+        shared_growth_delta_units=0,
+        stored_growth_delta_units=0,
+        landmark_growth_delta_units=600,
+        garden_coin_delta=0,
+        source_batch_ids=("batch-landmark-b",),
+    )
+
+    merged = older.merge(newer)
+
+    assert merged.eligible_answer_count == 2
+    assert merged.growth_total_units == 1_000
+    assert merged.landmark_growth_delta_units == 1_000
+    assert merged.source_batch_ids == (
+        "batch-landmark-a",
+        "batch-landmark-b",
+    )
+
+
 def test_merge_backfills_art_for_a_legacy_pending_boost_receipt() -> None:
     older = _summary(
-        fertilizer_remaining_seconds=900,
+        fertilizer_cards_remaining=90,
         fertilizer_state_changed=True,
         booster_cards_remaining=12,
         booster_state_changed=True,
@@ -434,7 +554,7 @@ def test_merge_backfills_art_for_a_legacy_pending_boost_receipt() -> None:
 
     merged = older.merge(newer)
 
-    assert merged.fertilizer_remaining_seconds == 900
+    assert merged.fertilizer_cards_remaining == 90
     assert merged.fertilizer_item_id == "fertilizer_quality"
     assert merged.fertilizer_art_asset == "/art/fertilizer_quality.webp"
     assert merged.booster_cards_remaining == 12
@@ -462,7 +582,7 @@ def test_current_boost_rows_use_named_item_art_when_qt_is_available(
     card = SyncRewardSummaryCard(
         parent,
         _summary(
-            fertilizer_remaining_seconds=1_080,
+            fertilizer_cards_remaining=180,
             fertilizer_state_changed=True,
             fertilizer_item_id="fertilizer_quality",
             booster_cards_remaining=12,
@@ -480,7 +600,7 @@ def test_current_boost_rows_use_named_item_art_when_qt_is_available(
         label for label in card.findChildren(QLabel)
         if label.property("syncBoostArtwork") is True
     ]
-    assert "Quality Fertilizer active · 18 min remaining" in copy
+    assert "Quality Fertilizer active · 180 cards left" in copy
     assert "Booster Potion active · 12 cards remaining" in copy
     assert {label.property("syncBoostArtworkReference") for label in art} == {
         "fertilizer_quality",
@@ -500,7 +620,7 @@ def test_schema24_round_trips_pending_summary_and_fails_closed_when_malformed() 
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 25
+    assert restored.version == STATE_VERSION == 26
     assert SyncRewardSummary.from_dict(restored.pending_sync_reward_summary) == summary
 
     malformed = state.to_dict()

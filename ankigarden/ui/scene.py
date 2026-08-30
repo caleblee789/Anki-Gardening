@@ -26,6 +26,7 @@ except Exception:
 
 from .formatters import format_percent
 from .garden_feature_layout import garden_feature_layout
+from .landmark_display import project_garden_landmark_rect
 from .accessibility import AccessibilityAnnouncer, AnnouncementPriority
 from ..build_capabilities import CAPTURE_HARNESS_ENABLED
 from ..performance import RUNTIME_PERFORMANCE
@@ -821,6 +822,9 @@ class GardenSceneWidget(QWidget):
             safe_scene.get("visible_scenery", safe_scene.get("scenery", "default"))
             or "default"
         )
+        safe_scene["landmark_id"] = str(
+            safe_scene.get("landmark_id", "") or ""
+        )
         safe_scene["show_locked_bed_badges"] = bool(
             safe_scene.get("show_locked_bed_badges", True)
         )
@@ -1503,6 +1507,7 @@ class GardenSceneWidget(QWidget):
             plant_rows = self._layout_plants(self.width(), self.height())
             self._feature_layer_trace = ["background"]
             self._draw_garden_feature(painter, r)
+            self._draw_garden_landmark(painter, r)
             # Runtime soil is resolved from the same six PlantPlacement rows as
             # artwork and interaction. No separate legacy bed overlay ships.
 
@@ -1634,6 +1639,7 @@ class GardenSceneWidget(QWidget):
                     asset_drawn = self._draw_plant_asset(painter, layout, plant)
                     if not asset_drawn:
                         self._draw_plant(painter, x, base_y, plant, idx)
+                    self._draw_mastery_overlay(painter, layout, plant)
                     if str(self._plant_placement(plant).get("base_type", "legacy")) == "legacy":
                         self._draw_foreground_growth(painter, x, base_y, idx, selected)
                     painter.restore()
@@ -2573,6 +2579,7 @@ class GardenSceneWidget(QWidget):
                 plant,
                 max(0, int(destination_slot)),
             )
+        self._draw_mastery_overlay(painter, origin, plant)
         painter.restore()
 
     def _event_position(self, event: Any) -> Any:
@@ -3825,6 +3832,32 @@ class GardenSceneWidget(QWidget):
             self._feature_layer_trace.append("garden-feature")
         return feature_drawn
 
+    def _draw_garden_landmark(self, painter: QPainter, rect: QRectF) -> bool:
+        """Paint the saved Landmark at the Home-shared normalized anchor."""
+
+        landmark_id = str(self.scene.get("landmark_id", "") or "")
+        path = self._asset_path("landmark")
+        if not landmark_id or not path:
+            return False
+        x, y, width, height = project_garden_landmark_rect(
+            rect.x(),
+            rect.y(),
+            rect.width(),
+            rect.height(),
+        )
+        painter.save()
+        painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
+        drawn = self._draw_asset_contain(
+            painter,
+            path,
+            QRectF(x, y, width, height),
+            opacity=1.0,
+        )
+        painter.restore()
+        if drawn:
+            self._feature_layer_trace.append("garden-landmark")
+        return drawn
+
     def _draw_surface_occlusion_asset(
         self, painter: QPainter, rect: Any, *, layer: str | None = None
     ) -> bool:
@@ -4043,6 +4076,34 @@ class GardenSceneWidget(QWidget):
         painter.drawPixmap(target, graded, QRectF(graded.rect()))
         painter.restore()
         return True
+
+    def _draw_mastery_overlay(
+        self,
+        painter: QPainter,
+        layout: PlantPlacement,
+        plant: dict[str, Any],
+    ) -> bool:
+        """Paint a universal cosmetic Mastery treatment over its plant."""
+
+        rank_id = str(plant.get("mastery_rank_id", "") or "")
+        path, _placement = self._asset_record(
+            "mastery",
+            plant.get("mastery_asset"),
+        )
+        if not rank_id or not path:
+            return False
+        box = self._plant_draw_box(layout, plant)
+        padding_x = box.width() * 0.05
+        padding_y = box.height() * 0.05
+        drawn = self._draw_asset_contain(
+            painter,
+            path,
+            box.adjusted(-padding_x, -padding_y, padding_x, padding_y),
+            opacity=0.96,
+        )
+        if drawn:
+            self._feature_layer_trace.append(f"mastery-{rank_id}")
+        return drawn
 
     def _transition_for_plant(self, plant: dict[str, Any]) -> dict[str, Any] | None:
         plant_id = str(plant.get("plant_id", ""))

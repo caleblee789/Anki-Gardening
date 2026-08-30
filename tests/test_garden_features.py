@@ -150,10 +150,12 @@ def test_registry_is_exact_and_uses_shipped_bonus_values() -> None:
         "seedling_sign": "none",
         "wind_chime": "growth_every_10_plus_1",
         "harvest_bell": "completion_coins_plus_5",
-        "watering_station": "growth_every_5_plus_1",
-        "herbalist_hourglass": "booster_cards_multiplier_1_25",
-        "firefly_lantern": "growth_every_4_plus_3",
-        "prism_trellis": "prism_bank_per_answer_1_5",
+        "watering_station": "growth_every_5_first_100_plus_1",
+        "herbalist_hourglass": "hourglass_completion_booster",
+        "firefly_lantern": (
+            "instant_growth_every_5_plus_3_closest_checkpoint"
+        ),
+        "prism_trellis": "prism_bank_per_answer_1",
     }
     assert [GARDEN_FEATURE_CATALOG[key].price for key in GARDEN_FEATURE_CATALOG] == [
         None, 100, 175, 250, 350, None, None,
@@ -162,7 +164,7 @@ def test_registry_is_exact_and_uses_shipped_bonus_values() -> None:
 
 def test_schema22_weather_migration_is_lossless_and_idempotent() -> None:
     first = migrate_modern_state(_legacy_schema22())
-    assert first.version == STATE_VERSION == 25
+    assert first.version == STATE_VERSION == 26
     assert first.inventory["garden_features"] == [
         "seedling_sign", "wind_chime", "firefly_lantern",
     ]
@@ -285,7 +287,6 @@ def test_recurring_growth_cadence_uses_engine_results() -> None:
     for feature_id, cadence, amount in (
         ("wind_chime", 10, 1),
         ("watering_station", 5, 1),
-        ("firefly_lantern", 4, 3),
     ):
         engine, storage = _engine(feature_id)
         engine.begin_review_session()
@@ -295,17 +296,32 @@ def test_recurring_growth_cadence_uses_engine_results() -> None:
             *(0 for _ in range(cadence - 1)), amount,
         ]
 
+    firefly, storage = _engine("firefly_lantern")
+    awards = [_answer(firefly, storage, index) for index in range(10)]
+    assert [
+        award.decoration_result.direct_growth_awarded_units
+        for award in awards
+    ] == [0, 0, 0, 0, 300, 0, 0, 0, 0, 300]
+
 
 def test_recurring_growth_catalog_matches_100_and_200_answer_balance() -> None:
     for feature_id, expected_100, expected_200 in (
         ("wind_chime", 10, 20),
-        ("watering_station", 20, 40),
-        ("firefly_lantern", 75, 150),
+        ("watering_station", 20, 20),
     ):
         engine, storage = _engine(feature_id)
         awards = [_answer(engine, storage, index) for index in range(200)]
         assert sum(item.weather_growth for item in awards[:100]) == expected_100
         assert sum(item.weather_growth for item in awards) == expected_200
+
+    firefly, storage = _engine("firefly_lantern")
+    awards = [_answer(firefly, storage, index) for index in range(200)]
+    direct = [
+        item.decoration_result.direct_growth_awarded_units
+        for item in awards
+    ]
+    assert sum(direct[:100]) == 6_000
+    assert sum(direct) == 12_000
 
 
 def test_hidden_artwork_keeps_bonus_and_mid_session_change_does_not_stack() -> None:
@@ -407,8 +423,8 @@ def test_prism_banks_exact_units_releases_once_and_then_applies_directly() -> No
     engine, storage = _engine("prism_trellis")
     assert engine.observe_due_start(DueObligationStatus(review_count=2))
     first = _answer(engine, storage, 1)
-    assert first.decoration_result.prism_growth_banked_units == 150
-    assert storage.state.prism_pending_growth_units == 150
+    assert first.decoration_result.prism_growth_banked_units == 100
+    assert storage.state.prism_pending_growth_units == 100
     assert not engine.evaluate_today_cards(
         DueObligationStatus(review_count=1), record_completed_delta=True
     )[0]
@@ -418,22 +434,22 @@ def test_prism_banks_exact_units_releases_once_and_then_applies_directly() -> No
         DueObligationStatus(), record_completed_delta=True
     )
     assert ok
-    assert engine.last_completion_result.prism_growth_released_units == 300
+    assert engine.last_completion_result.prism_growth_released_units == 200
     assert storage.state.prism_pending_growth_units == 0
-    assert storage.state.plants[0].growth_units == before_units + 300
+    assert storage.state.plants[0].growth_units == before_units + 200
     later = _answer(engine, storage, 3)
-    assert later.decoration_result.direct_growth_awarded_units == 150
-    assert later.decoration_result.prism_growth_banked_units == 0
+    assert later.decoration_result.direct_growth_awarded_units == 0
+    assert later.decoration_result.prism_growth_banked_units == 100
 
 
-def test_unreleased_prism_bank_expires_at_the_anki_cutoff() -> None:
+def test_unreleased_prism_bank_persists_at_the_anki_cutoff() -> None:
     engine, storage = _engine("prism_trellis")
     for index in range(37):
         _answer(engine, storage, index)
-    assert storage.state.prism_pending_growth_units == 5_550
+    assert storage.state.prism_pending_growth_units == 3_700
     storage.day = "2026-08-29"
     engine.rollover_if_needed()
-    assert storage.state.prism_pending_growth_units == 0
+    assert storage.state.prism_pending_growth_units == 3_700
 
 
 def test_locked_day_blocks_event_switching_and_undo_clears_only_the_queue() -> None:

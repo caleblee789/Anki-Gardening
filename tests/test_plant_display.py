@@ -57,11 +57,11 @@ def _release_background(manifest: dict) -> dict:
 @pytest.mark.parametrize(
     ("points", "stage", "next_stage", "remaining"),
     [
-        (0, "seed", "sprout", 500),
-        (499, "seed", "sprout", 1),
-        (500, "sprout", "young", 2_000),
-        (7_999, "young", "mature", 1),
-        (20_000, "flowering", "rare", 30_000),
+        (0, "seed", "sprout", 400),
+        (399, "seed", "sprout", 1),
+        (400, "sprout", "young", 1_600),
+        (5_999, "young", "mature", 1),
+        (15_000, "flowering", "rare", 20_000),
     ],
 )
 def test_growth_display_reports_next_stage(points, stage, next_stage, remaining):
@@ -73,7 +73,7 @@ def test_growth_display_reports_next_stage(points, stage, next_stage, remaining)
 
 
 def test_growth_display_handles_fully_grown_without_parallel_rare_override():
-    grown = growth_display(50_000)
+    grown = growth_display(35_000)
     assert grown.fully_grown is True
     assert grown.next_stage is None
     assert grown.progress == 1.0
@@ -752,13 +752,13 @@ def test_required_macos_window_matrix_keeps_plant_popover_anchored(
 
 def test_growth_display_sanitizes_invalid_points():
     assert growth_display("bad").stage == "seed"
-    assert growth_display(-20).points_remaining == 500
+    assert growth_display(-20).points_remaining == 400
 
 
 def test_growth_display_exposes_plain_language_stage_progress():
     display = growth_display(1_000)
-    assert display.stage_points == 500
-    assert display.stage_goal == 2_000
+    assert display.stage_points == 600
+    assert display.stage_goal == 1_600
 
 
 def test_onboarding_stages_first_review_and_nurture_without_schema_state():
