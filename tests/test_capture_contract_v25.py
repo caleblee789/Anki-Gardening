@@ -438,8 +438,9 @@ def test_primary_today_cards_and_reward_receipt_surfaces_are_active() -> None:
         "models/sync_reward.py",
         "reward_presentation.py",
         "ui/environment_art.py",
-        "ui/garden_asset_thumbnail.py",
-        "ui/plant_art.py",
+            "ui/garden_asset_thumbnail.py",
+            "ui/landmark_display.py",
+            "ui/plant_art.py",
         "ui/session_summary.py",
         "ui/session_summary_card.py",
         "ui/sync_reward_summary.py",
@@ -510,13 +511,67 @@ def test_session_summary_responsive_evidence_is_transient_not_new_surfaces() -> 
     assert len(REGISTRY.profile_labels("full")) == 38
 
 
-def test_reward_presentation_surfaces_own_session_summary_import() -> None:
+def test_reward_presentation_surfaces_own_direct_imports() -> None:
     """Keep exact renderer ownership closed over reward presentation imports."""
 
     for surface in REGISTRY.active_surfaces:
         dependencies = set(surface.owned_module_dependencies)
         if "reward_presentation.py" in dependencies:
-            assert "ui/session_summary.py" in dependencies, surface.stable_id
+            assert {
+                "garden_finds.py",
+                "ui/session_summary.py",
+            } <= dependencies, surface.stable_id
+
+
+@pytest.mark.parametrize("renderer_module", ("ui/home_widget.py", "ui/scene.py"))
+def test_v26_renderers_own_landmark_display_import(renderer_module: str) -> None:
+    """Keep all v26 Home and Garden renderers closed over landmark imports."""
+
+    renderer_surfaces = tuple(
+        surface
+        for surface in REGISTRY.surfaces
+        if renderer_module in surface.owned_module_dependencies
+    )
+
+    assert renderer_surfaces
+    for surface in renderer_surfaces:
+        assert (
+            "ui/landmark_display.py" in surface.owned_module_dependencies
+        ), surface.stable_id
+
+
+def test_v26_anki_qt_home_mapping_owns_landmark_display_import() -> None:
+    """Mirror the planner's non-Reviewer AnkiQt Home renderer mapping."""
+
+    mapped_surfaces = tuple(
+        surface
+        for surface in REGISTRY.surfaces
+        if surface.renderer_family == "AnkiQt"
+        and not surface.stable_id.startswith("reviewer-")
+    )
+
+    assert mapped_surfaces
+    for surface in mapped_surfaces:
+        assert (
+            "ui/landmark_display.py" in surface.owned_module_dependencies
+        ), surface.stable_id
+
+
+def test_v26_scene_renderers_own_both_landmark_modules() -> None:
+    """Keep scene roots closed over both direct Landmark renderer imports."""
+
+    scene_surfaces = tuple(
+        surface
+        for surface in REGISTRY.surfaces
+        if "ui/scene.py" in surface.owned_module_dependencies
+    )
+
+    assert scene_surfaces
+    for surface in scene_surfaces:
+        assert {
+            "ui/landmarks.py",
+            "ui/landmark_display.py",
+        } <= set(surface.owned_module_dependencies), surface.stable_id
 
 
 def test_reviewer_hud_acceptance_matrix_is_transient_and_complete() -> None:

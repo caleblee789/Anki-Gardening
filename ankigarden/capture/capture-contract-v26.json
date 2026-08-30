@@ -1,5 +1,5 @@
 {
-  "contract_digest": "684025a6fb463559333628daa4d475b9277ff62652c680049493ece5bdc947d4",
+  "contract_digest": "6a64bbc383a7e7666e9ea775dae25e5bff87a08a31b9aefde1653ce9739237db",
   "contract_version": 26,
   "profiles": {
     "full": {
@@ -255,7 +255,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "b9421b092202683cadfb3c4c63a528707ce1b778f994abc48fb365efcfe547b2",
+      "dependency_digest": "3a4e50adecc1cc19f142bbce4bd35d7f572601fa474070cd96360bcae14d6b09",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -272,7 +272,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -338,7 +339,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3fda36d49856586925142a9d0708c1267b5755bc070f3dd188143b7db87bbd1d",
+      "dependency_digest": "7b29a31a84a70b2d42ef21a6a9694e819775f9b7de8e4dbd10d0cfb108c912ac",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -355,7 +356,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -412,7 +414,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c8b4a289b86e387ebd4ff77e24495e8732e377db8268ce0ea58b7faef43c20e2",
+      "dependency_digest": "cccac09ccc35d2c75f82b2e6781c71561400bbe99d7182ebdde5d0967181536a",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -430,7 +432,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -714,7 +717,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "fcab99769eaf63ea282906aeadb579d24dba44cfd7b8fb5568324fdf901bf4a2",
+      "dependency_digest": "c46c130dd3f6ef57a350d21d229990c934674cd8b82189a54e94010f88a15a73",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -731,7 +734,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -788,7 +792,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "d953364c2712293f7f59bdafd8172cf5de1377c936f057977edd1c04c12df565",
+      "dependency_digest": "9b1f5b25e74bc14ca453765efaf6e67cf599bd854d776c39b1bf09f1fbfd7238",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -805,7 +809,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -862,7 +867,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "b4aab2277ee171a4b4ea397aa2b34d3559864726ea4851b89b64fa9c2cdb6f2b",
+      "dependency_digest": "ad5c2101798291cabbec3f68531616bd50430309ef0810013771bd3183853037",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -879,7 +884,8 @@
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -938,7 +944,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "f05628beaa39949e6d0454d042db2fbde05a655aab69094020ac28e3955b1b55",
+      "dependency_digest": "a076a41f2d9caeeb33658f108ceed53ef7c2d2aeba1f4406aaf0d9bd75217fa3",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -956,7 +962,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -1004,7 +1011,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "be718f5c33710e1e5ef71a391abb0dd9b40d97f5a2f950d08e744d6e540fed7e",
+      "dependency_digest": "0b45377f88a7ae3a17845754f71526cc1154a461b82c6bc04fcb6e86dc5651d6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1022,7 +1029,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -1072,7 +1080,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "1ecef94a5a5316faa6334bb489a4fd47e7fa79692196ddfdce6033ba94789ea0",
+      "dependency_digest": "d528e0175b667e8f7412dbb8fdbc0394770b4e23aaf4bc1041f5816a2cb46a6d",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1090,7 +1098,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -1371,7 +1380,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "b862242effbb94aa406ab36b739dacd10c91a435f251da62c8d753d595f56a1c",
+      "dependency_digest": "5c50bd7d11a0d10c064a86574402f9d652d6f3e5804b8ed571fd471764fca88c",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1389,7 +1398,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -1531,7 +1541,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c9fb4f8fe0a08e40a904f3744391352ac326425786917a9d017f0291eccbfb44",
+      "dependency_digest": "84dabaf67d0b06c4bec54eee10639cdc60d34d142737f4c65a9a4e1fa8293a79",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1548,7 +1558,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -1624,7 +1635,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "45d35e147f893b0e9c332576b80a2951fcf4eef2baccca4213f48ca2c02fd6b2",
+      "dependency_digest": "26f662df197ef77b57f93d6ea052ff39a8968095a3ac1d7c4f1dd3ea4a768180",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1641,7 +1652,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -3528,7 +3540,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "cee2f5ba01798e0e26480cff43332ac6f47efb8897bbe70ce11cbe610f4b911c",
+      "dependency_digest": "cd8740031d583eb29ed6697464105038a8437d4b42b58321dfdb29a02d7aec8f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3544,7 +3556,8 @@
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -3592,7 +3605,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3fc5652b688d55e630d602be6c772e423ff03e679a8bfcabe5c9c0c55acaf8c6",
+      "dependency_digest": "5ebc95e0601a868964fcaf30fc5d5888f795c97b5d5aa1b222dab21ae696dd43",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3610,7 +3623,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -3658,7 +3672,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "935940921c2db3793c856b5a40473f99a577d6ce23ae02724ebfb1554d3f20b0",
+      "dependency_digest": "8f68020a61251a54623d041e984a58eca9a4a620521f6f779748957a246512a9",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3674,7 +3688,8 @@
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -3722,7 +3737,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "be4504af93eab21b91fd271e69bc798521491ff094196a6bbdade18988a520f9",
+      "dependency_digest": "cac702a907c488cac20e3085c044c141f4dd7e9c6242dd0dabe3b95bed9d9f02",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3740,7 +3755,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -3788,7 +3804,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "cd32970801a1cc5f83130d4e76a386d6c938c8913c2b82397c189bbf357550d0",
+      "dependency_digest": "8db2f6f598e3c5f0883b0662ad09c6d7aa53b4149fcb9029dc427b672223a5b6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3806,7 +3822,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -3857,7 +3874,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "fd67e0a6ce8d20b4315507b8d0e6c7c874c9095f2198508b27dfd0ac6ba98d09",
+      "dependency_digest": "e9143add0d6da2e41a1b1eb5c72ff92fcc65973f168899cf287b867ce76b06b4",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3875,7 +3892,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -3941,7 +3959,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "817f48b3412cd7b2808508d633d5a6e82a5b634ff3a4f0b0dce112d42f910a29",
+      "dependency_digest": "8d76d1ba26527ae5884cd3f609e439d8b1eda6e6be40c85cbcb029a43bba942c",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3959,7 +3977,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4014,7 +4033,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "6e585d23817ea4d6a8975067b98be4319d87d580ca79668a4ce787410fdfb2f6",
+      "dependency_digest": "6481102da8a7fa701c173075851daa4079bcba4ad741274b788305e0b9dd18f0",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4032,7 +4051,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4086,7 +4106,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3a41075fd26fe7d29d1f210a945d3cedd90d534151a6dabc5dae6ad4805e9936",
+      "dependency_digest": "45a9d3b19c5c117c74a289b25fcd55c5f0142ee6096ce022205754d9746ddaf1",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4104,7 +4124,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4158,7 +4179,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "cb027d9a465f6228c9b715462aed74c132f0605b6c6f2c1b05c3a0f3fc7ce02b",
+      "dependency_digest": "0f2a2913ccca43f007aff6f6b33cbfcc156584c3617fb74f08e942106cb6a545",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4176,7 +4197,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4230,7 +4252,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "62fb506a00090b732972d7c7667530571d23e01588580a869265330d9b5d5f83",
+      "dependency_digest": "3086b506337cb290403af61d7fb01cc81789f4457e82ff17b47aa2a6c21f872f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4248,7 +4270,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4302,7 +4325,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "889cc6c7710b5fd6435f04e7c860ff560856504803e20aada0270ecaa74a605d",
+      "dependency_digest": "78464394ed781769714ccc1c8a7d672d7a0edceb79b6d6a6d2acd7a1e46243c5",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4320,7 +4343,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4374,7 +4398,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4852947ddb8ffca7ceda1fe62c78b220f379a0e326da0a9699be04c36ff343a4",
+      "dependency_digest": "4ebf72f16953389bb4e01049e4c0a7ae573295d08ffd39023973e9a2d7cf6fd5",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4392,7 +4416,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4444,7 +4469,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "bbecd56cfa8acc59cb19b121026ec09ebe51c277b4e5715f231c8514e4fde627",
+      "dependency_digest": "366cfdaae6f36575e79ff30e367769beee65774862cedf5da37d4c258ab276ee",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4462,7 +4487,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4731,7 +4757,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "adeb8660bcb697922b90c0932ff9b80d6dd3df359d196dbb918be464bd7a6016",
+      "dependency_digest": "16b3ac3ed7a4c4da273c5c4adab9bfc4d9dde93c5048299528a966e2583f735e",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4749,7 +4775,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4806,7 +4833,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "45a906429b83c3b62347b47a57287f319a142fc43f985da949142b8b12124fcf",
+      "dependency_digest": "2ad60584356ed350c53c7867167ce95fbe3e184a7888db7a6cdba4695e7dc402",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4824,7 +4851,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4881,7 +4909,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c0a95e3bcbee155edafbfcec0a4c4ddf04eb92bff63d3ab5ff0f5ee316ec4a6e",
+      "dependency_digest": "7e7c76b9815d58a18cdc9a15413528b10de01f038116de82fc73f16f735dcbe9",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4899,7 +4927,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -4956,7 +4985,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "355d18cd24262096a51b7ebbc984dee753ff160bbf774da82f88fa3a3a4d5467",
+      "dependency_digest": "f5eeb6c1d781fa64f9cf359c94df858b34c7130843288227cbbd6066eaa41468",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4974,7 +5003,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5031,7 +5061,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "18ed597c76c605d26116c124512712791f2317398102168c5485cfac7f4a5bf7",
+      "dependency_digest": "bf29f5cca3d4da7f1de0efec519565f73cfd3d1f53fe28d6caa943b09ff651c0",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5049,7 +5079,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5106,7 +5137,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "ccf0ae595c36449b4d8d2e3ab99e6cb0f5412dd2f4048355d4dd74c5887efc72",
+      "dependency_digest": "18823248a4c40a216fda77c208904ed753703cd02df246cdffc9d701493e61fb",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5124,7 +5155,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5182,7 +5214,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "91f5f7066c5defd8b5425e6d879054aeb165fe4029113aa96c25b08a0be27c5a",
+      "dependency_digest": "f58a51375c30be3255bbb1a83f52ad052393440d39a2ba08a7dbea148ff9ec67",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5199,7 +5231,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5271,7 +5304,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "da218a8abd52d28793c0262d941c654d120cea81377fd6a2bb59249a8e0ac58c",
+      "dependency_digest": "76d73be2990e107de3e8d67e06ad6a039625914fc5f154dc99621841c65b8260",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5288,7 +5321,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5360,7 +5394,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "f9991578b06669cde23cab585717a9fb79232b453d9e613a8ab23721b1fa5d1b",
+      "dependency_digest": "a2b4ddd80e2d70bcb6ee31e37f39f445563ffea7e3929ad47a1541bfd62e74ef",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5377,7 +5411,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5449,7 +5484,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "592c1fa2ea54c3705e1f6bc3fa3afe68566f1724894c634a408fa8218194b0fc",
+      "dependency_digest": "d451259f03556b499f6e1b75a003f4d1168ecdecc45d7d2cd097638a73d7e1ff",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5466,7 +5501,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5538,7 +5574,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "35b67114c5fa748c70a2fa6d5876e2292c41e85dd29b5227b2e93290af7286cf",
+      "dependency_digest": "66d955b2bc9073a8c5176cdd0b9d4c1822207470074cbcfd4989a78d2b664849",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5555,7 +5591,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -5627,7 +5664,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "ac3799011490248e7271fec0962a5c889cf90923c521a4419d1eee4626290c8c",
+      "dependency_digest": "c7ef8f8eefc4f7fdcef87ccba851aba459d781693f76e6bfd098b494c8afa90c",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5644,7 +5681,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -7139,7 +7177,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "61be3a3b90a157acb4113a129a64ea1db8402cfbe5ece529934e93e19a02ed9a",
+      "dependency_digest": "811efdc61d000ef2a2ae59961eb8042981062b9c2335711af65440bd8b68ca41",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7165,7 +7203,8 @@
         "ui/session_summary.py",
         "ui/session_summary_card.py",
         "reward_presentation.py",
-        "garden_finds.py"
+        "garden_finds.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -7247,7 +7286,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "d83ba2e74c4f26deb2576fdf40bd7e40578249287f73a777c985f1f03409a9ac",
+      "dependency_digest": "c7a0db8a1dbc808c5837f7b0a2ae6aaee0de943302372dafca886f3417ab0fca",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7274,7 +7313,8 @@
         "ui/plant_art.py",
         "ui/session_summary.py",
         "ui/session_summary_card.py",
-        "ui/sync_reward_summary.py"
+        "ui/sync_reward_summary.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -7620,7 +7660,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "78ddfe1f6fce60245ae468d84f89000cd42a6dd168b9e10e5d26e3b2bbd8f893",
+      "dependency_digest": "00e8c0a55506a2c379dd0a62bbd1ef04181f20641204bc7b1e216b93d1ac6478",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7638,7 +7678,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -7696,7 +7737,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "afefdae10e4d22859a0b15ea89117fd2776c803022d3992b7eb5ed9b24f1210d",
+      "dependency_digest": "5cb173887d096a8b9f6e6f0b4404df4341fa72cd3c0c9fc98c0dc9e6b19f2841",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7714,7 +7755,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [
         {
@@ -7775,7 +7817,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0036f62b34e3b3f1077be2c8269c34875b0140a8ce61e4ff41626f2c86804fae",
+      "dependency_digest": "5a5c6adbc2a4c0699d1510945852921b90200e11fef746cfaf66a7ccd0d7297b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7794,7 +7836,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -7849,7 +7892,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "34daf575d434f1e01458f277e49a4cba778b36dd8c53038b80db0bc3dc0d7be9",
+      "dependency_digest": "4c79994f42eb612b317d73f0ad24ac6b32451b7b8708e5c7575b2da1ab68c756",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7867,7 +7910,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -7930,7 +7974,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "a58996297d70e6981ed60528d4b0077fa75dd1e903bd759de32558053122f570",
+      "dependency_digest": "d243cee136c503ed20279445fe258bb78cbab9533a90ad7a6bd7053a08f8ce19",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7948,7 +7992,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -8011,7 +8056,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "ef277f8e348d2dcad30fd868b2318125bbbb60e8e2cb4f4d710b65c034153359",
+      "dependency_digest": "c43b6988f42aba55e0143df9f14ba2963dec43582a213f2910ecf224219cb489",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -8029,7 +8074,8 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -8089,7 +8135,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3be7004b178e43e75f8306703bfec8dd83d3c4cb801e62f7a7836360fd021bcb",
+      "dependency_digest": "8fc65ea875fd377e6bb7aa5ba0bf3b6bb5f3b9a448837bf1ef85835bc67384b4",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -8108,7 +8154,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -8158,7 +8205,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "f25064e68c9397583e6c9869371a82eb6520d1eee507d8c0dffc126e285da28a",
+      "dependency_digest": "70ec30df0f575c10050dbad3c294e070bc884dc9e5c13354a0c98937cbf1481b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -8176,7 +8223,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -9676,7 +9724,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "7e732c8c7a5ca5b67cf726ca7e82ee80abfad3715afc30233b6a1d4ec40ac8af",
+      "dependency_digest": "a011608ef2151f4a2f5430633386b42ffead50e2a3bb770c167041942309dd45",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9696,7 +9744,8 @@
       ],
       "owned_module_dependencies": [
         "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/landmarks.py",
+        "ui/landmark_display.py"
       ],
       "placements": [],
       "prerequisites": [],
@@ -10241,7 +10290,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "be36529dd920e6e732c6106f1f25c00ab35feef89650f611efd034bd07e87fe5",
+      "dependency_digest": "7ee6c3d62e7100a887829e2d3895f5771a08f7ded674536d3aaffab32a234dd7",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10262,8 +10311,8 @@
         "collection"
       ],
       "owned_module_dependencies": [
-        "ui/dashboard.py",
         "ui/scene.py",
+        "ui/landmarks.py",
         "ui/landmark_display.py",
         "economy_progression.py"
       ],
@@ -10478,7 +10527,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "e6234ec95a8ea9e9bb62bbe28306309bb56a780e09d1f42ba6fa02b08d442432",
+      "dependency_digest": "132c6c336fd8b7ec8455860d297e4e0b8dfa3140a020672a0983ee302199b449",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10499,6 +10548,7 @@
       ],
       "owned_module_dependencies": [
         "economy_progression.py",
+        "garden_finds.py",
         "reward_presentation.py",
         "ui/session_summary.py"
       ],

@@ -5524,6 +5524,27 @@ def _with_v26_first_run_topology(row: dict[str, object]) -> dict[str, object]:
     return row
 
 
+def _with_v26_landmark_display_dependency_closure(
+    row: dict[str, object],
+) -> dict[str, object]:
+    """Own the shared Landmark renderer imported by Home and Garden scenes."""
+
+    dependencies = tuple(row.get("owned_module_dependencies", ()))
+    stable_id = str(row["id"])
+    home_widget_mapped = (
+        str(row.get("renderer_family", "")) == "AnkiQt"
+        and not stable_id.startswith("reviewer-")
+    )
+    scene_owned = "ui/scene.py" in dependencies
+    if not (home_widget_mapped or scene_owned):
+        return row
+    row["owned_module_dependencies"] = tuple(dict.fromkeys((
+        *dependencies,
+        "ui/landmark_display.py",
+    )))
+    return row
+
+
 def _with_v26_shared_flow_topology(row: dict[str, object]) -> dict[str, object]:
     """Bind every step in a sequential flow to its seeded checkpoint lineage."""
 
@@ -5569,8 +5590,8 @@ def _v26_economy_transaction_rows() -> tuple[dict[str, object], ...]:
             ),
             ("progress", "collection"),
             (
-                "ui/dashboard.py",
                 "ui/scene.py",
+                "ui/landmarks.py",
                 "ui/landmark_display.py",
                 "economy_progression.py",
             ),
@@ -5631,6 +5652,7 @@ def _v26_economy_transaction_rows() -> tuple[dict[str, object], ...]:
             ("nursery-spaces", "progress-achievements"),
             (
                 "economy_progression.py",
+                "garden_finds.py",
                 "reward_presentation.py",
                 "ui/session_summary.py",
             ),
@@ -5772,7 +5794,10 @@ def _v26_surface_rows() -> tuple[dict[str, object], ...]:
             _with_v26_required_facts(replacement)
         ))
     rows.extend(_v26_economy_transaction_rows())
-    return tuple(rows)
+    return tuple(
+        _with_v26_landmark_display_dependency_closure(row)
+        for row in rows
+    )
 
 
 SURFACE_ROWS: tuple[dict[str, object], ...] = _v26_surface_rows()
