@@ -141,12 +141,40 @@ ANALYSIS_FIELDS = (
 )
 
 
+ANALYSIS_SOURCE_PATHS = (
+    "ankigarden/balance_catalog.py",
+    "ankigarden/game.py",
+    "scripts/simulate_balance_profiles.py",
+    "scripts/shard_balance_profiles.py",
+    "scripts/build_balance_report.py",
+    "scripts/run_balance_engine_parity.py",
+    "scripts/balance_analysis/annual_parity.py",
+    "scripts/balance_analysis/catalog.py",
+    "scripts/balance_analysis/kernel.py",
+    "scripts/balance_analysis/model.py",
+    "scripts/balance_analysis/artifacts.py",
+    "scripts/balance_analysis/report.py",
+    "scripts/balance_analysis/shards.py",
+    "scripts/balance_analysis/trace.py",
+)
+
+
 def _sha256_file(path: Path) -> str:
     digest = sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def analysis_source_hashes(repository_root: Path) -> Mapping[str, str]:
+    """Hash the frozen source set used by collection, merge, and reporting."""
+
+    return {
+        relative_path: _sha256_file(repository_root / relative_path)
+        for relative_path in ANALYSIS_SOURCE_PATHS
+        if (repository_root / relative_path).is_file()
+    }
 
 
 def _git_commit(repository_root: Path) -> str:
@@ -188,25 +216,7 @@ def finalize_report(
     """Attach reproducible provenance and a content-derived run ID."""
 
     result: MutableMapping[str, Any] = deepcopy(dict(report))
-    source_candidates = (
-        repository_root / "ankigarden" / "balance_catalog.py",
-        repository_root / "ankigarden" / "game.py",
-        repository_root / "scripts" / "simulate_balance_profiles.py",
-        repository_root / "scripts" / "build_balance_report.py",
-        repository_root / "scripts" / "run_balance_engine_parity.py",
-        repository_root / "scripts" / "balance_analysis" / "annual_parity.py",
-        repository_root / "scripts" / "balance_analysis" / "catalog.py",
-        repository_root / "scripts" / "balance_analysis" / "kernel.py",
-        repository_root / "scripts" / "balance_analysis" / "model.py",
-        repository_root / "scripts" / "balance_analysis" / "artifacts.py",
-        repository_root / "scripts" / "balance_analysis" / "report.py",
-        repository_root / "scripts" / "balance_analysis" / "trace.py",
-    )
-    sources = {
-        str(path.relative_to(repository_root)): _sha256_file(path)
-        for path in source_candidates
-        if path.is_file()
-    }
+    sources = analysis_source_hashes(repository_root)
     run = dict(result.get("run", {}))
     epoch = max(0, int(run.get("source_date_epoch", 0) or 0))
     dirty_paths = set(_git_dirty_paths(repository_root))

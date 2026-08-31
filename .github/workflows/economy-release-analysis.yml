@@ -1,0 +1,546 @@
+name: Economy 2.2.0 Release Analysis
+
+on:
+  push:
+    branches:
+      - codex/economy-2.2.0-cloud-analysis
+    paths:
+      - .github/workflows/economy-release-analysis.yml
+      - ankigarden/**
+      - scripts/**
+      - tests/test_balance_simulation_profiles.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: economy-2.2.0-release-analysis-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONHASHSEED: '0'
+  PYTHONPYCACHEPREFIX: /tmp/anki-garden-economy-pyc
+  ANKI_GARDEN_SKIP_STARTUP: '1'
+  RELEASE_SEEDS: '10000'
+  RELEASE_DAYS: '365'
+  SHARD_COUNT: '20'
+
+jobs:
+  plan:
+    name: Plan frozen seed matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      source_date_epoch: ${{ steps.plan.outputs.source_date_epoch }}
+    steps:
+      - name: Checkout exact source snapshot
+        uses: actions/checkout@v4
+
+      - name: Freeze matrix and source epoch
+        id: plan
+        shell: bash
+        run: |
+          python -c 'import json; print("matrix=" + json.dumps({"shard_index": list(range(20))}, separators=(",", ":")))' >> "$GITHUB_OUTPUT"
+          echo "source_date_epoch=$(git show -s --format=%ct "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+
+  catalog-package:
+    name: Catalog and production package
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.plan.outputs.source_date_epoch }}
+    steps:
+      - name: Checkout exact source snapshot
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check pillow pytest
+
+      - name: Validate economy catalog and frozen balance snapshot
+        shell: bash
+        run: |
+          mkdir -p build/economy-preflight
+          python scripts/simulate_balance_profiles.py --validate-only
+          python scripts/validate_economy_catalog.py | tee build/economy-preflight/catalog-validation.json
+          python -m pytest -q -o addopts='' \
+            tests/test_balance_simulation_profiles.py::test_seed_shards_merge_to_the_exact_monolithic_report
+
+      - name: Build exact production package
+        shell: bash
+        run: |
+          python -c 'import json; assert json.load(open("ankigarden/manifest.json", encoding="utf-8"))["human_version"] == "2.2.0"'
+          python scripts/package_addon.py --production | tee build/economy-preflight/package-report.json
+          cp dist/anki_garden.ankiaddon build/economy-preflight/anki_garden.ankiaddon
+          sha256sum build/economy-preflight/anki_garden.ankiaddon > build/economy-preflight/package.sha256
+
+      - name: Upload catalog and package authority
+        uses: actions/upload-artifact@v4
+        with:
+          name: economy-catalog-package-${{ github.sha }}
+          path: build/economy-preflight/
+          if-no-files-found: error
+          retention-days: 30
+
+  production-parity:
+    name: Production engine parity (173 traces)
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.plan.outputs.source_date_epoch }}
+    steps:
+      - name: Checkout exact source snapshot
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run complete production parity manifest
+        shell: bash
+        run: |
+          mkdir -p build/economy-parity
+          timeout --foreground --signal=TERM 315m \
+            python scripts/run_balance_engine_parity.py \
+              --output build/economy-parity/engine-parity.json
+
+      - name: Validate parity as the report will consume it
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.balance_analysis.kernel import _validated_parity_evidence
+
+          path = Path("build/economy-parity/engine-parity.json")
+          evidence = json.loads(path.read_text(encoding="utf-8"))
+          validated = _validated_parity_evidence(evidence)
+          assert validated["status"] == "pass"
+          assert validated["production_engine_trace_equivalent"] is True
+          assert validated["trace_count"] == 173
+          assert validated["bounded_trace_count"] == 98
+          PY
+          sha256sum build/economy-parity/engine-parity.json > build/economy-parity/engine-parity.sha256
+
+      - name: Upload production parity authority
+        uses: actions/upload-artifact@v4
+        with:
+          name: economy-production-parity-${{ github.sha }}
+          path: build/economy-parity/
+          if-no-files-found: error
+          retention-days: 30
+
+  collect-shard:
+    name: Seeds ${{ matrix.shard_index }} of 20
+    needs:
+      - plan
+      - catalog-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.plan.outputs.source_date_epoch }}
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout exact source snapshot
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Collect exact paired-seed shard
+        shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard_index }}
+        run: |
+          timeout --foreground --signal=TERM 315m \
+            python scripts/shard_balance_profiles.py collect \
+              --seeds "$RELEASE_SEEDS" \
+              --days "$RELEASE_DAYS" \
+              --shard-count "$SHARD_COUNT" \
+              --shard-index "$SHARD_INDEX" \
+              --workers 2 \
+              --output-dir build/balance-shard
+          SHARD_PATH=$(find build/balance-shard -name 'balance-shard-*.zip' -type f -print -quit)
+          sha256sum "$SHARD_PATH" > "${SHARD_PATH%.zip}.sha256"
+
+      - name: Upload exact seed shard
+        uses: actions/upload-artifact@v4
+        with:
+          name: economy-balance-shard-${{ matrix.shard_index }}-${{ github.sha }}
+          path: build/balance-shard/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  merge-report:
+    name: Merge, report, render, and freeze evidence
+    needs:
+      - plan
+      - catalog-package
+      - production-parity
+      - collect-shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.plan.outputs.source_date_epoch }}
+    steps:
+      - name: Checkout exact source snapshot
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install report and render dependencies
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check pillow reportlab pypdf
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends poppler-utils
+
+      - name: Download all exact seed shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: economy-balance-shard-*-${{ github.sha }}
+          path: build/downloaded-balance-shards
+          merge-multiple: true
+
+      - name: Download catalog and package authority
+        uses: actions/download-artifact@v4
+        with:
+          name: economy-catalog-package-${{ github.sha }}
+          path: build/economy-preflight
+
+      - name: Download production parity authority
+        uses: actions/download-artifact@v4
+        with:
+          name: economy-production-parity-${{ github.sha }}
+          path: build/economy-parity
+
+      - name: Merge the complete 10,000-seed matrix
+        shell: bash
+        run: |
+          timeout --foreground --signal=TERM 150m \
+            python scripts/shard_balance_profiles.py merge \
+              --seeds "$RELEASE_SEEDS" \
+              --days "$RELEASE_DAYS" \
+              --shard-count "$SHARD_COUNT" \
+              --shards-dir build/downloaded-balance-shards \
+              --parity-evidence build/economy-parity/engine-parity.json \
+              --output-dir build/release-evidence-2.2.0-github/model
+
+      - name: Assemble run-specific evidence directory
+        id: release
+        shell: bash
+        run: |
+          RUN_ID=$(python -c 'import json; print(json.load(open("build/release-evidence-2.2.0-github/model/anki-garden-economy-analysis.json", encoding="utf-8"))["run"]["run_id"])')
+          FINAL_DIR="build/anki-garden-economy-release-$RUN_ID"
+          mkdir -p "$FINAL_DIR/model" "$FINAL_DIR/authority" "$FINAL_DIR/rendered-pdf"
+          cp build/release-evidence-2.2.0-github/model/* "$FINAL_DIR/model/"
+          cp build/economy-preflight/* "$FINAL_DIR/authority/"
+          cp build/economy-parity/* "$FINAL_DIR/authority/"
+          python --version > "$FINAL_DIR/authority/python-version.txt" 2>&1
+          python -m pip freeze > "$FINAL_DIR/authority/python-packages.txt"
+          pdftoppm -v > "$FINAL_DIR/authority/poppler-version.txt" 2>&1
+          find build/downloaded-balance-shards -name 'balance-shard-*.zip' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | sed 's#build/downloaded-balance-shards/##' \
+            > "$FINAL_DIR/authority/seed-shards.sha256"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "final_dir=$FINAL_DIR" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=anki-garden-economy-release-$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Validate and build deterministic PDF
+        shell: bash
+        env:
+          FINAL_DIR: ${{ steps.release.outputs.final_dir }}
+          RUN_ID: ${{ steps.release.outputs.run_id }}
+        run: |
+          REPORT_JSON="$FINAL_DIR/model/anki-garden-economy-analysis.json"
+          PDF="$FINAL_DIR/anki-garden-economy-progression-rewards-analysis-2.2.0-$RUN_ID.pdf"
+          python scripts/build_balance_report.py "$REPORT_JSON" --validate-only
+          python scripts/build_balance_report.py "$REPORT_JSON" --output "$PDF"
+          pdfinfo "$PDF" > "$FINAL_DIR/pdfinfo.txt"
+          pdftoppm -png -r 144 "$PDF" "$FINAL_DIR/rendered-pdf/page"
+
+      - name: Verify frozen snapshot equivalence
+        shell: bash
+        env:
+          FINAL_DIR: ${{ steps.release.outputs.final_dir }}
+        run: |
+          python - <<'PY'
+          import csv
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.balance_analysis.artifacts import (
+              analysis_source_hashes,
+              canonical_json_text,
+              finalize_report,
+          )
+
+          root = Path.cwd()
+          final_dir = Path(os.environ["FINAL_DIR"])
+          report_path = final_dir / "model" / "anki-garden-economy-analysis.json"
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          run = report["run"]
+          assert run["seed_count"] == 10_000
+          assert run["days"] == 365
+          assert run["git_commit"] == os.environ["GITHUB_SHA"]
+          assert run["source_date_epoch"] == int(os.environ["SOURCE_DATE_EPOCH"])
+          assert run["dirty_paths"] == []
+          assert run["seed_manifest"] == {
+              "first_seed_index": 0,
+              "last_seed_index": 9_999,
+              "seed_count": 10_000,
+              "seed_root_sha256": run["seed_root_sha256"],
+          }
+          assert report["scenario_matrix"]["canonical_scenario_count"] == 66
+          assert len(report["scenario_matrix"]["canonical_scenario_ids"]) == 66
+          assert run["source_files"] == analysis_source_hashes(root)
+
+          catalog = json.loads(
+              (final_dir / "authority" / "catalog-validation.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert catalog["status"] == "pass"
+          assert catalog["catalog_sha256"] == report["catalog"]["sha256"]
+          assert run["catalog_sha256"] == report["catalog"]["sha256"]
+
+          parity = json.loads(
+              (final_dir / "authority" / "engine-parity.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert report["parity"] == parity
+          assert parity["status"] == "pass"
+          assert parity["production_engine_trace_equivalent"] is True
+          assert parity["trace_count"] == 173
+
+          package_path = final_dir / "authority" / "anki_garden.ankiaddon"
+          package_report = json.loads(
+              (final_dir / "authority" / "package-report.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          package_sha256 = hashlib.sha256(package_path.read_bytes()).hexdigest()
+          assert package_report["archive_sha256"] == package_sha256
+          assert package_report["mode"] == "production"
+
+          rebuilt = finalize_report(report, repository_root=root)
+          assert canonical_json_text(rebuilt) == report_path.read_text(encoding="utf-8")
+
+          for csv_path in sorted((final_dir / "model").glob("*.csv")):
+              with csv_path.open(encoding="utf-8", newline="") as source:
+                  reader = csv.DictReader(source)
+                  rows = list(reader)
+              if "run_id" in (reader.fieldnames or []):
+                  assert {row["run_id"] for row in rows if row["run_id"]} == {
+                      run["run_id"]
+                  }
+              if "catalog_sha256" in (reader.fieldnames or []):
+                  assert {
+                      row["catalog_sha256"]
+                      for row in rows
+                      if row["catalog_sha256"]
+                  } == {report["catalog"]["sha256"]}
+
+          result = {
+              "$schema": "anki-garden-economy-snapshot-equivalence-v1",
+              "catalog_sha256": report["catalog"]["sha256"],
+              "git_commit": run["git_commit"],
+              "package_sha256": package_sha256,
+              "parity_manifest_sha256": hashlib.sha256(
+                  (final_dir / "authority" / "engine-parity.json").read_bytes()
+              ).hexdigest(),
+              "run_id": run["run_id"],
+              "source_files": run["source_files"],
+              "status": "pass",
+          }
+          (final_dir / "snapshot-equivalence.json").write_text(
+              json.dumps(result, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Verify every rendered PDF page
+        shell: bash
+        env:
+          FINAL_DIR: ${{ steps.release.outputs.final_dir }}
+          RUN_ID: ${{ steps.release.outputs.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from PIL import Image
+          from pypdf import PdfReader
+
+          final_dir = Path(os.environ["FINAL_DIR"])
+          pdf_path = final_dir / (
+              "anki-garden-economy-progression-rewards-analysis-2.2.0-"
+              + os.environ["RUN_ID"]
+              + ".pdf"
+          )
+          reader = PdfReader(str(pdf_path))
+          assert len(reader.pages) == 15
+          page_sizes = []
+          for page in reader.pages:
+              width = float(page.mediabox.width)
+              height = float(page.mediabox.height)
+              assert abs(width - 612.0) < 0.01
+              assert abs(height - 792.0) < 0.01
+              page_sizes.append([width, height])
+
+          png_paths = sorted((final_dir / "rendered-pdf").glob("page-*.png"))
+          assert len(png_paths) == 15
+          rendered_sizes = []
+          for path in png_paths:
+              with Image.open(path) as image:
+                  image.verify()
+              with Image.open(path) as image:
+                  assert image.size == (1224, 1584)
+                  rendered_sizes.append(list(image.size))
+
+          result = {
+              "$schema": "anki-garden-economy-pdf-render-validation-v1",
+              "page_count": len(reader.pages),
+              "page_sizes_points": page_sizes,
+              "rendered_page_count": len(png_paths),
+              "rendered_sizes_pixels": rendered_sizes,
+              "status": "pass",
+          }
+          (final_dir / "pdf-render-validation.json").write_text(
+              json.dumps(result, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Write source and artifact hash manifest
+        shell: bash
+        env:
+          FINAL_DIR: ${{ steps.release.outputs.final_dir }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          final_dir = Path(os.environ["FINAL_DIR"])
+
+          def digest(path: Path) -> str:
+              value = hashlib.sha256()
+              with path.open("rb") as source:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                      value.update(chunk)
+              return value.hexdigest()
+
+          report = json.loads(
+              (final_dir / "model" / "anki-garden-economy-analysis.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          artifact_files = {
+              str(path.relative_to(final_dir)): digest(path)
+              for path in sorted(final_dir.rglob("*"))
+              if path.is_file()
+              and path.name not in {"SHA256SUMS", "source-and-artifact-manifest.json"}
+          }
+          shard_files = sorted(
+              Path("build/downloaded-balance-shards").rglob("balance-shard-*.zip")
+          )
+          manifest = {
+              "$schema": "anki-garden-economy-release-artifacts-v1",
+              "artifact_files": artifact_files,
+              "catalog_sha256": report["catalog"]["sha256"],
+              "github": {
+                  "event_name": os.environ["GITHUB_EVENT_NAME"],
+                  "ref": os.environ["GITHUB_REF"],
+                  "repository": os.environ["GITHUB_REPOSITORY"],
+                  "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  "run_id": os.environ["GITHUB_RUN_ID"],
+                  "sha": os.environ["GITHUB_SHA"],
+              },
+              "package_sha256": digest(
+                  final_dir / "authority" / "anki_garden.ankiaddon"
+              ),
+              "parity_manifest_sha256": digest(
+                  final_dir / "authority" / "engine-parity.json"
+              ),
+              "release_status": report["release_status"],
+              "report_run_id": report["run"]["run_id"],
+              "seed_shard_archives": {
+                  path.name: digest(path) for path in shard_files
+              },
+              "source_files": report["run"]["source_files"],
+              "workflow": {
+                  "path": ".github/workflows/economy-release-analysis.yml",
+                  "sha256": digest(
+                      Path(".github/workflows/economy-release-analysis.yml")
+                  ),
+              },
+          }
+          (final_dir / "source-and-artifact-manifest.json").write_text(
+              json.dumps(manifest, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          (
+            cd "$FINAL_DIR"
+            find . -type f ! -name SHA256SUMS -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+      - name: Upload final run-specific release evidence
+        if: ${{ always() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.release.outputs.artifact_name }}
+          path: ${{ steps.release.outputs.final_dir }}/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce modeled release acceptance
+        if: ${{ success() }}
+        shell: bash
+        env:
+          FINAL_DIR: ${{ steps.release.outputs.final_dir }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              (
+                  Path(os.environ["FINAL_DIR"])
+                  / "model"
+                  / "anki-garden-economy-analysis.json"
+              ).read_text(encoding="utf-8")
+          )
+          modeled = report["release_status"]["modeled_acceptance"]
+          assert modeled["status"] == "pass", modeled
+          PY
