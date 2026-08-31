@@ -706,6 +706,19 @@ def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
         "open_garden_capitalization_passed": True,
         "bounds": [1274, 20, 416, 780],
         "expected_bounds": [1274, 20, 416, 780],
+        "container_size": [1710, 1041],
+        "summary_home_clearance_measured": True,
+        "summary_home_clearance_horizontal_overlap": False,
+        "summary_home_clearance_bottom": None,
+        "summary_home_clearance_source": "none",
+        "summary_home_clearance_applied": False,
+        "summary_home_clearance_telemetry": {
+            "schema_version": 1,
+            "source": "home-garden-dom",
+            "measured": True,
+            "rect": {"left": 80, "right": 620, "bottom": 240},
+            "viewport": {"width": 1710, "height": 1041},
+        },
         "right_margin": 20,
         "top_margin": 20,
         "bottom_margin": 20,
@@ -720,6 +733,15 @@ def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
             "rewards",
             "active_boosts",
         ],
+        "reward_metric_order": [
+            "growth_applied",
+            "garden_coins",
+            "standard_finds",
+        ],
+        "project_progress_placement": "breakdown",
+        "landmark_growth_units": 0,
+        "project_growth_units": 12_500,
+        "project_allocation_count": 1,
         "growth_breakdown_expanded": False,
         "expanded_accounting_copy_passed": False,
         "device_pixel_ratio": 2.0,
@@ -971,14 +993,18 @@ def test_sync_reward_capture_fixture_is_rich_multiday_and_nonmodal() -> None:
         / "runtime.py"
     ).read_text("utf-8")
 
-    assert subtitle == "Rewards from 42 card answers on another device."
+    assert subtitle == "Rewards from 42 reviews completed on another device"
     assert facts == {
         "anki_days": ("2026-08-28", "2026-08-29"),
         "eligible_answer_count": 42,
         "growth_total_units": 52_000,
         "plant_growth_units": 42_000,
         "shared_growth_delta_units": 8_000,
-        "stored_growth_delta_units": 2_000,
+        "stored_growth_delta_units": 0,
+        "landmark_growth_delta_units": 2_000,
+        "mastery_growth_delta_units": 0,
+        "legacy_growth_delta_units": 0,
+        "project_allocations": (("landmark", "garden_landmark", 2_000),),
         "garden_coin_delta": 12,
         "find_quantity": 0,
         "environment_count": 1,

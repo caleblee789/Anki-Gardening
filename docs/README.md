@@ -1,6 +1,7 @@
 # Documentation index
 
-These documents describe the current schema-25 Anki Garden 2.1.0 product.
+These documents describe the current state-schema-27 Anki Garden 2.2.0
+working-tree candidate.
 Runtime source and persisted-state behavior remain authoritative when prose and
 implementation disagree.
 
@@ -8,13 +9,16 @@ implementation disagree.
 
 - `feature-evidence-matrix.md`: feature behavior and automated/live acceptance
   gates.
-- `release-notes-2.1.0.md`: learner-visible changes and compatibility notes.
+- `release-notes-2.2.0.md`: learner-visible 2.2.0 changes and migration notes.
+- `progression-rewards-effects-reference.md`: current Growth, Garden Coin,
+  consumable, purchase, Garden Cycle, achievement, Collection, Landmark,
+  Mastery, Legacy, persistence, and replay authority.
 - `display-validation-matrix.md`: prominent values and their authoritative
   sources.
 - `e2e_display_assertions.md`: exact-package isolated-Anki journeys that remain
   required for live acceptance.
-- `ui/data_contracts.md`: schema-25 persistence, reward identity, Garden Finds,
-  Growth, purchases, and migration boundaries.
+- `ui/data_contracts.md`: persistence, reward identity, Garden Finds, Growth,
+  purchases, and migration boundaries for UI consumers.
 - `reviewer-hud-specification.md`: exact Today’s Cards copy, HUD geometry,
   plant/checkpoint presentation, persistent-copy exclusions, integrated
   reward-dock bundles, responsive behavior, and accessibility.
@@ -25,8 +29,6 @@ implementation disagree.
   transaction, responsive, accessibility, and capture contract.
 - `ui-surface-inventory.md`: registry-derived v26 release inventory and the
   automated/manual acceptance boundary.
-- `ui/final-ui-audit-2.1.0.md`: canonical automated/macOS Qt evidence and the
-  explicitly unrun human/platform gates.
 - `garden-features.md`: the active registry, fixed layout, migration boundary,
   and static Home/native rendering contract.
 - `references/garden-decorations-reference.docx`: illustrated current Garden
@@ -45,14 +47,18 @@ implementation disagree.
 Superseded capture chronologies, intermediate package hashes, and pre-overhaul
 audit ledgers remain available through Git history or preserved raw local
 evidence. They are not active product or release evidence. Raw runs, manifests,
-archives, and lineage may remain under ignored `build/`; only the current full
-contact-sheet set is retained as the active presentation aid.
+archives, and lineage may remain under ignored `build/`.
 
 The active UI evidence contract is v26, contract schema 2 and scenario schema
 3. It derives 18 representative surfaces on two sheets and 34 full surfaces on
-five sheets. Schema-25 Garden state remains unchanged; v25 capture evidence is
-frozen historical material and is never reused as v26 evidence. The
-[canonical UI audit](ui/final-ui-audit-2.1.0.md) records the exact package and
-capture bindings, validator result, and still-open human/platform gates. The
-retained presentation aid is the
-[final five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260830-103800/contact-sheet-set.json).
+five sheets. State schema 27 changes the product data and economy without
+changing that topology; v25 capture evidence remains frozen historical
+material and is never reused as v26 evidence.
+
+The retained [2.1.0 UI audit](ui/final-ui-audit-2.1.0.md) and
+[184547 five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260830-184547/contact-sheet-set.json)
+form a frozen v26 baseline only. They do not certify the integrated 2.2.0
+candidate and are not current release evidence. A new 2.2.0 audit, exact
+package binding, hashes, manifests, and contact-sheet index will be recorded
+only after fresh native capture and review. Automated evidence will continue to
+leave human, platform, accessibility, and mixed-DPI gates open.

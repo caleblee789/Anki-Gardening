@@ -26,6 +26,11 @@ except Exception:
 
 from .formatters import format_percent
 from .garden_feature_layout import garden_feature_layout
+from .landmark_display import (
+    landmark_asset_identity_matches,
+    mastery_asset_identity_matches,
+    project_garden_landmark_rect,
+)
 from .accessibility import AccessibilityAnnouncer, AnnouncementPriority
 from ..build_capabilities import CAPTURE_HARNESS_ENABLED
 from ..performance import RUNTIME_PERFORMANCE
@@ -802,6 +807,23 @@ class GardenSceneWidget(QWidget):
         repaired_plants = repair_unique_slot_items(valid_plants)
         nurtured_seen = False
         for plant in repaired_plants:
+            # A resolved plant asset carries its catalog slot.  Fail closed to
+            # the intentional botanical fallback when a stale renderer payload
+            # points at another species or stage; labels, hit targets, and art
+            # must always describe the same plant entity.
+            asset = plant.get("asset")
+            identity_matches = getattr(
+                self,
+                "_plant_asset_identity_matches",
+                None,
+            )
+            if callable(identity_matches) and not identity_matches(plant, asset):
+                plant["asset"] = None
+            mastery_rank = str(plant.get("mastery_rank_id", "") or "")
+            mastery_asset = plant.get("mastery_asset")
+            if not mastery_asset_identity_matches(mastery_asset, mastery_rank):
+                plant["mastery_rank_id"] = ""
+                plant["mastery_asset"] = None
             nurtured = bool(plant.get("is_active")) and not nurtured_seen
             plant["is_active"] = nurtured
             nurtured_seen = nurtured_seen or nurtured
@@ -809,7 +831,9 @@ class GardenSceneWidget(QWidget):
         transitions = safe_scene.get("stage_transitions", [])
         safe_scene["stage_transitions"] = transitions if isinstance(transitions, list) else []
         asset_paths = safe_scene.get("asset_paths", {})
-        safe_scene["asset_paths"] = asset_paths if isinstance(asset_paths, dict) else {}
+        safe_scene["asset_paths"] = (
+            dict(asset_paths) if isinstance(asset_paths, dict) else {}
+        )
         safe_scene["motion_enabled"] = bool(safe_scene.get("motion_enabled", True))
         safe_scene["garden_feature_visible"] = bool(
             safe_scene.get(
@@ -821,6 +845,13 @@ class GardenSceneWidget(QWidget):
             safe_scene.get("visible_scenery", safe_scene.get("scenery", "default"))
             or "default"
         )
+        landmark_id = str(safe_scene.get("landmark_id", "") or "")
+        landmark_asset = safe_scene["asset_paths"].get("landmark")
+        if landmark_asset_identity_matches(landmark_asset, landmark_id):
+            safe_scene["landmark_id"] = landmark_id
+        else:
+            safe_scene["landmark_id"] = ""
+            safe_scene["asset_paths"].pop("landmark", None)
         safe_scene["show_locked_bed_badges"] = bool(
             safe_scene.get("show_locked_bed_badges", True)
         )
@@ -1503,6 +1534,7 @@ class GardenSceneWidget(QWidget):
             plant_rows = self._layout_plants(self.width(), self.height())
             self._feature_layer_trace = ["background"]
             self._draw_garden_feature(painter, r)
+            self._draw_garden_landmark(painter, r)
             # Runtime soil is resolved from the same six PlantPlacement rows as
             # artwork and interaction. No separate legacy bed overlay ships.
 
@@ -1634,6 +1666,7 @@ class GardenSceneWidget(QWidget):
                     asset_drawn = self._draw_plant_asset(painter, layout, plant)
                     if not asset_drawn:
                         self._draw_plant(painter, x, base_y, plant, idx)
+                    self._draw_mastery_overlay(painter, layout, plant)
                     if str(self._plant_placement(plant).get("base_type", "legacy")) == "legacy":
                         self._draw_foreground_growth(painter, x, base_y, idx, selected)
                     painter.restore()
@@ -1919,6 +1952,8 @@ class GardenSceneWidget(QWidget):
 
     def _plant_placement(self, plant: dict[str, Any]) -> dict[str, Any]:
         asset = plant.get("asset")
+        if not self._plant_asset_identity_matches(plant, asset):
+            return {}
         placement = asset.get("placement", {}) if isinstance(asset, dict) else {}
         return placement if isinstance(placement, dict) else {}
 
@@ -1972,7 +2007,7 @@ class GardenSceneWidget(QWidget):
         """Draw a restrained alpha-following outline behind visible artwork."""
         if not selected and not keyboard_focused and hovered <= 0.0:
             return False
-        path, _placement = self._asset_record("plant", plant.get("asset") or plant.get("image_path"))
+        path, _placement = self._plant_asset_record(plant)
         if not path:
             return False
         source = self._pixmap_for(path)
@@ -2147,9 +2182,14 @@ class GardenSceneWidget(QWidget):
         center_x = center.x()
         center_y = center.y()
         radius = fallback.width() / 2
+        marker_accent = GARDEN_THEME["focus_ring"]
         painter.save()
-        painter.setPen(QPen(QColor("#4C3E18"), 1.5))
-        painter.setBrush(QColor(GARDEN_THEME["coin_accent"]))
+        painter.setPen(
+            QPen(QColor(GARDEN_THEME.get("strong_border", marker_accent)), 1.5)
+        )
+        painter.setBrush(
+            QColor(GARDEN_THEME.get("action_accent", marker_accent))
+        )
         painter.drawEllipse(fallback)
         leaf = QPainterPath()
         leaf.moveTo(center_x - radius * 0.42, center_y + radius * 0.18)
@@ -2530,9 +2570,10 @@ class GardenSceneWidget(QWidget):
                 badge_fill = QColor(24, 70, 56, 232)
                 badge_text = QColor(GARDEN_THEME["text_primary"])
             elif swap_target:
-                badge_pen = QColor(224, 190, 111, 210)
-                badge_fill = QColor(71, 55, 31, 220)
-                badge_text = QColor(255, 238, 194, 235)
+                badge_pen = QColor(GARDEN_THEME["action_accent"])
+                badge_pen.setAlpha(180)
+                badge_fill = QColor(24, 70, 56, 210)
+                badge_text = QColor(GARDEN_THEME["text_primary"])
             elif current:
                 badge_pen = QColor(164, 211, 219, 126)
                 badge_fill = QColor(32, 63, 69, 188)
@@ -2573,6 +2614,7 @@ class GardenSceneWidget(QWidget):
                 plant,
                 max(0, int(destination_slot)),
             )
+        self._draw_mastery_overlay(painter, origin, plant)
         painter.restore()
 
     def _event_position(self, event: Any) -> Any:
@@ -2599,9 +2641,7 @@ class GardenSceneWidget(QWidget):
                 float(position.x()), float(position.y())
             ):
                 return plant_id
-            path, _placement = self._asset_record(
-                "plant", plant.get("asset") or plant.get("image_path")
-            )
+            path, _placement = self._plant_asset_record(plant)
             pixmap = self._pixmap_for(path) if path else None
             if pixmap is None or pixmap.isNull():
                 return plant_id
@@ -3325,6 +3365,32 @@ class GardenSceneWidget(QWidget):
             cache[normalized] = identity
         return identity
 
+    @staticmethod
+    def _plant_asset_identity_matches(plant: dict[str, Any], value: Any) -> bool:
+        """Return whether a resolved catalog asset belongs to this plant view."""
+
+        if not isinstance(value, dict):
+            return True
+        metadata = value.get("metadata", {})
+        slot = metadata.get("slot", {}) if isinstance(metadata, dict) else {}
+        if not isinstance(slot, dict):
+            return True
+        for plant_key, slot_key in (("species", "species"), ("stage", "stage")):
+            expected = str(plant.get(plant_key, "") or "").strip().casefold()
+            actual = str(slot.get(slot_key, "") or "").strip().casefold()
+            if expected and actual and expected != actual:
+                return False
+        return True
+
+    def _plant_asset_record(
+        self,
+        plant: dict[str, Any],
+    ) -> tuple[str | None, dict[str, Any]]:
+        value = plant.get("asset") or plant.get("image_path")
+        if not self._plant_asset_identity_matches(plant, value):
+            return None, {}
+        return self._asset_record("plant", value)
+
     def _asset_record(self, key: str, value: Any = None) -> tuple[str | None, dict[str, Any]]:
         asset_paths = self.scene.get("asset_paths", {})
         if value is None and isinstance(asset_paths, dict):
@@ -3825,6 +3891,40 @@ class GardenSceneWidget(QWidget):
             self._feature_layer_trace.append("garden-feature")
         return feature_drawn
 
+    def _draw_garden_landmark(self, painter: QPainter, rect: QRectF) -> bool:
+        """Paint the exact completed Landmark at the Home-shared anchor."""
+
+        landmark_id = str(self.scene.get("landmark_id", "") or "")
+        asset_paths = self.scene.get("asset_paths", {})
+        value = (
+            asset_paths.get("landmark")
+            if isinstance(asset_paths, dict)
+            else None
+        )
+        if not landmark_asset_identity_matches(value, landmark_id):
+            return False
+        path, _placement = self._asset_record("landmark", value)
+        if not path:
+            return False
+        x, y, width, height = project_garden_landmark_rect(
+            rect.x(),
+            rect.y(),
+            rect.width(),
+            rect.height(),
+        )
+        painter.save()
+        painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
+        drawn = self._draw_asset_contain(
+            painter,
+            path,
+            QRectF(x, y, width, height),
+            opacity=1.0,
+        )
+        painter.restore()
+        if drawn:
+            self._feature_layer_trace.append("garden-landmark")
+        return drawn
+
     def _draw_surface_occlusion_asset(
         self, painter: QPainter, rect: Any, *, layer: str | None = None
     ) -> bool:
@@ -3961,7 +4061,7 @@ class GardenSceneWidget(QWidget):
         )
 
     def _draw_plant_asset(self, painter: QPainter, layout: PlantPlacement, plant: dict[str, Any]) -> bool:
-        path, placement = self._asset_record("plant", plant.get("asset") or plant.get("image_path"))
+        path, placement = self._plant_asset_record(plant)
         if not path:
             return False
         box = self._plant_draw_box(layout, plant)
@@ -4043,6 +4143,38 @@ class GardenSceneWidget(QWidget):
         painter.drawPixmap(target, graded, QRectF(graded.rect()))
         painter.restore()
         return True
+
+    def _draw_mastery_overlay(
+        self,
+        painter: QPainter,
+        layout: PlantPlacement,
+        plant: dict[str, Any],
+    ) -> bool:
+        """Paint the exact claimed Mastery treatment over its stable plant."""
+
+        plant_id = str(plant.get("plant_id", "") or "")
+        rank_id = str(plant.get("mastery_rank_id", "") or "")
+        value = plant.get("mastery_asset")
+        if (
+            not plant_id
+            or not mastery_asset_identity_matches(value, rank_id)
+        ):
+            return False
+        path, _placement = self._asset_record("mastery", value)
+        if not path:
+            return False
+        box = self._plant_draw_box(layout, plant)
+        padding_x = box.width() * 0.05
+        padding_y = box.height() * 0.05
+        drawn = self._draw_asset_contain(
+            painter,
+            path,
+            box.adjusted(-padding_x, -padding_y, padding_x, padding_y),
+            opacity=0.96,
+        )
+        if drawn:
+            self._feature_layer_trace.append(f"mastery-{rank_id}")
+        return drawn
 
     def _transition_for_plant(self, plant: dict[str, Any]) -> dict[str, Any] | None:
         plant_id = str(plant.get("plant_id", ""))

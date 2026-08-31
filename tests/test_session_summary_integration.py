@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import types
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +13,10 @@ from types import SimpleNamespace
 os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
 
 from ankigarden.config import DEFAULT_CONFIG
+from ankigarden.economy_progression import (
+    GrowthTargetType,
+    ProjectGrowthAllocation,
+)
 from ankigarden.game import CommittedAnswerResult, GardenGameEngine, ReviewAward
 from ankigarden.growth import GrowthAllocation
 from ankigarden.models.state import (
@@ -149,7 +153,7 @@ def test_detailed_engine_commit_returns_exact_awards_and_keeps_compatibility_tot
         for allocation in awards[0].allocations
     ] == [
         ("p1", "nurtured", 1_000),
-        ("p2", "passive", 200),
+        ("p2", "passive", 100),
     ]
 
     compatibility_engine, compatibility_storage = _engine()
@@ -178,7 +182,7 @@ def test_engine_committed_result_contains_causal_receipts_and_due_rewards(monkey
     assert result.origin == "local"
     assert result.daily_completion_rewarded is True
     assert {receipt.source for receipt in result.reward_receipts} >= {
-        "daily_activity", "all_due"
+        "first_eligible_answer", "todays_cards"
     }
     assert all(
         receipt.correlation_id == result.correlation_id
@@ -199,11 +203,26 @@ def test_engine_committed_result_contains_causal_receipts_and_due_rewards(monkey
     state_receipt.title = "mutated after commit"
     assert committed_receipt.title == committed_title
 
+    result = replace(
+        result,
+        landmark_growth_before_units=125,
+        landmark_growth_after_units=425,
+        project_allocations=(
+            ProjectGrowthAllocation(GrowthTargetType.MASTERY, "rose", 100),
+            ProjectGrowthAllocation(GrowthTargetType.MASTERY, "rose", 0),
+        ),
+    )
+
     reviewer_module = _load_reviewer_module(monkeypatch)
     handler = reviewer_module.ReviewerHookHandler(engine, storage)
     event = handler._session_event_from_result(result)
     assert event is not None
     assert event.reward_receipts == result.reward_receipts
+    assert event.landmark_growth_delta_units == 300
+    assert tuple(
+        (row.target_type, row.target_id, row.units)
+        for row in event.project_allocations
+    ) == (("mastery", "rose", 100),)
     assert sum(item.amount for item in event.coin_awards) == sum(
         transaction.delta
         for transaction in result.currency_transactions
@@ -614,7 +633,21 @@ def test_fallback_local_recovery_enters_the_same_session_accumulator(
 def test_reviewer_hud_is_mounted_once_and_updated_in_place(monkeypatch):
     reviewer_module = _load_reviewer_module(monkeypatch)
     storage = SimpleNamespace(state=SimpleNamespace())
-    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+    routes: list[str] = []
+
+    class _App:
+        def open_dashboard(self):
+            routes.append("garden")
+
+        def open_collection(self):
+            routes.append("collection")
+
+    app = _App()
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        storage,
+        open_garden=app.open_dashboard,
+    )
     parent = object()
     created = []
 
@@ -671,6 +704,8 @@ def test_reviewer_hud_is_mounted_once_and_updated_in_place(monkeypatch):
     assert created[0]["animations_enabled"] is True
     assert "on_effects_overflow" not in created[0]
     assert "on_open_reward" not in created[0]
+    created[0]["on_open_collection"]()
+    assert routes == ["collection"]
     assert handler._reviewer_hud is panel
     assert panel.updates == [(first, False), (second, False)]
     assert panel.positions == [(1_600, 1_000), (1_280, 800)]
@@ -1090,6 +1125,7 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
     state = SimpleNamespace(
         plants=[p1, p2],
         stored_growth_units=75,
+        garden_project=SimpleNamespace(contributed_growth_units=425),
         currency_transactions=[positive_coin, checkpoint_coin, excluded_spend],
         garden_find_outcomes={"standard:local": find},
         inventory={
@@ -1120,6 +1156,7 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
         baseline={
             "plant_units": {"p1": 0, "p2": 0},
             "stored_units": 0,
+            "landmark_units": 125,
             "transaction_ids": set(),
             "find_outcome_ids": set(),
             "owned_environment_ids": {"default"},
@@ -1133,6 +1170,8 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
     assert [(item.plant_id, item.growth_units) for item in event.shared_growth] == [
         ("p2", 200)
     ]
+    assert event.landmark_growth_delta_units == 300
+    assert event.project_allocations == ()
     assert event.stored_growth_delta_units == 75
     assert [(item.event_id, item.amount) for item in event.coin_awards] == [
         ("coin:daily", 2),
@@ -1267,14 +1306,35 @@ def _empty_accumulator() -> SessionSummaryAccumulator:
 def test_summary_lifecycle_calls_the_injected_engine_session_hooks(monkeypatch):
     reviewer_module = _load_reviewer_module(monkeypatch)
     calls: list[str] = []
+    plant = SimpleNamespace(
+        plant_id="plant-1",
+        name="Moss",
+        fertilizer_card_batches=(SimpleNamespace(
+            effect_id="fertilizer_quality",
+            remaining_cards=42,
+            source_event_key="card:fertilizer",
+        ),),
+        booster_card_batches=(),
+    )
     engine = SimpleNamespace(
         begin_review_session=lambda: calls.append("begin"),
         end_review_session=lambda: calls.append("end"),
+        FERTILIZERS={"quality": SimpleNamespace(name="Quality Fertilizer")},
     )
     handler = reviewer_module.ReviewerHookHandler(
         engine,
-        SimpleNamespace(current_scheduler_day=lambda: DAY),
+        SimpleNamespace(
+            current_scheduler_day=lambda: DAY,
+            state=SimpleNamespace(plants=(plant,)),
+        ),
     )
+    fertilizer = handler._effects_snapshot().fertilizers[0]
+    assert (
+        fertilizer.effect_id,
+        fertilizer.remaining_cards,
+        fertilizer.remaining_seconds,
+        fertilizer.source_event_id,
+    ) == ("fertilizer:plant-1:quality", 42, 0, "card:fertilizer")
     monkeypatch.setattr(
         handler,
         "_session_start_snapshot",

@@ -201,7 +201,7 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "balance": 500,
             "balance_copy": "500",
             "item_id": "premium",
-            "price_copy": "300 coins",
+            "price_copy": "300 Garden Coins",
             "action": "Buy and apply",
             "action_disposition": "apply",
             "action_enabled": True,
@@ -211,10 +211,10 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "item_id": "fertilizer_basic",
             "item_name": "Rich Compost",
             "owned_copy": "3 owned",
-            "action": "Apply",
+            "action": "Use",
             "action_disposition": "apply",
             "meta_copy": (
-                "+1 Growth per eligible card answer · Lasts 1 hour"
+                "+1 Growth per eligible card · 100 eligible cards"
             ),
             "artwork_ref": "rich_compost",
             "artwork_source_matches": True,
@@ -229,12 +229,12 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "engine_tier": "basic",
             "item_id": "fertilizer_basic",
             "owned_copy": "2 owned",
-            "action": "Extend",
-            "action_disposition": "extend",
+            "action": "Queue",
+            "action_disposition": "queue",
             "status_phase": "active",
             "status_copy": (
-                "Basic Fertilizer · +1 Growth per eligible card answer · "
-                "1 hour left"
+                "Basic Fertilizer · +1 Growth per eligible card · "
+                "100 cards remaining"
             ),
             "painted": True,
         },
@@ -243,16 +243,16 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "item_id": "fertilizer_quality",
             "owned_copy": "1 owned",
             "queued_copy": "Queued",
-            "action": "Extend",
-            "action_disposition": "extend",
+            "action": "Queue",
+            "action_disposition": "queue",
             "final_basic_action": "Queue",
             "final_basic_action_disposition": "queue",
             "final_basic_painted": True,
-            "final_quality_action": "Extend",
-            "final_quality_action_disposition": "extend",
+            "final_quality_action": "Queue",
+            "final_quality_action_disposition": "queue",
             "final_quality_painted": True,
             "meta_copy": (
-                "+2 Growth per eligible card answer · Lasts 2 hours"
+                "+2 Growth per eligible card · 200 eligible cards"
             ),
             "painted": True,
         },
@@ -434,12 +434,13 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
     ready = {
         "applicable": True,
         "variant": "ready",
+        "dialog_title": "Use Small Growth Charge?",
         "growth_label": "Total Growth",
         "growth_value": "450 → 550",
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
-        "stage_badge": "Result: Sprout",
-        "stage_badge_accessible": "New stage: Sprout",
+        "stage_badge": "Stage up: Sprout",
+        "stage_badge_accessible": "Stage up: Sprout",
         "stage_progress": "50 / 2,000 toward Young",
         "primary_action": "Use 1 charge",
         "current_growth": 450,
@@ -466,6 +467,7 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
     success = {
         "applicable": True,
         "variant": "success",
+        "dialog_title": "Growth charge applied",
         "stage_transition": "Bonsai Plant reached Sprout",
         "receipt_copy": (
             "+100 Growth · 1 growth charge remaining\n"
@@ -480,6 +482,10 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "next_stage_goal": 2_000,
         "inventory_remaining": 1,
         "stage_reward_total": 2,
+        "comparison_labels": "before-after",
+        "before_art_role": "before",
+        "after_art_role": "after",
+        "visible_comparison_labels": ["Before", "After"],
         "passed": True,
     }
     assert growth_charge_rendered_value_issue_codes(
@@ -521,7 +527,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "bundle_id": "answer:committed:1",
         "rendered_bundle_id": "answer:committed:1",
         "hero_event_id": "reward:full-bloom",
-        "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
+        "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
         "visible_summary_reward_types": [
             "garden_find",
             "environment_discovery",
@@ -547,7 +553,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "overlaps_bottom_controls": False,
         "horizontal_scroll_maximum": 0,
         "reveal_height": 132,
-        "footer_height": 52,
+        "footer_height": 68,
         "single_outer_surface": True,
         "divider_visible": True,
         "divider_count": 1,
@@ -619,11 +625,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
     rows: dict[str, object] = {
         "18-cards-left": {
             "remaining_count": 18,
-            "copy": "18 cards left",
+            "copy": "18 cards remaining",
         },
         "1-card-left": {
             "remaining_count": 1,
-            "copy": "1 card left",
+            "copy": "1 card remaining",
             "near_complete_card": True,
             "near_complete_detail": True,
             "displayed_progress_percent": 98.5,
@@ -654,11 +660,12 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "transition_active": False,
                     "completion_status": "complete",
                     "heading": "All cards complete",
-                    "reward_copy": "+10 coins",
+                    "reward_copy": "+10 Garden Coins",
                     "displayed_progress_percent": 100,
                     "header_balance": 260,
                     "session_coins": 10,
-                    "session_metric_copy": ["+18 growth", "+10 coins"],
+                    "session_metric_copy": ["+18 Growth", "+10 Garden Coins"],
+                    "passed": True,
                 },
                 "passed": True,
             },
@@ -669,7 +676,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
         },
         "growth-only": {
             "metric_keys": ["growth"],
-            "metric_copy": ["+18 growth"],
+            "metric_copy": ["+18 Growth"],
             "divider_visible": False,
             "routine_committed_answer_sequence": {
                 "presented": True,
@@ -678,7 +685,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 "session_update_deferred": True,
                 "applied": {
                     "label": "Growth applied",
-                    "value": "+18 growth",
+                    "value": "+18 Growth",
                     "result_state": "applied",
                     "progress_percent": 10,
                     "art_pulse": True,
@@ -688,12 +695,12 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "progress_percent": 18,
                     "routine_feedback_active": False,
                     "session_growth_units": 1_800,
-                    "session_metric_copy": ["+18 growth"],
+                    "session_metric_copy": ["+18 Growth"],
                     "released_after_progress": True,
                 },
                 "restored": {
-                    "label": "Next answer",
-                    "value": "+18 growth",
+                    "label": "Next card",
+                    "value": "+18 Growth",
                     "result_state": "projection",
                     "art_pulse": False,
                     "reward_visible": False,
@@ -703,7 +710,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
         },
         "growth-and-coins": {
             "metric_keys": ["growth", "coins"],
-            "metric_copy": ["+18 growth", "+2 coins"],
+            "metric_copy": ["+18 Growth", "+2 Garden Coins"],
             "zero_categories_omitted": True,
         },
         "two-effects": {
@@ -803,7 +810,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "reward_visible": True,
                     "eyebrow": "CHECKPOINT REACHED",
                     "hero_title": "25% checkpoint",
-                    "coin_copy": "+2 coins",
+                    "coin_copy": "+2 Garden Coins",
                     "header_balance": 248,
                 },
                 "sequence": [
@@ -820,10 +827,10 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 ],
                 "eyebrow": "CHECKPOINT REACHED",
                 "hero_title": "25% checkpoint",
-                "coin_copy": "+2 coins",
+                "coin_copy": "+2 Garden Coins",
                 "final_progress_percent": 38,
                 "final_header_balance": 250,
-                "final_session_metric_copy": ["+18 growth", "+2 coins"],
+                "final_session_metric_copy": ["+18 Growth", "+2 Garden Coins"],
                 "marker_before_reveal": True,
                 "reward_before_excess_fill": True,
                 "header_increment_deferred": True,
@@ -892,7 +899,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "reward_footer_non_overlapping": True,
             "divider_between_reward_and_footer": True,
             "sticky_header_and_dock": True,
-            "session_metric_copy": ["+18 growth", "+2 coins"],
+            "session_metric_copy": ["+18 Growth", "+2 Garden Coins"],
             "baseline_short_viewport_passed": True,
         },
     }
@@ -1109,9 +1116,9 @@ def _reviewer_reward_content() -> dict[str, object]:
             "event_ids": [event_id],
         }
         for category, name, value, event_id in (
-            ("Milestone", "Full Bloom achieved", "+14 coins", "event:1"),
+            ("Milestone", "Full Bloom achieved", "+14 Garden Coins", "event:1"),
             ("Growth applied", "Plant Growth", "+40 growth", "event:2"),
-            ("Garden Coins", "Garden Coins", "+14 coins", "event:3"),
+            ("Garden Coins", "Garden Coins", "+14 Garden Coins", "event:3"),
             ("Discovery", "Firefly Evening", "New", "event:4"),
             ("Discovery", "Morning Dew", "New", "event:5"),
             ("Standard Find", "Moonlit Seed", "Common", "event:6"),
@@ -1131,15 +1138,15 @@ def _reviewer_reward_content() -> dict[str, object]:
             "completion_status": "complete",
             "heading": "All cards complete",
             "displayed_progress_percent": 100,
-            "reward_copy": "+10 coins",
+            "reward_copy": "+10 Garden Coins",
         },
         "one-garden-find": {
             "find_count": 1,
             "footer_copy": "1 Standard Find",
         },
         "discovery-new-wording": {
-            "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
-            "discovery_summary": "Garden discoveries",
+            "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
+            "discovery_summary": "2 Garden discoveries",
         },
         "full-bloom": {
             "eyebrow": "MILESTONE REACHED",
@@ -1152,7 +1159,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "temporary_gold_cleared": True,
             "settled_copy": settled_copy,
             "select_another_visible": True,
-            "select_another_copy": "Choose next plant ›",
+            "select_another_copy": "Choose next plant",
             "art_scale": 1.0,
             "particles_active": False,
         },
@@ -1168,9 +1175,18 @@ def _reviewer_reward_content() -> dict[str, object]:
         "full-bloom-settled": {
             "settled": True,
             "temporary_gold_cleared": True,
-            "settled_copy": settled_copy,
-            "select_another_visible": True,
-            "select_another_copy": "Choose next plant ›",
+            "all_plants_full_bloom": True,
+            "settled_copy": (
+                "All planted plants are at Full Bloom. "
+                "Future Growth will be stored."
+            ),
+            "select_another_visible": False,
+            "destination_visible": True,
+            "destination_kind": "stored_growth",
+            "destination_heading": "Stored Growth",
+            "destination_detail": "12.5 Growth in reserve",
+            "destination_stored_growth_units": 1_250,
+            "next_action": "growth_destination",
             "art_scale": 1.0,
             "particles_active": False,
         },
@@ -1192,7 +1208,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "visible_summary_count": 2,
-            "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
+            "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
             "visible_summary_rows": [
                 {
                     "label": "1 Standard Find",
@@ -1203,7 +1219,7 @@ def _reviewer_reward_content() -> dict[str, object]:
                     "icon_kind": "item-art",
                 },
                 {
-                    "label": "Garden discoveries",
+                    "label": "2 Garden discoveries",
                     "reward_type": "environment_discovery",
                     "artwork_ref": "firefly_lantern",
                     "uses_item_art": False,
@@ -1234,7 +1250,7 @@ def _reviewer_reward_content() -> dict[str, object]:
         "settled-height-or-safe-scroll": {
             "safe_area_passed": True,
             "horizontal_scroll_maximum": 0,
-            "height_at_most_660": True,
+            "height_at_most_680": True,
             "safe_scroll": False,
         },
         "full-bloom-short-height": {
@@ -1267,7 +1283,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "live_coins": 14,
             "footer_finds": 1,
             "live_finds": 1,
-            "footer_copy": ["+40 growth", "+14 coins", "1 Standard Find"],
+            "footer_copy": ["+40 Growth", "+14 Garden Coins", "1 Standard Find"],
         },
         "reward-reveal-lifecycle": {
             "celebrating": "celebrating",
@@ -1426,6 +1442,30 @@ def _reviewer_hud_viewport_matrix() -> dict[str, object]:
         "expanded",
         "collapsed",
     ]
+    rows["1280x600-short-expanded"].update({
+        "body_compact_level": 2,
+        "optional_effects_collapsed": True,
+        "optional_artwork_compact": True,
+        "optional_checkpoint_copy_collapsed": True,
+        "body_uncompacted_height": 680,
+        "body_natural_height": 540,
+        "body_scroll_expected": True,
+        "compaction_passed": True,
+        "vertical_scroll_maximum": 120,
+    })
+    rows["1280x800-collapsed"].update({
+        "collapsed_today_visible": True,
+        "collapsed_today_copy": "18 remaining",
+        "collapsed_today_full_copy": "Today’s cards · 18 cards remaining",
+        "collapsed_today_expected_copy": "Today’s cards · 18 cards remaining",
+        "collapsed_today_expected_visible_copy": "18 remaining",
+        "collapsed_next_visible": True,
+        "collapsed_next_copy": "+18\nGrowth",
+        "collapsed_next_declared_copy": "+18\nGrowth",
+        "collapsed_next_full_copy": "Next card: +18 Growth",
+        "collapsed_next_expected_copy": "Next card: +18 Growth",
+        "collapsed_next_expected_visible_copy": "+18\nGrowth",
+    })
     rows["passed"] = True
     return rows
 
@@ -1868,7 +1908,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "checkpoint-crossing",
             ("post_commit_sequence", "reveal_snapshot", "coin_copy"),
-            "+1 coin",
+            "+1 Garden Coin",
         ),
         (
             "checkpoint-crossing",
@@ -1908,7 +1948,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "checkpoint-crossing",
             ("post_commit_sequence", "coin_copy"),
-            "+1 coin",
+            "+1 Garden Coin",
         ),
         (
             "checkpoint-crossing",
@@ -1966,7 +2006,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "growth-only",
             ("routine_committed_answer_sequence", "applied", "label"),
-            "Next answer",
+            "Next card",
         ),
         (
             "growth-only",
@@ -2164,7 +2204,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "1-card-left",
             ("daily_completion_transition", "final", "reward_copy"),
-            "+9 coins",
+            "+9 Garden Coins",
         ),
         (
             "1-card-left",

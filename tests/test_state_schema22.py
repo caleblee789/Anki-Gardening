@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from ankigarden.models.state import (
-    Booster,
     CardEffectBatch,
     DailyCompletionState,
     DailyLoadoutSchedule,
@@ -137,7 +136,7 @@ def test_schema22_exact_progression_fields_round_trip() -> None:
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 25
+    assert restored.version == STATE_VERSION == 27
     assert restored.plants[0].growth_units == 99_975
     assert restored.plants[0].fertilizer_card_batches == [batch]
     assert restored.stored_growth_units == 1_250
@@ -198,12 +197,23 @@ def test_schema21_migration_preserves_value_and_preclaims_crossed_rewards() -> N
         "sprout:75",
         "young:25",
     ]
-    assert plant.fertilizer == Fertilizer("quality", 2, 2_000.0, 1_000.0)
-    assert plant.fertilizer_card_batches == []
+    assert plant.fertilizer is None
+    assert len(plant.fertilizer_card_batches) == 1
     assert plant.fertilizer_card_queue == []
-    assert plant.booster == Booster(5, 1_900.0, 1_100.0)
+    fertilizer_batch = plant.card_effect_queue.fertilizer_batches[0]
+    assert plant.fertilizer_card_batches[0] == fertilizer_batch
+    assert (
+        fertilizer_batch.effect_id,
+        fertilizer_batch.growth_per_card_units,
+        fertilizer_batch.total_cards,
+        fertilizer_batch.remaining_cards,
+    ) == ("fertilizer_quality", 200, 200, 14)
+    assert plant.booster is None
+    assert len(plant.booster_card_batches) == 1
     assert plant.booster_card_batches[0].effect_id == "booster_potion"
     assert plant.booster_card_batches[0].remaining_cards == 100
+    assert plant.booster_card_queue == []
+    assert plant.card_effect_queue.booster_remaining_cards == 100
     assert migrated.daily_completion.status == "complete"
     assert migrated.daily_completion.cards_completed_today == 176
     assert migrated.daily_completion.reward_claimed
@@ -240,30 +250,47 @@ def test_authoritative_schema22_restores_experimental_fertilizer_cards_once(
     for key in UNBOUNDED_STATE_AUTHORITY_KEYS:
         payload.pop(key, None)
     ledger = RewardLedger(storage.database_path)
-    ledger.commit_state(payload, schema_version=STATE_VERSION, expected_revision=0)
+    payload["version"] = 22
+    ledger.commit_state(payload, schema_version=22, expected_revision=0)
     ledger.close()
     monkeypatch.setattr("ankigarden.storage.time.time", lambda: 1_500.0)
 
     restored = storage._load_authoritative_state()
 
     plant = restored.plants[0]
-    assert plant.fertilizer == Fertilizer("quality", 2, 2_000.0, 1_000.0)
-    assert plant.fertilizer_card_batches == []
-    assert plant.fertilizer_card_queue == []
-    assert plant.fertilizer_history == [
-        Fertilizer("quality", 2, 5_600.0, 2_000.0)
+    assert plant.fertilizer is None
+    assert len(plant.fertilizer_card_batches) == 1
+    assert len(plant.fertilizer_card_queue) == 1
+    assert [
+        (
+            batch.effect_id,
+            batch.growth_per_card_units,
+            batch.total_cards,
+            batch.remaining_cards,
+        )
+        for batch in plant.card_effect_queue.fertilizer_batches
+    ] == [
+        ("fertilizer_quality", 200, 200, 14),
+        ("fertilizer_quality", 200, 150, 75),
     ]
     assert storage._reward_ledger is not None
     snapshot = storage._reward_ledger.load_state_snapshot()
     assert snapshot is not None
     assert snapshot.revision == 2
-    assert snapshot.payload["plants"][0]["fertilizer_card_batches"] == []
-    assert snapshot.payload["plants"][0]["fertilizer_history"] == [{
-        "tier": "quality",
-        "growth_per_answer": 2,
-        "started_at": 2_000.0,
-        "expires_at": 5_600.0,
-    }]
+    assert len(snapshot.payload["plants"][0]["fertilizer_card_batches"]) == 1
+    assert len(snapshot.payload["plants"][0]["fertilizer_card_queue"]) == 1
+    assert snapshot.payload["plants"][0]["fertilizer_history"] == []
+    assert [
+        (
+            batch["effect_id"],
+            batch["total_cards"],
+            batch["remaining_cards"],
+        )
+        for batch in snapshot.payload["plants"][0]["card_effect_queue"]["fertilizer_batches"]
+    ] == [
+        ("fertilizer_quality", 200, 14),
+        ("fertilizer_quality", 150, 75),
+    ]
     storage._reward_ledger.close()
 
 

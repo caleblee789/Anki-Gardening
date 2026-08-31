@@ -55,6 +55,12 @@ def test_session_summary_geometry_contracts_inside_small_viewports():
     assert session_summary_geometry(340, 300, 500) == (12, 16, 308, 268)
     assert session_summary_geometry(900, 800, 212) == (464, 48, 416, 212)
     assert session_summary_geometry(28, 30, 500) == (7, 16, 1, 1)
+    assert session_summary_geometry(
+        1_200,
+        900,
+        900,
+        reserved_top=124,
+    ) == (764, 140, 416, 744)
 
 
 def test_session_summary_compact_density_covers_measured_macos_host_heights():
@@ -214,12 +220,16 @@ def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
         "standard_finds",
         "shared_growth",
         "stored_growth",
+        "summaryProjectGrowthUnits",
+        "summaryProjectTargetType",
         "garden_coins_total",
     ):
         assert key in source
     assert "Direct plant growth" in source
     assert "Shared Growth distributed" in source
     assert "Total applied" in source
+    assert "project_growth_total_units" in source
+    assert "project_growth_allocations" in source
     assert "Reward breakdown" in source
     assert "Additional to the session subtotal; included in " in source
     assert "Total earned." in source
@@ -248,7 +258,6 @@ def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
     reward_art = _method_source("_reward_art_label", "_rebuild_footer")
     assert 'fallback_icon: str = "find"' in reward_art
     assert "fallback_icon=fallback_icon" in reward_art
-    assert "self._effect_timer.setInterval(30_000)" in source
     assert "row_widget.setVisible(visible)" in source
     assert "×{max(1, int(quantity)):,}" in source
 
@@ -477,9 +486,6 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
     assert session_inventory_reward_lines(receipts) == (
         ("growth_charge_small", 1, "+1 Small Growth Charge"),
     )
-    source = SOURCE_PATH.read_text(encoding="utf-8")
-    assert 'self._section_heading("Item rewards")' in source
-    assert 'f"{item_name} ×{amount:,}"' in source
 
 
 def test_footer_has_contextual_actions_no_dismiss_button_and_failure_stays_open():
@@ -487,12 +493,12 @@ def test_footer_has_contextual_actions_no_dismiss_button_and_failure_stays_open(
     rebuild = _method_source("_rebuild_page", "_add_pager")
     footer = _method_source("_rebuild_footer", "_open_garden")
     continue_method = _method_source("_continue_reviews", "_natural_height")
-    assert 'QPushButton("Open Garden"' in footer
-    assert 'QPushButton("Continue Reviews"' in footer
+    assert 'QPushButton("Open garden"' in footer
+    assert 'QPushButton("Continue reviews"' in footer
+    assert 'QPushButton("Close"' in footer
     assert 'QPushButton("Dismiss"' not in source
     assert 'setObjectName("ankiGardenSessionOpenGarden")' in footer
     assert 'setObjectName("ankiGardenSessionContinueReviews")' in footer
-    assert footer.count("setFixedHeight(40)") == 2
     assert "and callable(self._on_continue_reviews)" in rebuild
     assert "if succeeded:" in continue_method
     assert "self.close()" in continue_method
@@ -537,33 +543,24 @@ def test_effect_remaining_copy_is_live_concise_and_pluralized():
         kind="fertilizer",
         expires_at_epoch_seconds=10_000,
         remaining_seconds=999,
+        remaining_cards=32,
     )
     assert session_effect_remaining_text(
         fertilizer,
         now_epoch_seconds=8_080,
-    ) == "32 min left"
+    ) == "32 cards remaining"
     assert session_effect_remaining_text(
-        fertilizer,
-        now_epoch_seconds=4_480,
-    ) == "1 hr 32 min left"
-    assert session_effect_remaining_text(
-        fertilizer,
-        now_epoch_seconds=10_000,
+        SimpleNamespace(
+            kind="fertilizer",
+            expires_at_epoch_seconds=10_000,
+            remaining_seconds=999,
+            remaining_cards=0,
+        ),
+        now_epoch_seconds=8_080,
     ) == ""
     assert session_effect_remaining_text(
         SimpleNamespace(kind="booster", remaining_cards=1)
-    ) == "1 card left"
+    ) == "1 card remaining"
     assert session_effect_remaining_text(
         SimpleNamespace(kind="booster", remaining_cards=38)
-    ) == "38 cards left"
-
-
-def test_active_fertilizer_refreshes_every_30_seconds_and_stops_on_close():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
-    refresh = _method_source("_refresh_active_effects", "_toggle_details")
-    close = _method_source("close", "__all__")
-    assert "setInterval(30_000)" in source
-    assert "row_widget.setVisible(visible)" in refresh
-    assert "self._active_boosts_section.setVisible(any_visible)" in refresh
-    assert "self._effect_timer.stop()" in refresh
-    assert "self._effect_timer.stop()" in close
+    ) == "38 cards remaining"

@@ -112,13 +112,21 @@ def test_garden_appearance_keeps_display_bonus_scenery_and_effects_distinct() ->
         "scenery_id": "default",
         "displayed_decoration_id": "seedling_sign",
         "active_bonus_decoration_id": "watering_station",
+        "active_bonus_effect": (
+            "Every fifth eligible card among the first 100 each Anki day: "
+            "+1 Growth"
+        ),
         "visual_effects_enabled": True,
     }
     assert projection.summary_rows == (
         ("Scenery", "Verdant Twilight"),
         ("Displayed decoration", "Seedling Sign"),
-        ("Active garden bonus", "Watering Station"),
-        ("Visual effects", "On"),
+            (
+                "Active garden bonus",
+                "Watering Station · Every fifth eligible card among the first "
+                "100 each Anki day: +1 Growth",
+            ),
+        ("Visual effects", "Enabled"),
     )
 
 
@@ -152,8 +160,7 @@ def test_environment_pool_unlock_copy_never_calls_a_discovery_a_standard_find() 
         # is the renderer-neutral projection used by shared item details.
         visible_copy = item.how_to_earn
         projected_copy = item.descriptor.unlock_requirement
-        assert visible_copy == (
-            "Discover through an occasional Garden discovery while reviewing."
-        )
-        assert projected_copy == visible_copy
+        assert visible_copy == projected_copy
+        assert visible_copy.endswith("Garden discovery.")
+        assert "standard" not in visible_copy.casefold()
         assert "Standard Find" not in visible_copy

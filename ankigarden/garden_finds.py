@@ -14,6 +14,23 @@ from hashlib import sha256
 import hmac
 from typing import Collection, Iterable, Literal, Mapping, Optional, Sequence
 
+from .balance_catalog import (
+    ENVIRONMENT_DISCOVERIES,
+    ENVIRONMENT_POOL_ID as CATALOG_ENVIRONMENT_POOL_ID,
+    ENVIRONMENT_POOL_VERSION as CATALOG_ENVIRONMENT_POOL_VERSION,
+    ENVIRONMENT_TIERS,
+    FALLBACK_REWARD_ID as CATALOG_FALLBACK_REWARD_ID,
+    LEGACY_ENVIRONMENT_POOL_VERSIONS,
+    LEGACY_STANDARD_POOL_VERSIONS,
+    STANDARD_FIND_SCHEDULE,
+    STANDARD_FINDS,
+    STANDARD_GUARANTEE_ANSWER as CATALOG_STANDARD_GUARANTEE_ANSWER,
+    STANDARD_POOL_ID as CATALOG_STANDARD_POOL_ID,
+    STANDARD_POOL_VERSION as CATALOG_STANDARD_POOL_VERSION,
+    RewardKind as CatalogRewardKind,
+    standard_find_daily_cap as catalog_standard_find_daily_cap,
+)
+
 
 RewardKind = Literal["coins", "growth", "inventory_item"]
 FindTier = Literal["Common", "Uncommon", "Rare", "Exceptional"]
@@ -23,15 +40,17 @@ EnvironmentTier = Literal[
     "ultra_environment",
 ]
 
-STANDARD_POOL_ID = "standard"
-LEGACY_STANDARD_POOL_VERSION = "standard-v1"
-STANDARD_POOL_VERSION = "standard-v2"
-ENVIRONMENT_POOL_ID = "environment"
-LEGACY_ENVIRONMENT_POOL_VERSION = "environment-v1"
-ENVIRONMENT_POOL_VERSION = "environment-v2"
-STANDARD_DAILY_CAP = 3
-STANDARD_GUARANTEE_ANSWER = 75
-FALLBACK_REWARD_ID = "find_coin_sprout"
+STANDARD_POOL_ID = CATALOG_STANDARD_POOL_ID
+LEGACY_STANDARD_POOL_VERSION = LEGACY_STANDARD_POOL_VERSIONS[0]
+STANDARD_POOL_VERSION = CATALOG_STANDARD_POOL_VERSION
+ENVIRONMENT_POOL_ID = CATALOG_ENVIRONMENT_POOL_ID
+LEGACY_ENVIRONMENT_POOL_VERSION = LEGACY_ENVIRONMENT_POOL_VERSIONS[0]
+ENVIRONMENT_POOL_VERSION = CATALOG_ENVIRONMENT_POOL_VERSION
+# Maximum possible daily cap. The active cap rises with committed eligible
+# answers so long review days remain rewarding without flooding routine UI.
+STANDARD_DAILY_CAP = 5
+STANDARD_GUARANTEE_ANSWER = CATALOG_STANDARD_GUARANTEE_ANSWER
+FALLBACK_REWARD_ID = CATALOG_FALLBACK_REWARD_ID
 
 # These identifiers route to existing inventory handlers.  Garden Finds never
 # implements the item effects itself.
@@ -74,11 +93,14 @@ class ChanceBand:
 
 # ``last_answer`` 75 is intentionally explicit: answer 75 is the guarantee.
 # Values above it use the same guarantee as a corruption-safe fail-closed path.
-STANDARD_DROUGHT_SCHEDULE: tuple[ChanceBand, ...] = (
-    ChanceBand(1, 40, 1, 100),
-    ChanceBand(41, 60, 1, 40),
-    ChanceBand(61, 74, 1, 20),
-    ChanceBand(75, 75, 1, 1),
+STANDARD_DROUGHT_SCHEDULE: tuple[ChanceBand, ...] = tuple(
+    ChanceBand(
+        band.first_drought_answer,
+        band.last_drought_answer or STANDARD_GUARANTEE_ANSWER,
+        band.numerator,
+        band.denominator,
+    )
+    for band in STANDARD_FIND_SCHEDULE
 )
 
 
@@ -260,6 +282,53 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
 )
 
 
+def _catalog_find_reward(definition: object) -> GardenFindReward:
+    """Project one canonical catalog Find into the deterministic resolver."""
+
+    grant = definition.grant
+    if grant.kind is CatalogRewardKind.COINS:
+        reward_kind: RewardKind = "coins"
+        inventory_item_id = None
+    elif grant.kind is CatalogRewardKind.GROWTH:
+        reward_kind = "growth"
+        inventory_item_id = None
+    elif grant.kind is CatalogRewardKind.CONSUMABLE:
+        reward_kind = "inventory_item"
+        inventory_item_id = str(grant.item_id or "") or None
+    else:  # pragma: no cover - guarded by balance-catalog validation
+        raise ValueError(
+            f"unsupported standard Find reward kind: {grant.kind!r}"
+        )
+    return GardenFindReward(
+        reward_id=str(definition.reward_id),
+        display_name=str(definition.display_name),
+        description=str(definition.description),
+        reward_kind=reward_kind,
+        amount=max(0, int(grant.amount)),
+        weight_tenths=max(0, int(definition.weight_tenths)),
+        tier=str(definition.tier),
+        inventory_item_id=inventory_item_id,
+        eligibility_rule=str(definition.eligibility_rule),
+        pool_id=str(definition.pool_id),
+        pool_version=str(definition.pool_version),
+        artwork_ref=str(definition.artwork_ref),
+        localization_key=str(definition.localization_key),
+    )
+
+
+# The canonical balance catalog is the runtime authority. The literal block
+# above remains only as a narrow import-compatible migration projection until
+# schema-25 add-on packages are outside the supported upgrade window.
+STANDARD_FIND_REGISTRY = tuple(
+    _catalog_find_reward(definition) for definition in STANDARD_FINDS
+)
+SAFE_FALLBACK_REWARD = next(
+    reward
+    for reward in STANDARD_FIND_REGISTRY
+    if reward.reward_id == FALLBACK_REWARD_ID
+)
+
+
 def standard_find_artwork_ref(reward_id: str, fallback: str = "") -> str:
     """Return current presentation art without rewriting earned reward facts."""
 
@@ -360,8 +429,8 @@ class EnvironmentTierRule:
 
 
 ENVIRONMENT_TIER_RULES: Mapping[EnvironmentTier, EnvironmentTierRule] = {
-    "rare_environment": EnvironmentTierRule(2_500, 5_000),
-    "very_rare_environment": EnvironmentTierRule(10_000, 20_000),
+    "rare_environment": EnvironmentTierRule(2_500, 10_000),
+    "very_rare_environment": EnvironmentTierRule(10_000, 40_000),
     "ultra_environment": EnvironmentTierRule(25_000, 50_000),
 }
 ENVIRONMENT_TIER_DENOMINATORS: Mapping[EnvironmentTier, int] = {
@@ -369,6 +438,39 @@ ENVIRONMENT_TIER_DENOMINATORS: Mapping[EnvironmentTier, int] = {
 }
 ENVIRONMENT_TIER_HARD_PITY: Mapping[EnvironmentTier, int] = {
     tier: rule.hard_pity_answers for tier, rule in ENVIRONMENT_TIER_RULES.items()
+}
+ENVIRONMENT_TIER_COMPLETION_PITY: Mapping[EnvironmentTier, int] = {
+    "rare_environment": 60,
+    "very_rare_environment": 180,
+    "ultra_environment": 365,
+}
+
+# Canonical projections replace the migration-window literals above.
+SPECIAL_ENVIRONMENT_POOL = tuple(
+    EnvironmentFindItem(
+        item_id=str(item.item_id),
+        display_name=str(item.display_name),
+        environment_kind=str(item.environment_kind),
+        tier=str(item.tier_id),
+    )
+    for item in ENVIRONMENT_DISCOVERIES
+)
+ENVIRONMENT_TIER_RULES = {
+    str(tier.tier_id): EnvironmentTierRule(
+        tier.base_denominator,
+        tier.card_guarantee,
+    )
+    for tier in ENVIRONMENT_TIERS
+}
+ENVIRONMENT_TIER_DENOMINATORS = {
+    tier: rule.base_denominator for tier, rule in ENVIRONMENT_TIER_RULES.items()
+}
+ENVIRONMENT_TIER_HARD_PITY = {
+    tier: rule.hard_pity_answers for tier, rule in ENVIRONMENT_TIER_RULES.items()
+}
+ENVIRONMENT_TIER_COMPLETION_PITY = {
+    str(tier.tier_id): tier.completion_guarantee
+    for tier in ENVIRONMENT_TIERS
 }
 _ENVIRONMENT_TIER_PRIORITY: tuple[EnvironmentTier, ...] = (
     "ultra_environment",
@@ -400,6 +502,16 @@ class EnvironmentFindDecision:
         """Compatibility view for the former single Ultra counter."""
 
         return self.next_tier_pity_misses.get("ultra_environment", 0)
+
+
+@dataclass(frozen=True)
+class EnvironmentCompletionDecision:
+    """Forced environment discoveries resolved at a verified completion."""
+
+    completion_identity: str
+    items: tuple[EnvironmentFindItem, ...]
+    forced_tiers: tuple[EnvironmentTier, ...]
+    next_tier_completion_misses: Mapping[EnvironmentTier, int]
 
 
 @dataclass(frozen=True)
@@ -485,6 +597,12 @@ def standard_chance_for_answer(answer_number: int) -> ChanceBand:
     return STANDARD_DROUGHT_SCHEDULE[-1]
 
 
+def standard_daily_cap(eligible_answers_today: int) -> int:
+    """Return the stepped Standard Find cap for a committed Anki-day count."""
+
+    return catalog_standard_find_daily_cap(eligible_answers_today)
+
+
 def ultra_denominator(ultra_pity_misses: int) -> int:
     """Return the v2 Ultra base denominator for compatibility callers."""
 
@@ -496,18 +614,20 @@ def standard_find_status(
     *,
     finds_today: int,
     drought_misses: int,
+    eligible_answers_today: int = 0,
 ) -> StandardFindStatus:
     """Project internal Find state without exposing the drought counter."""
 
-    daily_count = min(STANDARD_DAILY_CAP, max(0, int(finds_today)))
-    capped = daily_count >= STANDARD_DAILY_CAP
+    active_cap = standard_daily_cap(eligible_answers_today)
+    daily_count = min(active_cap, max(0, int(finds_today)))
+    capped = daily_count >= active_cap
     guaranteed = (
         not capped
         and max(0, int(drought_misses)) + 1 >= STANDARD_GUARANTEE_ANSWER
     )
     return StandardFindStatus(
         finds_today=daily_count,
-        daily_cap=STANDARD_DAILY_CAP,
+        daily_cap=active_cap,
         daily_limit_reached=capped,
         rolls_paused=capped,
         next_card_guaranteed=guaranteed,
@@ -700,6 +820,7 @@ def resolve_standard_find(
     answer_identity: str,
     drought_misses: int,
     finds_today: int,
+    eligible_answers_today: int = 0,
     registry: Optional[PreparedRewardRegistry | Iterable[GardenFindReward]] = None,
     growth_available: bool = True,
     available_inventory_item_ids: Optional[Collection[str]] = None,
@@ -713,7 +834,8 @@ def resolve_standard_find(
     identity = _normalized_identity(answer_identity)
     consumed = consumption_id(identity)
     drought = max(0, int(drought_misses))
-    if max(0, int(finds_today)) >= STANDARD_DAILY_CAP:
+    active_cap = standard_daily_cap(eligible_answers_today)
+    if max(0, int(finds_today)) >= active_cap:
         return StandardFindDecision(
             consumed,
             attempted=False,
@@ -912,6 +1034,69 @@ def resolve_environment_find(
     )
 
 
+def resolve_environment_completion_pity(
+    *,
+    secret: str | bytes,
+    completion_identity: str,
+    owned_environment_ids: Collection[str],
+    tier_completion_misses: Optional[Mapping[EnvironmentTier, int]] = None,
+    pool: Sequence[EnvironmentFindItem] = SPECIAL_ENVIRONMENT_POOL,
+) -> EnvironmentCompletionDecision:
+    """Advance calendar pity and award every simultaneously forced tier."""
+
+    identity = _normalized_identity(completion_identity)
+    owned = {str(item_id) for item_id in owned_environment_ids}
+    supplied = tier_completion_misses or {}
+    next_misses: dict[EnvironmentTier, int] = {
+        tier: max(0, int(supplied.get(tier, 0)))
+        for tier in ENVIRONMENT_TIER_COMPLETION_PITY
+    }
+    forced: list[EnvironmentTier] = []
+    available_by_tier: dict[EnvironmentTier, tuple[EnvironmentFindItem, ...]] = {}
+    for tier in _ENVIRONMENT_TIER_PRIORITY:
+        available = tuple(
+            item
+            for item in pool
+            if item.tier == tier
+            and item.item_id not in owned
+            and item.ownership_key not in owned
+        )
+        if not available:
+            continue
+        available_by_tier[tier] = available
+        advanced = next_misses[tier] + 1
+        if advanced >= ENVIRONMENT_TIER_COMPLETION_PITY[tier]:
+            forced.append(tier)
+            next_misses[tier] = 0
+        else:
+            next_misses[tier] = advanced
+
+    items: list[EnvironmentFindItem] = []
+    for tier in forced:
+        available = available_by_tier[tier]
+        context = (
+            f"{ENVIRONMENT_POOL_VERSION}|completion-pity:{tier}|"
+            f"threshold:{ENVIRONMENT_TIER_COMPLETION_PITY[tier]}"
+        )
+        item_index = _hmac_uint(
+            secret,
+            identity,
+            f"garden-find:environment:{tier}:completion-pity:v1",
+            context=context,
+        ) % len(available)
+        item = available[item_index]
+        items.append(item)
+        owned.add(item.item_id)
+        owned.add(item.ownership_key)
+
+    return EnvironmentCompletionDecision(
+        completion_identity=identity,
+        items=tuple(items),
+        forced_tiers=tuple(forced),
+        next_tier_completion_misses=next_misses,
+    )
+
+
 def simulate_standard_find_economy(
     *,
     secret: str | bytes = "anki-garden-v1-economy-simulation",
@@ -954,6 +1139,7 @@ def simulate_standard_find_economy(
             answer_identity=identity,
             drought_misses=drought,
             finds_today=finds_today,
+            eligible_answers_today=(index % per_day) + 1,
             registry=prepared,
         )
         drought = decision.next_drought_misses

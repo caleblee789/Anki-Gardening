@@ -60,6 +60,10 @@ _V26_DEPRECATED_VISIBLE_COPY_PATTERNS = (
     r"\btoday['’]s environment\b",
     r"\bnursery weather scenery\b",
     r"\bgarden item unlocked\b",
+    r"\b[+-]?\d[\d,]*(?:\.\d+)?\s+(?:more\s+)?coins?\b",
+    r"\bnot enough coins\b",
+    r"\bno coins were spent\b",
+    r"(?<!garden )\bcoin balance\b",
 )
 LEGACY_V24_PROFILE_SURFACE_COUNTS = {
     "representative": 26,
@@ -3997,12 +4001,13 @@ def growth_charge_rendered_value_issue_codes(
     if label == "growth-charge-use-ready":
         expected = {
             "variant": "ready",
+            "dialog_title": "Use Small Growth Charge?",
             "growth_label": "Total Growth",
             "growth_value": "450 → 550",
             "inventory_label": "Charges remaining",
             "inventory_value": "2 → 1",
-            "stage_badge": "Result: Sprout",
-            "stage_badge_accessible": "New stage: Sprout",
+            "stage_badge": "Stage up: Sprout",
+            "stage_badge_accessible": "Stage up: Sprout",
             "stage_progress": "50 / 2,000 toward Young",
             "primary_action": "Use 1 charge",
             "current_growth": 450,
@@ -4015,6 +4020,7 @@ def growth_charge_rendered_value_issue_codes(
     elif label == "growth-charge-success-stage-reward":
         expected = {
             "variant": "success",
+            "dialog_title": "Growth charge applied",
             "stage_transition": "Bonsai Plant reached Sprout",
             "receipt_copy": (
                 "+100 Growth · 1 growth charge remaining\n"
@@ -4029,6 +4035,10 @@ def growth_charge_rendered_value_issue_codes(
             "next_stage_goal": 2_000,
             "inventory_remaining": 1,
             "stage_reward_total": 2,
+            "comparison_labels": "before-after",
+            "before_art_role": "before",
+            "after_art_role": "after",
+            "visible_comparison_labels": ["Before", "After"],
         }
     else:
         return ("unexpected-growth-charge-rendered-label",)
@@ -4140,7 +4150,7 @@ def sync_reward_discovery_state_matrix_issue_codes(
     if not isinstance(evidence, dict):
         return ("missing-sync-reward-discovery-state-matrix",)
     base_metrics = {
-        "sync_review_cards": {"label": "Card answers", "value": "42"},
+        "sync_review_cards": {"label": "Reviews", "value": "42"},
         "growth_resource": {"label": "Growth", "value": "+520"},
         "garden_coin": {"label": "Garden Coins", "value": "+12"},
     }
@@ -4244,6 +4254,154 @@ def sync_reward_discovery_state_matrix_issue_codes(
     return tuple(dict.fromkeys(issues))
 
 
+def sync_reward_home_state_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently reconcile Surface 29's receipt and painted Home card."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-sync-reward-home-state",)
+    actual = evidence.get("actual_plant")
+    summary = evidence.get("summary_plant")
+    home = evidence.get("home_dom")
+    if not all(isinstance(row, dict) for row in (actual, summary, home)):
+        return ("invalid-sync-reward-home-state",)
+    issues: list[str] = []
+    comparisons = {
+        "active-plant-id": (evidence.get("active_plant_id"), actual.get("plant_id")),
+        "summary-plant-id": (summary.get("plant_id"), actual.get("plant_id")),
+        "summary-name": (summary.get("display_name"), actual.get("display_name")),
+        "summary-species": (summary.get("species"), actual.get("species")),
+        "summary-stage": (summary.get("stage_after"), actual.get("growth_stage")),
+        "summary-stage-progress": (
+            summary.get("stage_progress_after"),
+            actual.get("stage_progress_percent"),
+        ),
+        "summary-full-bloom": (
+            summary.get("fully_grown"),
+            actual.get("fully_grown"),
+        ),
+        "home-support": (home.get("support_text"), actual.get("home_support_text")),
+        "home-progress-current": (
+            home.get("progress_current"),
+            actual.get("stage_progress_current"),
+        ),
+        "home-progress-maximum": (
+            home.get("progress_maximum"),
+            actual.get("stage_progress_maximum"),
+        ),
+        "home-progress-percent": (
+            home.get("progress_percent"),
+            actual.get("stage_progress_percent"),
+        ),
+        "home-calculated-percent": (
+            home.get("calculated_progress_percent"),
+            actual.get("stage_progress_percent"),
+        ),
+        "home-painted-current": (
+            home.get("painted_progress_current"),
+            actual.get("stage_progress_current"),
+        ),
+        "home-painted-maximum": (
+            home.get("painted_progress_maximum"),
+            actual.get("stage_progress_maximum"),
+        ),
+        "home-painted-percent": (
+            home.get("painted_progress_percent"),
+            actual.get("stage_progress_percent"),
+        ),
+    }
+    for key, (observed, expected) in comparisons.items():
+        if observed != expected:
+            issues.append(f"sync-reward-home:{key}")
+    if summary.get("active") is not True:
+        issues.append("sync-reward-home:summary-active")
+    if home.get("progress_fraction_passed") is not True:
+        issues.append("sync-reward-home:progress-fraction")
+    if actual.get("fixture_installed") is not True:
+        issues.append("sync-reward-home:fixture-installed")
+    return tuple(issues)
+
+
+def session_summary_currency_copy_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Require Surface 28 to name its currency and milestone copy exactly."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-session-summary-geometry",)
+    issues: list[str] = []
+    metrics = evidence.get("metric_values")
+    currency_metric = (
+        " ".join(str(metrics.get("garden_coins", "")).split())
+        if isinstance(metrics, dict) else ""
+    )
+    if currency_metric != "Garden Coins +97":
+        issues.append("session-summary-garden-coin-metric-copy")
+    copy = " ".join(str(evidence.get("copy", "")).casefold().split())
+    if "+50 garden coins bonus included" not in copy:
+        issues.append("session-summary-garden-coin-bonus-copy")
+    if "garden cycle complete" not in copy or "5 completed review days" not in copy:
+        issues.append("session-summary-garden-cycle-copy")
+    if "garden landmark" not in copy or "+125" not in copy:
+        issues.append("session-summary-project-allocation-copy")
+    return tuple(issues)
+
+
+def purchase_currency_copy_issue_codes(
+    label: str,
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Validate the two release purchase faces' canonical Garden Coin copy."""
+
+    expected = {
+        "purchase-confirmation-fertilizer-queue": (
+            300,
+            "Buy and queue",
+            "",
+        ),
+        "purchase-confirmation-growth-charge": (
+            30,
+            "Buy charge",
+            "You need 30 more Garden Coins to buy Small Growth Charge.",
+        ),
+    }.get(label)
+    if expected is None:
+        return ()
+    if not isinstance(evidence, dict):
+        return ("missing-purchase-currency-copy",)
+    price, primary, shortfall = expected
+    issues: list[str] = []
+    original = evidence.get("original_confirmation")
+    if not isinstance(original, dict):
+        issues.append("purchase-original-confirmation")
+    else:
+        if original.get("price") != price:
+            issues.append("purchase-price")
+        if original.get("primary_label") != primary:
+            issues.append("purchase-original-primary-copy")
+    if evidence.get("primary_action") != primary:
+        issues.append("purchase-primary-copy")
+    if evidence.get("visible_action_property") != primary:
+        issues.append("purchase-visible-action-property")
+    if evidence.get("button_action_property") != primary:
+        issues.append("purchase-button-action-property")
+    if evidence.get("cost_separated") is not True:
+        issues.append("purchase-cost-not-separated")
+    if evidence.get("cost_row_present") is not True:
+        issues.append("purchase-cost-row-semantics")
+    if evidence.get("action_cost_contract_passed") is not True:
+        issues.append("purchase-action-cost-contract")
+    if shortfall:
+        matrix = evidence.get("purchase_growth_charge_states")
+        records = matrix.get("records") if isinstance(matrix, dict) else None
+        insufficient = (
+            records.get("insufficient")
+            if isinstance(records, dict) else None
+        )
+        if not isinstance(insufficient, dict):
+            issues.append("purchase-insufficient-state")
+        elif insufficient.get("status_copy") != shortfall:
+            issues.append("purchase-shortfall-copy")
+    return tuple(issues)
+
+
 def collection_loadout_state_matrix_issue_codes(
     evidence: Any,
 ) -> tuple[str, ...]:
@@ -4295,7 +4453,7 @@ def collection_loadout_state_matrix_issue_codes(
 def nursery_bed_incomplete_state_issue_codes(
     evidence: Any,
 ) -> tuple[str, ...]:
-    """Independently validate Surface 23's painted Bed 3 expansion."""
+    """Independently validate Surface 23's earned Bed 3 progression."""
 
     if not isinstance(evidence, dict):
         return ("missing-nursery-bed-incomplete-state",)
@@ -4303,13 +4461,12 @@ def nursery_bed_incomplete_state_issue_codes(
         "unlocked_beds": 2,
         "summary": "2 of 6 beds unlocked",
         "bed_number": 3,
-        "bed_title": "Unlock Bed 3",
-        "price": 150,
-        "price_copy": "150 Garden Coins",
+        "bed_title": "Next: Bed 3",
+        "requirement": "First plant reaches Mature",
+        "unlock_policy": "automatic_achievement",
         "resulting_capacity": 3,
-        "action_copy": "Unlock for 150 Garden Coins",
-        "action_accessible_name": "Unlock Bed 3 for 150 Garden Coins",
-        "action_enabled": True,
+        "price_present": False,
+        "action_present": False,
         "painted": True,
         "contained": True,
     }
@@ -4318,7 +4475,8 @@ def nursery_bed_incomplete_state_issue_codes(
         if evidence.get(key) != expected_value:
             issues.append(f"nursery-bed-incomplete:{key}")
     if (
-        "Unlocks Bed 3 and increases Garden capacity to 3 plants."
+        "Earned automatically through Garden progress\n"
+        "Garden capacity after unlock: 3 plants"
         not in str(evidence.get("capacity_copy", ""))
     ):
         issues.append("nursery-bed-incomplete:capacity_copy")
@@ -4511,7 +4669,7 @@ def nursery_supplement_state_matrix_issue_codes(
             "balance": 500,
             "balance_copy": "500",
             "item_id": "premium",
-            "price_copy": "300 coins",
+            "price_copy": "300 Garden Coins",
             "action": "Buy and apply",
             "action_disposition": "apply",
             "action_enabled": True,
@@ -4521,10 +4679,10 @@ def nursery_supplement_state_matrix_issue_codes(
             "item_id": "fertilizer_basic",
             "item_name": "Rich Compost",
             "owned_copy": "3 owned",
-            "action": "Apply",
+            "action": "Use",
             "action_disposition": "apply",
             "meta_copy": (
-                "+1 Growth per eligible card answer · Lasts 1 hour"
+                "+1 Growth per eligible card · 100 eligible cards"
             ),
             "artwork_ref": "rich_compost",
             "artwork_source_matches": True,
@@ -4539,12 +4697,12 @@ def nursery_supplement_state_matrix_issue_codes(
             "engine_tier": "basic",
             "item_id": "fertilizer_basic",
             "owned_copy": "2 owned",
-            "action": "Extend",
-            "action_disposition": "extend",
+            "action": "Queue",
+            "action_disposition": "queue",
             "status_phase": "active",
             "status_copy": (
-                "Basic Fertilizer · +1 Growth per eligible card answer · "
-                "1 hour left"
+                "Basic Fertilizer · +1 Growth per eligible card · "
+                "100 cards remaining"
             ),
             "painted": True,
         },
@@ -4553,16 +4711,16 @@ def nursery_supplement_state_matrix_issue_codes(
             "item_id": "fertilizer_quality",
             "owned_copy": "1 owned",
             "queued_copy": "Queued",
-            "action": "Extend",
-            "action_disposition": "extend",
+            "action": "Queue",
+            "action_disposition": "queue",
             "final_basic_action": "Queue",
             "final_basic_action_disposition": "queue",
             "final_basic_painted": True,
-            "final_quality_action": "Extend",
-            "final_quality_action_disposition": "extend",
+            "final_quality_action": "Queue",
+            "final_quality_action_disposition": "queue",
             "final_quality_painted": True,
             "meta_copy": (
-                "+2 Growth per eligible card answer · Lasts 2 hours"
+                "+2 Growth per eligible card · 200 eligible cards"
             ),
             "painted": True,
         },
@@ -4603,7 +4761,8 @@ def nursery_environment_fixture_issue_codes(evidence: Any) -> tuple[str, ...]:
             "item_id": "watering_station",
             "ownership_state": "owned",
             "bonus_state": "active",
-            "action": "Garden Bonus active today",
+            "section_heading": "Today’s Garden Bonus",
+            "action": "Active today",
             "painted": True,
         },
         "purchasable": {
@@ -4618,8 +4777,13 @@ def nursery_environment_fixture_issue_codes(evidence: Any) -> tuple[str, ...]:
             "item_id": "firefly_lantern",
             "ownership_state": "locked",
             "price": 0,
-            "action": "How to unlock",
-            "action_enabled": False,
+            "acquisition_copy": "How to discover ›",
+            "interactive_action_present": True,
+            "artwork_id": "firefly_lantern",
+            "artwork_locked": True,
+            "artwork_resolved": True,
+            "artwork_fallback": False,
+            "generic_placeholder": False,
             "painted": True,
         },
         "scenery_heading": {
@@ -4659,7 +4823,10 @@ def appearance_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
     if not isinstance(records, dict) or set(records) != {"on", "off"}:
         issues.append("appearance-state-set")
         records = records if isinstance(records, dict) else {}
-    for state, effects_value in (("on", "On"), ("off", "Off")):
+    for state, effects_value in (
+        ("on", "Enabled"),
+        ("off", "Disabled"),
+    ):
         actual = records.get(state)
         if not isinstance(actual, dict):
             issues.append(f"appearance-{state}:missing")
@@ -4754,7 +4921,7 @@ def reviewer_reward_dock_issue_codes(
         and bool(str(bundle.get("projected_hero_subtitle", "")).strip())
         and bundle.get("visible_summary_labels") == [
             "1 Standard Find",
-            "Garden discoveries",
+            "2 Garden discoveries",
         ]
         and bundle.get("visible_summary_reward_types") == [
             "garden_find",
@@ -4788,7 +4955,7 @@ def reviewer_reward_dock_issue_codes(
         and geometry.get("overlaps_bottom_controls") is False
         and geometry.get("horizontal_scroll_maximum") == 0
         and 130 <= int(geometry.get("reveal_height", 0) or 0) <= 150
-        and 48 <= int(geometry.get("footer_height", 0) or 0) <= 58
+        and int(geometry.get("footer_height", 0) or 0) == 68
         and geometry.get("single_outer_surface") is True
         and geometry.get("divider_visible") is True
         and int(geometry.get("divider_count", 0) or 0) == 1
@@ -4806,6 +4973,113 @@ def reviewer_reward_dock_issue_codes(
     ):
         issues.append("reviewer-reward-dock-geometry-mismatch")
     return tuple(dict.fromkeys(issues))
+
+
+def reviewer_hud_growth_destination_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    if not isinstance(evidence, dict):
+        return ("reviewer-hud-project-destination-missing",)
+    expected = {
+        "visible": True,
+        "kind": "active_project",
+        "target_type": "mastery",
+        "target_id": "bonsai",
+        "artwork_id": "mastery_bronze",
+        "heading": "Bonsai Cultivation Mastery",
+        "status": "Active project",
+        "next_action": "growth_destination",
+        "stored_growth_units": 1_250,
+        "frame_kind": "active_project",
+        "frame_target_type": "mastery",
+        "frame_target_id": "bonsai",
+        "frame_artwork_id": "mastery_bronze",
+    }
+    issues = [
+        f"reviewer-hud-project-destination:{key}"
+        for key, value in expected.items()
+        if evidence.get(key) != value
+    ]
+    if "Open Collection" not in str(evidence.get("accessible_name", "")):
+        issues.append("reviewer-hud-project-destination:collection-route")
+    return tuple(issues)
+
+
+def session_summary_project_effect_issue_codes(
+    evidence: Any,
+    *,
+    require_rendered_project: bool,
+) -> tuple[str, ...]:
+    if not isinstance(evidence, dict):
+        return ("session-project-effect-evidence-missing",)
+    issues: list[str] = []
+    if evidence.get("typed_project_allocations") != [[
+        "landmark", "garden_landmark", 12_500,
+    ]]:
+        issues.append("session-project-allocation-source")
+    if evidence.get("fertilizer_effect_rows") != [{
+        "effect_id": "capture-fertilizer",
+        "remaining_cards": 38,
+        "remaining_seconds": 0,
+        "expires_at_epoch_seconds": 0,
+        "value": "38 cards remaining",
+    }]:
+        issues.append("session-fertilizer-source")
+    if evidence.get("rendered_fertilizer_rows") != [{
+        "kind": "fertilizer",
+        "value": "38 cards remaining",
+        "artwork_id": "fertilizer_quality",
+    }]:
+        issues.append("session-fertilizer-rendering")
+    if require_rendered_project:
+        rendered = evidence.get("rendered_project_allocations")
+        if not (
+            isinstance(rendered, list)
+            and len(rendered) == 1
+            and rendered[0].get("target_type") == "landmark"
+            and rendered[0].get("target_id") == "garden_landmark"
+            and rendered[0].get("row_key")
+            == "project:landmark:garden_landmark"
+            and rendered[0].get("artwork_id")
+            == "landmark_glasshouse_conservatory"
+            and "Garden Landmark" in str(rendered[0].get("copy", ""))
+            and "+125" in str(rendered[0].get("copy", ""))
+        ):
+            issues.append("session-project-allocation-rendering")
+    return tuple(issues)
+
+
+def sync_reward_project_allocation_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    if not isinstance(evidence, dict):
+        return ("sync-project-allocation-evidence-missing",)
+    issues: list[str] = []
+    content = evidence.get("content")
+    raw_allocations = (
+        content.get("project_allocations", ())
+        if isinstance(content, dict) else ()
+    )
+    try:
+        allocations = [list(row) for row in raw_allocations]
+    except TypeError:
+        allocations = []
+    if not isinstance(content, dict) or (
+        content.get("shared_growth_delta_units") != 8_000
+        or content.get("landmark_growth_delta_units") != 2_000
+        or allocations != [["landmark", "garden_landmark", 2_000]]
+    ):
+        issues.append("sync-project-allocation-source")
+    if evidence.get("allocation_records") != [
+        {"target_type": "", "target_id": "", "units": 8_000,
+         "amount": "+80", "label": "Shared Growth",
+         "artwork_id": "shared_growth"},
+        {"target_type": "landmark", "target_id": "garden_landmark",
+         "units": 2_000, "amount": "+20", "label": "Garden Landmark",
+         "artwork_id": "landmark_glasshouse_conservatory"},
+    ]:
+        issues.append("sync-project-allocation-rendering")
+    return tuple(issues)
 
 
 def reviewer_hud_acceptance_matrix_issue_codes(
@@ -5009,18 +5283,18 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 "reward_visible": True,
                 "eyebrow": "CHECKPOINT REACHED",
                 "hero_title": "25% checkpoint",
-                "coin_copy": "+2 coins",
+                "coin_copy": "+2 Garden Coins",
                 "header_balance": 248,
             }
             and sequence.get("sequence") == expected_order
             and sequence.get("expected_sequence") == expected_order
             and sequence.get("eyebrow") == "CHECKPOINT REACHED"
             and sequence.get("hero_title") == "25% checkpoint"
-            and sequence.get("coin_copy") == "+2 coins"
+            and sequence.get("coin_copy") == "+2 Garden Coins"
             and sequence.get("final_progress_percent") == 38
             and sequence.get("final_header_balance") == 250
             and sequence.get("final_session_metric_copy")
-            == ["+18 growth", "+2 coins"]
+            == ["+18 Growth", "+2 Garden Coins"]
             and sequence.get("marker_before_reveal") is True
             and sequence.get("reward_before_excess_fill") is True
             and sequence.get("header_increment_deferred") is True
@@ -5041,7 +5315,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             and sequence.get("session_update_deferred") is True
             and applied == {
                 "label": "Growth applied",
-                "value": "+18 growth",
+                "value": "+18 Growth",
                 "result_state": "applied",
                 "progress_percent": 10,
                 "art_pulse": True,
@@ -5052,12 +5326,12 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 "progress_percent": 18,
                 "routine_feedback_active": False,
                 "session_growth_units": 1_800,
-                "session_metric_copy": ["+18 growth"],
+                "session_metric_copy": ["+18 Growth"],
                 "released_after_progress": True,
             }
             and isinstance(restored, dict)
-            and restored.get("label") == "Next answer"
-            and restored.get("value") == "+18 growth"
+            and restored.get("label") == "Next card"
+            and restored.get("value") == "+18 Growth"
             and restored.get("result_state") == "projection"
             and restored.get("art_pulse") is False
             and restored.get("reward_visible") is False
@@ -5093,11 +5367,12 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 "transition_active": False,
                 "completion_status": "complete",
                 "heading": "All cards complete",
-                "reward_copy": "+10 coins",
+                "reward_copy": "+10 Garden Coins",
                 "displayed_progress_percent": 100,
                 "header_balance": 260,
                 "session_coins": 10,
-                "session_metric_copy": ["+18 growth", "+10 coins"],
+                "session_metric_copy": ["+18 Growth", "+10 Garden Coins"],
+                "passed": True,
             }
         )
 
@@ -5177,7 +5452,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             and find_row.get("uses_item_art") is True
             and find_row.get("icon_present") is True
             and find_row.get("icon_kind") == "item-art"
-            and discovery_row.get("label") == "Garden discoveries"
+            and discovery_row.get("label") == "2 Garden discoveries"
             and discovery_row.get("reward_type") == "environment_discovery"
             and discovery_row.get("uses_item_art") is False
             and discovery_row.get("icon_present") is True
@@ -5266,11 +5541,11 @@ def reviewer_hud_acceptance_matrix_issue_codes(
         semantic_checks = {
             "18-cards-left": lambda row: (
                 row.get("remaining_count") == 18
-                and row.get("copy") == "18 cards left"
+                and row.get("copy") == "18 cards remaining"
             ),
             "1-card-left": lambda row: (
                 row.get("remaining_count") == 1
-                and row.get("copy") == "1 card left"
+                and row.get("copy") == "1 card remaining"
                 and row.get("near_complete_card") is True
                 and row.get("near_complete_detail") is True
                 and float(row.get("displayed_progress_percent", 0) or 0)
@@ -5290,13 +5565,13 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             ),
             "growth-only": lambda row: (
                 row.get("metric_keys") == ["growth"]
-                and row.get("metric_copy") == ["+18 growth"]
+                and row.get("metric_copy") == ["+18 Growth"]
                 and row.get("divider_visible") is False
                 and routine_committed_answer_passed(row)
             ),
             "growth-and-coins": lambda row: (
                 row.get("metric_keys") == ["growth", "coins"]
-                and row.get("metric_copy") == ["+18 growth", "+2 coins"]
+                and row.get("metric_copy") == ["+18 Growth", "+2 Garden Coins"]
                 and row.get("zero_categories_omitted") is True
             ),
             "progress-10-percent": lambda row: checkpoint_projection_passed(
@@ -5536,14 +5811,14 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and short_height_composition_passed(row)
                 and row.get("sticky_header_and_dock") is True
                 and row.get("session_metric_copy")
-                == ["+18 growth", "+2 coins"]
+                == ["+18 Growth", "+2 Garden Coins"]
                 and row.get("baseline_short_viewport_passed") is True
             ),
             "all-cards-complete": lambda row: (
                 row.get("completion_status") == "complete"
                 and row.get("heading") == "All cards complete"
                 and row.get("displayed_progress_percent") == 100
-                and row.get("reward_copy") == "+10 coins"
+                and row.get("reward_copy") == "+10 Garden Coins"
             ),
             "one-garden-find": lambda row: (
                 row.get("find_count") == 1
@@ -5551,8 +5826,8 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             ),
             "discovery-new-wording": lambda row: (
                 row.get("visible_summary_labels")
-                == ["1 Standard Find", "Garden discoveries"]
-                and row.get("discovery_summary") == "Garden discoveries"
+                == ["1 Standard Find", "2 Garden discoveries"]
+                and row.get("discovery_summary") == "2 Garden discoveries"
             ),
             "full-bloom": lambda row: (
                 row.get("eyebrow") == "MILESTONE REACHED"
@@ -5569,7 +5844,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                     "Any remainder will be stored."
                 )
                 and row.get("select_another_visible") is True
-                and row.get("select_another_copy") == "Choose next plant ›"
+                and row.get("select_another_copy") == "Choose next plant"
                 and row.get("art_scale") == 1.0
                 and row.get("particles_active") is False
             ),
@@ -5587,13 +5862,19 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             "full-bloom-settled": lambda row: (
                 row.get("settled") is True
                 and row.get("temporary_gold_cleared") is True
+                and row.get("all_plants_full_bloom") is True
                 and row.get("settled_copy")
                 == (
-                    "Future Growth will go to other planted plants. "
-                    "Any remainder will be stored."
+                    "All planted plants are at Full Bloom. "
+                    "Future Growth will be stored."
                 )
-                and row.get("select_another_visible") is True
-                and row.get("select_another_copy") == "Choose next plant ›"
+                and row.get("select_another_visible") is False
+                and row.get("destination_visible") is True
+                and row.get("destination_kind") == "stored_growth"
+                and row.get("destination_heading") == "Stored Growth"
+                and row.get("destination_detail") == "12.5 Growth in reserve"
+                and row.get("destination_stored_growth_units") == 1_250
+                and row.get("next_action") == "growth_destination"
                 and row.get("art_scale") == 1.0
                 and row.get("particles_active") is False
             ),
@@ -5615,7 +5896,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("active_plant_identity_suppressed") is True
                 and row.get("visible_summary_labels") == [
                     "1 Standard Find",
-                    "Garden discoveries",
+                    "2 Garden discoveries",
                 ]
                 and compact_reward_summary_passed(row)
                 and row.get("details_action_copy") == "Details ›"
@@ -5642,7 +5923,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 row.get("safe_area_passed") is True
                 and row.get("horizontal_scroll_maximum") == 0
                 and (
-                    row.get("height_at_most_660") is True
+                    row.get("height_at_most_680") is True
                     or row.get("safe_scroll") is True
                 )
             ),
@@ -5673,7 +5954,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("footer_coins") == row.get("live_coins") == 14
                 and row.get("footer_finds") == row.get("live_finds") == 1
                 and row.get("footer_copy")
-                == ["+40 growth", "+14 coins", "1 Standard Find"]
+                == ["+40 Growth", "+14 Garden Coins", "1 Standard Find"]
             ),
             "reward-reveal-lifecycle": lambda row: (
                 row.get("celebrating") == "celebrating"
@@ -5753,6 +6034,40 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 if name in expected_rows and isinstance(record, dict)
             ):
                 issues.append("reviewer-hud-answer-control-exclusion-not-passed")
+            collapsed = viewport.get("1280x800-collapsed")
+            if not (
+                isinstance(collapsed, dict)
+                and collapsed.get("collapsed_today_visible") is True
+                and collapsed.get("collapsed_today_copy") == "18 remaining"
+                and collapsed.get("collapsed_today_full_copy")
+                == "Today’s cards · 18 cards remaining"
+                and collapsed.get("collapsed_today_copy")
+                == collapsed.get("collapsed_today_expected_visible_copy")
+                and collapsed.get("collapsed_today_full_copy")
+                == collapsed.get("collapsed_today_expected_copy")
+                and collapsed.get("collapsed_next_visible") is True
+                and collapsed.get("collapsed_next_full_copy")
+                == collapsed.get("collapsed_next_expected_copy")
+                and collapsed.get("collapsed_next_copy")
+                == collapsed.get("collapsed_next_declared_copy")
+                and collapsed.get("collapsed_next_copy")
+                == collapsed.get("collapsed_next_expected_visible_copy")
+            ):
+                issues.append("reviewer-hud-collapsed-summary-not-visible")
+            short = viewport.get("1280x600-short-expanded")
+            if not (
+                isinstance(short, dict)
+                and int(short.get("body_compact_level", 0) or 0) >= 2
+                and short.get("optional_effects_collapsed") is True
+                and short.get("optional_artwork_compact") is True
+                and short.get("optional_checkpoint_copy_collapsed") is True
+                and int(short.get("body_uncompacted_height", 0) or 0)
+                > int(short.get("body_natural_height", 0) or 0)
+                and short.get("body_scroll_expected") is True
+                and short.get("compaction_passed") is True
+                and int(short.get("vertical_scroll_maximum", 0) or 0) > 0
+            ):
+                issues.append("reviewer-hud-short-height-compaction-not-applied")
     elif label == "reviewer-reward-dock-bundle":
         expected_interactions = {
             "collapsed-unseen-reward",
@@ -6089,13 +6404,21 @@ def _visual_contract_record_issues(
                 and fertilizer_status.get("title") == "Basic Fertilizer"
                 and fertilizer_status.get("summary")
                 == (
-                    "+1 Growth per eligible card answer · "
-                    "1 hour remaining"
+                    "+1 Growth per eligible card · "
+                    "100 cards remaining"
                 )
                 and fertilizer_status.get("balance_text") == "Balance: 500"
                 and fertilizer_status.get("balance_icon_present") is True
-                and fertilizer_status.get("extend_text")
-                == "Extend 1h · 30 coins"
+                and fertilizer_status.get("extend_text") == "Queue"
+                and fertilizer_status.get("extend_cost_visible") is False
+                and fertilizer_status.get("cost_separated") is True
+                and fertilizer_status.get("cards_remaining") == 100
+                and fertilizer_status.get("queued_cards") == 0
+                and fertilizer_status.get("action_card_queue_delta") == 100
+                and fertilizer_status.get("expires_at_ms") is None
+                and fertilizer_status.get("action_expires_at_ms") is None
+                and fertilizer_status.get("expiry_epoch_seconds") == 0
+                and fertilizer_status.get("expiry_copy") == ""
                 and all(
                     isinstance(fertilizer_status.get(key), list)
                     and len(fertilizer_status[key]) == 4
@@ -6104,6 +6427,7 @@ def _visual_contract_record_issues(
                         "icon_bounds",
                         "balance_bounds",
                         "extend_bounds",
+                        "countdown_bounds",
                     )
                 )
             ):
@@ -6178,9 +6502,9 @@ def _visual_contract_record_issues(
         elif label == "home-preview-error":
             if not (
                 "garden preview unavailable" in str(rendered).casefold()
-                and action == "Open Garden"
+                and action == "Open garden"
             ):
-                reject("Home error state must retain the Open Garden action")
+                reject("Home error state must retain the Open garden action")
         elif not label.startswith("starter-"):
             compact_growth_present = bool(
                 re.search(
@@ -6193,12 +6517,12 @@ def _visual_contract_record_issues(
             )
             if not (
                 compact_growth_present
-                and action == "Open Garden"
+                and action == "Open garden"
                 and type(compact.get("action_width")) is int
                 and 104 <= compact["action_width"] <= 128
                 and compact.get("action_height") == 36
             ):
-                reject("compact Home must show growth progress and a 104-128 by 36 Open Garden CTA")
+                reject("compact Home must show growth progress and a 104-128 by 36 Open garden CTA")
 
     if label == "full-garden":
         steady = audit_object("steady_state_visual")
@@ -6603,6 +6927,16 @@ def _visual_contract_record_issues(
             resilience,
         ):
             reject(f"Reviewer HUD acceptance matrix: {issue}")
+        if label == "reviewer-reward-dock-bundle":
+            settled = content.get("full-bloom-settled")
+            destination = (
+                settled.get("active_mastery_destination")
+                if isinstance(settled, dict) else None
+            )
+            for issue in reviewer_hud_growth_destination_issue_codes(
+                destination
+            ):
+                reject(f"Reviewer HUD project destination: {issue}")
     if label == "reviewer-reward-dock-bundle":
         bundle = audit_object("reviewer_reward_bundle")
         geometry = audit_object("reviewer_reward_dock_geometry")
@@ -6611,12 +6945,121 @@ def _visual_contract_record_issues(
         if audit.get("required_overlay_pixels_present") is not True:
             reject("Reviewer reward dock is absent from captured pixels")
 
+    if label == "session-summary-after-review":
+        summary_geometry = audit_object("session_summary_geometry")
+        clearance = summary_geometry.get("summary_home_clearance_telemetry")
+        clearance_rect = (
+            clearance.get("rect") if isinstance(clearance, dict) else None
+        )
+        clearance_viewport = (
+            clearance.get("viewport") if isinstance(clearance, dict) else None
+        )
+        summary_bounds = list(summary_geometry.get("bounds", ()) or ())
+        container_size = list(
+            summary_geometry.get("container_size", ()) or ()
+        )
+        measurement_fresh = bool(
+            isinstance(clearance, dict)
+            and clearance.get("schema_version") == 1
+            and clearance.get("source") == "home-garden-dom"
+            and clearance.get("measured") is True
+            and summary_geometry.get("summary_home_clearance_measured") is True
+            and isinstance(clearance_rect, dict)
+            and isinstance(clearance_viewport, dict)
+            and len(container_size) == 2
+            and abs(
+                int(clearance_viewport.get("width", -1))
+                - int(container_size[0])
+            ) <= 2
+            and abs(
+                int(clearance_viewport.get("height", -1))
+                - int(container_size[1])
+            ) <= 2
+        )
+        geometric_overlap = bool(
+            measurement_fresh
+            and len(summary_bounds) == 4
+            and min(
+                int(clearance_rect.get("right", -1)),
+                int(summary_bounds[0]) + int(summary_bounds[2]),
+            ) > max(
+                int(clearance_rect.get("left", -1)),
+                int(summary_bounds[0]),
+            )
+        )
+        clearance_bottom = summary_geometry.get(
+            "summary_home_clearance_bottom"
+        )
+        overlap_contract = bool(
+            summary_geometry.get("summary_home_clearance_horizontal_overlap")
+            is geometric_overlap
+            and (
+                type(clearance_bottom) is int
+                and clearance_bottom > 0
+                and summary_geometry.get("summary_home_clearance_source")
+                == "home-garden-dom"
+                and summary_geometry.get("summary_home_clearance_applied") is True
+                and clearance_rect.get("bottom") == clearance_bottom
+                and int(summary_geometry.get("top_margin", -1))
+                >= clearance_bottom + 16
+                if geometric_overlap else
+                clearance_bottom is None
+                and summary_geometry.get("summary_home_clearance_source") == "none"
+                and summary_geometry.get("summary_home_clearance_applied") is False
+                and int(summary_geometry.get("top_margin", -1)) >= 16
+            )
+        )
+        if not (measurement_fresh and overlap_contract):
+            reject("Session Summary does not reserve measured Home garden space")
+        for issue in session_summary_currency_copy_issue_codes(
+            summary_geometry
+        ):
+            reject(f"Session Summary currency copy: {issue}")
+        for issue in session_summary_project_effect_issue_codes(
+            summary_geometry,
+            require_rendered_project=False,
+        ):
+            reject(f"Session Summary project/effect: {issue}")
+        viewport_matrix = audit_object("session_summary_viewport_matrix")
+        expanded = dict(
+            dict(viewport_matrix.get("1280x720", {}) or {}).get(
+                "expanded", {}
+            ) or {}
+        )
+        for issue in session_summary_project_effect_issue_codes(
+            expanded,
+            require_rendered_project=True,
+        ):
+            reject(f"Session Summary expanded project/effect: {issue}")
+
+    if label in {
+        "purchase-confirmation-fertilizer-queue",
+        "purchase-confirmation-growth-charge",
+    }:
+        for issue in purchase_currency_copy_issue_codes(label, audit):
+            reject(f"Purchase currency copy: {issue}")
+
     if label == "diagnostics-warning":
         diagnostics_matrix = audit_object("diagnostics_state_matrix")
         for issue in diagnostics_state_matrix_issue_codes(diagnostics_matrix):
             reject(f"Diagnostics state matrix: {issue}")
 
     if label == "sync-rewards-summary":
+        sync_geometry = audit_object("sync_reward_summary_geometry")
+        for issue in sync_reward_project_allocation_issue_codes(sync_geometry):
+            reject(f"Sync reward project allocation: {issue}")
+        if sync_geometry.get("metric_order") != [
+            "Reviews",
+            "Growth",
+            "Garden Coins",
+            "Garden discoveries",
+        ]:
+            reject("Sync reward metrics are not in canonical order")
+        if sync_geometry.get("reward_group_order") != [
+            "standard_finds",
+            "garden_discoveries",
+        ]:
+            reject("Sync reward groups are not in canonical order")
         discovery_matrix = audit_object(
             "sync_reward_discovery_state_matrix"
         )
@@ -6624,6 +7067,16 @@ def _visual_contract_record_issues(
             discovery_matrix
         ):
             reject(f"Sync reward discovery state matrix: {issue}")
+        summary_content = audit_object("sync_reward_summary_content")
+        home_state = summary_content.get("home_state")
+        home_state_issues = sync_reward_home_state_issue_codes(home_state)
+        for issue in home_state_issues:
+            reject(f"Sync reward Home state: {issue}")
+        if not isinstance(home_state, dict) or (
+            home_state.get("passed") is not (not home_state_issues)
+            or home_state.get("issues") != list(home_state_issues)
+        ):
+            reject("Sync reward Home-state evidence is internally inconsistent")
 
     if label == "missing-artwork-graphical-fallback":
         matrix = audit_object("missing_artwork_matrix")

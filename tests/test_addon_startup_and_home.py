@@ -174,6 +174,7 @@ def _new_app(addon_module):
     app._dashboard_open_failures = 0
     app._settings_open_pending = False
     app._starter_open_pending = False
+    app._collection_open_pending = False
     app._dashboard_focus_plant_id = ""
     app._dashboard_select_plant_pending = False
     app._apply_same_day_catchup = lambda: None
@@ -1409,6 +1410,9 @@ def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
         "stage": "flowering",
         "is_active": True,
         "url": "",
+        "mastery_rank_id": "",
+        "mastery_asset": None,
+        "mastery_url": "",
         "placement": {},
         "canvas_aspect": 1.0,
         "background_placement": {},
@@ -1830,7 +1834,7 @@ def test_reviewer_plant_selection_request_coalesces_and_preserves_session(monkey
     assert app.reviewer_hooks._session_summary_accumulator is accumulator
 
 
-def test_dashboard_opens_public_plant_selection_route_after_presenting(monkeypatch):
+def test_dashboard_opens_public_collection_and_plant_selection_routes_after_presenting(monkeypatch):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     addon.mw = aqt_mod.mw
@@ -1842,6 +1846,7 @@ def test_dashboard_opens_public_plant_selection_route_after_presenting(monkeypat
         showNormal=lambda: calls.append("show"),
         acknowledge_rendered_feedback=lambda: calls.append("acknowledge"),
         open_plant_selection=lambda: calls.append("plant-selection"),
+        open_collection=lambda: calls.append("collection"),
         _present_starter_setup_if_needed=lambda: calls.append("starter"),
     )
     app._dashboard_open_pending = True
@@ -1853,6 +1858,13 @@ def test_dashboard_opens_public_plant_selection_route_after_presenting(monkeypat
     assert calls == ["prepare", "show", "acknowledge", "plant-selection"]
     assert app._dashboard_select_plant_pending is False
     assert app._dashboard_open_pending is False
+
+    calls.clear()
+    app._dashboard_open_pending = True
+    app._collection_open_pending = True
+    app._open_dashboard_when_ready()
+    assert calls == ["prepare", "show", "acknowledge", "collection"]
+    assert app._collection_open_pending is False
 
 
 def test_transient_selection_failure_preserves_destination_for_retry(monkeypatch):

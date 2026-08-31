@@ -14,7 +14,7 @@ from typing import Any, Iterable, Literal, Sequence, TypeVar
 
 from ..environment import canonical_garden_feature_id
 from ..models.state import RewardReceipt
-from .formatters import format_quantity
+from .formatters import format_garden_coins, format_quantity
 
 
 TodayCardsStatus = Literal[
@@ -350,6 +350,7 @@ class FertilizerSnapshot:
     source_event_id: str = ""
     active: bool = True
     expires_at_epoch_seconds: int = 0
+    remaining_cards: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "effect_id", _event_id(self.effect_id, "effect_id"))
@@ -365,6 +366,11 @@ class FertilizerSnapshot:
                 self.expires_at_epoch_seconds,
                 "expires_at_epoch_seconds",
             ),
+        )
+        object.__setattr__(
+            self,
+            "remaining_cards",
+            _nonnegative(self.remaining_cards, "remaining_cards"),
         )
 
 
@@ -783,6 +789,59 @@ def _unique_reward_receipts(
 
 
 @dataclass(frozen=True)
+class SessionProjectGrowthAllocation:
+    """Immutable committed Growth credit for one stable project target."""
+
+    target_type: str
+    target_id: str
+    units: int
+
+    def __post_init__(self) -> None:
+        target_type = str(self.target_type or "").strip().casefold()
+        target_id = str(self.target_id or "").strip()
+        units = _positive(self.units, "project allocation units")
+        if target_type not in {"landmark", "mastery", "legacy"}:
+            raise ValueError("Unknown Growth project target type")
+        if not target_id:
+            raise ValueError("Growth project target id is required")
+        object.__setattr__(self, "target_type", target_type)
+        object.__setattr__(self, "target_id", target_id)
+        object.__setattr__(self, "units", units)
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "units": self.units,
+        }
+
+
+def _merge_project_allocations(
+    allocations: Iterable[SessionProjectGrowthAllocation],
+) -> tuple[SessionProjectGrowthAllocation, ...]:
+    """Coalesce committed credits by stable target without reading state."""
+
+    totals: dict[tuple[str, str], int] = {}
+    order: list[tuple[str, str]] = []
+    for allocation in allocations:
+        if not isinstance(allocation, SessionProjectGrowthAllocation):
+            raise TypeError(
+                "project_allocations must contain "
+                "SessionProjectGrowthAllocation values"
+            )
+        key = (allocation.target_type, allocation.target_id)
+        if key not in totals:
+            order.append(key)
+            totals[key] = 0
+        totals[key] += allocation.units
+    return tuple(
+        SessionProjectGrowthAllocation(target_type, target_id, totals[key])
+        for key in order
+        for target_type, target_id in (key,)
+    )
+
+
+@dataclass(frozen=True)
 class CommittedSessionEvent:
     """Exact deltas from one authoritative local Garden transaction."""
 
@@ -799,6 +858,8 @@ class CommittedSessionEvent:
     environment_discoveries: tuple[EnvironmentDiscovery, ...] = ()
     reward_receipts: tuple[RewardReceipt, ...] = ()
     total_finds: int = 0
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
+    landmark_growth_delta_units: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "event_id", _event_id(self.event_id))
@@ -827,6 +888,19 @@ class CommittedSessionEvent:
             self,
             "stored_growth_delta_units",
             int(self.stored_growth_delta_units),
+        )
+        object.__setattr__(
+            self,
+            "project_allocations",
+            _merge_project_allocations(self.project_allocations),
+        )
+        object.__setattr__(
+            self,
+            "landmark_growth_delta_units",
+            _nonnegative(
+                self.landmark_growth_delta_units,
+                "landmark_growth_delta_units",
+            ),
         )
         object.__setattr__(
             self,
@@ -1072,6 +1146,8 @@ class SessionDaySummary:
     effects_at_end: EffectsSnapshot
     effects_remaining: tuple[EffectRow, ...]
     total_finds: int = 0
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
+    landmark_growth_delta_units: int = 0
     coin_sources_reconciled: bool = field(default=True, init=False)
     additional_coins_earned: int = field(default=0, init=False)
     garden_coins_total: int = field(default=0, init=False)
@@ -1118,6 +1194,19 @@ class SessionDaySummary:
 
         total_finds = _nonnegative(self.total_finds, "total_finds")
         object.__setattr__(self, "total_finds", total_finds)
+        object.__setattr__(
+            self,
+            "project_allocations",
+            _merge_project_allocations(self.project_allocations),
+        )
+        object.__setattr__(
+            self,
+            "landmark_growth_delta_units",
+            _nonnegative(
+                self.landmark_growth_delta_units,
+                "landmark_growth_delta_units",
+            ),
+        )
         find_items, reconciled = _reconcile_find_items(
             self.standard_finds,
             total_finds,
@@ -1163,6 +1252,7 @@ class SessionDaySummary:
             self.plant_growth_total_units,
             self.shared_growth_total_units,
             self.stored_growth.delta_units,
+            self.project_growth_total_units,
             self.garden_coins_earned,
             self.total_finds,
             self.milestones,
@@ -1178,6 +1268,21 @@ class SessionDaySummary:
     @property
     def continue_reviews_available(self) -> bool:
         return self.today_cards_end.can_continue_reviews
+
+    @property
+    def project_growth_total_units(self) -> int:
+        """Exact project credit with Landmark-only legacy compatibility."""
+
+        allocated = sum(item.units for item in self.project_allocations)
+        landmark_allocated = sum(
+            item.units
+            for item in self.project_allocations
+            if item.target_type == "landmark"
+        )
+        return allocated + max(
+            0,
+            self.landmark_growth_delta_units - landmark_allocated,
+        )
 
 
 @dataclass(frozen=True)
@@ -1214,6 +1319,16 @@ class SessionSummaryPayload:
             and self.terminal_today_cards.can_continue_reviews
         )
 
+    @property
+    def project_allocations(self) -> tuple[SessionProjectGrowthAllocation, ...]:
+        """Session-wide target totals from committed immutable events only."""
+
+        return _merge_project_allocations(
+            allocation
+            for segment in self.segments
+            for allocation in segment.project_allocations
+        )
+
 
 @dataclass(frozen=True)
 class LiveSessionSnapshot:
@@ -1241,6 +1356,8 @@ class LiveSessionSnapshot:
     milestones: tuple[PlantMilestone, ...]
     environment_discoveries: tuple[EnvironmentDiscovery, ...]
     reward_receipts: tuple[RewardReceipt, ...]
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
+    landmark_growth_delta_units: int = 0
 
     @property
     def footer_growth_units(self) -> int:
@@ -1250,6 +1367,20 @@ class LiveSessionSnapshot:
             self.plant_growth_total_units
             + self.shared_growth_total_units
             + self.stored_growth.added_units
+            + self.project_growth_total_units
+        )
+
+    @property
+    def project_growth_total_units(self) -> int:
+        allocated = sum(item.units for item in self.project_allocations)
+        landmark_allocated = sum(
+            item.units
+            for item in self.project_allocations
+            if item.target_type == "landmark"
+        )
+        return allocated + max(
+            0,
+            self.landmark_growth_delta_units - landmark_allocated,
         )
 
     @property
@@ -1363,6 +1494,8 @@ class SessionDayProjection:
     highlights: HighlightProjection = field(default_factory=HighlightProjection)
     growth_applied_total_units: int = 0
     continue_reviews_available: bool = False
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
+    landmark_growth_delta_units: int = 0
 
 
 def _limited(
@@ -1535,10 +1668,11 @@ def _highlight_reward_text(
     if milestone.coin_reward <= 0:
         return ""
     if milestone.coin_included_in_total:
-        return f"+{milestone.coin_reward:,} coin bonus included"
+        return f"{format_garden_coins(milestone.coin_reward, signed=True)} bonus included"
     return (
-        f"+{milestone.coin_reward:,} coin bonus"
-        f" · included in +{displayed_coin_total:,} total"
+        f"{format_garden_coins(milestone.coin_reward, signed=True)} bonus"
+        f" · included in "
+        f"{format_garden_coins(displayed_coin_total, signed=True)} total"
     )
 
 
@@ -1640,17 +1774,33 @@ def _session_highlights(summary: SessionDaySummary) -> HighlightProjection:
 def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
     rows: list[ResultRow] = []
     growth_rows = _merged_growth_rows(summary)
-    if summary.growth_applied_total_units:
+    # The reviewer footer already presents every positive Growth lane earned
+    # during the session.  Keep the final headline on that same committed
+    # basis: direct plant Growth + Shared Growth + Growth stored for later +
+    # exact long-term project credit.
+    # Stored Growth spent during the session is a separate balance movement
+    # and is not counted as a second reward after it reaches a plant/project.
+    growth_headline_units = (
+        int(summary.growth_applied_total_units or 0)
+        + max(0, int(summary.stored_growth.added_units))
+        + summary.project_growth_total_units
+    )
+    if growth_headline_units:
         rows.append(ResultRow(
             "growth_applied",
             "Growth applied",
-            format_growth_units(summary.growth_applied_total_units, signed=True),
-            bool(growth_rows or summary.shared_growth_total_units),
+            format_growth_units(growth_headline_units, signed=True),
+            bool(
+                growth_rows
+                or summary.shared_growth_total_units
+                or summary.stored_growth.added_units
+                or summary.project_growth_total_units
+            ),
         ))
     if summary.garden_coins_total:
         rows.append(ResultRow(
             "garden_coins",
-            "Coins",
+            "Garden Coins",
             f"+{summary.garden_coins_total:,}",
             summary.coin_sources_reconciled and bool(summary.coin_sources),
         ))
@@ -1718,8 +1868,10 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
         open_garden_available=summary.open_garden_available,
         reward_metrics=metrics,
         highlights=_session_highlights(summary),
-        growth_applied_total_units=summary.growth_applied_total_units,
+        growth_applied_total_units=growth_headline_units,
         continue_reviews_available=summary.continue_reviews_available,
+        project_allocations=summary.project_allocations,
+        landmark_growth_delta_units=summary.landmark_growth_delta_units,
     )
 
 
@@ -1939,7 +2091,7 @@ class SessionSummaryAccumulator:
         for effect_id, final in end_fertilizers.items():
             initial = unmatched_start_fertilizers.pop(effect_id, None)
             if initial is None:
-                # Full Bloom can transfer a paid timed effect to the next
+                # Full Bloom can transfer a paid card-counted effect to the next
                 # plant and therefore change its attachment identity. Match
                 # the closest same-tier snapshot without treating that
                 # transfer as an ended effect plus an unrelated new one.
@@ -1948,13 +2100,13 @@ class SessionSummaryAccumulator:
                     for item in unmatched_start_fertilizers.values()
                     if item.name == final.name
                     and item.active
-                    and item.remaining_seconds >= final.remaining_seconds
+                    and item.remaining_cards >= final.remaining_cards
                 ]
                 if candidates:
                     initial = min(
                         candidates,
                         key=lambda item: (
-                            item.remaining_seconds - final.remaining_seconds,
+                            item.remaining_cards - final.remaining_cards,
                             item.effect_id,
                         ),
                     )
@@ -1964,15 +2116,14 @@ class SessionSummaryAccumulator:
                 final.source_event_id
                 and final.source_event_id in session_event_ids
             )
-            if final.active and final.remaining_seconds > 0 and (existed or session_created):
+            if final.active and final.remaining_cards > 0 and (existed or session_created):
                 rows.append(EffectRow(
                     "fertilizer",
                     effect_id,
                     final.name,
-                    _format_duration(final.remaining_seconds),
+                    f"{_plural_cards(final.remaining_cards)} remaining",
                     plant_id=final.plant_id,
-                    remaining_seconds=final.remaining_seconds,
-                    expires_at_epoch_seconds=final.expires_at_epoch_seconds,
+                    remaining_cards=final.remaining_cards,
                 ))
 
         start_boosters = {item.effect_id: item for item in start.boosters}
@@ -2032,6 +2183,14 @@ class SessionSummaryAccumulator:
             delta for event in events for delta in event.shared_growth
         )
         stored_deltas = [event.stored_growth_delta_units for event in events]
+        project_allocations = _merge_project_allocations(
+            allocation
+            for event in events
+            for allocation in event.project_allocations
+        )
+        landmark_growth_delta_units = sum(
+            event.landmark_growth_delta_units for event in events
+        )
         stored_added = sum(value for value in stored_deltas if value > 0)
         stored_used = sum(-value for value in stored_deltas if value < 0)
         coin_sources = tuple(
@@ -2111,6 +2270,8 @@ class SessionSummaryAccumulator:
             ),
             reward_receipts=reward_receipts,
             total_finds=total_finds,
+            project_allocations=project_allocations,
+            landmark_growth_delta_units=landmark_growth_delta_units,
             direct_growth_total_units=plant_total,
             growth_applied_total_units=plant_total + shared_total,
         )
@@ -2186,6 +2347,14 @@ class SessionSummaryAccumulator:
                 for segment in segments
                 for receipt in segment.reward_receipts
             ),
+            project_allocations=_merge_project_allocations(
+                allocation
+                for segment in segments
+                for allocation in segment.project_allocations
+            ),
+            landmark_growth_delta_units=sum(
+                segment.landmark_growth_delta_units for segment in segments
+            ),
         )
 
     def live_snapshot(
@@ -2257,19 +2426,6 @@ class SessionSummaryAccumulator:
         return self._finalized
 
 
-def _format_duration(seconds: int) -> str:
-    seconds = max(0, int(seconds))
-    if seconds < 60:
-        return "<1 min remaining"
-    minutes = (seconds + 59) // 60
-    hours, remaining_minutes = divmod(minutes, 60)
-    if not hours:
-        return f"{minutes} min remaining"
-    if not remaining_minutes:
-        return f"{hours} hr remaining"
-    return f"{hours} hr {remaining_minutes} min remaining"
-
-
 __all__ = [
     "AuthoritativeEventReversal",
     "BoosterSnapshot",
@@ -2294,6 +2450,7 @@ __all__ = [
     "SessionDaySummary",
     "SessionEndSnapshot",
     "SessionHighlight",
+    "SessionProjectGrowthAllocation",
     "SessionStartSnapshot",
     "SessionSummaryAccumulator",
     "SessionSummaryPayload",

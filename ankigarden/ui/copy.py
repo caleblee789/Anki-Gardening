@@ -1,5 +1,7 @@
 """Small set of learner-facing copy contracts shared by Garden surfaces."""
 
+from .formatters import format_garden_coins
+
 FALLBACK_GARDEN_NAME = "My Garden"
 
 HOME_NO_STARTER_TITLE = "Start your garden"
@@ -23,22 +25,20 @@ NURSERY_STARTER_RATIONALE = (
 NURSERY_STARTER_COUNT = ""
 DISABLED_STARTER_TABS = "More Nursery sections are available after choosing a starter."
 COST_FREE = "Free"
-PAID_COST_TEMPLATE = "{amount} {unit}"
-
 STARTER_CONFIRMATION_TEMPLATE = "Choose {plant_name}?"
 REVIEWER_NO_STARTER_NOTICE = "Choose a starter to earn Growth."
-STARTER_READY_TEMPLATE = "{plant_name} is now earning Growth."
+STARTER_READY_TEMPLATE = "{plant_name} is now your nurtured plant."
 ACTIVE_GROWTH_TITLE = "Nurtured"
 ACTIVE_GROWTH_GUIDANCE = ""
 
-FULLY_GROWN_MESSAGE = "Choose another plant to keep earning Growth."
-FULLY_GROWN_ACTION = "Choose another plant"
+FULLY_GROWN_MESSAGE = "Choose next plant to keep earning Growth."
+FULLY_GROWN_ACTION = "Choose next plant"
 ALL_PLANTS_COMPLETE = "All plants are fully grown."
 
 METRIC_AFFORDANCE = "Open details"
 KEYBOARD_HINT = "Use the arrow keys to explore plants. Press Enter to open the selected item."
 
-HOME_ACTIVE_ACTION = "Open Garden"
+HOME_ACTIVE_ACTION = "Open garden"
 NURTURED_STATUS = "Nurtured"
 NO_DISPLAY_ISSUES = "No display issues found"
 GROWTH_BREAKDOWN = "Growth breakdown"
@@ -72,10 +72,7 @@ def seed_title(species_name: str) -> str:
 
 
 def cost_label(amount: int) -> str:
-    """Return one learner-facing price using singular-aware ``coin`` copy."""
+    """Return one learner-facing price using canonical Garden Coin copy."""
 
     normalized = max(0, int(amount))
-    return PAID_COST_TEMPLATE.format(
-        amount=f"{normalized:,}",
-        unit="coin" if normalized == 1 else "coins",
-    )
+    return format_garden_coins(normalized)

@@ -53,9 +53,9 @@ STUDIO_TEXT = {
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
     "home_widget_label": "Show garden card on Anki home",
-    "reviewer_hud_label": "Show Garden panel while reviewing",
-    "progress_notifications_label": "Show review reward updates",
-    "sync_rewards_label": "Show rewards after syncing",
+    "reviewer_hud_label": "Show garden panel while reviewing",
+    "progress_notifications_label": "Show reward updates while reviewing",
+    "sync_rewards_label": "Show sync reward summary",
 }
 
 SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 190
@@ -481,6 +481,7 @@ class GardenStudioWidget(QWidget):
         self.theme_thumbnail = QLabel()
         self.theme_thumbnail.setFixedSize(80, 40)
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.theme_thumbnail.setWordWrap(True)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
         self.theme_title = QLabel("Garden appearance")
@@ -527,7 +528,7 @@ class GardenStudioWidget(QWidget):
         self.manage_environment.setText("Edit appearance")
         self.manage_environment.setFixedHeight(BUTTON_MIN_HEIGHT)
         self.manage_environment.setAccessibleDescription(
-            "Open Garden appearance in Collection."
+            "Open garden appearance in Collection."
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
         theme_layout.addWidget(
@@ -567,13 +568,13 @@ class GardenStudioWidget(QWidget):
         self.show_progress_notifications.setAccessibleName(STUDIO_TEXT["progress_notifications_label"])
         _describe_control(
             self.show_progress_notifications,
-            "Show brief Garden progress notifications after studying.",
+            "Show brief Garden reward updates while reviewing.",
         )
         self.show_reviewer_hud = GardenToggleSwitch()
         self.show_reviewer_hud.setAccessibleName(STUDIO_TEXT["reviewer_hud_label"])
         _describe_control(
             self.show_reviewer_hud,
-            "Show or hide the persistent Garden panel while reviewing cards.",
+            "Keep today’s cards and plant progress visible while reviewing.",
         )
         self.show_rewards_after_syncing = GardenToggleSwitch()
         self.show_rewards_after_syncing.setAccessibleName(
@@ -581,11 +582,11 @@ class GardenStudioWidget(QWidget):
         )
         _describe_control(
             self.show_rewards_after_syncing,
-            "Shows a compact summary when reviews from another device add Garden rewards.",
+            "Show a compact summary when synced reviews add Garden rewards.",
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
-            "Show the compact garden card on Anki home.",
+            "Display Garden progress on the deck list and overview.",
             self.show_home_widget,
         )
         controls_layout.insertWidget(0, self.home_preview_row)
@@ -637,7 +638,7 @@ class GardenStudioWidget(QWidget):
         )
         self.sync_rewards_row = ToggleSettingRow(
             STUDIO_TEXT["sync_rewards_label"],
-            "Shows a compact summary when reviews from another device add Garden rewards.",
+            "Show a compact summary when synced reviews add Garden rewards.",
             self.show_rewards_after_syncing,
         )
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)
@@ -704,7 +705,7 @@ class GardenStudioWidget(QWidget):
     def _sync_switch_copy(self, checked: bool) -> None:
         sender = self.sender()
         if isinstance(sender, QCheckBox):
-            sender.setAccessibleDescription("On" if checked else "Off")
+            sender.setAccessibleDescription("Enabled" if checked else "Disabled")
 
     def set_preview_garden_name(self, name: str) -> None:
         """Compatibility hook retained after removing the Settings preview."""
@@ -1000,7 +1001,11 @@ class GardenStudioWidget(QWidget):
             if bonus is not None
             else GARDEN_FEATURE_CATALOG[DEFAULT_GARDEN_FEATURE_ID].name
         )
-        effects_label = "On" if bool(snapshot.get("visual_effects_enabled", True)) else "Off"
+        effects_label = (
+            "Enabled"
+            if bool(snapshot.get("visual_effects_enabled", True))
+            else "Disabled"
+        )
         shared_rows = snapshot.get("appearance_rows")
         shared_values = (
             {
@@ -1025,6 +1030,10 @@ class GardenStudioWidget(QWidget):
             decoration_label = shared_values["Displayed decoration"]
             bonus_label = shared_values["Active garden bonus"]
             effects_label = shared_values["Visual effects"]
+            if effects_label.casefold() in {"on", "enabled", "true"}:
+                effects_label = "Enabled"
+            elif effects_label.casefold() in {"off", "disabled", "false"}:
+                effects_label = "Disabled"
         values = {
             "scenery": scenery_label,
             "displayed_decoration": decoration_label,
@@ -1042,6 +1051,8 @@ class GardenStudioWidget(QWidget):
         self.theme_summary.setText(summary)
         self.theme_card.setAccessibleName("Current Garden appearance")
         self.theme_card.setAccessibleDescription(summary)
+        self.theme_thumbnail.setAccessibleName(f"{scenery_label} preview")
+        self.theme_thumbnail.setToolTip(scenery_label)
         quality = "balanced"
         asset_paths: dict[str, Any] = {}
         if self.asset_resolver:
@@ -1072,11 +1083,11 @@ class GardenStudioWidget(QWidget):
         background_pixmap = QPixmap(str(background_path)) if background_path else QPixmap()
         if background_pixmap.isNull():
             self.theme_thumbnail.setPixmap(QPixmap())
-            self.theme_thumbnail.setText("Verdant\nTwilight")
+            self.theme_thumbnail.setText(scenery_label)
         else:
             self.theme_thumbnail.setText("")
             self.theme_thumbnail.setPixmap(background_pixmap.scaled(
-                self.theme_thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                self.theme_thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             ))
 

@@ -19,6 +19,11 @@ from .copy import (
     HOME_NO_STARTER_TITLE,
 )
 from .formatters import format_growth, format_status_label
+from .landmark_display import (
+    GARDEN_LANDMARK_ANCHOR,
+    landmark_asset_identity_matches,
+    mastery_asset_identity_matches,
+)
 from .state import (
     GardenHomePreview,
     garden_preview_from_values,
@@ -29,6 +34,7 @@ from .plant_display import (
     growth_display,
     plant_layout,
     planter_draw_rect,
+    repair_unique_slot_items,
     scene_surface_variant,
 )
 from .theme import GARDEN_THEME
@@ -56,6 +62,9 @@ class HomeWidgetData:
     garden_overlay_url: str = ""
     weather_url: str = ""
     garden_feature_pad_url: str = ""
+    landmark_id: str = ""
+    landmark_asset: dict[str, Any] | None = None
+    landmark_url: str = ""
     nurtured_marker_url: str = ""
     nurtured_marker_spout_right_url: str = ""
     total_reviews: int = 0
@@ -409,7 +418,7 @@ HOME_WIDGET_STYLE = """
   margin: 0;
   padding: 10px 16px;
   background: rgba(105, 70, 32, 0.34);
-  color: #e7b94a;
+  color: #f2a35b;
 }
 .ag-home__body {
   display:flex;
@@ -423,9 +432,11 @@ HOME_WIDGET_STYLE = """
 .ag-home__feature-pad,.ag-home__garden-feature { position:absolute; pointer-events:none; object-fit:contain; z-index:3; }
 .ag-home__feature-pad { left:calc(21.5cqw - 14cqh); top:calc(84.2cqh - 3.5cqh); width:28cqh; height:7cqh; }
 .ag-home__garden-feature { left:calc(21.5cqw - 12.5cqh); top:calc(83cqh - 22cqh); width:25cqh; height:25cqh; }
+.ag-home__landmark { position:absolute; pointer-events:none; object-fit:contain; z-index:5; filter:drop-shadow(0 1.2cqh 1.4cqh rgba(8,18,14,.34)); }
 .ag-home__scene-frame[data-feature-scene='light'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.8cqh rgba(35,48,35,.28)); }
 .ag-home__scene-frame[data-feature-scene='dark'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.9cqh rgba(5,10,10,.48)); }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
+.ag-home__mastery { position:absolute; object-fit:contain; pointer-events:none; animation:none !important; transition:none !important; }
 .ag-home__planter { position:absolute; object-fit:contain; pointer-events:none; }
 .ag-home__planter-fallback { position:absolute; display:none; pointer-events:none; }
 .ag-home__planter-fallback--base::before { content:""; position:absolute; left:10%; top:38%; width:80%; height:42%; border-radius:12% 12% 44% 44%; background:linear-gradient(180deg,rgba(132,124,110,.92),rgba(86,82,75,.96)); }
@@ -497,7 +508,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__identity-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; min-width:0; }
 .ag-home__identity { min-width:0; }
 .ag-home__garden-context { display:block; margin-top:2px; color:#95a89f; font-size:12px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__eyebrow { margin-bottom:1px; color:#e7b94a; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:16px; text-transform:uppercase; }
+.ag-home__eyebrow { margin-bottom:1px; color:#95a89f; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:16px; text-transform:uppercase; }
 .ag-home__focus-name {
   display:block;
   overflow:hidden;
@@ -509,7 +520,7 @@ HOME_WIDGET_STYLE = """
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(231,185,74,.14); color:#e7b94a; font-size:12px; line-height:16px; overflow-wrap:anywhere; }
+.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(242,163,91,.14); color:#f2a35b; font-size:12px; line-height:16px; overflow-wrap:anywhere; }
 .ag-home__stage-up {
   box-sizing: border-box;
   width: 100%;
@@ -578,11 +589,6 @@ HOME_WIDGET_STYLE = """
   cursor:default;
   transition:transform 120ms ease,border-color 120ms ease,box-shadow 120ms ease;
 }
-#ag-home-root:hover {
-  transform:translateY(-2px);
-  border-color:#70998A;
-  box-shadow:0 14px 34px rgba(0,0,0,.3);
-}
 #ag-home-root:focus-visible {
   outline:2px solid #75E3AE;
   outline-offset:2px;
@@ -633,7 +639,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__artwork-zone { min-width:0; grid-column:2; pointer-events:none; }
 .ag-home__identity-row > .ag-home__open,
 .ag-home__identity-row > button { grid-column:3; }
-.ag-home__eyebrow { margin-bottom:2px; color:#E7B94A; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:13px; }
+.ag-home__eyebrow { margin-bottom:2px; color:#95A89F; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:13px; }
 .ag-home__focus-name { font-size:20px; line-height:22px; font-weight:650; }
 .ag-home__support {
   display:block;
@@ -785,6 +791,7 @@ for _home_literal, _home_token in (
     ("#63D99F", GARDEN_THEME["action_accent"]),
     ("#75E3AE", GARDEN_THEME["action_hover"]),
     ("#4FC98E", GARDEN_THEME["action_pressed"]),
+    ("#F2A35B", GARDEN_THEME["warning"]),
     ("#E7B94A", GARDEN_THEME["coin_accent"]),
     ("#172721", GARDEN_THEME["disabled_surface"]),
     ("#30443B", GARDEN_THEME["disabled_border"]),
@@ -834,6 +841,33 @@ def _home_weather_markup(
         f'<img class="ag-home__garden-feature" data-testid="home-garden-feature" '
         f'data-garden-feature="{escape(data.weather, quote=True)}" '
         f'src="{escape(data.weather_url, quote=True)}" alt="" aria-hidden="true">'
+    )
+
+
+def _home_landmark_markup(
+    data: HomeWidgetData,
+    *,
+    phase: str,
+) -> str:
+    """Render one noninteractive completed Landmark with exact artwork."""
+
+    landmark_id = str(data.landmark_id or "")
+    landmark_url = str(data.landmark_url or "")
+    if (
+        phase in {"loading", "error", "disabled"}
+        or not landmark_url
+        or not landmark_asset_identity_matches(data.landmark_asset, landmark_id)
+    ):
+        return ""
+    anchor = GARDEN_LANDMARK_ANCHOR
+    return (
+        '<img class="ag-home__landmark" data-testid="home-garden-landmark" '
+        f'data-landmark="{escape(landmark_id, quote=True)}" '
+        f'data-landmark-anchor="{anchor.identity}" '
+        f'src="{escape(landmark_url, quote=True)}" alt="" aria-hidden="true" '
+        f'style="left:{anchor.left * 100:.3f}%;top:{anchor.top * 100:.3f}%;'
+        f'width:{anchor.width * 100:.3f}%;height:{anchor.height * 100:.3f}%" '
+        'onerror="this.onerror=null;this.style.display=\'none\';">'
     )
 
 
@@ -927,6 +961,14 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
 
     surface_view = home_surface_view_model(data)
+    # Repair invalid or duplicate bed indexes once, then use that exact list for
+    # both geometry and markup.  Re-normalizing only inside the layout helper
+    # can otherwise put one plant's artwork and name on another plant's bed.
+    scene_items = tuple(
+        repair_unique_slot_items(
+            item for item in data.scene_items if isinstance(item, dict)
+        )
+    )
 
     source_preview = data.preview_snapshot
     if source_preview is None:
@@ -947,7 +989,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             planted_starter_stage=data.planted_starter_stage,
             selected_weather=data.weather,
             selected_scenery=data.visible_scenery,
-            scene_items=data.scene_items,
+            scene_items=scene_items,
             unlocked_slots=data.unlocked_slots,
         )
     requested_preview_phase = (
@@ -984,8 +1026,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     background_placement = (
         data.background_placement
         if isinstance(data.background_placement, dict)
-        else data.scene_items[0].get("background_placement", {})
-        if data.scene_items
+        else scene_items[0].get("background_placement", {})
+        if scene_items
         else {}
     )
     _surface_name, surface_variant = scene_surface_variant(
@@ -1044,10 +1086,13 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     layouts = compact_plant_layout(
         1000,
         420,
-        data.scene_items,
+        scene_items,
         background_placement if isinstance(background_placement, dict) else None,
     )
-    by_slot = {int(item.get("slot_index", index)): item for index, item in enumerate(data.scene_items)}
+    by_slot = {
+        int(item.get("slot_index", index)): item
+        for index, item in enumerate(scene_items)
+    }
     surface_profile = (
         background_placement.get("surface_profile", {})
         if isinstance(background_placement, dict)
@@ -1091,12 +1136,13 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         "near": [],
     }
     summary_clearance = "none"
-    theme = str(data.scene_items[0].get("background_theme", "verdant_twilight")) if data.scene_items else "verdant_twilight"
+    theme = str(scene_items[0].get("background_theme", "verdant_twilight")) if scene_items else "verdant_twilight"
     band_counts = {"far": 0, "middle": 0, "near": 0}
     plant_z_base = {"far": 10, "middle": 40, "near": 70}
     for layout in layouts:
         item = by_slot.get(layout.slot_index, {})
         src = escape(str(item.get("url", "")), quote=True)
+        plant_id = escape(str(item.get("plant_id", "")), quote=True)
         base_type = str(item.get("placement", {}).get("base_type", "legacy")) if isinstance(item.get("placement"), dict) else "legacy"
         depth_band = layout.depth_band if layout.depth_band in plant_markup else "near"
         depth_index = plant_z_base[depth_band] + band_counts[depth_band] * 3
@@ -1124,7 +1170,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         fallback = _plant_fallback(item.get("stage"))
         stage_label = escape(format_status_label(item.get("stage") or "plant"))
         fallback_markup = (
-            f'<span class="ag-home__plant-fallback" data-slot-index="{layout.slot_index}" role="img" '
+            f'<span class="ag-home__plant-fallback" data-plant-id="{plant_id}" '
+            f'data-slot-index="{layout.slot_index}" role="img" '
             f'aria-label="{alt}, {stage_label}" style="{common}">{fallback}'
             f'<span class="ag-home__fallback-label"><span>{alt}</span>'
             f'<span class="ag-home__fallback-stage">{stage_label}</span></span></span>'
@@ -1142,7 +1189,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 1,
             )
             plant = (
-                f'<img class="ag-home__plant" data-slot-index="{layout.slot_index}" '
+                f'<img class="ag-home__plant" data-plant-id="{plant_id}" '
+                f'data-slot-index="{layout.slot_index}" '
                 f'src="{src}" alt="{alt}" style="{common}" '
                 f'data-base-type="{escape(base_type, quote=True)}" '
                 f'onerror="{load_failure}">' + hidden_fallback
@@ -1159,7 +1207,26 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         else:
             plant = fallback_markup
             tint = ""
-        plant_markup[depth_band].append(shadow + plant + tint)
+        mastery_rank = str(item.get("mastery_rank_id", "") or "")
+        mastery_url = str(item.get("mastery_url", "") or "")
+        mastery = (
+            f'<img class="ag-home__mastery" data-plant-id="{plant_id}" '
+            f'data-slot-index="{layout.slot_index}" '
+            f'data-mastery-rank="{escape(mastery_rank, quote=True)}" '
+            f'src="{escape(mastery_url, quote=True)}" alt="" aria-hidden="true" '
+            f'style="left:{layout.draw.x/10:.3f}%;top:{layout.draw.y/4.2:.3f}%;'
+            f'width:{layout.draw.width/10:.3f}%;height:{layout.draw.height/4.2:.3f}%;'
+            f'z-index:{depth_index + 2}" '
+            'onerror="this.onerror=null;this.style.display=\'none\';">'
+            if plant_id
+            and mastery_url
+            and mastery_asset_identity_matches(
+                item.get("mastery_asset"),
+                mastery_rank,
+            )
+            else ""
+        )
+        plant_markup[depth_band].append(shadow + plant + tint + mastery)
 
     planter_markup: dict[str, dict[str, list[str]]] = {
         band: {"base": [], "foreground": []}
@@ -1269,6 +1336,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         source_width=source_width,
         source_height=source_height,
     )
+    landmark_layer = _home_landmark_markup(data, phase=phase)
     starter_selected = bool(data.starter_selected)
     garden_name_value = str(preview.garden_name or FALLBACK_GARDEN_NAME)
     garden_name = escape(garden_name_value)
@@ -1278,6 +1346,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     display_fully_grown = bool(data.active_fully_grown)
     preview_identity = ""
     preview_progress = ""
+    preview_support_progress = ""
     if preview.active_plant_name:
         stage = format_status_label(preview.active_stage or preview.stage_text or "Plant")
         if display_fully_grown:
@@ -1289,11 +1358,18 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 display_growth_current,
                 display_growth_goal,
             )
+            if data.active_next_stage:
+                growth_text += f" to {format_status_label(data.active_next_stage)}"
         else:
             growth_text = preview.growth_text or "0"
         preview_identity = f"{preview.active_plant_name} · {stage}"
         preview_progress = growth_text
-        preview_support = f"{preview_identity} · {preview_progress}"
+        preview_support_progress = (
+            format_growth(display_growth_current, display_growth_goal)
+            if display_growth_goal > 0 and not display_fully_grown
+            else growth_text
+        )
+        preview_support = f"{preview_identity} · {preview_support_progress}"
     elif data.planted_starter_name:
         starter_progress = growth_display(max(0, int(data.active_growth_points)))
         display_growth_current = max(0, int(starter_progress.stage_points))
@@ -1302,11 +1378,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             data.planted_starter_stage or starter_progress.stage or "Seed"
         )
         preview_identity = f"{data.planted_starter_name} · {starter_stage}"
-        preview_progress = format_growth(
+        preview_support_progress = format_growth(
             display_growth_current,
             display_growth_goal,
         )
-        preview_support = f"{preview_identity} · {preview_progress}"
+        preview_progress = preview_support_progress
+        if starter_progress.next_stage:
+            preview_progress += (
+                f" to {format_status_label(starter_progress.next_stage)}"
+            )
+        preview_support = f"{preview_identity} · {preview_support_progress}"
     else:
         preview_support = HOME_NO_STARTER_BODY if not starter_selected else preview.summary
         preview_identity = preview_support
@@ -1345,7 +1426,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     active_plant = next(
         (
             item
-            for item in data.scene_items
+            for item in scene_items
             if isinstance(item, dict) and bool(item.get("is_active"))
         ),
         None,
@@ -1390,6 +1471,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
       <div class=\"ag-home__scene-frame\"{scenery_identity} data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
         {scenery_layer}
         {weather_layer}
+        {landmark_layer}
         <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
       </div>
     </div>
@@ -1420,6 +1502,9 @@ def build_home_widget_success_data(
     garden_overlay_url: str = "",
     weather_url: str = "",
     garden_feature_pad_url: str = "",
+    landmark_id: str = "",
+    landmark_asset: dict[str, Any] | None = None,
+    landmark_url: str = "",
     nurtured_marker_url: str = "",
     nurtured_marker_spout_right_url: str = "",
     status_notice: str = "",
@@ -1536,6 +1621,9 @@ def build_home_widget_success_data(
         garden_overlay_url=garden_overlay_url,
         weather_url=weather_url,
         garden_feature_pad_url=garden_feature_pad_url,
+        landmark_id=str(landmark_id or ""),
+        landmark_asset=landmark_asset,
+        landmark_url=landmark_url,
         nurtured_marker_url=nurtured_marker_url,
         nurtured_marker_spout_right_url=nurtured_marker_spout_right_url,
         total_reviews=max(0, int(getattr(state, "total_reviews", 0) or 0)),

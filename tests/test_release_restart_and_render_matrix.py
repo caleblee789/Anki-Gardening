@@ -269,8 +269,19 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     fertilizer_balance = storage.state.currency_balance
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     starter = engine.plant_story(starter_id)
-    assert starter is not None and starter.fertilizer is not None
-    assert starter.fertilizer.tier == "quality"
+    assert starter is not None
+    assert starter.fertilizer is None
+    assert starter.fertilizer_history == []
+    assert len(starter.fertilizer_card_batches) == 1
+    assert starter.fertilizer_card_queue == []
+    fertilizer_batch = starter.card_effect_queue.fertilizer_batches[0]
+    assert starter.fertilizer_card_batches[0] == fertilizer_batch
+    assert (
+        fertilizer_batch.effect_id,
+        fertilizer_batch.growth_per_card_units,
+        fertilizer_batch.total_cards,
+        fertilizer_batch.remaining_cards,
+    ) == ("fertilizer_quality", 200, 200, 200)
     assert storage.state.currency_balance == fertilizer_balance
     fertilizer_requests = [
         record
@@ -308,18 +319,20 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
 
     equipped, message = engine.equip_environment("scenery", "spring")
     assert equipped
-    assert message == "Spring Bloom queued for tomorrow."
+    assert message == "Spring Bloom effect is ready for today."
     engine, storage = _restart(engine, storage)
     assert storage.state.selected_background == "default"
     assert storage.state.equipped["background"] == "default"
-    assert storage.state.daily_loadout.queued_scenery_id == "spring"
-    assert storage.state.daily_loadout.queued_for_day == "2026-08-09"
+    assert storage.state.loadout.active_scenery_effect_id == "spring"
+    assert storage.state.daily_loadout.queued_scenery_id == ""
+    assert storage.state.daily_loadout.queued_for_day == ""
 
     storage.day = "2026-08-09"
     engine.rollover_if_needed()
     engine, storage = _restart(engine, storage)
-    assert storage.state.selected_background == "spring"
-    assert storage.state.equipped["background"] == "spring"
+    assert storage.state.selected_background == "default"
+    assert storage.state.equipped["background"] == "default"
+    assert storage.state.loadout.active_scenery_effect_id == "spring"
 
     assert engine.rename_garden("Moss and Moon")[0]
     engine, storage = _restart(engine, storage)

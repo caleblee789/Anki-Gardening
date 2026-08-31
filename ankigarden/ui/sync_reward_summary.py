@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from ..models.sync_reward import SyncPlantResult, SyncRewardSummary
-from .formatters import format_status_label
+from ..reward_presentation import project_growth_allocations
+from .formatters import format_garden_coins, format_status_label
 from .garden_asset_thumbnail import GardenAssetThumbnail
 from .icons import garden_icon, garden_icon_pixmap
 from .session_summary import format_growth_units
@@ -179,9 +180,14 @@ def sync_reward_metric_plan(
     """
 
     metrics: list[tuple[str, str, str]] = [
-        (f"{summary.eligible_answer_count:,}", "Card answers", "sync_review_cards"),
-        (format_growth_units(summary.growth_total_units, signed=True), "Growth", "growth_resource"),
+        (f"{summary.eligible_answer_count:,}", "Reviews", "sync_review_cards"),
     ]
+    if summary.growth_total_units > 0:
+        metrics.append((
+            format_growth_units(summary.growth_total_units, signed=True),
+            "Growth",
+            "growth_resource",
+        ))
     if summary.garden_coin_delta > 0:
         metrics.append((f"+{summary.garden_coin_delta:,}", "Garden Coins", "garden_coin"))
     standard_finds = sum(_quantity(row) for row in summary.finds)
@@ -195,10 +201,19 @@ def sync_reward_metric_plan(
     if garden_discoveries > 0:
         metrics.append((
             f"+{garden_discoveries:,}",
-            "Garden discoveries",
+            "Garden discovery" if garden_discoveries == 1 else "Garden discoveries",
             "garden_discovery",
         ))
     return tuple(metrics)
+
+
+def sync_reward_subtitle(summary: SyncRewardSummary) -> str:
+    """Use review terminology for the already-committed sync receipt."""
+
+    count = max(0, int(summary.eligible_answer_count or 0))
+    noun = "review" if count == 1 else "reviews"
+    reward = "Reward" if count == 1 else "Rewards"
+    return f"{reward} from {count:,} {noun} completed on another device"
 
 
 @dataclass(frozen=True)
@@ -679,6 +694,12 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 color:{p['action_text']}; background:{p['action_accent']};
             }}
             QPushButton[syncPrimaryAction='true']:hover {{ background:{p['action_hover']}; }}
+            QPushButton[syncSecondaryAction='true'] {{
+                background:transparent; border:1px solid {p['receipt_border_strong']};
+            }}
+            QPushButton[syncSecondaryAction='true']:hover {{
+                background:{p['receipt_hover_surface']};
+            }}
             QToolButton[syncClose='true'] {{
                 min-width:32px; max-width:32px; min-height:32px; max-height:32px; padding:0;
             }}
@@ -719,7 +740,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._eyebrow.setProperty("syncEyebrow", True)
         self._title = QLabel("Your garden caught up", self._header)
         self._title.setProperty("syncTitle", True)
-        self._subtitle = QLabel(self._summary.subtitle, self._header)
+        self._subtitle = QLabel(sync_reward_subtitle(self._summary), self._header)
         self._subtitle.setProperty("syncSubtitle", True)
         self._subtitle.setWordWrap(True)
         for label in (self._eyebrow, self._title, self._subtitle):
@@ -765,14 +786,20 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._reassurance.setTextFormat(Qt.TextFormat.PlainText)
         footer_layout.addWidget(self._reassurance, 1)
         self._done_button = QPushButton("Close", self._footer)
+        self._done_button.setProperty("syncSecondaryAction", True)
+        self._done_button.setProperty("syncActionRole", "secondary")
         self._done_button.setAccessibleName("Close sync rewards")
         self._done_button.clicked.connect(self._dismiss)
         footer_layout.addWidget(self._done_button)
-        self._open_button = QPushButton("Open Garden", self._footer)
+        self._open_button = QPushButton("Open garden", self._footer)
         self._open_button.setProperty("syncPrimaryAction", True)
-        self._open_button.setAccessibleName("Open Garden")
+        self._open_button.setProperty("syncActionRole", "primary")
+        self._open_button.setAccessibleName("Open garden")
         self._open_button.clicked.connect(self._open_garden)
         footer_layout.addWidget(self._open_button)
+        self._footer.setProperty(
+            "syncActionHierarchy", ["close:secondary", "open_garden:primary"]
+        )
         self._shell.addWidget(self._footer)
 
     @staticmethod
@@ -1022,6 +1049,16 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         full_bloom = bool(row.get("full_bloom", False))
         frame.setProperty("syncPrimaryCard", True)
         frame.setProperty("syncFullBloom", full_bloom)
+        transition_source = str(
+            row.get("stage_transition_source", "")
+            or row.get("transition_source", "")
+            or ""
+        ).replace("-", "_").casefold()
+        frame.setProperty("syncStageTransitionSource", transition_source)
+        frame.setProperty(
+            "syncSharedGrowthSourceVisible",
+            transition_source == "shared_growth",
+        )
         outer = QHBoxLayout(frame)
         outer.setContentsMargins(10, 9, 10, 9)
         outer.setSpacing(10)
@@ -1081,6 +1118,22 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         secondary.setWordWrap(True)
         secondary.setTextFormat(Qt.TextFormat.PlainText)
         copy.addWidget(secondary)
+        stage_event_text = str(row.get("stage_event_text", "") or "")
+        if transition_source == "shared_growth":
+            source_copy = "From Shared Growth"
+            stage_event_text = (
+                f"{stage_event_text} · {source_copy}"
+                if stage_event_text
+                and "shared growth" not in stage_event_text.casefold()
+                else stage_event_text
+                or source_copy
+            )
+        if stage_event_text:
+            stage_event = QLabel(stage_event_text, frame)
+            stage_event.setProperty("syncSecondary", True)
+            stage_event.setWordWrap(True)
+            stage_event.setTextFormat(Qt.TextFormat.PlainText)
+            copy.addWidget(stage_event)
         if full_bloom:
             outer.addLayout(copy, 1)
             return frame
@@ -1097,13 +1150,6 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         progress.setTextVisible(False)
         progress.setAccessibleName(f"{name} stage progress")
         copy.addWidget(progress)
-        stage_event_text = str(row.get("stage_event_text", "") or "")
-        if stage_event_text:
-            stage_event = QLabel(stage_event_text, frame)
-            stage_event.setProperty("syncSecondary", True)
-            stage_event.setWordWrap(True)
-            stage_event.setTextFormat(Qt.TextFormat.PlainText)
-            copy.addWidget(stage_event)
         checkpoints = row.get("checkpoints", ())
         if isinstance(checkpoints, (list, tuple)):
             for checkpoint in checkpoints:
@@ -1327,13 +1373,33 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
         return frame
 
-    def _growth_allocation_strip(self, parent: Any) -> QFrame:
-        strip = QFrame(parent)
-        strip.setProperty("syncAllocationStrip", True)
-        layout = QHBoxLayout(strip)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        allocations = (
+    def _project_growth_rows(self) -> tuple[Any, ...]:
+        snapshot = None
+        resolver = getattr(self._engine, "growth_projects_snapshot", None)
+        if callable(resolver):
+            try:
+                snapshot = resolver()
+            except Exception:
+                snapshot = None
+        return project_growth_allocations(
+            tuple(getattr(self._summary, "project_allocations", ()) or ()),
+            snapshot,
+            landmark_growth_units=max(
+                0,
+                int(
+                    getattr(
+                        self._summary,
+                        "landmark_growth_delta_units",
+                        0,
+                    )
+                    or 0
+                ),
+            ),
+        )
+
+    def _growth_allocation_entries(self) -> tuple[tuple[Any, ...], ...]:
+        entries: list[tuple[Any, ...]] = []
+        for asset_id, units, label_text in (
             (
                 "shared_growth",
                 self._summary.shared_growth_delta_units,
@@ -1344,12 +1410,50 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 self._summary.stored_growth_delta_units,
                 "Stored Growth",
             ),
+        ):
+            if units > 0:
+                entries.append((asset_id, units, label_text, "", "", ""))
+        entries.extend(
+            (
+                project.artwork_id or "growth_resource",
+                project.units,
+                project.display_name,
+                " · ".join(
+                    value
+                    for value in (project.status, project.progress)
+                    if value
+                ),
+                project.target_type,
+                project.target_id,
+            )
+            for project in self._project_growth_rows()
         )
-        for asset_id, units, label_text in allocations:
-            if units <= 0:
-                continue
+        return tuple(entries)
+
+    def _growth_allocation_strip(self, parent: Any) -> QFrame:
+        strip = QFrame(parent)
+        strip.setProperty("syncAllocationStrip", True)
+        layout = QGridLayout(strip)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        allocations = self._growth_allocation_entries()
+        columns = 2 if len(allocations) > 2 else max(1, len(allocations))
+        strip.setProperty("syncAllocationColumnCount", columns)
+        for column in range(columns):
+            layout.setColumnStretch(column, 1)
+        for index, (
+            asset_id,
+            units,
+            label_text,
+            detail_text,
+            target_type,
+            target_id,
+        ) in enumerate(allocations):
             item = QFrame(strip)
             item.setProperty("syncAllocationItem", True)
+            item.setProperty("syncProjectTargetType", target_type)
+            item.setProperty("syncProjectTargetId", target_id)
+            item.setProperty("syncProjectGrowthUnits", int(units))
             item_layout = QHBoxLayout(item)
             item_layout.setContentsMargins(8, 6, 8, 6)
             item_layout.setSpacing(8)
@@ -1372,8 +1476,14 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             caption.setProperty("syncSecondary", True)
             caption.setTextFormat(Qt.TextFormat.PlainText)
             copy.addWidget(caption)
+            if detail_text:
+                detail = QLabel(detail_text, item)
+                detail.setProperty("syncMuted", True)
+                detail.setWordWrap(True)
+                detail.setTextFormat(Qt.TextFormat.PlainText)
+                copy.addWidget(detail)
             item_layout.addLayout(copy, 1)
-            layout.addWidget(item, 1)
+            layout.addWidget(item, index // columns, index % columns)
         return strip
 
     def _rewards_section(
@@ -1384,14 +1494,18 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     ) -> QFrame:
         section = QFrame(parent)
         section.setProperty("syncRewardsSection", True)
+        section.setProperty(
+            "syncRewardGroupOrder",
+            ["standard_finds", "garden_discoveries"],
+        )
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
         section_layout.setSpacing(8)
         section_layout.addWidget(self._section_heading("REWARDS FOUND", section))
-        for row in environments:
-            section_layout.addWidget(self._environment_row(row, section))
         for row in finds:
             section_layout.addWidget(self._find_card(row, section))
+        for row in environments:
+            section_layout.addWidget(self._environment_row(row, section))
         return section
 
     def _simple_row(
@@ -1443,7 +1557,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         *,
         motion: SyncRewardMotionPlan | None = None,
     ) -> None:
-        self._subtitle.setText(self._summary.subtitle)
+        self._subtitle.setText(sync_reward_subtitle(self._summary))
         layout = self._new_body()
         plan = sync_reward_visibility_plan(self._summary, expanded=self._expanded)
         motion = motion or SyncRewardMotionPlan()
@@ -1454,8 +1568,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
         if self._additional_line_visible and self._summary.additional_answer_count > 0:
             count = self._summary.additional_answer_count
-            noun = "card answer was" if count == 1 else "card answers were"
-            additional = QLabel(f"{count:,} additional {noun} added", self._body_widget)
+            noun = "review was" if count == 1 else "reviews were"
+            additional = QLabel(
+                f"{count:,} additional {noun} added",
+                self._body_widget,
+            )
             additional.setProperty("syncAdditional", True)
             additional.setWordWrap(True)
             additional.setTextFormat(Qt.TextFormat.PlainText)
@@ -1467,6 +1584,15 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         metrics_layout.setContentsMargins(0, 0, 0, 0)
         metrics_layout.setSpacing(8)
         metrics = sync_reward_metric_plan(self._summary)
+        self.setProperty(
+            "syncRewardMetricOrder", [str(metric[1]) for metric in metrics]
+        )
+        self.setProperty(
+            "syncReviewCount", max(0, int(self._summary.eligible_answer_count))
+        )
+        self.setProperty(
+            "syncGardenDiscoveryCount", len(self._summary.environment_discoveries)
+        )
         for column in range(6):
             metrics_layout.setColumnStretch(column, 1)
         for row_index, offset in enumerate(range(0, len(metrics), 3)):
@@ -1488,12 +1614,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 )
         layout.addWidget(metrics_frame)
 
-        has_growth = bool(
-            self._summary.growth_total_units
-            or plan.plant_growth
-            or self._summary.shared_growth_delta_units
-            or self._summary.stored_growth_delta_units
-        )
+        allocation_entries = self._growth_allocation_entries()
+        has_growth = bool(plan.plant_growth or allocation_entries)
         if has_growth:
             layout.addWidget(self._section_heading("GARDEN PROGRESS", self._body_widget))
             if plan.plant_growth:
@@ -1509,22 +1631,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                         bloom_key in motion.full_bloom_event_keys
                     ):
                         self._start_full_bloom_emphasis(plant_frame)
-            elif self._summary.stored_growth_delta_units > 0:
-                stored = format_growth_units(
-                    self._summary.stored_growth_delta_units,
-                    signed=True,
-                )
-                layout.addWidget(self._simple_row(
-                    f"{stored} Growth was added to Stored Growth",
-                    self._body_widget,
-                    detail="It will be available when a plant can receive it.",
-                    icon_name="ui",
-                    art_identity="stored_growth",
-                ))
-            if plan.plant_growth and (
-                self._summary.shared_growth_delta_units > 0
-                or self._summary.stored_growth_delta_units > 0
-            ):
+            if allocation_entries:
                 layout.addWidget(self._growth_allocation_strip(self._body_widget))
 
         if plan.environment_discoveries or plan.finds:
@@ -1539,7 +1646,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             detail = "All due cards are complete."
             if self._summary.all_clear_coin_reward > 0:
                 detail = (
-                    f"{detail}  +{self._summary.all_clear_coin_reward:,} Garden Coins"
+                    f"{detail}  +{format_garden_coins(self._summary.all_clear_coin_reward)}"
                 )
             layout.addWidget(self._simple_row(
                 "All Clear",
@@ -1773,6 +1880,7 @@ __all__ = [
     "SyncRewardVisibilityPlan",
     "sync_reward_metric_plan",
     "sync_reward_motion_plan",
+    "sync_reward_subtitle",
     "sync_reward_summary_geometry",
     "sync_reward_visibility_plan",
 ]

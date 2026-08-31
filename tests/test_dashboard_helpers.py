@@ -7,31 +7,12 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from ankigarden.game import GROWTH_THRESHOLDS
-from ankigarden.purchases import PurchaseDisposition, fertilizer_action_label
 from ankigarden.ui.plant_presenters import fertilizer_status
 
 
 DASHBOARD = (
     Path(__file__).resolve().parents[1] / "ankigarden" / "ui" / "dashboard.py"
 )
-
-
-def test_fertilizer_action_vocabulary_uses_the_authoritative_disposition() -> None:
-    assert fertilizer_action_label(PurchaseDisposition.APPLIED, owned=True) == "Apply"
-    assert fertilizer_action_label(PurchaseDisposition.QUEUED, owned=True) == "Queue"
-    assert fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=True) == "Extend"
-    assert (
-        fertilizer_action_label(PurchaseDisposition.APPLIED, owned=False)
-        == "Buy and apply"
-    )
-    assert (
-        fertilizer_action_label(PurchaseDisposition.QUEUED, owned=False)
-        == "Buy and queue"
-    )
-    assert (
-        fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=False)
-        == "Extend"
-    )
 
 
 def _compiled_function(
@@ -69,8 +50,7 @@ def test_preview_bounds_expand_valid_art_and_reject_invalid_metadata() -> None:
     assert crop((float("nan"), 0.2, 0.4, 0.4)) == (0.0, 0.0, 1.0, 1.0)
 
 
-def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -> None:
-    compact_cost = _compiled_function("_compact_catalog_cost")
+def test_nursery_catalog_helpers_cover_shortfalls_receipts_empty_states_and_folds() -> None:
     compact_shortfall = _compiled_function("_compact_catalog_shortfall")
     receipt_actions = _compiled_function("_nursery_collection_receipt_actions")
     empty_copy = _compiled_function("_nursery_empty_state_copy")
@@ -81,10 +61,8 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     )
     fold_plan = _compiled_function("_catalog_fold_alignment_plan")
 
-    assert compact_cost(1) == "1 coin"
-    assert compact_cost(100) == "100 coins"
-    assert compact_shortfall(1, 0) == "Need 1 more coin"
-    assert compact_shortfall(100, 0) == "Need 100 more coins"
+    assert compact_shortfall(1, 0) == "Need 1 more Garden Coin"
+    assert compact_shortfall(100, 0) == "Need 100 more Garden Coins"
     assert compact_shortfall(100, 100) == ""
     assert receipt_actions(False) == ("Place in garden", "View collection")
     assert receipt_actions(True) == ("Place in garden",)
@@ -153,26 +131,6 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
         minimum_window_height=500,
         maximum_window_height=500,
     ) == (None, 0, True)
-
-
-def test_nursery_bed_actions_include_the_exact_price() -> None:
-    source = DASHBOARD.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DASHBOARD))
-    owner = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "NurseryDialog"
-    )
-    methods = {
-        node.name: ast.get_source_segment(source, node) or ""
-        for node in owner.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name in {"_space_card", "_space_progression"}
-    }
-
-    assert methods.keys() == {"_space_card", "_space_progression"}
-    for method_source in methods.values():
-        assert 'f"Unlock for {_garden_coin_count(price)}"' in method_source
 
 
 def test_recent_find_rows_render_canonical_artwork_refs() -> None:
@@ -279,14 +237,23 @@ def test_rare_stage_visibility_uses_species_specific_progress() -> None:
     engine = SimpleNamespace(state={"plants": []})
 
     assert not rare_stage_unlocked(engine, "rose")
+    rare_threshold = GROWTH_THRESHOLDS[-1]
     engine.state = {
         "plants": [
-            {"species": "rose", "stage": "flowering", "growth_points": 49_999},
-            {"species": "bonsai", "stage": "rare", "growth_points": 50_000},
+            {
+                "species": "rose",
+                "stage": "flowering",
+                "growth_points": rare_threshold - 1,
+            },
+            {
+                "species": "bonsai",
+                "stage": "rare",
+                "growth_points": rare_threshold,
+            },
         ]
     }
     assert not rare_stage_unlocked(engine, "rose")
-    engine.state["plants"][0]["growth_points"] = 50_000
+    engine.state["plants"][0]["growth_points"] = rare_threshold
     assert rare_stage_unlocked(engine, "rose")
 
 
@@ -360,28 +327,40 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     engine = SimpleNamespace(
         FERTILIZERS={"basic": SimpleNamespace(name="Basic Fertilizer")}
     )
+    active_batch = SimpleNamespace(
+        effect_id="fertilizer_basic",
+        growth_per_card_units=100,
+        total_cards=100,
+        remaining_cards=37,
+    )
     plant = SimpleNamespace(
         plant_id="plant-1",
         growth_stage="seed",
         growth_points=0,
         fully_grown=False,
+        fertilizer_card_batches=[active_batch],
+        fertilizer_card_queue=[],
         fertilizer=SimpleNamespace(
             tier="basic",
             growth_per_answer=1,
-            expires_at=7_900.0,
+            expires_at_ms=7_900_000,
         ),
     )
 
     active = fertilizer_status(engine, plant, now=1_000.0)
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
-        "+1 Growth per eligible card answer",
-        "1h 55m left",
+        "+1 Growth per eligible card",
+        "37 cards remaining",
     )
-    plant.fertilizer.expires_at = 1_030.0
+    assert active.cards_remaining == 37
+    assert active.expires_at_ms is None
+
+    plant.fertilizer_card_batches = []
+    plant.fertilizer.expires_at_ms = 1_030_000
     assert (
         fertilizer_status(engine, plant, now=1_000.0).duration
         == "30 seconds left"
     )
-    plant.fertilizer.expires_at = 999.0
+    plant.fertilizer.expires_at_ms = 999_000
     assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"

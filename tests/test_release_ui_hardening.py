@@ -166,7 +166,6 @@ def test_visibility_sensitive_children_have_parents_at_construction() -> None:
             "self.cells['growth']",
         ),
         ("NurseryDialog", "_available_card", "affordability_label", 1, "card"),
-        ("NurseryDialog", "_space_card", "self.bed_affordability", 1, "card"),
         ("CollectibleDetailDialog", "_option_tile", "state", 1, "tile"),
         (
             "GardenDashboard",

@@ -72,7 +72,7 @@ def test_schema20_reward_migration_preserves_legacy_and_starts_new_find_drought(
 
     migrated = migrate_modern_state(payload)
 
-    assert migrated.version == STATE_VERSION == 25
+    assert migrated.version == STATE_VERSION == 27
     assert migrated.reward_seed == "persisted-secret"
     assert migrated.currency_transactions[0].event_key == "legacy:event"
     assert migrated.reward_drop_history == [RewardDrop(
@@ -433,3 +433,26 @@ def test_maintenance_signature_covers_day_high_water_and_ledger_revision() -> No
     storage.eligible_review_history_high_water = lambda: 345
 
     assert storage.maintenance_signature() == ("2026-08-27", 345, 12)
+
+
+def test_find_count_fallback_retains_the_release_maximum_cap() -> None:
+    storage = object.__new__(GardenStorage)
+    storage._reward_ledger = None
+    storage.state = GardenState()
+    day = storage.state.daily_stats.day
+
+    for index in range(5):
+        storage.stage_garden_find_outcome(GardenFindOutcome(
+            answer_key=f"answer-{index}",
+            scheduler_day=day,
+            status="hit",
+            pool_id="standard",
+            pool_version="standard-v2",
+            occurred_at="2026-08-30T12:00:00+00:00",
+            reward_id="find_coin_sprout",
+        ))
+
+    assert storage.garden_find_counts(day) == (
+        5,
+        {"find_coin_sprout": 5},
+    )

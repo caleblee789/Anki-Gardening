@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from math import ceil
 from typing import Any
 
+
+FERTILIZER_CARD_DESCRIPTION = (
+    "Fertilizer adds Growth per eligible card for a fixed number of cards."
+)
+
 def _label(value: Any) -> str:
     return str(value or "").replace("_", " ").strip().title()
 
@@ -19,6 +24,12 @@ class FertilizerStatus:
     description: str
     accessible_text: str
     seconds_remaining: int
+    expires_at_epoch_seconds: int | None = None
+    tier_id: str = ""
+    cards_remaining: int = 0
+    total_cards: int = 0
+    queued_cards: int = 0
+    expires_at_ms: int | None = None
 
     @property
     def active(self) -> bool:
@@ -30,11 +41,106 @@ def fertilizer_status(
     plant: Any,
     *,
     now: float,
-    description: str = (
-        "Fertilizer adds Growth per eligible card answer for a limited time."
-    ),
+    description: str = FERTILIZER_CARD_DESCRIPTION,
 ) -> FertilizerStatus:
     """Project one fertilizer into stable visible and accessible fields."""
+
+    active_batches = tuple(
+        batch
+        for batch in tuple(
+            getattr(plant, "fertilizer_card_batches", ()) or ()
+        )
+        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
+    )
+    queued_batches = tuple(
+        batch
+        for batch in tuple(getattr(plant, "fertilizer_card_queue", ()) or ())
+        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
+    )
+    if active_batches:
+        first = active_batches[0]
+        effect_id = str(getattr(first, "effect_id", "") or "")
+        tier = effect_id.removeprefix("fertilizer_")
+        spec = getattr(engine, "FERTILIZERS", {}).get(tier)
+        name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
+        growth_units = max(
+            0,
+            int(getattr(first, "growth_per_card_units", 0) or 0),
+        )
+        growth = growth_units // 100
+        effect = f"+{growth:,} Growth per eligible card"
+        current = tuple(
+            batch
+            for batch in active_batches
+            if str(getattr(batch, "effect_id", "") or "") == effect_id
+        )
+        cards_remaining = sum(
+            max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+            for batch in current
+        )
+        total_cards = sum(
+            max(0, int(getattr(batch, "total_cards", 0) or 0))
+            for batch in current
+        )
+        queued_cards = sum(
+            max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+            for batch in queued_batches
+        )
+        noun = "card" if cards_remaining == 1 else "cards"
+        duration = f"{cards_remaining:,} {noun} remaining"
+        queue_copy = (
+            f" {queued_cards:,} cards queued after this dose."
+            if queued_cards else ""
+        )
+        return FertilizerStatus(
+            "active",
+            name,
+            effect,
+            duration,
+            FERTILIZER_CARD_DESCRIPTION,
+            f"Fertilized with {name}. {effect}. {duration}.{queue_copy}",
+            0,
+            None,
+            tier,
+            cards_remaining,
+            max(cards_remaining, total_cards),
+            queued_cards,
+            None,
+        )
+
+    if queued_batches:
+        first = queued_batches[0]
+        effect_id = str(getattr(first, "effect_id", "") or "")
+        tier = effect_id.removeprefix("fertilizer_")
+        spec = getattr(engine, "FERTILIZERS", {}).get(tier)
+        name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
+        growth_units = max(
+            0,
+            int(getattr(first, "growth_per_card_units", 0) or 0),
+        )
+        growth = growth_units // 100
+        effect = f"+{growth:,} Growth per eligible card"
+        queued_cards = sum(
+            max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+            for batch in queued_batches
+        )
+        noun = "card" if queued_cards == 1 else "cards"
+        duration = f"{queued_cards:,} {noun} queued"
+        return FertilizerStatus(
+            "queued",
+            name,
+            effect,
+            duration,
+            FERTILIZER_CARD_DESCRIPTION,
+            f"{name}. {effect}. {duration}.",
+            0,
+            None,
+            tier,
+            0,
+            0,
+            queued_cards,
+            None,
+        )
 
     scheduler = getattr(engine, "fertilizer_schedule", None)
     queued: tuple[Any, ...] = ()
@@ -45,7 +151,13 @@ def fertilizer_status(
             fertilizer, queued = getattr(plant, "fertilizer", None), ()
     else:
         fertilizer = getattr(plant, "fertilizer", None)
-    if fertilizer is None:
+    expires_at_ms = getattr(fertilizer, "expires_at_ms", None)
+    if (
+        fertilizer is None
+        or isinstance(expires_at_ms, bool)
+        or not isinstance(expires_at_ms, int)
+        or expires_at_ms <= 0
+    ):
         return FertilizerStatus(
             "inactive",
             "No active Fertilizer",
@@ -60,8 +172,10 @@ def fertilizer_status(
     spec = getattr(engine, "FERTILIZERS", {}).get(tier)
     name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
     growth = max(0, int(getattr(fertilizer, "growth_per_answer", 0) or 0))
-    effect = f"+{growth:,} Growth per eligible card answer"
-    effective_end = float(getattr(fertilizer, "expires_at", 0) or 0)
+    effect = f"+{growth:,} Growth per eligible card"
+    # Timed Fertilizer is compatibility-only. Enter this branch only when its
+    # renderer-neutral projection supplies an explicit positive epoch value.
+    effective_end = float(expires_at_ms) / 1000
     # Consecutive doses of the same tier are one visible extension even though
     # their separate windows remain persisted for dose-cap accounting.
     for period in queued:
@@ -106,4 +220,10 @@ def fertilizer_status(
         description,
         f"Fertilized with {name}. {effect}. {duration}.",
         seconds,
+        max(0, int(effective_end)),
+        tier,
+        0,
+        0,
+        0,
+        int(expires_at_ms),
     )

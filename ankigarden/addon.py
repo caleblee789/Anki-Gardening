@@ -45,6 +45,10 @@ from .ui.home_widget import (
     build_home_widget_success_data,
     render_home_widget,
 )
+from .ui.landmark_display import (
+    landmark_asset_identity_matches,
+    mastery_asset_identity_matches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +211,7 @@ class AnkiGardenApp:
         self._settings_open_pending = False
         self._starter_open_pending = False
         self._dashboard_select_plant_pending = False
+        self._collection_open_pending = False
 
     def _invalidate_home_cache(self, _reason: str = "") -> None:
         self._home_html_cache = None
@@ -628,13 +633,24 @@ class AnkiGardenApp:
     def open_settings(self) -> None:
         """Open the dashboard and then its settings dialog."""
         self._dashboard_select_plant_pending = False
+        self._collection_open_pending = False
         self._settings_open_pending = True
         self.open_dashboard()
 
     def open_starter_selection(self) -> None:
         """Open a visible Garden first, then its starter-mode Nursery."""
         self._dashboard_select_plant_pending = False
+        self._collection_open_pending = False
         self._starter_open_pending = True
+        self.open_dashboard()
+
+    def open_collection(self) -> None:
+        """Open the dashboard directly to its public Collection surface."""
+
+        self._settings_open_pending = False
+        self._starter_open_pending = False
+        self._dashboard_select_plant_pending = False
+        self._collection_open_pending = True
         self.open_dashboard()
 
     def open_dashboard(
@@ -659,6 +675,7 @@ class AnkiGardenApp:
         if bool(select_another_plant):
             self._settings_open_pending = False
             self._starter_open_pending = False
+            self._collection_open_pending = False
             self._dashboard_select_plant_pending = True
         if getattr(self, "_dashboard_open_pending", False):
             return
@@ -677,6 +694,7 @@ class AnkiGardenApp:
             self._settings_open_pending = False
             self._starter_open_pending = False
             self._dashboard_select_plant_pending = False
+            self._collection_open_pending = False
             logger.exception("Anki Garden: unable to schedule dashboard opening")
             self._notify_dashboard_open_failure(
                 "Anki Garden could not schedule its window. Please restart Anki and try again."
@@ -712,6 +730,7 @@ class AnkiGardenApp:
             self._settings_open_pending = False
             self._starter_open_pending = False
             self._dashboard_select_plant_pending = False
+            self._collection_open_pending = False
             logger.warning("Anki Garden: dashboard opening timed out while waiting for the collection")
             self._notify_dashboard_open_failure(
                 "Anki Garden is still waiting for the collection to finish opening. Please try again."
@@ -781,6 +800,9 @@ class AnkiGardenApp:
             opening_plant_selection = bool(
                 getattr(self, "_dashboard_select_plant_pending", False)
             )
+            opening_collection = bool(
+                getattr(self, "_collection_open_pending", False)
+            )
             if opening_settings:
                 self._settings_open_pending = False
                 try:
@@ -811,6 +833,22 @@ class AnkiGardenApp:
                     raise RuntimeError("dashboard plant-selection route is unavailable")
                 open_plant_selection()
                 self._dashboard_select_plant_pending = False
+            elif opening_collection:
+                open_collection = getattr(
+                    self.dashboard,
+                    "open_collection",
+                    None,
+                )
+                if not callable(open_collection):
+                    open_collection = getattr(
+                        self.dashboard,
+                        "_open_collection",
+                        None,
+                    )
+                if not callable(open_collection):
+                    raise RuntimeError("dashboard Collection route is unavailable")
+                open_collection()
+                self._collection_open_pending = False
             else:
                 prompt_starter = getattr(self.dashboard, "_present_starter_setup_if_needed", None)
                 if callable(prompt_starter):
@@ -851,6 +889,7 @@ class AnkiGardenApp:
                 self._settings_open_pending = False
                 self._starter_open_pending = False
                 self._dashboard_select_plant_pending = False
+                self._collection_open_pending = False
                 self._dashboard_focus_plant_id = ""
                 self._notify_dashboard_open_failure(
                     "Anki Garden could not open its window. No garden progress was changed; please try again."
@@ -1426,6 +1465,9 @@ class AnkiGardenApp:
             transition_message_builder = getattr(self.engine, "stage_transition_message", None)
             transition_message = transition_message_builder(transitions) if callable(transition_message_builder) else ""
             scene_items = self._home_scene_items()
+            landmark_id, landmark_asset, landmark_url = (
+                self._home_landmark_presentation(state)
+            )
             data = build_home_widget_success_data(
                 state=state,
                 reviews_today=self._reviews_today(),
@@ -1436,6 +1478,9 @@ class AnkiGardenApp:
                 garden_overlay_url=self._home_garden_overlay_url(),
                 weather_url=self._home_garden_feature_url(),
                 garden_feature_pad_url=self._home_garden_feature_pad_url(),
+                landmark_id=landmark_id,
+                landmark_asset=landmark_asset,
+                landmark_url=landmark_url,
                 nurtured_marker_url=self._home_nurtured_marker_url(),
                 nurtured_marker_spout_right_url=(
                     self._home_nurtured_marker_spout_right_url()
@@ -1461,6 +1506,12 @@ class AnkiGardenApp:
                 f'<div class="ag-home__plant-name">{plant_name}</div></div>'
             )
         return "".join(badges)
+
+    @staticmethod
+    def _structured_asset_payload(asset: object) -> dict[str, object] | None:
+        converter = getattr(asset, "to_payload", None)
+        payload = converter() if callable(converter) else None
+        return payload if isinstance(payload, dict) else None
 
     def _home_scene_items(self) -> list[dict[str, object]]:
         try:
@@ -1512,6 +1563,15 @@ class AnkiGardenApp:
         # before a starter is chosen or when every plant is shelved.
         self._home_background_placement = background_placement
         items: list[dict[str, object]] = []
+        mastery_ranks = getattr(
+            getattr(
+                self.storage.state,
+                "cultivation_mastery",
+                None,
+            ),
+            "highest_rank_by_species",
+            {},
+        )
         planted = [plant for plant in self.storage.state.plants if plant.slot_index is not None]
         for plant in sorted(planted, key=lambda row: int(row.slot_index))[:6]:
             try:
@@ -1519,6 +1579,31 @@ class AnkiGardenApp:
             except Exception:
                 logger.debug("Anki Garden: unable to resolve home scene plant artwork", exc_info=True)
                 asset = None
+            mastery_rank = (
+                str(mastery_ranks.get(str(plant.species), "") or "")
+                if isinstance(mastery_ranks, dict)
+                else ""
+            )
+            try:
+                mastery_asset = self.engine.resolve_mastery_asset(plant.species)
+            except Exception:
+                logger.debug(
+                    "Anki Garden: unable to resolve home scene Mastery artwork",
+                    exc_info=True,
+                )
+                mastery_asset = None
+            if not mastery_asset_identity_matches(mastery_asset, mastery_rank):
+                mastery_rank = ""
+                mastery_asset = None
+            mastery_payload = self._structured_asset_payload(mastery_asset)
+            mastery_url = (
+                self._asset_web_url(getattr(mastery_asset, "path", None))
+                if mastery_payload is not None
+                else ""
+            )
+            if not mastery_url:
+                mastery_rank = ""
+                mastery_payload = None
             item = {
                 "plant_id": plant.plant_id,
                 "slot_index": plant.slot_index,
@@ -1527,6 +1612,9 @@ class AnkiGardenApp:
                 "stage": plant.growth_stage,
                 "is_active": plant.plant_id == self.storage.state.active_plant_id,
                 "url": self._asset_web_url(asset.path) if asset is not None else "",
+                "mastery_rank_id": mastery_rank,
+                "mastery_asset": mastery_payload,
+                "mastery_url": mastery_url,
                 "placement": asset.placement.to_dict() if asset is not None else {},
                 "canvas_aspect": (
                     float(asset.metadata.get("width", 1)) / max(1.0, float(asset.metadata.get("height", 1)))
@@ -1600,6 +1688,45 @@ class AnkiGardenApp:
             )
             return ""
         return self._asset_web_url(path)
+
+    def _home_landmark_presentation(
+        self,
+        state: object | None = None,
+    ) -> tuple[str, dict[str, object] | None, str]:
+        """Return one coherent displayed-Landmark identity and Home URL."""
+
+        source_state = state if state is not None else self.storage.state
+        landmark_id = str(
+            getattr(
+                getattr(source_state, "garden_project", None),
+                "displayed_project_id",
+                "",
+            )
+            or ""
+        )
+        resolver = getattr(self.engine, "resolve_landmark_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to resolve Home Garden Landmark",
+                exc_info=True,
+            )
+            return "", None, ""
+        if not landmark_asset_identity_matches(asset, landmark_id):
+            return "", None, ""
+        payload = self._structured_asset_payload(asset)
+        if not landmark_asset_identity_matches(payload, landmark_id):
+            return "", None, ""
+        url = self._asset_web_url(getattr(asset, "path", None))
+        if not url:
+            return "", None, ""
+        return landmark_id, payload, url
+
+    def _home_landmark_url(self) -> str:
+        """Compatibility adapter for callers needing only the web URL."""
+
+        return self._home_landmark_presentation()[2]
 
     def _home_nurtured_marker_url(self) -> str:
         resolver = getattr(self.engine, "resolve_nurtured_marker_asset", None)

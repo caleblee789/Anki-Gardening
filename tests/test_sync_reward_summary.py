@@ -7,12 +7,18 @@ from types import SimpleNamespace
 
 import pytest
 
+from ankigarden.economy_progression import (
+    GrowthTargetRef,
+    GrowthTargetType,
+    build_growth_projects_snapshot,
+)
 from ankigarden.models.state import STATE_VERSION, GardenState
 from ankigarden.models.sync_reward import (
     MAX_SYNC_SUMMARY_DAYS,
     MAX_SYNC_SUMMARY_ROWS,
     MAX_SYNC_SUMMARY_TEXT,
     SYNC_REWARD_MODEL_VERSION,
+    SyncProjectGrowthAllocation,
     SyncRewardSummary,
 )
 from ankigarden.ui.sync_reward_summary import (
@@ -63,11 +69,15 @@ def test_geometry_is_upper_right_and_viewport_bounded() -> None:
 
 def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     assert sync_reward_metric_plan(_summary()) == (
-        ("42", "Card answers", "sync_review_cards"),
+        ("42", "Reviews", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
     )
     assert len(sync_reward_metric_plan(_summary(garden_coin_delta=0))) == 2
+    assert sync_reward_metric_plan(_summary(growth_total_units=0)) == (
+        ("42", "Reviews", "sync_review_cards"),
+        ("+12", "Garden Coins", "garden_coin"),
+    )
     find_rows = ({
         "reward_id": "small_charge",
         "event_id": "standard-find:event-1",
@@ -93,7 +103,7 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     )
 
     assert sync_reward_metric_plan(reward_summary) == (
-        ("42", "Card answers", "sync_review_cards"),
+        ("42", "Reviews", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
         ("+3", "Standard Finds", "standard_find"),
@@ -204,11 +214,28 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
 
     dismissed: list[str] = []
     opened: list[str] = []
+    snapshot = build_growth_projects_snapshot(
+        state_revision=1,
+        stored_balance_units=0,
+        wallet_balance_coins=0,
+        full_bloom_species=("rose",),
+        active_target=GrowthTargetRef(GrowthTargetType.MASTERY, "rose"),
+    )
     card = SyncRewardSummaryCard(
         parent,
-        _summary(),
+        _summary(
+            landmark_growth_delta_units=300,
+            project_allocations=(
+                SyncProjectGrowthAllocation("landmark", "garden_landmark", 250),
+                SyncProjectGrowthAllocation("mastery", "rose", 100),
+            ),
+        ),
         on_dismiss=lambda: dismissed.append("dismissed"),
         on_open_garden=lambda: opened.append("opened"),
+        engine=SimpleNamespace(
+            growth_projects_snapshot=lambda: snapshot,
+            resolve_item_asset=lambda _key: None,
+        ),
         animations_enabled=False,
     )
     card.show()
@@ -236,10 +263,27 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "SYNC REWARDS" in texts
     assert "Your garden caught up" in texts
-    assert "Rewards from 42 card answers on another device." in texts
+    assert "Rewards from 42 reviews completed on another device" in texts
     assert "Rewards already applied." in texts
+    assert {"Garden Landmark", "Rose Cultivation Mastery"} <= texts
+    project_rows = [
+        widget
+        for widget in card.findChildren(QWidget)
+        if widget.property("syncProjectTargetType")
+    ]
+    assert [
+        (
+            row.property("syncProjectTargetType"),
+            row.property("syncProjectTargetId"),
+            row.property("syncProjectGrowthUnits"),
+        )
+        for row in project_rows
+    ] == [
+        ("landmark", "garden_landmark", 300),
+        ("mastery", "rose", 100),
+    ]
     buttons = {button.text(): button for button in card.findChildren(QPushButton)}
-    assert {"Close", "Open Garden"} <= set(buttons)
+    assert {"Close", "Open garden"} <= set(buttons)
 
     buttons["Close"].click()
     application.processEvents()
@@ -500,7 +544,7 @@ def test_schema24_round_trips_pending_summary_and_fails_closed_when_malformed() 
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 25
+    assert restored.version == STATE_VERSION == 27
     assert SyncRewardSummary.from_dict(restored.pending_sync_reward_summary) == summary
 
     malformed = state.to_dict()

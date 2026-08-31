@@ -16,6 +16,11 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Iterable, Mapping
 
+from .balance_catalog import (
+    LANDMARKS,
+    MASTERY_RANKS,
+    STANDARD_FIND_MAXIMUM_DAILY_CAP,
+)
 from .environment import (
     DEFAULT_GARDEN_FEATURE_ID,
     DEFAULT_SCENERY_ID,
@@ -25,28 +30,49 @@ from .environment import (
 )
 from .models.state import (
     ActivePlantPeriod,
+    Achievement,
+    CURRENT_CATALOG_SPECIES_ORDER,
+    CurrencyTransaction,
+    COSMETIC_DISPLAY_IDS,
+    CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
+    CULTIVATION_MASTERY_RANKS,
+    DailyEconomySnapshot,
+    GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
+    GARDEN_PROJECT_IDS,
+    GARDEN_LEGACY_LEVEL_COST_UNITS,
     GardenFindOutcome,
     GardenState,
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
+    LifetimeEconomyAggregates,
+    LANDMARK_MAX_GROWTH_UNITS,
+    MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
     MAX_PROCESSED_REVLOG_IDS,
+    MAX_TRANSACTION_HISTORY,
     OnboardingProgress,
     OnboardingStep,
     Plant,
     PlantMemory,
     PLANT_MEMORY_KINDS,
     PLANT_SPECIES,
+    PendingEconomyMigrationGrant,
     STATE_VERSION,
+    STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE,
+    STORED_GROWTH_OPENING_IDENTITY_MIGRATION,
 )
 from .reward_ledger import (
     AnswerConsumptionRecord,
     AnswerLineageRecord,
+    DailyEconomySnapshotRecord,
+    EconomyEventRecord,
     FinalizedDayRecord,
     FindOutcomeRecord,
+    IdempotencyRecord,
     LedgerCheckpoint,
     RevlogAliasRecord,
     RewardEventRecord,
     RewardLedger,
+    RewardLedgerCorruptionError,
     RewardLedgerSchemaError,
     UNBOUNDED_STATE_AUTHORITY_KEYS,
 )
@@ -56,13 +82,23 @@ logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
 MODERN_PREVIOUS_STATE_VERSIONS = frozenset({
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
 })
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 MAX_HISTORICAL_REVLOG_ENTRIES = 1_000_000
 DEFAULT_HISTORY_PAGE_SIZE = 5_000
 REWARD_DATABASE_FILENAME = "garden_state.sqlite3"
 RECENT_FIND_CACHE_LIMIT = 32
+SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID = (
+    "migration:schema27:economy-authorities"
+)
+SCHEMA27_ENDGAME_RECONCILIATION_VERSION = 1
+LANDMARK_COIN_COST_BY_ID = {
+    str(item.landmark_id): int(item.coin_cost) for item in LANDMARKS
+}
+MASTERY_COIN_COST_BY_ID = {
+    str(item.rank_id): int(item.coin_cost) for item in MASTERY_RANKS
+}
 
 
 class StatePreservationError(RuntimeError):
@@ -716,15 +752,14 @@ def _legacy_booster_card_effect_batch(
     }
 
 
-# Schema 22 briefly stored Fertilizer as card-counted batches. Timed
-# Fertilizer is authoritative again. These values intentionally live beside
-# the migration instead of importing the game engine and creating a storage
-# dependency cycle.
+# Schema 26 makes Fertilizer card-counted. These values intentionally live
+# beside the migration instead of importing the game engine and creating a
+# storage dependency cycle.
 _TIMED_FERTILIZER_MIGRATION_SPECS: dict[str, tuple[str, int, int, int]] = {
-    # effect id: (tier, Growth per card, full duration seconds, default cards)
-    "fertilizer_basic": ("basic", 1, 60 * 60, 100),
-    "fertilizer_quality": ("quality", 2, 2 * 60 * 60, 150),
-    "fertilizer_premium": ("premium", 3, 4 * 60 * 60, 250),
+    # effect id: (tier, Growth units per card, full duration seconds, cards)
+    "fertilizer_basic": ("basic", 100, 60 * 60, 100),
+    "fertilizer_quality": ("quality", 200, 2 * 60 * 60, 200),
+    "fertilizer_premium": ("premium", 300, 4 * 60 * 60, 400),
 }
 
 
@@ -747,19 +782,12 @@ def _timed_fertilizer_interval(value: Any) -> tuple[float, float] | None:
     return started_at, expires_at
 
 
-def _restore_timed_fertilizer_payload(
+def _migrate_timed_fertilizer_to_card_queue(
     payload: dict[str, Any],
     *,
     migrated_at: float,
 ) -> bool:
-    """Convert experimental card batches into lossless timed windows.
-
-    Every recognized batch keeps the same fraction of its full paid duration
-    as its remaining-card fraction. Converted windows begin after both the
-    migration instant and every existing unexpired timed window, preserving
-    legacy schedules and queue order. Compatibility batch fields are cleared
-    only for rows whose value was understood.
-    """
+    """Convert each unexpired timed Fertilizer interval to a FIFO card batch."""
 
     migration_time = max(0.0, float(migrated_at))
     changed = False
@@ -767,85 +795,118 @@ def _restore_timed_fertilizer_payload(
     for plant in plants if isinstance(plants, list) else []:
         if not isinstance(plant, dict):
             continue
-
-        cursor = migration_time
-        current = plant.get("fertilizer")
-        current_interval = _timed_fertilizer_interval(current)
-        if current_interval is not None and current_interval[1] > migration_time:
-            cursor = max(cursor, current_interval[1])
-        raw_history = plant.get("fertilizer_history")
-        history = list(raw_history) if isinstance(raw_history, list) else []
-        for existing in history:
-            interval = _timed_fertilizer_interval(existing)
-            if interval is not None and interval[1] > migration_time:
-                cursor = max(cursor, interval[1])
-
-        converted: list[dict[str, Any]] = []
-        for field_name in ("fertilizer_card_batches", "fertilizer_card_queue"):
-            raw_rows = plant.get(field_name)
-            if not isinstance(raw_rows, list):
-                continue
-            retained_rows: list[Any] = []
-            for raw in raw_rows:
-                if not isinstance(raw, dict):
-                    retained_rows.append(raw)
-                    continue
-                spec = _TIMED_FERTILIZER_MIGRATION_SPECS.get(
-                    str(raw.get("effect_id", ""))
-                )
-                if spec is None:
-                    retained_rows.append(raw)
-                    continue
-                tier, growth_per_card, full_duration, default_cards = spec
-                raw_total = raw.get("total_cards")
-                total_cards = (
-                    int(raw_total)
-                    if isinstance(raw_total, int)
-                    and not isinstance(raw_total, bool)
-                    and raw_total > 0
-                    else default_cards
-                )
-                raw_remaining = raw.get("remaining_cards")
-                remaining_cards = (
-                    int(raw_remaining)
-                    if isinstance(raw_remaining, int)
-                    and not isinstance(raw_remaining, bool)
-                    else total_cards
-                )
-                remaining_cards = max(0, min(total_cards, remaining_cards))
-                if remaining_cards:
-                    duration = (
-                        float(full_duration) * float(remaining_cards) / float(total_cards)
+        queue = plant.get("card_effect_queue")
+        if not isinstance(queue, dict):
+            queue = {}
+        raw_batches = queue.get("fertilizer_batches")
+        batches = list(raw_batches) if isinstance(raw_batches, list) else []
+        if not batches:
+            for field_name in ("fertilizer_card_batches", "fertilizer_card_queue"):
+                compatibility = plant.get(field_name)
+                if isinstance(compatibility, list):
+                    batches.extend(
+                        row for row in compatibility if isinstance(row, dict)
                     )
-                    period = {
-                        "tier": tier,
-                        "growth_per_answer": growth_per_card,
-                        "started_at": cursor,
-                        "expires_at": cursor + duration,
-                    }
-                    converted.append(period)
-                    cursor = float(period["expires_at"])
-                # A recognized row, including a fully consumed one, no longer
-                # belongs to the obsolete compatibility authority.
-                changed = True
-            if retained_rows != raw_rows:
-                plant[field_name] = retained_rows
 
-        if not converted:
-            continue
+        # A retained timed effect was the active dose. Preserve that position
+        # ahead of schema-22 experimental queued batches. Previously migrated
+        # v26 rows remain a stable prefix so rerunning migration is idempotent.
+        migration_prefix = [
+            row for row in batches
+            if str(row.get("source_event_key", "")).startswith(
+                "migration:v26:fertilizer:"
+            )
+        ]
+        compatibility_suffix = [
+            row for row in batches if row not in migration_prefix
+        ]
+        batches = [*migration_prefix, *compatibility_suffix]
+        migration_insert_index = len(migration_prefix)
 
-        current_is_live_or_queued = (
-            current_interval is not None and current_interval[1] > migration_time
-        )
-        if not current_is_live_or_queued and converted[0]["started_at"] <= migration_time:
-            # Keep an expired legacy current window in history before using the
-            # compatibility slot for the newly active paid effect.
-            if current_interval is not None:
-                history.append(current)
-            plant["fertilizer"] = converted.pop(0)
-        history.extend(converted)
-        plant["fertilizer_history"] = history
-        changed = True
+        seen_keys = {
+            str(row.get("source_event_key"))
+            for row in batches
+            if isinstance(row, dict) and row.get("source_event_key")
+        }
+        periods: list[dict[str, Any]] = []
+        current = plant.get("fertilizer")
+        if isinstance(current, dict):
+            periods.append(current)
+        history = plant.get("fertilizer_history")
+        if isinstance(history, list):
+            periods.extend(row for row in history if isinstance(row, dict))
+        periods.sort(key=lambda row: (
+            _finite_timestamp(row.get("started_at")) or 0.0,
+            _finite_timestamp(row.get("expires_at")) or 0.0,
+        ))
+        plant_id = str(plant.get("plant_id") or "plant")
+        for index, period in enumerate(periods):
+            tier = period.get("tier")
+            effect_id = f"fertilizer_{tier}"
+            spec = _TIMED_FERTILIZER_MIGRATION_SPECS.get(effect_id)
+            interval = _timed_fertilizer_interval(period)
+            if spec is None or interval is None:
+                continue
+            started_at, expires_at = interval
+            if expires_at <= migration_time:
+                continue
+            _tier, growth_units, full_duration, full_cards = spec
+            remaining_seconds = max(
+                0.0, expires_at - max(migration_time, started_at)
+            )
+            remaining_cards = min(
+                full_cards,
+                int(math.ceil(
+                    float(full_cards) * remaining_seconds / float(full_duration)
+                )),
+            )
+            if remaining_cards <= 0:
+                continue
+            source_event_key = (
+                "migration:v26:fertilizer:"
+                f"{plant_id}:{int(started_at * 1000)}:{index}"
+            )
+            if source_event_key in seen_keys:
+                continue
+            seen_keys.add(source_event_key)
+            batches.insert(migration_insert_index, {
+                "effect_id": effect_id,
+                "growth_per_card_units": growth_units,
+                "total_cards": full_cards,
+                "remaining_cards": remaining_cards,
+                "activated_at": datetime.fromtimestamp(
+                    started_at, tz=timezone.utc
+                ).isoformat(),
+                "source_event_key": source_event_key,
+            })
+            migration_insert_index += 1
+            changed = True
+
+        booster_remaining = queue.get("booster_remaining_cards", 0)
+        if isinstance(booster_remaining, bool) or not isinstance(booster_remaining, int):
+            booster_remaining = 0
+        if booster_remaining <= 0:
+            for field_name in ("booster_card_batches", "booster_card_queue"):
+                compatibility = plant.get(field_name)
+                if isinstance(compatibility, list):
+                    booster_remaining += sum(
+                        max(0, int(row.get("remaining_cards", 0)))
+                        for row in compatibility
+                        if isinstance(row, dict)
+                        and isinstance(row.get("remaining_cards", 0), int)
+                        and not isinstance(row.get("remaining_cards", 0), bool)
+                    )
+        queue["fertilizer_batches"] = batches
+        queue["booster_remaining_cards"] = max(0, booster_remaining)
+        plant["card_effect_queue"] = queue
+        plant["fertilizer"] = None
+        plant["fertilizer_history"] = []
+        plant["fertilizer_card_batches"] = []
+        plant["fertilizer_card_queue"] = []
+        plant["booster"] = None
+        plant["booster_history"] = []
+        plant["booster_card_batches"] = []
+        plant["booster_card_queue"] = []
     return changed
 
 
@@ -929,8 +990,6 @@ def _migrate_schema22_progression_payload(
             [booster_batch] if booster_batch is not None else [],
         )
         plant.setdefault("booster_card_queue", [])
-
-    _restore_timed_fertilizer_payload(payload, migrated_at=migration_time)
 
     payload.setdefault("streak_growth_remainder_units", active_remainder)
 
@@ -1163,6 +1222,468 @@ def _migrate_schema25_decoration_bonus_payload(payload: dict[str, Any]) -> None:
     schedule["garden_feature_id"] = ""
 
 
+_BED_MIGRATION = {
+    3: (150, "first_canopy", "First Canopy", "Grow any plant to Mature."),
+    4: (
+        300,
+        "first_full_bloom",
+        "First Full Bloom",
+        "Grow one unique species to Full Bloom.",
+    ),
+    5: (
+        500,
+        "growing_garden",
+        "Growing Garden",
+        "Grow three unique species to Full Bloom.",
+    ),
+    6: (
+        800,
+        "flourishing_garden",
+        "Flourishing Garden",
+        "Grow six unique species to Full Bloom.",
+    ),
+}
+
+
+def _migrate_schema26_economy_payload(
+    payload: dict[str, Any],
+    *,
+    migrated_at: float | None = None,
+) -> None:
+    """Apply the one-way schema-26 economy foundation without inventing history."""
+
+    migration_time = time.time() if migrated_at is None else max(
+        0.0, float(migrated_at)
+    )
+    migrated_iso = datetime.fromtimestamp(
+        migration_time, tz=timezone.utc
+    ).isoformat()
+
+    loadout = payload.get("loadout")
+    if not isinstance(loadout, dict):
+        loadout = {}
+        payload["loadout"] = loadout
+    legacy_feature = canonical_garden_feature_id(
+        loadout.get(
+            "active_garden_bonus_id",
+            loadout.get(
+                "active_bonus_garden_feature_id",
+                loadout.get("garden_feature_id", loadout.get("weather_id", "")),
+            ),
+        )
+    ) or DEFAULT_GARDEN_FEATURE_ID
+    display_feature = canonical_garden_feature_id(
+        loadout.get(
+            "display_decoration_id",
+            loadout.get("displayed_garden_feature_id", legacy_feature),
+        )
+    ) or legacy_feature
+    legacy_scenery = str(
+        loadout.get(
+            "display_scenery_id",
+            loadout.get("scenery_id", DEFAULT_SCENERY_ID),
+        )
+        or DEFAULT_SCENERY_ID
+    )
+    loadout["display_decoration_id"] = display_feature
+    loadout["active_garden_bonus_id"] = legacy_feature
+    loadout["display_scenery_id"] = legacy_scenery
+    loadout["active_scenery_effect_id"] = str(
+        loadout.get("active_scenery_effect_id", legacy_scenery) or legacy_scenery
+    )
+    for retired_key in (
+        "weather_id",
+        "garden_feature_id",
+        "displayed_garden_feature_id",
+        "active_bonus_garden_feature_id",
+        "scenery_id",
+    ):
+        loadout.pop(retired_key, None)
+
+    inventory = payload.get("inventory")
+    if not isinstance(inventory, dict):
+        inventory = {}
+        payload["inventory"] = inventory
+    legacy_cosmetics = inventory.pop("decorations", [])
+    current_cosmetics = inventory.get("cosmetics", [])
+    cosmetics = list(dict.fromkeys(
+        item_id
+        for item_id in [
+            *(legacy_cosmetics if isinstance(legacy_cosmetics, list) else []),
+            *(current_cosmetics if isinstance(current_cosmetics, list) else []),
+            *( [display_feature] if display_feature in COSMETIC_DISPLAY_IDS else [] ),
+        ]
+        if isinstance(item_id, str) and item_id in COSMETIC_DISPLAY_IDS
+    ))
+    inventory["cosmetics"] = cosmetics
+
+    # The schema-26 Full Bloom threshold is lower than schema 25's. Preserve
+    # every valid hundredth-Growth unit by routing only the excess to Stored
+    # Growth; this is conservation, not a player-visible compensation grant.
+    stored_growth_units = _legacy_nonnegative_int(
+        payload.get(
+            "stored_growth_units",
+            payload.get("stored_growth_balance_units"),
+        )
+    )
+    plant_rows = payload.get("plants")
+    for plant in plant_rows if isinstance(plant_rows, list) else []:
+        if not isinstance(plant, dict):
+            continue
+        growth_points = _legacy_nonnegative_int(plant.get("growth_points"))
+        remainder_units = min(
+            99,
+            _legacy_nonnegative_int(plant.get("growth_remainder_units")),
+        )
+        if growth_points < GROWTH_THRESHOLDS[-1]:
+            continue
+        overflow_points = max(0, growth_points - GROWTH_THRESHOLDS[-1])
+        stored_growth_units += overflow_points * 100 + remainder_units
+        plant["growth_points"] = GROWTH_THRESHOLDS[-1]
+        plant["growth_remainder_units"] = 0
+    payload["stored_growth_units"] = stored_growth_units
+
+    _migrate_timed_fertilizer_to_card_queue(
+        payload, migrated_at=migration_time
+    )
+    consumables = payload.get("consumables")
+    if not isinstance(consumables, dict):
+        consumables = {}
+        payload["consumables"] = consumables
+    rich_compost = sum(
+        _legacy_nonnegative_int(consumables.pop(key, 0))
+        for key in ("rich_compost", "fertilizer_rich")
+    )
+    consumables["fertilizer_basic"] = (
+        _legacy_nonnegative_int(consumables.get("fertilizer_basic"))
+        + rich_compost
+    )
+
+    payload.setdefault("daily_economy_snapshot", None)
+    payload.setdefault("garden_project", {
+        "selected_project_id": "",
+        "contributed_growth_units": 0,
+        "ready_to_complete": False,
+        "completed_project_ids": [],
+        "displayed_project_id": "",
+        "auto_contribute": False,
+    })
+    payload.setdefault("cultivation_mastery", {
+        "highest_rank_by_species": {},
+    })
+    payload.setdefault("lifetime_economy_aggregates", {
+        "coins_earned_by_source": {},
+        "coins_spent_by_sink": {},
+        "growth_earned_by_source": {},
+        "growth_spent_on_landmarks": 0,
+        "growth_spent_on_mastery": 0,
+        "finds_by_outcome": {},
+        "environment_discoveries": {},
+        "consumables_earned": {},
+        "consumables_used": {},
+        "plants_completed": 0,
+        "today_cards_completions": 0,
+    })
+    payload.setdefault("hourglass_completion_progress", 0)
+    payload.setdefault("snow_completion_progress", 0)
+    if "full_moon_completion_progress" not in payload:
+        legacy_completion_counts = payload.get("environment_completion_counts")
+        legacy_full_moon_count = (
+            _legacy_nonnegative_int(
+                legacy_completion_counts.get("full_moon", 0)
+            )
+            if isinstance(legacy_completion_counts, dict)
+            else 0
+        )
+        # Schema 25 granted Full Moon's Potion every fourth completion; schema
+        # 26 grants it every sixth.  Carry the old remainder forward at the
+        # same fractional position and round up so a positive earned fraction
+        # is never erased by migration: 1/4 -> 2/6, 2/4 -> 3/6, 3/4 -> 5/6.
+        legacy_remainder = legacy_full_moon_count % 4
+        payload["full_moon_completion_progress"] = min(
+            5,
+            (legacy_remainder * 6 + 3) // 4,
+        )
+    payload["prism_pending_growth_units"] = min(
+        30_000,
+        max(
+            _legacy_nonnegative_int(payload.get("prism_pending_growth_units")),
+            _legacy_nonnegative_int(payload.pop("prism_banked_growth", 0)),
+        ),
+    )
+    payload["environment_completion_pity_misses"] = {
+        "rare": 0,
+        "very_rare": 0,
+        "ultra": 0,
+    }
+
+    unlocked_slots = min(
+        6, max(2, _legacy_nonnegative_int(payload.get("unlocked_slots"), 2))
+    )
+    existing_unlocks = payload.get("earned_bed_unlocks")
+    earned_unlocks = {
+        int(value)
+        for value in existing_unlocks
+        if isinstance(value, int)
+        and not isinstance(value, bool)
+        and 3 <= int(value) <= 6
+    } if isinstance(existing_unlocks, list) else set()
+    earned_unlocks.update(range(3, unlocked_slots + 1))
+    payload["earned_bed_unlocks"] = sorted(earned_unlocks)
+
+    achievements = payload.get("achievements")
+    if not isinstance(achievements, dict):
+        achievements = {}
+        payload["achievements"] = achievements
+    pending = payload.get("pending_economy_migration_grants")
+    pending_rows = list(pending) if isinstance(pending, list) else []
+    pending_keys = {
+        str(row.get("event_key"))
+        for row in pending_rows
+        if isinstance(row, dict) and row.get("event_key")
+    }
+    for bed_number in sorted(earned_unlocks):
+        price, achievement_id, name, description = _BED_MIGRATION[bed_number]
+        existing_achievement = achievements.get(achievement_id)
+        achievement = (
+            dict(existing_achievement)
+            if isinstance(existing_achievement, dict)
+            else {}
+        )
+        achievement.setdefault("achievement_id", achievement_id)
+        achievement.setdefault("name", name)
+        achievement.setdefault("description", description)
+        achievement["unlocked"] = True
+        achievement["progress"] = 1.0
+        achievement.setdefault("unlocked_at", migrated_iso)
+        achievement.setdefault("category", "completion")
+        achievement.setdefault("requirement", description)
+        achievement.setdefault("reward_summary", f"Bed {bed_number}")
+        achievement.setdefault("rewarded_at", migrated_iso)
+        achievement.setdefault(
+            "reward_event_key", f"migration:v26:bed_claim:{bed_number}"
+        )
+        achievement.setdefault("historical_backfill", True)
+        achievements[achievement_id] = achievement
+        event_key = f"migration:v26:bed_refund:{bed_number}"
+        if event_key not in pending_keys:
+            pending_rows.append({
+                "event_key": event_key,
+                "coins": price,
+                "reason": f"Schema 26 Bed {bed_number} purchase refund",
+                "source_id": "bed_refund",
+            })
+            pending_keys.add(event_key)
+
+    completed_requests = payload.get("completed_purchase_requests")
+    for row in completed_requests if isinstance(completed_requests, list) else []:
+        if not isinstance(row, dict):
+            continue
+        request_id = row.get("request_id")
+        outcome = row.get("outcome")
+        if (
+            not isinstance(request_id, str)
+            or not isinstance(outcome, dict)
+            or outcome.get("status") != "success"
+            or outcome.get("category") != "Plant"
+        ):
+            continue
+        amount_spent = outcome.get("amount_spent")
+        if (
+            isinstance(amount_spent, bool)
+            or not isinstance(amount_spent, int)
+            or amount_spent <= 250
+        ):
+            continue
+        event_key = f"migration:v26:plant_refund:{request_id}"
+        if event_key in pending_keys:
+            continue
+        pending_rows.append({
+            "event_key": event_key,
+            "coins": amount_spent - 250,
+            "reason": "Schema 26 recorded plant-price refund",
+            "source_id": "plant_price_refund",
+        })
+        pending_keys.add(event_key)
+    payload["pending_economy_migration_grants"] = pending_rows
+    payload["version"] = STATE_VERSION
+
+
+def _migrate_schema27_endgame_payload(
+    payload: dict[str, Any],
+    *,
+    source_version: int,
+) -> None:
+    """Install cumulative endgame authorities without spending player value."""
+
+    old_stored = _legacy_nonnegative_int(payload.pop("stored_growth_units", 0))
+    payload["stored_growth_balance_units"] = (
+        old_stored
+        if source_version <= 26
+        else _legacy_nonnegative_int(
+            payload.get("stored_growth_balance_units"), old_stored
+        )
+    )
+    if source_version <= 26:
+        payload["stored_growth_opening_balance_units"] = payload[
+            "stored_growth_balance_units"
+        ]
+        payload["stored_growth_opening_balance_source"] = (
+            "schema_27_migration_preserved_balance"
+        )
+        payload["stored_growth_opening_balance_identity"] = (
+            STORED_GROWTH_OPENING_IDENTITY_MIGRATION
+        )
+
+    project = payload.get("garden_project")
+    if not isinstance(project, dict):
+        project = {}
+    completed_raw = project.get("completed_project_ids", [])
+    completed_candidates = (
+        {item for item in completed_raw if isinstance(item, str)}
+        if isinstance(completed_raw, list) else set()
+    )
+    completed: list[str] = []
+    for project_id in GARDEN_PROJECT_IDS:
+        if project_id not in completed_candidates:
+            break
+        completed.append(project_id)
+    claimed = min(
+        len(GARDEN_PROJECT_IDS),
+        max(
+            len(completed),
+            _legacy_nonnegative_int(
+                project.get("landmark_highest_claimed_tier")
+            ),
+        ),
+    )
+    claimed_floor = (
+        GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+            GARDEN_PROJECT_IDS[claimed - 1]
+        ]
+        if claimed else 0
+    )
+    selected = project.get("selected_project_id")
+    partial = _legacy_nonnegative_int(project.get("contributed_growth_units"))
+    if not isinstance(selected, str) or selected not in GARDEN_PROJECT_IDS:
+        partial = 0
+    existing_funded = _legacy_nonnegative_int(
+        project.get("landmark_growth_units_funded")
+    )
+    funded = max(claimed_floor, existing_funded)
+    if "landmark_growth_units_funded" not in project:
+        funded += partial
+    landmark_max = GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+        GARDEN_PROJECT_IDS[-1]
+    ]
+    funded = min(landmark_max, funded)
+    displayed = project.get(
+        "displayed_landmark_tier_id",
+        project.get("displayed_project_id", ""),
+    )
+    claimed_ids = list(GARDEN_PROJECT_IDS[:claimed])
+    if displayed not in claimed_ids:
+        displayed = ""
+    project.update({
+        "landmark_growth_units_funded": funded,
+        "landmark_highest_claimed_tier": claimed,
+        "displayed_landmark_tier_id": displayed,
+        "grandfathered_funding_units": max(
+            _legacy_nonnegative_int(project.get("grandfathered_funding_units")),
+            funded if source_version <= 26 else 0,
+        ),
+        "selected_project_id": "",
+        "contributed_growth_units": max(0, funded - claimed_floor),
+        "ready_to_complete": False,
+        "completed_project_ids": claimed_ids,
+        "displayed_project_id": displayed,
+        "auto_contribute": False,
+    })
+    payload["garden_project"] = project
+
+    mastery = payload.get("cultivation_mastery")
+    if not isinstance(mastery, dict):
+        mastery = {}
+    raw_claims = mastery.get(
+        "highest_claimed_rank_by_species",
+        mastery.get("highest_rank_by_species", {}),
+    )
+    claims = dict(raw_claims) if isinstance(raw_claims, dict) else {}
+    raw_funding = mastery.get("growth_units_funded_by_species", {})
+    funding = dict(raw_funding) if isinstance(raw_funding, dict) else {}
+    raw_grandfathered = mastery.get(
+        "grandfathered_funding_units_by_species", {}
+    )
+    grandfathered = (
+        dict(raw_grandfathered) if isinstance(raw_grandfathered, dict) else {}
+    )
+    for species_id, rank_id in list(claims.items()):
+        if rank_id not in CULTIVATION_MASTERY_RANKS:
+            continue
+        floor = CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[rank_id]
+        funding[species_id] = max(
+            floor, _legacy_nonnegative_int(funding.get(species_id))
+        )
+        if source_version <= 26:
+            grandfathered[species_id] = max(
+                floor,
+                _legacy_nonnegative_int(grandfathered.get(species_id)),
+            )
+    for species_id in CURRENT_CATALOG_SPECIES_ORDER:
+        amount = min(
+            MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
+            _legacy_nonnegative_int(funding.get(species_id)),
+        )
+        if amount:
+            funding[species_id] = amount
+            if source_version <= 26:
+                grandfathered[species_id] = max(
+                    amount,
+                    _legacy_nonnegative_int(grandfathered.get(species_id)),
+                )
+    mastery.update({
+        "growth_units_funded_by_species": funding,
+        "highest_claimed_rank_by_species": claims,
+        "grandfathered_funding_units_by_species": grandfathered,
+        "highest_rank_by_species": claims,
+    })
+    payload["cultivation_mastery"] = mastery
+
+    payload["active_growth_target_type"] = ""
+    payload["active_growth_target_id"] = ""
+    payload["active_growth_target_activation_identity"] = ""
+    if source_version <= 26:
+        payload["garden_legacy_level"] = 0
+        payload["garden_legacy_progress_units"] = 0
+    else:
+        payload.setdefault("garden_legacy_level", 0)
+        payload.setdefault("garden_legacy_progress_units", 0)
+    payload.setdefault("garden_cycle_remainder", 0)
+    payload.setdefault("garden_cycle_migration_version", STATE_VERSION)
+    payload.setdefault("garden_cycle_history_complete", False)
+
+    aggregates = payload.get("lifetime_economy_aggregates")
+    if not isinstance(aggregates, dict):
+        aggregates = {}
+    for key in (
+        "growth_generated_units",
+        "growth_applied_to_plants_units",
+        "growth_routed_to_storage_units_lifetime",
+        "growth_contributed_to_landmarks_units",
+        "growth_contributed_to_mastery_units",
+        "growth_contributed_to_legacy_units",
+        "growth_unallocated_overflow_units",
+    ):
+        aggregates.setdefault(key, 0)
+    if source_version <= 26:
+        aggregates["history_complete"] = False
+        aggregates.setdefault(
+            "authoritative_from_event_identity", "migration:schema27"
+        )
+    payload["lifetime_economy_aggregates"] = aggregates
+    payload["version"] = STATE_VERSION
+
+
 def migrate_previous_state(raw: Any) -> GardenState:
     """Convert the supported schema-10 release into the current state contract.
 
@@ -1270,6 +1791,8 @@ def migrate_previous_state(raw: Any) -> GardenState:
     _migrate_loadout_payload(payload)
     _migrate_reward_state_payload(payload)
     _migrate_schema22_progression_payload(payload)
+    _migrate_schema26_economy_payload(payload)
+    _migrate_schema27_endgame_payload(payload, source_version=PREVIOUS_STATE_VERSION)
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
@@ -1292,34 +1815,48 @@ def migrate_modern_state(
         raise ValueError("only previous modern schemas can use the modern migration")
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
+    def finish(*, materialize: bool = True) -> GardenState:
+        if source_version < 26:
+            _migrate_schema26_economy_payload(payload, migrated_at=migrated_at)
+        _migrate_schema27_endgame_payload(
+            payload, source_version=source_version
+        )
+        state = GardenState.from_dict(payload)
+        return _materialize_unlocked_species(state) if materialize else state
+
+    if source_version == 26:
+        return finish()
+    if source_version == 25:
+        payload.setdefault("pending_sync_reward_summary", None)
+        return finish()
     if source_version == 24:
         _migrate_schema25_decoration_bonus_payload(payload)
         payload.setdefault("pending_sync_reward_summary", None)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 23:
         _migrate_schema25_decoration_bonus_payload(payload)
         payload.setdefault("pending_sync_reward_summary", None)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 22:
         _migrate_schema23_garden_features_payload(payload)
         payload.setdefault("pending_sync_reward_summary", None)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 21:
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return _materialize_unlocked_species(GardenState.from_dict(payload))
+        return finish()
     if source_version == 20:
         payload["version"] = STATE_VERSION
         payload.setdefault("completed_purchase_requests", [])
         _migrate_reward_state_payload(payload)
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return GardenState.from_dict(payload)
+        return finish(materialize=False)
     if source_version == 19:
         payload["version"] = STATE_VERSION
         payload.setdefault("completed_purchase_requests", [])
         _migrate_growth_accounting_payload(payload)
         _migrate_reward_state_payload(payload)
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return GardenState.from_dict(payload)
+        return finish(materialize=False)
     if source_version in {17, 18}:
         # Schemas 17 and 18 already own every progression, onboarding, and
         # revlog field. Preserve their bounded purchase replay history while
@@ -1330,7 +1867,7 @@ def migrate_modern_state(
         _migrate_growth_accounting_payload(payload)
         _migrate_reward_state_payload(payload)
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-        return GardenState.from_dict(payload)
+        return finish(materialize=False)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
         time.time() if migrated_at is None else migrated_at,
@@ -1404,7 +1941,7 @@ def migrate_modern_state(
     _migrate_loadout_payload(payload)
     _migrate_reward_state_payload(payload)
     _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
-    return _materialize_unlocked_species(GardenState.from_dict(payload))
+    return finish()
 
 
 @dataclass(frozen=True)
@@ -1590,6 +2127,9 @@ class GardenStorage:
                     state = migrate_modern_state(
                         dict(snapshot.payload), migrated_at=time.time()
                     )
+                    self._initialize_schema27_migration_metadata(ledger, state)
+                    self._stage_legacy_economy_idempotency(ledger, state)
+                    self._apply_pending_economy_migration_grants(ledger, state)
                     committed = ledger.commit_state(
                         self._bounded_state_payload(state),
                         schema_version=STATE_VERSION,
@@ -1612,25 +2152,14 @@ class GardenStorage:
                     )
                 self._reward_ledger = ledger
                 payload = deepcopy(dict(snapshot.payload))
-                restored_timed_fertilizer = _restore_timed_fertilizer_payload(
-                    payload,
-                    migrated_at=time.time(),
-                )
                 state = _materialize_unlocked_species(
                     GardenState.from_dict(payload)
                 )
-                if restored_timed_fertilizer:
-                    committed = ledger.commit_state(
-                        self._bounded_state_payload(state),
-                        schema_version=STATE_VERSION,
-                        expected_revision=snapshot.revision,
-                    )
-                    self._ledger_revision = committed.revision
-                    logger.info(
-                        "Anki Garden: restored timed Fertilizer from experimental schema-22 card effects"
-                    )
-                else:
-                    self._ledger_revision = snapshot.revision
+                self._ledger_revision = snapshot.revision
+                # Validate every exact endgame and Stored Growth authority at
+                # the reload boundary, before any repair can save the state.
+                self.state = state
+                self.refresh_lifetime_economy_aggregates()
                 self._refresh_reanswer_hint_cache(state)
                 self._refresh_recent_find_cache(state)
                 return state
@@ -1689,6 +2218,228 @@ class GardenStorage:
         state.garden_find_reward_daily_counts = {}
         state.garden_find_outcomes = {}
 
+    @staticmethod
+    def _initialize_schema27_migration_metadata(
+        ledger: RewardLedger,
+        state: GardenState,
+    ) -> None:
+        """Record conservative, retry-safe schema-27 migration provenance."""
+
+        operation_id = SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID
+        existing = ledger.idempotency_record("migration", operation_id)
+        if existing is not None:
+            outcome = dict(existing.outcome)
+            remainder = outcome.get("garden_cycle_remainder")
+            history_complete = outcome.get("garden_cycle_history_complete")
+            if (
+                isinstance(remainder, bool)
+                or not isinstance(remainder, int)
+                or remainder not in range(5)
+                or not isinstance(history_complete, bool)
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 Garden Cycle migration outcome is invalid."
+                )
+            state.garden_cycle_remainder = remainder
+            state.garden_cycle_history_complete = history_complete
+            state.garden_cycle_migration_version = STATE_VERSION
+            return
+        if (
+            state.garden_cycle_migration_version >= STATE_VERSION
+            and state.garden_cycle_history_complete
+        ):
+            history_complete = True
+            state.garden_cycle_remainder = max(
+                0, min(4, int(state.garden_cycle_remainder))
+            )
+        else:
+            completion_days = ledger.verified_today_cards_completion_days_before(
+                "9999-12-31"
+            )
+            recorded_count = max(
+                0,
+                int(state.lifetime_economy_aggregates.today_cards_completions),
+            )
+            explicit_empty_new_profile = bool(
+                not completion_days
+                and recorded_count == 0
+                and max(0, int(state.total_reviews)) == 0
+                and state.stored_growth_opening_balance_identity
+                == STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE
+            )
+            history_complete = bool(
+                explicit_empty_new_profile
+                or (
+                    completion_days
+                    and recorded_count == len(completion_days)
+                )
+            )
+            state.garden_cycle_remainder = (
+                len(completion_days) % 5 if history_complete else 0
+            )
+        state.garden_cycle_migration_version = STATE_VERSION
+        state.garden_cycle_history_complete = history_complete
+        landmark_funding = max(
+            0,
+            min(
+                LANDMARK_MAX_GROWTH_UNITS,
+                int(state.garden_project.landmark_growth_units_funded),
+            ),
+        )
+        state.garden_project.grandfathered_funding_units = landmark_funding
+        mastery_funding = {
+            species_id: min(
+                MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
+                max(
+                    0,
+                    int(
+                        state.cultivation_mastery
+                        .growth_units_funded_by_species.get(species_id, 0)
+                    ),
+                ),
+            )
+            for species_id in CURRENT_CATALOG_SPECIES_ORDER
+            if int(
+                state.cultivation_mastery
+                .growth_units_funded_by_species.get(species_id, 0)
+            ) > 0
+        }
+        state.cultivation_mastery.grandfathered_funding_units_by_species = (
+            dict(mastery_funding)
+        )
+        landmark_claimed = max(
+            0,
+            min(
+                len(GARDEN_PROJECT_IDS),
+                int(state.garden_project.landmark_highest_claimed_tier),
+            ),
+        )
+        mastery_claims = {
+            species_id: rank_id
+            for species_id, rank_id in (
+                state.cultivation_mastery
+                .highest_claimed_rank_by_species.items()
+            )
+            if species_id in CURRENT_CATALOG_SPECIES_ORDER
+            and rank_id in CULTIVATION_MASTERY_RANKS
+        }
+        legacy_total = (
+            max(0, int(state.garden_legacy_level))
+            * GARDEN_LEGACY_LEVEL_COST_UNITS
+            + max(0, int(state.garden_legacy_progress_units))
+        )
+        payload = {
+            "endgame_reconciliation_version": (
+                SCHEMA27_ENDGAME_RECONCILIATION_VERSION
+            ),
+            "garden_cycle_remainder": state.garden_cycle_remainder,
+            "garden_cycle_history_complete": history_complete,
+            "lifetime_growth_history_complete": bool(
+                state.lifetime_economy_aggregates.history_complete
+            ),
+            "lifetime_growth_history_authority": str(
+                state.lifetime_economy_aggregates
+                .authoritative_from_event_identity
+                or operation_id
+            ),
+            "stored_growth_opening_balance_units": (
+                state.stored_growth_opening_balance_units
+            ),
+            "stored_growth_opening_balance_source": (
+                state.stored_growth_opening_balance_source
+            ),
+            "stored_growth_opening_balance_identity": (
+                state.stored_growth_opening_balance_identity
+            ),
+            "landmark_grandfathered_funding_units": (
+                landmark_funding
+            ),
+            "landmark_highest_claimed_tier_baseline": landmark_claimed,
+            "mastery_grandfathered_funding_units_by_species": dict(
+                mastery_funding
+            ),
+            "mastery_highest_claimed_rank_baseline_by_species": mastery_claims,
+            "garden_legacy_total_units_baseline": legacy_total,
+        }
+        fingerprint = hashlib.sha256(json.dumps(
+            payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
+        ledger.stage_idempotency_record(IdempotencyRecord(
+            operation_kind="migration",
+            operation_id=operation_id,
+            request_fingerprint=fingerprint,
+            outcome={"status": "applied", **payload},
+            occurred_at=datetime.now(timezone.utc).isoformat(),
+        ))
+
+    @staticmethod
+    def _apply_pending_economy_migration_grants(
+        ledger: RewardLedger,
+        state: GardenState,
+    ) -> None:
+        """Stage deterministic migration refunds with the state that receives them."""
+
+        retained: list[PendingEconomyMigrationGrant] = []
+        for grant in state.pending_economy_migration_grants:
+            existing = ledger.idempotency_record("migration", grant.event_key)
+            if existing is not None:
+                continue
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    {
+                        "event_key": grant.event_key,
+                        "coins": grant.coins,
+                        "source_id": grant.source_id,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            occurred_at = datetime.now(timezone.utc).isoformat()
+            balance = max(0, int(state.currency_balance)) + grant.coins
+            transaction_id = str(uuid.uuid5(
+                uuid.NAMESPACE_URL, "anki-garden:" + grant.event_key
+            ))
+            state.currency_balance = balance
+            state.currency_transactions.append(CurrencyTransaction(
+                transaction_id=transaction_id,
+                event_key=grant.event_key,
+                reason=grant.reason,
+                delta=grant.coins,
+                balance=balance,
+                occurred_at=occurred_at,
+                transaction_type="credit",
+                source="migration",
+                source_id=grant.source_id,
+                correlation_id=grant.event_key,
+            ))
+            state.currency_transactions = state.currency_transactions[
+                -MAX_TRANSACTION_HISTORY:
+            ]
+            current = state.lifetime_economy_aggregates.coins_earned_by_source
+            current[grant.source_id] = (
+                max(0, int(current.get(grant.source_id, 0))) + grant.coins
+            )
+            ledger.stage_idempotency_record(IdempotencyRecord(
+                operation_kind="migration",
+                operation_id=grant.event_key,
+                request_fingerprint=fingerprint,
+                outcome={
+                    "status": "applied",
+                    "coins": grant.coins,
+                    "balance": balance,
+                },
+                occurred_at=occurred_at,
+            ))
+            ledger.stage_economy_event(EconomyEventRecord(
+                event_key=grant.event_key,
+                event_kind="migration_refund",
+                source_id=grant.source_id,
+                occurred_at=occurred_at,
+                coins_earned=grant.coins,
+            ))
+        state.pending_economy_migration_grants = retained
+
     def _install_reward_database(self, state: GardenState) -> None:
         """Import one JSON state into a temporary database, then install it."""
 
@@ -1702,6 +2453,9 @@ class GardenStorage:
         try:
             ledger = RewardLedger(temporary)
             self._stage_legacy_authorities(ledger, state)
+            self._initialize_schema27_migration_metadata(ledger, state)
+            self._stage_legacy_economy_idempotency(ledger, state)
+            self._apply_pending_economy_migration_grants(ledger, state)
             committed = ledger.commit_state(
                 self._bounded_state_payload(state),
                 schema_version=STATE_VERSION,
@@ -1829,6 +2583,45 @@ class GardenStorage:
             ))
 
     @staticmethod
+    def _stage_legacy_economy_idempotency(
+        ledger: RewardLedger,
+        state: GardenState,
+    ) -> None:
+        """Promote bounded v25 request receipts into permanent ledger identities."""
+
+        records = (
+            (
+                "purchase",
+                request.request_id,
+                request.request_fingerprint,
+                request.outcome.to_dict(),
+                request.occurred_at,
+            )
+            for request in state.completed_purchase_requests
+        )
+        growth_records = (
+            (
+                "growth_charge",
+                request.request_id,
+                request.request_fingerprint,
+                request.outcome.to_dict(),
+                request.occurred_at,
+            )
+            for request in state.completed_growth_charge_requests
+        )
+        for kind, request_id, fingerprint, outcome, occurred_at in (
+            *records,
+            *growth_records,
+        ):
+            ledger.stage_idempotency_record(IdempotencyRecord(
+                operation_kind=kind,
+                operation_id=request_id,
+                request_fingerprint=fingerprint,
+                outcome=outcome,
+                occurred_at=occurred_at,
+            ))
+
+    @staticmethod
     def _domain_find_outcome(record: FindOutcomeRecord) -> GardenFindOutcome:
         payload = dict(record.hit_payload or {})
         return GardenFindOutcome(
@@ -1887,13 +2680,594 @@ class GardenStorage:
             return str(event_key) in self.state.applied_reward_event_keys
         return self._reward_ledger.reward_applied(str(event_key))
 
-    def stage_reward_event(self, event_key: str) -> None:
+    def stage_reward_event(
+        self,
+        event_key: str,
+        *,
+        source: str = "",
+        scheduler_day: str = "",
+        occurred_at: str = "",
+    ) -> None:
         if self._reward_ledger is None:
             if event_key not in self.state.applied_reward_event_keys:
                 self.state.applied_reward_event_keys.append(event_key)
             return
         if not self._reward_ledger.reward_applied(event_key):
-            self._reward_ledger.stage_reward_event(RewardEventRecord(event_key))
+            self._reward_ledger.stage_reward_event(RewardEventRecord(
+                event_key,
+                source,
+                scheduler_day,
+                occurred_at,
+            ))
+
+    def idempotency_record(
+        self,
+        operation_kind: str,
+        operation_id: str,
+    ) -> IdempotencyRecord | None:
+        if self._reward_ledger is None:
+            return None
+        return self._reward_ledger.idempotency_record(
+            operation_kind, operation_id
+        )
+
+    def stage_idempotency_record(self, record: IdempotencyRecord) -> None:
+        if self._reward_ledger is None:
+            return
+        self._reward_ledger.stage_idempotency_record(record)
+
+    def economy_event(self, event_key: str) -> EconomyEventRecord | None:
+        if self._reward_ledger is None:
+            return None
+        return self._reward_ledger.economy_event(event_key)
+
+    def stage_economy_event(self, record: EconomyEventRecord) -> None:
+        if self._reward_ledger is None:
+            return
+        self._reward_ledger.stage_economy_event(record)
+
+    def _schema27_migration_outcome(self) -> Mapping[str, Any] | None:
+        if self._reward_ledger is None:
+            return None
+        record = self._reward_ledger.idempotency_record(
+            "migration", SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID
+        )
+        return dict(record.outcome) if record is not None else None
+
+    def _reconcile_schema27_endgame_state(self) -> Mapping[str, Any] | None:
+        """Verify cumulative project state against exact permanent events."""
+
+        ledger = self._reward_ledger
+        if ledger is None:
+            return None
+        migration = self._schema27_migration_outcome()
+        if migration is None:
+            landmark_funding = 0
+            landmark_claimed = 0
+            mastery_funding = {
+                species_id: 0 for species_id in CURRENT_CATALOG_SPECIES_ORDER
+            }
+            mastery_claimed = {}
+            legacy_total = 0
+        else:
+            if migration.get("endgame_reconciliation_version") != (
+                SCHEMA27_ENDGAME_RECONCILIATION_VERSION
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 endgame migration baseline is incomplete."
+                )
+
+            def baseline_int(
+                key: str,
+                *,
+                maximum: int | None = None,
+            ) -> int:
+                value = migration.get(key)
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 0
+                    or (maximum is not None and value > maximum)
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "The schema-27 endgame migration baseline is invalid: "
+                        + key
+                    )
+                return int(value)
+
+            landmark_funding = baseline_int(
+                "landmark_grandfathered_funding_units",
+                maximum=LANDMARK_MAX_GROWTH_UNITS,
+            )
+            landmark_claimed = baseline_int(
+                "landmark_highest_claimed_tier_baseline",
+                maximum=len(GARDEN_PROJECT_IDS),
+            )
+            raw_mastery_funding = migration.get(
+                "mastery_grandfathered_funding_units_by_species"
+            )
+            raw_mastery_claimed = migration.get(
+                "mastery_highest_claimed_rank_baseline_by_species"
+            )
+            if not isinstance(raw_mastery_funding, Mapping) or not isinstance(
+                raw_mastery_claimed, Mapping
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 Mastery migration baseline is invalid."
+                )
+            if set(raw_mastery_funding).difference(
+                CURRENT_CATALOG_SPECIES_ORDER
+            ) or set(raw_mastery_claimed).difference(
+                CURRENT_CATALOG_SPECIES_ORDER
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 Mastery migration baseline has an unknown species."
+                )
+            mastery_funding = {
+                species_id: 0 for species_id in CURRENT_CATALOG_SPECIES_ORDER
+            }
+            for species_id, value in raw_mastery_funding.items():
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 0
+                    or value > MASTERY_MAX_GROWTH_UNITS_PER_SPECIES
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "The schema-27 Mastery funding baseline is invalid."
+                    )
+                mastery_funding[str(species_id)] = int(value)
+            mastery_claimed = {}
+            for species_id, rank_id in raw_mastery_claimed.items():
+                if rank_id not in CULTIVATION_MASTERY_RANKS:
+                    raise RewardLedgerCorruptionError(
+                        "The schema-27 Mastery claim baseline is invalid."
+                    )
+                mastery_claimed[str(species_id)] = str(rank_id)
+            legacy_total = baseline_int(
+                "garden_legacy_total_units_baseline"
+            )
+
+        landmark_claimed_floor = (
+            GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                GARDEN_PROJECT_IDS[landmark_claimed - 1]
+            ]
+            if landmark_claimed else 0
+        )
+        if landmark_funding < landmark_claimed_floor:
+            raise RewardLedgerCorruptionError(
+                "Grandfathered Landmark claims exceed their funded Growth."
+            )
+        for species_id, rank_id in mastery_claimed.items():
+            threshold = (
+                CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                    rank_id
+                ]
+            )
+            if mastery_funding[species_id] < threshold:
+                raise RewardLedgerCorruptionError(
+                    "Grandfathered Mastery claims exceed their funded Growth."
+                )
+        landmark_funding_baseline = landmark_funding
+        mastery_funding_baseline = dict(mastery_funding)
+
+        def claim_landmark(event: EconomyEventRecord, claim_id: str) -> None:
+            nonlocal landmark_claimed
+            expected = (
+                GARDEN_PROJECT_IDS[landmark_claimed]
+                if landmark_claimed < len(GARDEN_PROJECT_IDS) else ""
+            )
+            if (
+                not expected
+                or claim_id != expected
+                or event.item_id != expected
+                or event.quantity != 1
+                or event.coins_spent != LANDMARK_COIN_COST_BY_ID[expected]
+                or landmark_funding
+                < GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[expected]
+            ):
+                raise RewardLedgerCorruptionError(
+                    "A Landmark claim is out of order, unfunded, or unpaid: "
+                    + event.event_key
+                )
+            landmark_claimed += 1
+
+        def claim_mastery(
+            event: EconomyEventRecord,
+            species_id: str,
+            rank_id: str,
+        ) -> None:
+            if species_id not in CURRENT_CATALOG_SPECIES_ORDER:
+                raise RewardLedgerCorruptionError(
+                    "A Mastery claim targets an unknown species: "
+                    + event.event_key
+                )
+            previous = mastery_claimed.get(species_id, "")
+            previous_index = (
+                CULTIVATION_MASTERY_RANKS.index(previous)
+                if previous else -1
+            )
+            expected_index = previous_index + 1
+            expected = (
+                CULTIVATION_MASTERY_RANKS[expected_index]
+                if expected_index < len(CULTIVATION_MASTERY_RANKS) else ""
+            )
+            if (
+                not expected
+                or rank_id != expected
+                or event.item_id != expected
+                or event.quantity != 1
+                or event.coins_spent != MASTERY_COIN_COST_BY_ID[expected]
+                or mastery_funding[species_id]
+                < CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                    expected
+                ]
+            ):
+                raise RewardLedgerCorruptionError(
+                    "A Mastery claim is out of order, unfunded, or unpaid: "
+                    + event.event_key
+                )
+            mastery_claimed[species_id] = expected
+
+        for event in ledger.economy_events():
+            if event.growth_flow_kind == "legacy_unreconciled":
+                continue
+            allocations = dict(
+                (event.metric_deltas or {}).get("project_allocations", {})
+            )
+            for target_key, units in allocations.items():
+                target_type, _, target_id = str(target_key).partition(":")
+                amount = int(units)
+                if target_type == "landmark" and target_id == "garden_landmark":
+                    landmark_funding += amount
+                    if landmark_funding > LANDMARK_MAX_GROWTH_UNITS:
+                        raise RewardLedgerCorruptionError(
+                            "Landmark Growth exceeds its maximum."
+                        )
+                elif target_type == "mastery" and target_id in mastery_funding:
+                    mastery_funding[target_id] += amount
+                    if mastery_funding[target_id] > (
+                        MASTERY_MAX_GROWTH_UNITS_PER_SPECIES
+                    ):
+                        raise RewardLedgerCorruptionError(
+                            "Mastery Growth exceeds its species maximum."
+                        )
+                elif target_type == "legacy" and target_id == "garden_legacy":
+                    if (
+                        landmark_funding < LANDMARK_MAX_GROWTH_UNITS
+                        or any(
+                            mastery_funding[species_id]
+                            < MASTERY_MAX_GROWTH_UNITS_PER_SPECIES
+                            for species_id in CURRENT_CATALOG_SPECIES_ORDER
+                        )
+                    ):
+                        raise RewardLedgerCorruptionError(
+                            "Garden Legacy received Growth before finite funding."
+                        )
+                    legacy_total += amount
+                else:
+                    raise RewardLedgerCorruptionError(
+                        "A project allocation targets unknown content: "
+                        + event.event_key
+                    )
+
+            if event.event_kind == "growth_project_claim":
+                if event.growth_flow_kind != "claim":
+                    raise RewardLedgerCorruptionError(
+                        "A Growth project claim has an invalid Growth flow."
+                    )
+                if event.sink_id == "garden_landmark":
+                    claim_landmark(event, event.item_id)
+                elif event.sink_id in mastery_funding:
+                    claim_mastery(event, event.sink_id, event.item_id)
+                else:
+                    raise RewardLedgerCorruptionError(
+                        "A Growth project claim has no valid target: "
+                        + event.event_key
+                    )
+            elif event.event_kind == "landmark_complete":
+                if (
+                    event.growth_flow_kind != "claim"
+                    or event.sink_id != event.item_id
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "A Landmark claim target differs from its claim ID."
+                    )
+                claim_landmark(event, event.item_id)
+            elif event.event_kind == "mastery_purchase":
+                species_id, separator, rank_id = event.sink_id.partition(":")
+                if (
+                    event.growth_flow_kind not in {
+                        "claim", "manual_contribution"
+                    }
+                    or not separator
+                    or rank_id != event.item_id
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "A Mastery claim target differs from its claim ID."
+                    )
+                claim_mastery(event, species_id, rank_id)
+            elif event.growth_flow_kind == "claim":
+                raise RewardLedgerCorruptionError(
+                    "An unknown project claim was committed: " + event.event_key
+                )
+
+        actual_landmark_funding = max(
+            0, int(self.state.garden_project.landmark_growth_units_funded)
+        )
+        actual_landmark_claimed = max(
+            0, int(self.state.garden_project.landmark_highest_claimed_tier)
+        )
+        actual_mastery_funding = {
+            species_id: max(
+                0,
+                int(
+                    self.state.cultivation_mastery
+                    .growth_units_funded_by_species.get(species_id, 0)
+                ),
+            )
+            for species_id in CURRENT_CATALOG_SPECIES_ORDER
+        }
+        actual_mastery_claimed = dict(
+            self.state.cultivation_mastery.highest_claimed_rank_by_species
+        )
+        actual_legacy_total = (
+            max(0, int(self.state.garden_legacy_level))
+            * GARDEN_LEGACY_LEVEL_COST_UNITS
+            + max(0, int(self.state.garden_legacy_progress_units))
+        )
+        if (
+            actual_landmark_funding != landmark_funding
+            or actual_landmark_claimed != landmark_claimed
+            or actual_mastery_funding != mastery_funding
+            or actual_mastery_claimed != mastery_claimed
+            or actual_legacy_total != legacy_total
+        ):
+            raise RewardLedgerCorruptionError(
+                "Endgame funding or claims do not reconcile with the exact ledger."
+            )
+        if self.state.garden_project.grandfathered_funding_units != (
+            landmark_funding_baseline
+        ):
+            raise RewardLedgerCorruptionError(
+                "The Landmark migration funding baseline changed."
+            )
+        expected_mastery_grandfathered = {
+            species_id: amount
+            for species_id, amount in mastery_funding_baseline.items()
+            if amount
+        }
+        if (
+            self.state.cultivation_mastery
+            .grandfathered_funding_units_by_species
+            != expected_mastery_grandfathered
+        ):
+            raise RewardLedgerCorruptionError(
+                "The Mastery migration funding baseline changed."
+            )
+        return migration
+
+    def lifetime_economy_aggregates(self) -> Mapping[str, Any]:
+        if self._reward_ledger is None:
+            return self.state.lifetime_economy_aggregates.to_dict()
+        return self._reward_ledger.lifetime_economy_aggregates()
+
+    def refresh_lifetime_economy_aggregates(
+        self,
+    ) -> LifetimeEconomyAggregates:
+        """Rebuild and persist the state projection from permanent events."""
+
+        values = self.lifetime_economy_aggregates()
+        if self._reward_ledger is not None:
+            migration = self._reconcile_schema27_endgame_state()
+            if migration is not None:
+                history_complete = migration.get(
+                    "lifetime_growth_history_complete"
+                )
+                if not isinstance(history_complete, bool):
+                    raise RewardLedgerCorruptionError(
+                        "The lifetime Growth migration provenance is invalid."
+                    )
+                if not history_complete:
+                    values = {
+                        **dict(values),
+                        "history_complete": False,
+                        "authoritative_from_event_identity": str(
+                            migration.get("lifetime_growth_history_authority")
+                            or SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID
+                        ),
+                    }
+            expected_stored = (
+                max(
+                    0,
+                    int(self.state.stored_growth_opening_balance_units),
+                )
+                + self._reward_ledger.stored_growth_balance_net_delta_units()
+            )
+            actual_stored = max(
+                0, int(self.state.stored_growth_balance_units)
+            )
+            if expected_stored != actual_stored:
+                raise RewardLedgerCorruptionError(
+                    "Stored Growth balance does not reconcile with exact "
+                    f"ledger deltas ({actual_stored} != {expected_stored})"
+                )
+        aggregate = LifetimeEconomyAggregates(
+            coins_earned_by_source=dict(
+                values.get("coins_earned_by_source", {})
+            ),
+            coins_spent_by_sink=dict(values.get("coins_spent_by_sink", {})),
+            growth_earned_by_source=dict(
+                values.get("growth_earned_by_source", {})
+            ),
+            growth_spent_on_landmarks=int(
+                values.get("growth_spent_on_landmarks", 0)
+            ),
+            growth_spent_on_mastery=int(
+                values.get("growth_spent_on_mastery", 0)
+            ),
+            growth_generated_units=int(
+                values.get("growth_generated_units", 0)
+            ),
+            growth_applied_to_plants_units=int(
+                values.get("growth_applied_to_plants_units", 0)
+            ),
+            growth_routed_to_storage_units_lifetime=int(
+                values.get("growth_routed_to_storage_units_lifetime", 0)
+            ),
+            growth_contributed_to_landmarks_units=int(
+                values.get("growth_contributed_to_landmarks_units", 0)
+            ),
+            growth_contributed_to_mastery_units=int(
+                values.get("growth_contributed_to_mastery_units", 0)
+            ),
+            growth_contributed_to_legacy_units=int(
+                values.get("growth_contributed_to_legacy_units", 0)
+            ),
+            growth_unallocated_overflow_units=int(
+                values.get("growth_unallocated_overflow_units", 0)
+            ),
+            history_complete=bool(values.get("history_complete", False)),
+            authoritative_from_event_identity=str(
+                values.get("authoritative_from_event_identity", "")
+            ),
+            finds_by_outcome=dict(values.get("finds_by_outcome", {})),
+            environment_discoveries=dict(
+                values.get("environment_discoveries", {})
+            ),
+            consumables_earned=dict(values.get("consumables_earned", {})),
+            consumables_used=dict(values.get("consumables_used", {})),
+            plants_completed=int(values.get("plants_completed", 0)),
+            today_cards_completions=int(
+                values.get("today_cards_completions", 0)
+            ),
+        )
+        self.state.lifetime_economy_aggregates = aggregate
+        return aggregate
+
+    def rebuild_lifetime_economy_aggregates(
+        self,
+    ) -> LifetimeEconomyAggregates:
+        """Compatibility alias for callers that describe refresh as rebuild."""
+
+        return self.refresh_lifetime_economy_aggregates()
+
+    def daily_economy_snapshot(
+        self,
+        anki_day: str,
+    ) -> DailyEconomySnapshot | None:
+        if self._reward_ledger is None:
+            snapshot = self.state.daily_economy_snapshot
+            return (
+                snapshot
+                if snapshot is not None and snapshot.anki_day == anki_day
+                else None
+            )
+        record = self._reward_ledger.daily_economy_snapshot(anki_day)
+        if record is None:
+            return None
+        return DailyEconomySnapshot(
+            anki_day=record.anki_day,
+            garden_rhythm_percent=record.garden_rhythm_percent,
+            active_garden_bonus_id=record.active_garden_bonus_id,
+            active_scenery_effect_id=record.active_scenery_effect_id,
+            snapshot_source=record.snapshot_source,
+            snapshot_id=record.snapshot_id,
+        )
+
+    def stage_daily_economy_snapshot(
+        self,
+        snapshot: DailyEconomySnapshot | DailyEconomySnapshotRecord | None = None,
+        *,
+        anki_day: str = "",
+        garden_rhythm_percent: int = 0,
+        active_garden_bonus_id: str = "",
+        active_scenery_effect_id: str = "",
+        snapshot_source: str = "",
+        snapshot_id: str = "",
+    ) -> DailyEconomySnapshot:
+        if snapshot is None:
+            value = DailyEconomySnapshot(
+                anki_day=anki_day,
+                garden_rhythm_percent=garden_rhythm_percent,
+                active_garden_bonus_id=active_garden_bonus_id,
+                active_scenery_effect_id=active_scenery_effect_id,
+                snapshot_source=snapshot_source,
+                snapshot_id=snapshot_id,
+            )
+        else:
+            value = DailyEconomySnapshot(
+                anki_day=snapshot.anki_day,
+                garden_rhythm_percent=snapshot.garden_rhythm_percent,
+                active_garden_bonus_id=snapshot.active_garden_bonus_id,
+                active_scenery_effect_id=snapshot.active_scenery_effect_id,
+                snapshot_source=snapshot.snapshot_source,
+                snapshot_id=snapshot.snapshot_id,
+            )
+        existing = self.daily_economy_snapshot(value.anki_day)
+        if existing is not None:
+            if existing != value:
+                raise ValueError(
+                    "That Anki day already has a different economy snapshot."
+                )
+            return existing
+        if self._reward_ledger is not None:
+            self._reward_ledger.stage_daily_economy_snapshot(
+                DailyEconomySnapshotRecord(
+                    anki_day=value.anki_day,
+                    garden_rhythm_percent=value.garden_rhythm_percent,
+                    active_garden_bonus_id=value.active_garden_bonus_id,
+                    active_scenery_effect_id=value.active_scenery_effect_id,
+                    snapshot_source=value.snapshot_source,
+                    snapshot_id=value.snapshot_id,
+                )
+            )
+        self.state.daily_economy_snapshot = value
+        return value
+
+    def eligible_study_days_before(
+        self,
+        anki_day: str,
+        *,
+        limit: int = 7,
+    ) -> tuple[str, ...]:
+        if self._reward_ledger is not None:
+            return self._reward_ledger.eligible_study_days_before(
+                anki_day, limit=limit
+            )
+        candidates: set[str] = set()
+        snapshot = self.state.daily_economy_snapshot
+        if snapshot is not None and snapshot.anki_day < anki_day:
+            candidates.add(snapshot.anki_day)
+        if self.state.daily_stats.reviewed > 0 and self.state.daily_stats.day < anki_day:
+            candidates.add(self.state.daily_stats.day)
+        return tuple(sorted(candidates, reverse=True)[:max(0, int(limit))])
+
+    def verified_today_cards_completion_days_before(
+        self,
+        anki_day: str,
+    ) -> frozenset[str]:
+        if self._reward_ledger is not None:
+            return self._reward_ledger.verified_today_cards_completion_days_before(
+                anki_day
+            )
+        result: set[str] = set()
+        if (
+            self.state.daily_completion.status == "complete"
+            and self.state.daily_completion.reward_claimed
+            and self.state.daily_completion.scheduler_day < anki_day
+        ):
+            result.add(self.state.daily_completion.scheduler_day)
+        for transaction in self.state.currency_transactions:
+            if transaction.event_key.startswith("all_due:"):
+                candidate = transaction.event_key.partition(":")[2]
+                try:
+                    parsed = date.fromisoformat(candidate).isoformat()
+                except ValueError:
+                    continue
+                if parsed < anki_day:
+                    result.add(parsed)
+        return frozenset(result)
 
     def answer_consumed(self, answer_key: str) -> bool:
         if self._reward_ledger is None:
@@ -2025,7 +3399,7 @@ class GardenStorage:
                     )
                 ))
                 self.state.garden_find_daily_counts[outcome.scheduler_day] = min(
-                    3, finds_today + 1
+                    STANDARD_FIND_MAXIMUM_DAILY_CAP, finds_today + 1
                 )
                 reward_counts = (
                     self.state.garden_find_reward_daily_counts.setdefault(
@@ -2033,7 +3407,7 @@ class GardenStorage:
                     )
                 )
                 reward_counts[outcome.reward_id] = min(
-                    3,
+                    STANDARD_FIND_MAXIMUM_DAILY_CAP,
                     max(0, int(reward_counts.get(outcome.reward_id, 0))) + 1,
                 )
             return
@@ -2140,10 +3514,6 @@ class GardenStorage:
                     )
                     return GardenState()
                 payload = deepcopy(raw)
-                _restore_timed_fertilizer_payload(
-                    payload,
-                    migrated_at=time.time(),
-                )
                 return _materialize_unlocked_species(GardenState.from_dict(payload))
         except StatePreservationError:
             raise
@@ -2177,6 +3547,7 @@ class GardenStorage:
         if self._reward_ledger is None:
             self._atomic_write_json(self.data_path, self.state.to_dict())
             return
+        self.refresh_lifetime_economy_aggregates()
         committed = self._reward_ledger.commit_state(
             self._bounded_state_payload(self.state),
             schema_version=STATE_VERSION,
@@ -2222,10 +3593,6 @@ class GardenStorage:
                     "That development backup uses an unsupported schema."
                 )
             payload = deepcopy(dict(snapshot.payload))
-            _restore_timed_fertilizer_payload(
-                payload,
-                migrated_at=time.time(),
-            )
             state = GardenState.from_dict(payload)
             state.pending_reanswer_lineages = reanswer_hints
             return state
@@ -2233,10 +3600,6 @@ class GardenStorage:
         if not isinstance(raw, dict) or int(raw.get("version", -1)) != STATE_VERSION:
             raise StatePreservationError("That development backup uses an unsupported schema.")
         payload = deepcopy(raw)
-        _restore_timed_fertilizer_payload(
-            payload,
-            migrated_at=time.time(),
-        )
         return GardenState.from_dict(payload)
 
     def restore_development_backup(self, path: Path) -> GardenState:
@@ -2282,20 +3645,8 @@ class GardenStorage:
                     "The restored database uses an unsupported schema."
                 )
             payload = deepcopy(dict(snapshot.payload))
-            restored_timed_fertilizer = _restore_timed_fertilizer_payload(
-                payload,
-                migrated_at=time.time(),
-            )
             restored = GardenState.from_dict(payload)
-            if restored_timed_fertilizer:
-                committed = self._reward_ledger.commit_state(
-                    self._bounded_state_payload(restored),
-                    schema_version=STATE_VERSION,
-                    expected_revision=snapshot.revision,
-                )
-                self._ledger_revision = committed.revision
-            else:
-                self._ledger_revision = snapshot.revision
+            self._ledger_revision = snapshot.revision
             self._refresh_reanswer_hint_cache(restored)
             self._refresh_recent_find_cache(restored)
             self.state = restored

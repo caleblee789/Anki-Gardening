@@ -376,7 +376,9 @@ def test_garden_space_cannot_be_purchased_before_free_starter_selection():
     ok, message = engine.purchase_next_bed()
 
     assert not ok
-    assert message == "Choose a starter before unlocking another garden bed."
+    assert message == (
+        "Garden beds are earned from plant progression and are no longer sold."
+    )
     assert storage.state.to_dict() == before
     assert storage.state.currency_transactions == []
     assert storage.save_count == save_count
@@ -502,7 +504,7 @@ def test_ready_species_purchase_is_atomic_and_incomplete_species_are_hidden():
     assert not engine.purchase_species("ivy")[0]
     ok, _message, rose = engine.purchase_species("rose")
     assert ok and rose is not None
-    assert storage.state.currency_balance == 400
+    assert storage.state.currency_balance == 250
     assert "rose" in storage.state.unlocked_species
 
     failing_state = GardenState(
