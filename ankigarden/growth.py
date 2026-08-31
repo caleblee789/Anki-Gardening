@@ -14,6 +14,7 @@ from .balance_catalog import (
     STAGES as BALANCE_STAGES,
     StageId,
 )
+from .economy_progression import ProjectGrowthAllocation
 
 # ``rare`` remains the durable runtime/artwork identifier for Full Bloom.
 # Every threshold and presentation name comes from the canonical catalog.
@@ -217,6 +218,9 @@ class GrowthGrantResult:
     active_target_id: str = ""
     auto_selected_target_id: str = ""
     landmark_units: int = 0
+    mastery_units: int = 0
+    legacy_units: int = 0
+    project_allocations: tuple[ProjectGrowthAllocation, ...] = ()
 
     @property
     def conserved(self) -> bool:
@@ -224,7 +228,17 @@ class GrowthGrantResult:
             max(0, int(self.applied_units))
             + max(0, int(self.stored_units))
             + max(0, int(self.landmark_units))
+            + max(0, int(self.mastery_units))
+            + max(0, int(self.legacy_units))
         )
+
+    @property
+    def project_units(self) -> int:
+        return sum((
+            max(0, int(self.landmark_units)),
+            max(0, int(self.mastery_units)),
+            max(0, int(self.legacy_units)),
+        ))
 
     @property
     def requested_growth(self) -> float:

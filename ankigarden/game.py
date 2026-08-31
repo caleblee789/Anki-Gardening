@@ -24,6 +24,8 @@ from .balance_catalog import (
     COSMETIC_BY_ID,
     DAILY_ACTIVITY_COINS as CATALOG_DAILY_ACTIVITY_COINS,
     EFFECT_DOSE_CAP as CATALOG_EFFECT_DOSE_CAP,
+    GARDEN_CYCLE_COINS as CATALOG_GARDEN_CYCLE_COINS,
+    GARDEN_CYCLE_COMPLETIONS as CATALOG_GARDEN_CYCLE_COMPLETIONS,
     SHARED_GROWTH_DENOMINATOR as CATALOG_SHARED_GROWTH_DENOMINATOR,
     SPECIES as BALANCE_SPECIES,
     STAGES as BALANCE_STAGES,
@@ -33,9 +35,21 @@ from .balance_catalog import (
 )
 from .economy_progression import (
     LANDMARK_BY_ID,
+    LANDMARK_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
     LANDMARK_GROWTH_COST_UNITS,
     LANDMARK_ORDER,
     MASTERY_RANK_BY_ID,
+    MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
+    MASTERY_GROWTH_COST_UNITS,
+    ContributionMode,
+    GrowthProjectAction,
+    GrowthProjectConfirmation,
+    GrowthProjectOutcome,
+    GrowthProjectQuote,
+    GrowthProjectRequest,
+    GrowthProjectsSnapshot,
+    GrowthTargetRef,
+    GrowthTargetType,
     LandmarkAction,
     LandmarkOutcome,
     LandmarkProjectSnapshot,
@@ -46,14 +60,18 @@ from .economy_progression import (
     MasteryRequest,
     MasterySnapshot,
     ProgressionDisposition,
+    build_growth_projects_snapshot,
+    growth_project_outcome_from_dict,
     landmark_snapshot,
     mastery_snapshot,
     next_landmark_id,
     next_mastery_rank_id,
     project_landmark_request,
     project_mastery_request,
+    project_growth_project_request,
     quote_landmark_request,
     quote_mastery_request,
+    quote_growth_project_request,
 )
 from .environment import (
     DEFAULT_GARDEN_FEATURE_ID,
@@ -105,6 +123,7 @@ from .growth import (
     GROWTH_UNITS_PER_POINT,
     GrowthAllocation,
     GrowthGrantResult,
+    ProjectGrowthAllocation,
     GrowthChargeOutcome,
     GrowthChargeQuote,
     GrowthChargeRequest,
@@ -128,8 +147,11 @@ from .models.state import (
     Fertilizer,
     Booster,
     GardenState,
+    GARDEN_LEGACY_LEVEL_COST_UNITS,
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
+    LANDMARK_MAX_GROWTH_UNITS,
+    MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
     CURRENT_CATALOG_SPECIES_ORDER,
     MAX_COMPLETED_PURCHASE_REQUESTS,
     MAX_COMPLETED_GROWTH_CHARGE_REQUESTS,
@@ -160,13 +182,18 @@ from .models.sync_reward import SyncRewardSummary
 from .purchases import (
     CompletedPurchaseRequest,
     EffectDescriptor,
+    FertilizerStoredItemDisposition,
+    FertilizerStoredItemProjection,
     PurchaseDisposition,
     PurchaseKind,
     PurchaseOutcome,
+    PurchaseProjection,
     PurchaseQuote,
     PurchaseRequest,
     PurchaseStatus,
+    purchase_projection as build_purchase_projection,
     purchase_presentation,
+    fertilizer_stored_item_projection as build_fertilizer_stored_item_projection,
 )
 from .storage import DueObligationStatus, RevlogReadError, SchedulerBoundaryError
 
@@ -233,6 +260,10 @@ class StageTransition:
             "new_stage": self.new_stage,
             "plant_name": self.plant_name,
             "source": self.source,
+            # Renderer-neutral compatibility names.  Reviewer surfaces may
+            # consume either spelling, but the engine remains the authority.
+            "transition_source": self.source,
+            "stage_transition_source": self.source,
         }
 
 
@@ -264,8 +295,13 @@ class BoosterResult:
 class CompletionResult:
     base_coins: int = 0
     harvest_bell_coins: int = 0
+    garden_cycle_coins: int = 0
+    garden_cycle_remainder: int = 0
     prism_growth_released_units: int = 0
     prism_growth_destination: str = ""
+    prism_growth_destination_kind: str = ""
+    prism_growth_destination_id: str = ""
+    prism_project_allocations: tuple[ProjectGrowthAllocation, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -295,6 +331,11 @@ class ReviewAward:
     shared_growth_units: int = field(default=0, compare=False)
     stored_growth_units: int = field(default=0, compare=False)
     landmark_growth_units: int = field(default=0, compare=False)
+    mastery_growth_units: int = field(default=0, compare=False)
+    legacy_growth_units: int = field(default=0, compare=False)
+    project_allocations: tuple[ProjectGrowthAllocation, ...] = field(
+        default=(), compare=False
+    )
     decoration_result: DecorationResult = field(
         default_factory=DecorationResult,
         compare=False,
@@ -374,6 +415,11 @@ class CommittedAnswerResult:
     stored_growth_after_units: int = 0
     landmark_growth_before_units: int = 0
     landmark_growth_after_units: int = 0
+    mastery_growth_before_units: int = 0
+    mastery_growth_after_units: int = 0
+    legacy_growth_before_units: int = 0
+    legacy_growth_after_units: int = 0
+    project_allocations: tuple[ProjectGrowthAllocation, ...] = ()
     active_plant_before_id: str = ""
     active_plant_after_id: str = ""
 
@@ -392,11 +438,49 @@ class CommittedAnswerResult:
         )
 
     @property
+    def mastery_growth_delta_units(self) -> int:
+        return (
+            int(self.mastery_growth_after_units)
+            - int(self.mastery_growth_before_units)
+        )
+
+    @property
+    def legacy_growth_delta_units(self) -> int:
+        return (
+            int(self.legacy_growth_after_units)
+            - int(self.legacy_growth_before_units)
+        )
+
+    @property
     def daily_completion_rewarded(self) -> bool:
         return any(
-            receipt.source == "all_due"
+            receipt.source in {"all_due", "todays_cards"}
             for receipt in self.reward_receipts
         )
+
+
+def _project_allocation_metric_deltas(
+    allocations: Iterable[ProjectGrowthAllocation],
+    *,
+    existing: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Serialize exact per-target project credits into the economy event."""
+
+    result = dict(existing or {})
+    project_allocations: dict[str, int] = {}
+    for allocation in allocations:
+        units = max(0, int(allocation.units))
+        if not units:
+            continue
+        target_key = (
+            f"{allocation.target_type.value}:{allocation.target_id}"
+        )
+        project_allocations[target_key] = (
+            project_allocations.get(target_key, 0) + units
+        )
+    if project_allocations:
+        result["project_allocations"] = project_allocations
+    return result
 
 
 @dataclass(frozen=True)
@@ -465,10 +549,11 @@ class GardenGameEngine:
     EFFECT_DOSE_CAP = CATALOG_EFFECT_DOSE_CAP
     ALL_DUE_BASE_COINS = CATALOG_ALL_DUE_BASE_COINS
     DAILY_ACTIVITY_COINS = CATALOG_DAILY_ACTIVITY_COINS
+    GARDEN_CYCLE_COINS = CATALOG_GARDEN_CYCLE_COINS
+    GARDEN_CYCLE_COMPLETIONS = CATALOG_GARDEN_CYCLE_COMPLETIONS
     WEEKLY_STREAK_COINS = CATALOG_WEEKLY_STREAK_COINS
     CLOUDY_ALL_DUE_BONUS_COINS = 5
     RAINBOW_ALL_DUE_GROWTH = 100
-    BED_PRICES = {2: 150, 3: 300, 4: 500, 5: 800}
     DIRECT_SOIL_SLOTS = frozenset(range(MAX_GARDEN_SLOTS))
     V6_SLOT_CENTERS = (
         (0.393, 0.45172), (0.611, 0.45172), (0.320, 0.60868),
@@ -530,6 +615,9 @@ class GardenGameEngine:
         self._session_garden_feature_id: str | None = None
         self.last_booster_result = BoosterResult()
         self.last_completion_result = CompletionResult()
+        self.last_fertilizer_stored_item_result: (
+            FertilizerStoredItemProjection | None
+        ) = None
         try:
             manifest_payload = json.loads(
                 (self.storage.addon_dir / "manifest.json").read_text(
@@ -969,11 +1057,23 @@ class GardenGameEngine:
             return bool(resolver(str(event_key)))
         return str(event_key) in self.state.applied_reward_event_keys
 
-    def _append_reward_event_key(self, event_key: str) -> None:
+    def _append_reward_event_key(
+        self,
+        event_key: str,
+        *,
+        source: str = "",
+        scheduler_day: str = "",
+        occurred_at: str = "",
+    ) -> None:
         key = str(event_key)
         stager = getattr(self.storage, "stage_reward_event", None)
         if callable(stager):
-            stager(key)
+            stager(
+                key,
+                source=str(source),
+                scheduler_day=str(scheduler_day),
+                occurred_at=str(occurred_at),
+            )
             return
         if key and key not in self.state.applied_reward_event_keys:
             self.state.applied_reward_event_keys.append(key)
@@ -1012,6 +1112,13 @@ class GardenGameEngine:
             self.state.recent_reward_receipts,
             limit=MAX_REWARD_RECEIPTS,
         )
+        receipt_capture = getattr(
+            self,
+            "_active_reward_receipt_capture",
+            None,
+        )
+        if isinstance(receipt_capture, list):
+            receipt_capture.append(receipt)
         return receipt
 
     def _stage_economy_event(self, record: EconomyEventRecord) -> None:
@@ -1058,6 +1165,7 @@ class GardenGameEngine:
                 item_grants.get(str(inventory_item_id), 0) + inventory_amount
             )
         receipts: list[RewardReceipt] = []
+        growth_flow_result: GrowthGrantResult | None = None
 
         if coin_amount:
             self.state.currency_balance += coin_amount
@@ -1089,11 +1197,14 @@ class GardenGameEngine:
             ))
 
         if growth:
-            actual_growth = self._apply_direct_growth(
+            growth_flow_result = self._apply_direct_growth_units(
                 plant,
-                max(0, int(growth)),
+                max(0, int(growth)) * GROWTH_UNITS_PER_POINT,
                 stats_field="direct_reward_growth",
                 transition_source=str(source),
+            )
+            actual_growth = (
+                growth_flow_result.requested_units // GROWTH_UNITS_PER_POINT
             )
             if actual_growth:
                 receipts.append(self._append_reward_receipt(
@@ -1129,30 +1240,78 @@ class GardenGameEngine:
             ))
 
         metric_deltas: dict[str, Any] = {}
-        if source == "garden_find":
+        if source in {"garden_find", "standard_find"}:
             metric_deltas["finds_by_outcome"] = {str(source_id): 1}
         if source == "full_bloom":
             metric_deltas["plants_completed"] = 1
-        if source == "all_due":
+        if source in {"all_due", "todays_cards"}:
             metric_deltas["today_cards_completions"] = 1
         if item_grants:
             metric_deltas["consumables_earned"] = dict(item_grants)
         growth_units = max(0, int(growth)) * GROWTH_UNITS_PER_POINT
         if coin_amount or growth_units or item_grants or metric_deltas:
+            if growth_flow_result is not None:
+                aggregates = self.state.lifetime_economy_aggregates
+                aggregates.growth_generated_units += growth_flow_result.requested_units
+                aggregates.growth_applied_to_plants_units += (
+                    growth_flow_result.applied_units
+                )
             self._stage_economy_event(EconomyEventRecord(
                 event_key=key,
                 event_kind="reward",
-                source_id=str(source_id or source),
+                # Economy aggregation groups by the canonical ledger source;
+                # the receipt retains the source-specific target/day identity.
+                source_id=str(source),
                 scheduler_day=day_value,
                 occurred_at=occurred_at,
                 coins_earned=coin_amount,
                 growth_earned_units=growth_units,
+                growth_flow_kind=("generated" if growth_flow_result else ""),
+                growth_generated_units=(
+                    growth_flow_result.requested_units
+                    if growth_flow_result else 0
+                ),
+                growth_applied_to_plants_units=(
+                    growth_flow_result.applied_units
+                    if growth_flow_result else 0
+                ),
+                growth_routed_to_storage_units_lifetime=(
+                    growth_flow_result.stored_units
+                    if growth_flow_result else 0
+                ),
+                stored_growth_balance_delta_units=(
+                    growth_flow_result.stored_units
+                    if growth_flow_result else 0
+                ),
+                growth_contributed_to_landmarks_units=(
+                    growth_flow_result.landmark_units
+                    if growth_flow_result else 0
+                ),
+                growth_contributed_to_mastery_units=(
+                    growth_flow_result.mastery_units
+                    if growth_flow_result else 0
+                ),
+                growth_contributed_to_legacy_units=(
+                    growth_flow_result.legacy_units
+                    if growth_flow_result else 0
+                ),
                 item_id=(next(iter(item_grants)) if len(item_grants) == 1 else ""),
                 quantity=sum(item_grants.values()),
-                metric_deltas=metric_deltas,
+                metric_deltas=_project_allocation_metric_deltas(
+                    (
+                        growth_flow_result.project_allocations
+                        if growth_flow_result is not None else ()
+                    ),
+                    existing=metric_deltas,
+                ),
             ))
 
-        self._append_reward_event_key(key)
+        self._append_reward_event_key(
+            key,
+            source=str(source),
+            scheduler_day=day_value,
+            occurred_at=occurred_at,
+        )
         return tuple(receipts)
 
     def rollover_if_needed(self, *, persist: bool = True) -> None:
@@ -1801,19 +1960,25 @@ class GardenGameEngine:
         else:
             rhythm = self._garden_rhythm_percent_for_day(day_value)
             legacy_lock = self.state.daily_loadout
-            has_matching_legacy_lock = bool(
+            has_matching_bonus_lock = bool(
+                legacy_lock.garden_bonus_anki_day_id == day_value
+                and int(legacy_lock.garden_bonus_locked_at_ms) > 0
+                and int(legacy_lock.garden_bonus_locked_at_ms)
+                <= max(1, int(event_ms))
+            )
+            has_matching_scenery_lock = bool(
                 legacy_lock.scheduler_day == day_value
                 and int(legacy_lock.locked_at_ms) > 0
                 and int(legacy_lock.locked_at_ms) <= max(1, int(event_ms))
             )
             garden_bonus = canonical_garden_feature_id(
                 legacy_lock.garden_feature_id
-                if has_matching_legacy_lock
+                if has_matching_bonus_lock
                 else self.state.loadout.active_garden_bonus_id
             ) or DEFAULT_GARDEN_FEATURE_ID
             scenery_effect = str(
                 legacy_lock.scenery_id
-                if has_matching_legacy_lock
+                if has_matching_scenery_lock
                 else self.state.loadout.active_scenery_effect_id
                 or DEFAULT_SCENERY_ID
             )
@@ -1847,14 +2012,18 @@ class GardenGameEngine:
         # Preserve the legacy daily-loadout projection for compatibility UI;
         # the immutable snapshot remains the economic authority.
         schedule = self.state.daily_loadout
+        lock_time = max(1, int(event_ms))
+        if not (
+            schedule.garden_bonus_anki_day_id == day_value
+            and int(schedule.garden_bonus_locked_at_ms) > 0
+        ):
+            schedule.garden_bonus_anki_day_id = day_value
+            schedule.garden_bonus_locked_at_ms = lock_time
+            schedule.garden_feature_id = garden_bonus
         if not (
             schedule.scheduler_day == day_value
             and int(schedule.locked_at_ms) > 0
         ):
-            lock_time = max(1, int(event_ms))
-            schedule.garden_bonus_anki_day_id = day_value
-            schedule.garden_bonus_locked_at_ms = lock_time
-            schedule.garden_feature_id = garden_bonus
             schedule.scheduler_day = day_value
             schedule.locked_at_ms = lock_time
             schedule.scenery_id = scenery_effect
@@ -2654,7 +2823,17 @@ class GardenGameEngine:
         self.rollover_if_needed(persist=False)
         try:
             award = self._register_review_in_memory(review_payload)
-            self._persist_or_restore(snapshot)
+            has_staged_writes = getattr(
+                self.storage, "reward_ledger_has_staged_writes", None
+            )
+            if (
+                self.state.to_dict() != snapshot
+                or (
+                    callable(has_staged_writes)
+                    and bool(has_staged_writes())
+                )
+            ):
+                self._persist_or_restore(snapshot)
             return award
         except Exception:
             self._pending_stage_transitions = transition_snapshot
@@ -2912,7 +3091,8 @@ class GardenGameEngine:
         correlation_id = str(
             source.get("correlation_id") or f"answer:{answer_key}"
         )
-        existing_receipts = tuple(self.state.recent_reward_receipts)
+        receipt_capture: list[RewardReceipt] = []
+        self._active_reward_receipt_capture = receipt_capture
         unlocked_before = {
             achievement_id
             for achievement_id, achievement in self.state.achievements.items()
@@ -3004,7 +3184,7 @@ class GardenGameEngine:
             )
             self._grant_reward_bundle(
                 daily_activity_event_key,
-                source="daily_activity",
+                source="first_eligible_answer",
                 source_id=scheduler_day,
                 reason="First card of the Anki day",
                 scheduler_day=scheduler_day,
@@ -3080,11 +3260,8 @@ class GardenGameEngine:
         self._update_achievements(correlation_id=correlation_id)
         if not historical_sync:
             self._acknowledge_current_revlog(revlog_id)
-        new_receipts = tuple(
-            receipt
-            for receipt in self.state.recent_reward_receipts
-            if receipt not in existing_receipts
-        )
+        new_receipts = tuple(receipt_capture)
+        self._active_reward_receipt_capture = None
         new_achievement_ids = tuple(
             achievement_id
             for achievement_id, achievement in self.state.achievements.items()
@@ -3103,14 +3280,25 @@ class GardenGameEngine:
         garden_find_ids = tuple(dict.fromkeys(
             receipt.source_id
             for receipt in new_receipts
-            if receipt.source in {"garden_find", "garden_find_environment"}
+            if receipt.source in {
+                "garden_find",
+                "standard_find",
+                "garden_find_environment",
+            }
         ))
         produced_units = sum((
             max(0, int(award.applied_growth_units)),
             max(0, int(award.stored_growth_units)),
             max(0, int(award.landmark_growth_units)),
+            max(0, int(award.mastery_growth_units)),
+            max(0, int(award.legacy_growth_units)),
         ))
         if produced_units:
+            aggregates = self.state.lifetime_economy_aggregates
+            aggregates.growth_generated_units += produced_units
+            aggregates.growth_applied_to_plants_units += max(
+                0, int(award.applied_growth_units)
+            )
             self._stage_economy_event(EconomyEventRecord(
                 event_key=f"answer-growth:{answer_key}",
                 event_kind="answer_growth",
@@ -3118,6 +3306,29 @@ class GardenGameEngine:
                 scheduler_day=scheduler_day,
                 occurred_at=utc_now_iso(),
                 growth_earned_units=produced_units,
+                growth_flow_kind="generated",
+                growth_generated_units=produced_units,
+                growth_applied_to_plants_units=max(
+                    0, int(award.applied_growth_units)
+                ),
+                growth_routed_to_storage_units_lifetime=max(
+                    0, int(award.stored_growth_units)
+                ),
+                stored_growth_balance_delta_units=max(
+                    0, int(award.stored_growth_units)
+                ),
+                growth_contributed_to_landmarks_units=max(
+                    0, int(award.landmark_growth_units)
+                ),
+                growth_contributed_to_mastery_units=max(
+                    0, int(award.mastery_growth_units)
+                ),
+                growth_contributed_to_legacy_units=max(
+                    0, int(award.legacy_growth_units)
+                ),
+                metric_deltas=_project_allocation_metric_deltas(
+                    award.project_allocations
+                ),
             ))
         return replace(
             award,
@@ -3196,7 +3407,7 @@ class GardenGameEngine:
         event_key = f"achievement:{definition.achievement_id}"
         self._grant_reward_bundle(
             event_key,
-            source="achievement_backfill" if historical else "achievement",
+            source="achievement",
             source_id=definition.achievement_id,
             reason=f"Achievement: {definition.name}",
             scheduler_day=completion_day,
@@ -3258,7 +3469,7 @@ class GardenGameEngine:
         if allow_recurring_reward and days > 0 and days % 7 == 0:
             self._grant_reward_bundle(
                 f"weekly_streak:{scheduler_day}",
-                source="weekly_streak",
+                source="seven_day_streak_cycle",
                 source_id=f"day_{days}",
                 reason=f"Day {days} seven-day streak cycle",
                 scheduler_day=scheduler_day,
@@ -3678,7 +3889,7 @@ class GardenGameEngine:
         deterministic bed order, rather than pooling and redistributing it.
         """
 
-        if target is None or target.fully_grown or not target.planted:
+        if target is None or not target.planted:
             return ()
         planted = sorted(
             (candidate for candidate in self.state.plants if candidate.planted),
@@ -3697,15 +3908,63 @@ class GardenGameEngine:
             return ()
         return tuple((candidate, share_units) for candidate in other_plants)
 
+    def _shared_growth_anchor(self, target: Plant | None) -> Plant | None:
+        """Return the deterministic bed that defines independent Shared lanes.
+
+        Normally the nurtured plant is the anchor. Once every planted bed is
+        Full Bloom there is deliberately no unfinished active plant, but the
+        occupied beds must keep producing their frozen Shared-lane value for
+        long-term projects and Stored Growth. An intentionally deselected
+        garden with an unfinished plant does not receive those extra lanes.
+        """
+
+        if target is not None and target.planted:
+            return target
+        planted = sorted(
+            (candidate for candidate in self.state.plants if candidate.planted),
+            key=lambda candidate: (
+                int(candidate.slot_index or 0),
+                candidate.plant_id,
+            ),
+        )
+        if planted and all(candidate.fully_grown for candidate in planted):
+            return planted[0]
+        return None
+
     def _landmark_unlocked(self) -> bool:
         return any(plant.fully_grown for plant in self.state.plants)
 
     def _landmark_snapshot(self) -> LandmarkProjectSnapshot:
         project = self.state.garden_project
+        claimed = max(0, min(
+            len(LANDMARK_ORDER), int(project.landmark_highest_claimed_tier)
+        ))
+        next_id = LANDMARK_ORDER[claimed] if claimed < len(LANDMARK_ORDER) else ""
+        previous_floor = (
+            LANDMARK_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                LANDMARK_ORDER[claimed - 1]
+            ]
+            if claimed else 0
+        )
+        next_threshold = (
+            LANDMARK_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[next_id]
+            if next_id else previous_floor
+        )
+        contribution = min(
+            max(0, next_threshold - previous_floor),
+            max(0, int(project.landmark_growth_units_funded) - previous_floor),
+        )
+        selected = str(project.selected_project_id or "")
+        if not selected and next_id and contribution:
+            # Schema-26 callers can finish an already funded cumulative tier
+            # without re-contributing or discarding prefunded later tiers.
+            selected = next_id
         return landmark_snapshot(
-            selected_landmark_id=project.selected_project_id,
-            contributed_growth_units=project.contributed_growth_units,
-            ready_to_complete=project.ready_to_complete,
+            selected_landmark_id=selected,
+            contributed_growth_units=(contribution if selected else 0),
+            ready_to_complete=bool(
+                selected and contribution == next_threshold - previous_floor
+            ),
             completed_landmark_ids=project.completed_project_ids,
             displayed_landmark_id=project.displayed_project_id,
         )
@@ -3715,11 +3974,30 @@ class GardenGameEngine:
         snapshot: LandmarkProjectSnapshot,
     ) -> None:
         project = self.state.garden_project
+        existing_funded = max(
+            0, int(project.landmark_growth_units_funded)
+        )
         project.selected_project_id = snapshot.selected_landmark_id
         project.contributed_growth_units = snapshot.contributed_growth_units
         project.ready_to_complete = snapshot.ready_to_complete
         project.completed_project_ids = list(snapshot.completed_landmark_ids)
         project.displayed_project_id = snapshot.displayed_landmark_id
+        claimed = len(snapshot.completed_landmark_ids)
+        claimed_floor = (
+            sum(
+                LANDMARK_GROWTH_COST_UNITS[item_id]
+                for item_id in LANDMARK_ORDER[:claimed]
+            )
+        )
+        project.landmark_highest_claimed_tier = claimed
+        project.landmark_growth_units_funded = min(
+            LANDMARK_MAX_GROWTH_UNITS,
+            max(
+                existing_funded,
+                claimed_floor + max(0, int(snapshot.contributed_growth_units)),
+            ),
+        )
+        project.displayed_landmark_tier_id = snapshot.displayed_landmark_id
 
     def _mastery_snapshot(self) -> MasterySnapshot:
         return mastery_snapshot(
@@ -3727,52 +4005,436 @@ class GardenGameEngine:
         )
 
     def _apply_mastery_snapshot(self, snapshot: MasterySnapshot) -> None:
-        self.state.cultivation_mastery.highest_rank_by_species = dict(
-            snapshot.highest_rank_by_species
+        claimed = dict(snapshot.highest_rank_by_species)
+        mastery = self.state.cultivation_mastery
+        mastery.highest_claimed_rank_by_species = claimed
+        mastery.highest_rank_by_species = mastery.highest_claimed_rank_by_species
+        for species_id, rank_id in claimed.items():
+            rank_index = tuple(MASTERY_RANK_BY_ID).index(rank_id)
+            floor = sum(
+                MASTERY_GROWTH_COST_UNITS[item_id]
+                for item_id in tuple(MASTERY_RANK_BY_ID)[:rank_index + 1]
+            )
+            mastery.growth_units_funded_by_species[species_id] = max(
+                floor,
+                max(0, int(
+                    mastery.growth_units_funded_by_species.get(species_id, 0)
+                )),
+            )
+
+    def growth_projects_snapshot(self) -> GrowthProjectsSnapshot:
+        """Return the single renderer-neutral long-term-project projection."""
+
+        active_target: GrowthTargetRef | None = None
+        target_type = str(self.state.active_growth_target_type or "")
+        target_id = str(self.state.active_growth_target_id or "")
+        if target_type and target_id:
+            try:
+                active_target = GrowthTargetRef(
+                    GrowthTargetType(target_type), target_id
+                )
+            except (TypeError, ValueError):
+                active_target = None
+        full_bloom_species = tuple(dict.fromkeys(
+            plant.species
+            for plant in self.state.plants
+            if plant.fully_grown
+            and plant.species in CURRENT_CATALOG_SPECIES_ORDER
+        ))
+        return build_growth_projects_snapshot(
+            state_revision=max(
+                0, int(getattr(self.storage, "_ledger_revision", 0) or 0)
+            ),
+            stored_balance_units=self.state.stored_growth_balance_units,
+            wallet_balance_coins=max(0, int(self.state.currency_balance)),
+            full_bloom_species=full_bloom_species,
+            active_target=active_target,
+            active_target_activation_identity=str(
+                self.state.active_growth_target_activation_identity or ""
+            ),
+            landmark_growth_units_funded=max(
+                0, int(self.state.garden_project.landmark_growth_units_funded)
+            ),
+            landmark_highest_claimed_tier=max(
+                0, int(self.state.garden_project.landmark_highest_claimed_tier)
+            ),
+            mastery_growth_units_funded_by_species=dict(
+                self.state.cultivation_mastery.growth_units_funded_by_species
+            ),
+            mastery_highest_claimed_rank_by_species=dict(
+                self.state.cultivation_mastery.highest_claimed_rank_by_species
+            ),
+            garden_legacy_level=max(0, int(self.state.garden_legacy_level)),
+            garden_legacy_progress_units=max(
+                0, int(self.state.garden_legacy_progress_units)
+            ),
         )
 
-    def _auto_contribute_landmark_overflow(
+    def _apply_growth_projects_snapshot(
+        self,
+        snapshot: GrowthProjectsSnapshot,
+    ) -> None:
+        active = snapshot.active_target
+        self.state.active_growth_target_type = (
+            active.target_type.value if active is not None else ""
+        )
+        self.state.active_growth_target_id = (
+            active.target_id if active is not None else ""
+        )
+        self.state.active_growth_target_activation_identity = (
+            snapshot.active_target_activation_identity if active is not None else ""
+        )
+        self.state.stored_growth_balance_units = snapshot.stored_balance_units
+        self.state.currency_balance = snapshot.wallet_balance_coins
+        project = self.state.garden_project
+        project.landmark_growth_units_funded = (
+            snapshot.landmark_track.growth_units_funded
+        )
+        project.landmark_highest_claimed_tier = sum(
+            1 for row in snapshot.landmark_track.tiers if row.claimed
+        )
+        project.completed_project_ids = list(
+            LANDMARK_ORDER[:project.landmark_highest_claimed_tier]
+        )
+        if (
+            active is not None
+            and active.target_type is GrowthTargetType.LANDMARK
+            and project.landmark_highest_claimed_tier < len(LANDMARK_ORDER)
+        ):
+            project.selected_project_id = LANDMARK_ORDER[
+                project.landmark_highest_claimed_tier
+            ]
+        else:
+            project.selected_project_id = ""
+        if project.landmark_highest_claimed_tier:
+            previous_floor = snapshot.landmark_track.tiers[
+                project.landmark_highest_claimed_tier - 1
+            ].cumulative_growth_threshold_units
+        else:
+            previous_floor = 0
+        if project.landmark_highest_claimed_tier < len(LANDMARK_ORDER):
+            next_row = snapshot.landmark_track.tiers[
+                project.landmark_highest_claimed_tier
+            ]
+            project.contributed_growth_units = min(
+                max(0, snapshot.landmark_track.growth_units_funded - previous_floor),
+                max(0, next_row.cumulative_growth_threshold_units - previous_floor),
+            )
+            project.ready_to_complete = next_row.funded
+        else:
+            project.contributed_growth_units = 0
+            project.ready_to_complete = False
+        project.displayed_project_id = project.displayed_landmark_tier_id
+        project.auto_contribute = False
+
+        mastery_funding = {
+            species_id: track.growth_units_funded
+            for species_id, track in snapshot.mastery_tracks_by_species
+        }
+        mastery_claims = {
+            species_id: track.highest_claimed_id
+            for species_id, track in snapshot.mastery_tracks_by_species
+            if track.highest_claimed_id
+        }
+        self.state.cultivation_mastery.growth_units_funded_by_species = (
+            mastery_funding
+        )
+        self.state.cultivation_mastery.highest_claimed_rank_by_species = (
+            mastery_claims
+        )
+        self.state.cultivation_mastery.highest_rank_by_species = (
+            self.state.cultivation_mastery.highest_claimed_rank_by_species
+        )
+        self.state.garden_legacy_level = snapshot.legacy_track.level
+        self.state.garden_legacy_progress_units = (
+            snapshot.legacy_track.level_progress_units
+        )
+
+    def quote_growth_project(
+        self,
+        request: GrowthProjectRequest,
+    ) -> GrowthProjectQuote:
+        return quote_growth_project_request(self.growth_projects_snapshot(), request)
+
+    def confirm_growth_project(
+        self,
+        request: GrowthProjectRequest,
+        confirmation: GrowthProjectConfirmation,
+    ) -> GrowthProjectOutcome:
+        """Freshly revalidate and atomically commit one project operation."""
+
+        if not isinstance(request, GrowthProjectRequest):
+            raise TypeError("request must be a GrowthProjectRequest")
+        if not isinstance(confirmation, GrowthProjectConfirmation):
+            raise TypeError("confirmation must be a GrowthProjectConfirmation")
+        if (
+            confirmation.request_id != request.request_id
+            or confirmation.request_fingerprint != request.fingerprint
+        ):
+            raise ValueError("Growth project confirmation does not match request")
+        lookup = getattr(self.storage, "idempotency_record", None)
+        existing = (
+            lookup("growth_project", request.request_id)
+            if callable(lookup) else None
+        )
+        if existing is not None:
+            if existing.request_fingerprint != request.fingerprint:
+                raise ValueError("That Growth project request ID was already used.")
+            # Replay the exact durable outcome.  Returning a reconstructed
+            # no-op would make retry behavior depend on today's mutable state.
+            return growth_project_outcome_from_dict(existing.outcome)
+        fresh = self.growth_projects_snapshot()
+        quote = quote_growth_project_request(fresh, request)
+        if quote.quote_fingerprint != confirmation.quote_fingerprint:
+            return GrowthProjectOutcome(
+                request.request_id,
+                request.fingerprint,
+                quote.quote_fingerprint,
+                ProgressionDisposition.NO_CHANGE,
+                False,
+                0,
+                0,
+                None,
+                fresh,
+                "The Garden changed. Refresh this quote before continuing.",
+                ledger_identity=f"growth-project:{request.request_id}",
+                state_revision_before=fresh.state_revision,
+                state_revision_after=fresh.state_revision,
+                catalog_digest=quote.catalog_digest,
+            )
+        outcome = project_growth_project_request(fresh, request)
+        if not outcome.applied:
+            return outcome
+        state_before = self._state_snapshot()
+        occurred_at = utc_now_iso()
+        try:
+            if outcome.coins_spent:
+                if not self._debit_currency(
+                    f"growth-project:{request.request_id}",
+                    "Long-term garden project",
+                    outcome.coins_spent,
+                ):
+                    raise RuntimeError("Garden Coin balance changed during claim")
+            self._apply_growth_projects_snapshot(outcome.snapshot)
+            allocation = outcome.allocation
+            if allocation is not None:
+                aggregates = self.state.lifetime_economy_aggregates
+                if allocation.target_type is GrowthTargetType.LANDMARK:
+                    aggregates.growth_contributed_to_landmarks_units += allocation.units
+                elif allocation.target_type is GrowthTargetType.MASTERY:
+                    aggregates.growth_contributed_to_mastery_units += allocation.units
+                else:
+                    aggregates.growth_contributed_to_legacy_units += allocation.units
+            stager = getattr(self.storage, "stage_idempotency_record", None)
+            if callable(stager):
+                stager(IdempotencyRecord(
+                    operation_kind="growth_project",
+                    operation_id=request.request_id,
+                    request_fingerprint=request.fingerprint,
+                    outcome=outcome.to_dict(),
+                    occurred_at=occurred_at,
+                    scheduler_day=self.state.daily_stats.day,
+                ))
+            project_target = request.target.target_type
+            self._stage_economy_event(EconomyEventRecord(
+                event_key=f"growth-project:{request.request_id}",
+                event_kind=f"growth_project_{request.action.value}",
+                sink_id=request.target.target_id,
+                scheduler_day=self.state.daily_stats.day,
+                occurred_at=occurred_at,
+                coins_spent=outcome.coins_spent,
+                growth_flow_kind=(
+                    "manual_contribution"
+                    if allocation is not None
+                    else "claim"
+                    if request.action is GrowthProjectAction.CLAIM
+                    else ""
+                ),
+                stored_growth_balance_delta_units=(
+                    outcome.stored_balance_delta_units
+                ),
+                growth_contributed_to_landmarks_units=(
+                    allocation.units
+                    if allocation is not None
+                    and project_target is GrowthTargetType.LANDMARK else 0
+                ),
+                growth_contributed_to_mastery_units=(
+                    allocation.units
+                    if allocation is not None
+                    and project_target is GrowthTargetType.MASTERY else 0
+                ),
+                growth_contributed_to_legacy_units=(
+                    allocation.units
+                    if allocation is not None
+                    and project_target is GrowthTargetType.LEGACY else 0
+                ),
+                growth_spent_on_landmarks=(
+                    allocation.units
+                    if allocation is not None
+                    and project_target is GrowthTargetType.LANDMARK else 0
+                ),
+                growth_spent_on_mastery=(
+                    allocation.units
+                    if allocation is not None
+                    and project_target is GrowthTargetType.MASTERY else 0
+                ),
+                item_id=(
+                    request.claim_id
+                    if request.action is GrowthProjectAction.CLAIM else ""
+                ),
+                quantity=(
+                    1 if request.action is GrowthProjectAction.CLAIM else 0
+                ),
+                metric_deltas=_project_allocation_metric_deltas(
+                    (allocation,) if allocation is not None else ()
+                ),
+            ))
+            self._persist_or_restore(state_before)
+            return outcome
+        except Exception:
+            self._restore_state(state_before)
+            raise
+
+    def _garden_legacy_unlocked(self) -> bool:
+        mastery = self.state.cultivation_mastery.growth_units_funded_by_species
+        return (
+            max(0, int(self.state.garden_project.landmark_growth_units_funded))
+            >= LANDMARK_MAX_GROWTH_UNITS
+            and all(
+                max(0, int(mastery.get(species_id, 0)))
+                >= MASTERY_MAX_GROWTH_UNITS_PER_SPECIES
+                for species_id in CURRENT_CATALOG_SPECIES_ORDER
+            )
+        )
+
+    def _credit_active_growth_target(
         self,
         units: int,
-        *,
-        event_ms: int,
-        transition_source: str,
-    ) -> int:
-        """Route overflow to an explicitly selected auto project, never Coins."""
+    ) -> tuple[int, tuple[ProjectGrowthAllocation, ...]]:
+        """Credit only final overflow to the acknowledged active project."""
 
         available = max(0, int(units))
-        project = self.state.garden_project
-        project_id = str(project.selected_project_id or "")
-        if (
-            available <= 0
-            or not self._landmark_unlocked()
-            or not project.auto_contribute
-            or project_id not in LANDMARK_GROWTH_COST_UNITS
-            or project.ready_to_complete
-        ):
-            return 0
-        before = max(0, int(project.contributed_growth_units))
-        cost = LANDMARK_GROWTH_COST_UNITS[project_id]
-        contribution = min(available, max(0, cost - before))
-        if contribution <= 0:
-            return 0
-        project.contributed_growth_units = before + contribution
-        project.ready_to_complete = project.contributed_growth_units == cost
-        event_key = (
-            f"landmark-auto:{project_id}:{max(0, int(event_ms))}:"
-            f"{before}:{transition_source}"
+        target_type = str(
+            getattr(self.state, "active_growth_target_type", "") or ""
         )
-        stager = getattr(self.storage, "stage_economy_event", None)
-        if callable(stager):
-            stager(EconomyEventRecord(
-                event_key=event_key,
-                event_kind="landmark_auto_contribution",
-                sink_id=project_id,
-                scheduler_day=self.state.daily_stats.day,
-                occurred_at=utc_now_iso(),
-                growth_spent_on_landmarks=contribution,
-            ))
-        return contribution
+        target_id = str(
+            getattr(self.state, "active_growth_target_id", "") or ""
+        )
+        if available <= 0 or not target_type or not target_id:
+            return 0, ()
+        aggregates = self.state.lifetime_economy_aggregates
+        contribution = 0
+        canonical_target_id = target_id
+        if target_type == "landmark" and target_id in {
+            "garden_landmark", *LANDMARK_ORDER
+        } and self._landmark_unlocked():
+            project = self.state.garden_project
+            before = max(0, int(project.landmark_growth_units_funded))
+            contribution = min(
+                available, max(0, LANDMARK_MAX_GROWTH_UNITS - before)
+            )
+            if contribution:
+                project.landmark_growth_units_funded = before + contribution
+                canonical_target_id = "garden_landmark"
+                aggregates.growth_contributed_to_landmarks_units += contribution
+                self._sync_landmark_compatibility_projection()
+        elif target_type == "mastery" and target_id in CURRENT_CATALOG_SPECIES_ORDER:
+            eligible = any(
+                plant.species == target_id and plant.fully_grown
+                for plant in self.state.plants
+            )
+            if eligible:
+                funding = (
+                    self.state.cultivation_mastery.growth_units_funded_by_species
+                )
+                before = max(0, int(funding.get(target_id, 0)))
+                contribution = min(
+                    available,
+                    max(0, MASTERY_MAX_GROWTH_UNITS_PER_SPECIES - before),
+                )
+                if contribution:
+                    funding[target_id] = before + contribution
+                    aggregates.growth_contributed_to_mastery_units += contribution
+        elif (
+            target_type == "legacy"
+            and target_id == "garden_legacy"
+            and self._garden_legacy_unlocked()
+        ):
+            contribution = available
+            combined = (
+                max(0, int(self.state.garden_legacy_progress_units))
+                + contribution
+            )
+            levels, remainder = divmod(
+                combined, GARDEN_LEGACY_LEVEL_COST_UNITS
+            )
+            self.state.garden_legacy_level = (
+                max(0, int(self.state.garden_legacy_level)) + levels
+            )
+            self.state.garden_legacy_progress_units = remainder
+            aggregates.growth_contributed_to_legacy_units += contribution
+        if contribution <= 0:
+            return 0, ()
+        return contribution, (
+            ProjectGrowthAllocation(
+                target_type=GrowthTargetType(target_type),
+                target_id=canonical_target_id,
+                units=contribution,
+            ),
+        )
+
+    def _sync_landmark_compatibility_projection(self) -> None:
+        """Refresh schema-26 Landmark fields from cumulative authority."""
+
+        project = self.state.garden_project
+        claimed = max(0, min(
+            len(LANDMARK_ORDER), int(project.landmark_highest_claimed_tier)
+        ))
+        claimed_ids = list(LANDMARK_ORDER[:claimed])
+        claimed_floor = sum(
+            LANDMARK_GROWTH_COST_UNITS[item_id]
+            for item_id in claimed_ids
+        )
+        next_id = (
+            LANDMARK_ORDER[claimed] if claimed < len(LANDMARK_ORDER) else ""
+        )
+        next_increment = LANDMARK_GROWTH_COST_UNITS.get(next_id, 0)
+        funded = max(0, min(
+            LANDMARK_MAX_GROWTH_UNITS,
+            int(project.landmark_growth_units_funded),
+        ))
+        landmark_active = (
+            self.state.active_growth_target_type
+            == GrowthTargetType.LANDMARK.value
+            and self.state.active_growth_target_id == "garden_landmark"
+        )
+        project.completed_project_ids = claimed_ids
+        project.selected_project_id = next_id if landmark_active else ""
+        project.contributed_growth_units = min(
+            next_increment,
+            max(0, funded - claimed_floor),
+        )
+        project.ready_to_complete = bool(
+            next_id and funded >= claimed_floor + next_increment
+        )
+        project.displayed_project_id = project.displayed_landmark_tier_id
+
+    def _finalize_growth_overflow(
+        self,
+        units: int,
+    ) -> tuple[int, tuple[ProjectGrowthAllocation, ...]]:
+        """Route pooled final overflow to a project, then durable storage."""
+
+        remaining = max(0, int(units))
+        project_units, allocations = self._credit_active_growth_target(remaining)
+        remaining -= project_units
+        if remaining:
+            self.state.stored_growth_balance_units = (
+                self.state.stored_growth_balance_units + remaining
+            )
+            aggregates = self.state.lifetime_economy_aggregates
+            aggregates.growth_routed_to_storage_units_lifetime += remaining
+        return remaining, allocations
 
     def _route_growth_units(
         self,
@@ -3782,6 +4444,7 @@ class GardenGameEngine:
         role: str,
         transition_source: str,
         event_ms: int,
+        finalize_overflow: bool = True,
     ) -> GrowthGrantResult:
         """Conserve one Growth lane across plants, then durable storage."""
 
@@ -3830,20 +4493,21 @@ class GardenGameEngine:
                 candidate,
                 before_points,
                 int(candidate.growth_points),
-                source=("redirected" if redirected else transition_source),
+                source=(
+                    "shared_growth"
+                    if transition_source == "shared_growth"
+                    else "redirected_growth"
+                    if redirected
+                    else transition_source
+                ),
             )
-        landmark_units = self._auto_contribute_landmark_overflow(
-            remaining,
-            event_ms=event_ms,
-            transition_source=transition_source,
-        )
-        remaining -= landmark_units
-        stored = remaining
-        if stored:
-            self.state.stored_growth_units = (
-                max(0, int(getattr(self.state, "stored_growth_units", 0) or 0))
-                + stored
-            )
+        if finalize_overflow:
+            stored, project_allocations = self._finalize_growth_overflow(remaining)
+            project_units = remaining - stored
+        else:
+            stored = remaining
+            project_allocations = ()
+            project_units = 0
 
         auto_selected = ""
         active_plant = next(
@@ -3870,7 +4534,22 @@ class GardenGameEngine:
                 event_ms=event_ms,
             )
 
-        applied_total = requested - stored - landmark_units
+        landmark_units = sum(
+            item.units
+            for item in project_allocations
+            if item.target_type == "landmark"
+        )
+        mastery_units = sum(
+            item.units
+            for item in project_allocations
+            if item.target_type == "mastery"
+        )
+        legacy_units = sum(
+            item.units
+            for item in project_allocations
+            if item.target_type == "legacy"
+        )
+        applied_total = requested - stored - project_units
         return GrowthGrantResult(
             requested,
             applied_total,
@@ -3880,6 +4559,9 @@ class GardenGameEngine:
             str(self.state.active_plant_id or ""),
             auto_selected,
             landmark_units,
+            mastery_units,
+            legacy_units,
+            project_allocations,
         )
 
     def _review_growth_projection(
@@ -3976,11 +4658,25 @@ class GardenGameEngine:
             answer_number=projected_answer,
         )
         allocations = self._project_review_allocations(target, award)
-        shared_plan = self._shared_growth_plan(target, award.total_growth_units)
+        shared_plan = self._shared_growth_plan(
+            self._shared_growth_anchor(target),
+            award.total_growth_units,
+        )
         requested_with_shared = award.total_growth_units + sum(
             units for _recipient, units in shared_plan
         )
         applied_units = sum(item.applied_units for item in allocations)
+        overflow_units = max(0, requested_with_shared - applied_units)
+        project_allocations, stored_units = (
+            self._project_active_growth_overflow(overflow_units)
+        )
+        paused_reason = award.paused_reason
+        if target is None and project_allocations:
+            destination = project_allocations[0]
+            paused_reason = (
+                "No plant is selected. This card’s Growth will fund "
+                f"{destination.target_id.replace('_', ' ').title()}."
+            )
         return replace(
             award,
             allocations=allocations,
@@ -3991,7 +4687,62 @@ class GardenGameEngine:
             shared_growth_units=sum(
                 item.applied_units for item in allocations if item.role == "passive"
             ),
-            stored_growth_units=max(0, requested_with_shared - applied_units),
+            stored_growth_units=stored_units,
+            landmark_growth_units=sum(
+                item.units for item in project_allocations
+                if item.target_type is GrowthTargetType.LANDMARK
+            ),
+            mastery_growth_units=sum(
+                item.units for item in project_allocations
+                if item.target_type is GrowthTargetType.MASTERY
+            ),
+            legacy_growth_units=sum(
+                item.units for item in project_allocations
+                if item.target_type is GrowthTargetType.LEGACY
+            ),
+            project_allocations=project_allocations,
+            paused_reason=paused_reason,
+        )
+
+    def _project_active_growth_overflow(
+        self,
+        units: int,
+    ) -> tuple[tuple[ProjectGrowthAllocation, ...], int]:
+        """Project final overflow using the same active-target capacity rules."""
+
+        available = max(0, int(units))
+        if available <= 0:
+            return (), 0
+        projects = self.growth_projects_snapshot()
+        target = projects.active_target
+        if target is None:
+            return (), available
+        if target.target_type is GrowthTargetType.LANDMARK:
+            track = projects.landmark_track
+        elif target.target_type is GrowthTargetType.MASTERY:
+            track = projects.mastery_track(target.target_id)
+        else:
+            track = projects.legacy_track
+        choice = next(
+            (item for item in projects.target_choices if item.target == target),
+            None,
+        )
+        if choice is None or not choice.available:
+            return (), available
+        accepted = (
+            available
+            if track.remaining_capacity_units is None
+            else min(available, track.remaining_capacity_units)
+        )
+        if accepted <= 0:
+            return (), available
+        return (
+            (ProjectGrowthAllocation(
+                target.target_type,
+                target.target_id,
+                accepted,
+            ),),
+            available - accepted,
         )
 
     def _project_review_allocations(
@@ -4086,13 +4837,17 @@ class GardenGameEngine:
             *stats.plant_nurtured_growth,
             *stats.plant_passive_growth_credited,
         }
-        shared_plan = self._shared_growth_plan(plant, award.total_growth_units)
+        shared_plan = self._shared_growth_plan(
+            self._shared_growth_anchor(plant),
+            award.total_growth_units,
+        )
         primary = self._route_growth_units(
             plant,
             award.total_growth_units,
             role="nurtured",
             transition_source="nurtured",
             event_ms=event_ms,
+            finalize_overflow=False,
         )
         allocations: list[GrowthAllocation] = list(primary.allocations)
         shared_results: list[GrowthGrantResult] = []
@@ -4101,11 +4856,18 @@ class GardenGameEngine:
                 passive,
                 shared_units,
                 role="passive",
-                transition_source="passive",
+                transition_source="shared_growth",
                 event_ms=event_ms,
+                finalize_overflow=False,
             )
             shared_results.append(result)
             allocations.extend(result.allocations)
+        final_overflow_units = primary.stored_units + sum(
+            item.stored_units for item in shared_results
+        )
+        stored_units, project_allocations = self._finalize_growth_overflow(
+            final_overflow_units
+        )
 
         for field_name, units in (
             ("base_growth", award.base_growth_units),
@@ -4134,9 +4896,7 @@ class GardenGameEngine:
             ("shared_growth_units", sum(
                 item.applied_units for item in shared_results
             )),
-            ("stored_growth_units", primary.stored_units + sum(
-                item.stored_units for item in shared_results
-            )),
+            ("stored_growth_units", stored_units),
         ):
             if hasattr(stats, field_name):
                 setattr(
@@ -4197,19 +4957,29 @@ class GardenGameEngine:
             if allocation.redirected
         )
         shared_applied = sum(item.applied_units for item in shared_results)
-        stored_units = primary.stored_units + sum(
-            item.stored_units for item in shared_results
+        landmark_units = sum(
+            item.units
+            for item in project_allocations
+            if item.target_type is GrowthTargetType.LANDMARK
         )
-        landmark_units = primary.landmark_units + sum(
-            item.landmark_units for item in shared_results
+        mastery_units = sum(
+            item.units
+            for item in project_allocations
+            if item.target_type is GrowthTargetType.MASTERY
         )
+        legacy_units = sum(
+            item.units
+            for item in project_allocations
+            if item.target_type is GrowthTargetType.LEGACY
+        )
+        direct_result = GrowthGrantResult(0, 0, 0)
         if decoration.direct_growth_awarded_units:
             direct_target = (
                 self._closest_checkpoint_target()
                 if decoration.active_bonus_id == "firefly_lantern"
                 else plant
             )
-            self._apply_direct_growth_units(
+            direct_result = self._apply_direct_growth_units(
                 direct_target,
                 decoration.direct_growth_awarded_units,
                 stats_field="direct_reward_growth",
@@ -4219,16 +4989,32 @@ class GardenGameEngine:
                     else "direct_reward"
                 ),
             )
+            allocations.extend(direct_result.allocations)
+            project_allocations = (
+                *project_allocations,
+                *direct_result.project_allocations,
+            )
         return replace(
             award,
             allocations=tuple(allocations),
             applied_growth_units=(
                 primary.applied_units + shared_applied
+                + direct_result.applied_units
             ),
-            redirected_growth_units=redirected_units,
+            redirected_growth_units=(
+                redirected_units
+                + sum(
+                    allocation.applied_units
+                    for allocation in direct_result.allocations
+                    if allocation.redirected
+                )
+            ),
             shared_growth_units=shared_applied,
-            stored_growth_units=stored_units,
-            landmark_growth_units=landmark_units,
+            stored_growth_units=stored_units + direct_result.stored_units,
+            landmark_growth_units=(landmark_units + direct_result.landmark_units),
+            mastery_growth_units=(mastery_units + direct_result.mastery_units),
+            legacy_growth_units=(legacy_units + direct_result.legacy_units),
+            project_allocations=project_allocations,
         )
 
     def _grant_completion_environment_gift(
@@ -4395,7 +5181,7 @@ class GardenGameEngine:
     ) -> tuple[RewardReceipt, ...]:
         return self._grant_reward_bundle(
             event_key,
-            source="garden_find",
+            source="standard_find",
             source_id=reward.reward_id,
             reason=f"Standard Find: {reward.display_name}",
             scheduler_day=scheduler_day,
@@ -4890,6 +5676,40 @@ class GardenGameEngine:
             if before < end <= after:
                 crossings.append((end, 3, next_stage, "stage", 100))
 
+        def credit_crossing(
+            event_key: str,
+            reason: str,
+            *,
+            base_reward: int,
+            total_reward: int,
+            feedback: str,
+        ) -> None:
+            # Preserve the established milestone identity for the catalog
+            # base payout.  Autumn's incremental value is a separate,
+            # correlated ledger source so concentration reporting reflects
+            # the effect without changing the total or fractional carry.
+            self._credit_currency(
+                event_key,
+                reason,
+                base_reward,
+                feedback=feedback,
+                plant_id=plant.plant_id,
+                source="plant_milestone",
+                source_id=plant.plant_id,
+                included_in_total=True,
+            )
+            autumn_bonus = max(0, int(total_reward) - int(base_reward))
+            if autumn_bonus:
+                self._credit_currency(
+                    f"autumn_hearth:{event_key}",
+                    f"Autumn Hearth bonus for {reason}",
+                    autumn_bonus,
+                    plant_id=plant.plant_id,
+                    source="autumn_hearth",
+                    source_id="autumn",
+                    included_in_total=True,
+                )
+
         for _point, order, next_stage, kind, percent in sorted(crossings):
             base_reward = self.STAGE_REWARD_SPLITS[next_stage][order]
             reward = self._checkpoint_reward_amount(base_reward)
@@ -4902,15 +5722,15 @@ class GardenGameEngine:
                     claim = f"{next_stage}:{percent}"
                     if claim not in plant.checkpoint_claims:
                         plant.checkpoint_claims.append(claim)
-                self._credit_currency(
+                credit_crossing(
                     event_key,
                     f"{plant.name} reached {percent}% toward {display_stage}",
-                    reward,
+                    base_reward=base_reward,
+                    total_reward=reward,
                     feedback=(
                         f"{plant.name} reached {percent}% toward {display_stage}. "
                         f"{_garden_coin_amount(reward, signed=True)}"
                     ),
-                    plant_id=plant.plant_id,
                 )
                 continue
 
@@ -4932,21 +5752,15 @@ class GardenGameEngine:
                 plant.name,
                 source,
             ))
-            self._credit_currency(
+            credit_crossing(
                 f"stage:{plant.plant_id}:{next_stage}",
                 f"{plant.name} reached {display_stage}",
-                reward,
+                base_reward=base_reward,
+                total_reward=reward,
                 feedback=(
                     f"{plant.name} reached {display_stage}. "
                     f"{_garden_coin_amount(reward, signed=True)}"
                 ),
-                plant_id=plant.plant_id,
-                source=(
-                    "full_bloom_bonus"
-                    if next_stage == "rare" else "stage_reward"
-                ),
-                source_id=plant.plant_id,
-                included_in_total=True,
             )
             if next_stage == "rare":
                 self._grant_reward_bundle(
@@ -5064,11 +5878,11 @@ class GardenGameEngine:
             )
         return self._cards_remaining_copy(waiting)
 
-    @staticmethod
-    def _today_cards_complete_copy(cards_completed: int) -> str:
+    @classmethod
+    def _today_cards_complete_copy(cls, cards_completed: int) -> str:
         return (
             "TODAY’S CARDS COMPLETE\n"
-            "+10 Garden Coins earned\n"
+            f"+{cls.ALL_DUE_BASE_COINS} Garden Coins earned\n"
             f"{max(0, int(cards_completed)):,} cards complete"
         )
 
@@ -5412,7 +6226,7 @@ class GardenGameEngine:
             existing_receipts = tuple(self.state.recent_reward_receipts)
             self._grant_reward_bundle(
                 f"all_due:{stats.day}",
-                source="all_due",
+                source="todays_cards",
                 source_id=stats.day,
                 reason="Today’s cards complete",
                 scheduler_day=stats.day,
@@ -5422,10 +6236,33 @@ class GardenGameEngine:
                 plant=self.active_plant(),
                 title="Today’s cards complete",
             )
+            cycle_before = max(
+                0,
+                min(
+                    self.GARDEN_CYCLE_COMPLETIONS - 1,
+                    int(getattr(self.state, "garden_cycle_remainder", 0) or 0),
+                ),
+            )
+            cycle_after = (cycle_before + 1) % self.GARDEN_CYCLE_COMPLETIONS
+            self.state.garden_cycle_remainder = cycle_after
+            if cycle_after == 0:
+                self._grant_reward_bundle(
+                    f"completion_cycle_5:{stats.day}",
+                    source="completion_cycle_5",
+                    source_id="completion_cycle_5",
+                    reason="Garden Cycle complete",
+                    scheduler_day=stats.day,
+                    correlation_id=reward_correlation_id,
+                    coins=self.GARDEN_CYCLE_COINS,
+                    title="Garden Cycle complete",
+                    description=(
+                        f"{self.GARDEN_CYCLE_COMPLETIONS} completed review days"
+                    ),
+                )
             if harvest_coins:
                 self._grant_reward_bundle(
                     f"harvest-bell:{stats.day}",
-                    source="garden_decoration",
+                    source="harvest_bell",
                     source_id="harvest_bell",
                     reason="Harvest Bell",
                     scheduler_day=stats.day,
@@ -5437,7 +6274,7 @@ class GardenGameEngine:
             if autumn_coins:
                 self._grant_reward_bundle(
                     f"autumn-hearth:{stats.day}",
-                    source="scenery",
+                    source="autumn_hearth",
                     source_id="autumn",
                     reason="Autumn Hearth",
                     scheduler_day=stats.day,
@@ -5448,6 +6285,9 @@ class GardenGameEngine:
                 )
             prism_units = 0
             prism_destination = ""
+            prism_destination_kind = ""
+            prism_destination_id = ""
+            prism_grant = GrowthGrantResult(0, 0, 0)
             if active_effect == "prism_bank_per_answer_1":
                 prism_units = max(0, int(self.state.prism_pending_growth_units))
                 if prism_units:
@@ -5458,17 +6298,84 @@ class GardenGameEngine:
                         transition_source="prism_harvest",
                     )
                     prism_destination = (
+                        "mixed"
+                        if prism_grant.project_units
+                        and prism_grant.stored_units
+                        else
+                        "growth_project"
+                        if prism_grant.project_units
+                        and not prism_grant.applied_units
+                        and not prism_grant.stored_units
+                        else
                         "stored_growth"
                         if prism_grant.stored_units and not prism_grant.applied_units
                         else "plant_growth"
                     )
+                    if prism_grant.project_allocations:
+                        destination = prism_grant.project_allocations[0]
+                        prism_destination_kind = destination.target_type.value
+                        prism_destination_id = destination.target_id
+                    elif prism_grant.stored_units:
+                        prism_destination_kind = "stored_growth"
+                        prism_destination_id = "stored_growth_balance"
+                    elif prism_grant.applied_units:
+                        prism_destination_kind = "plant"
+                        prism_destination_id = str(
+                            prism_grant.active_target_id
+                            or prism_grant.original_target_id
+                        )
+                    aggregates = self.state.lifetime_economy_aggregates
+                    aggregates.growth_generated_units += prism_grant.requested_units
+                    aggregates.growth_applied_to_plants_units += (
+                        prism_grant.applied_units
+                    )
+                    self._stage_economy_event(EconomyEventRecord(
+                        event_key=f"prism-harvest-growth:{stats.day}",
+                        event_kind="instant_growth",
+                        source_id="prism_trellis",
+                        scheduler_day=stats.day,
+                        occurred_at=utc_now_iso(),
+                        growth_earned_units=prism_grant.requested_units,
+                        growth_flow_kind="generated",
+                        growth_generated_units=prism_grant.requested_units,
+                        growth_applied_to_plants_units=(
+                            prism_grant.applied_units
+                        ),
+                        growth_routed_to_storage_units_lifetime=(
+                            prism_grant.stored_units
+                        ),
+                        stored_growth_balance_delta_units=(
+                            prism_grant.stored_units
+                        ),
+                        growth_contributed_to_landmarks_units=(
+                            prism_grant.landmark_units
+                        ),
+                        growth_contributed_to_mastery_units=(
+                            prism_grant.mastery_units
+                        ),
+                        growth_contributed_to_legacy_units=(
+                            prism_grant.legacy_units
+                        ),
+                        metric_deltas=_project_allocation_metric_deltas(
+                            prism_grant.project_allocations
+                        ),
+                    ))
                 self.state.prism_pending_growth_units = 0
                 self.state.prism_released_anki_day_id = stats.day
             self.last_completion_result = CompletionResult(
                 base_coins=self.ALL_DUE_BASE_COINS,
                 harvest_bell_coins=harvest_coins + autumn_coins,
+                garden_cycle_coins=(
+                    self.GARDEN_CYCLE_COINS if cycle_after == 0 else 0
+                ),
+                garden_cycle_remainder=cycle_after,
                 prism_growth_released_units=prism_units,
                 prism_growth_destination=prism_destination,
+                prism_growth_destination_kind=prism_destination_kind,
+                prism_growth_destination_id=prism_destination_id,
+                prism_project_allocations=tuple(
+                    prism_grant.project_allocations
+                ),
             )
             if prism_units and emit_feedback:
                 prism_value = prism_units / GROWTH_UNITS_PER_POINT
@@ -5478,6 +6385,10 @@ class GardenGameEngine:
                     (
                         f"No unfinished plant was available. +{prism_value:g} Stored Growth"
                         if prism_destination == "stored_growth" else
+                        f"Today’s Cards completed. +{prism_value:g} Growth toward your active project"
+                        if prism_destination == "growth_project" else
+                        f"Today’s Cards completed. +{prism_value:g} Growth split between your active project and Stored Growth"
+                        if prism_destination == "mixed" else
                         f"Today’s Cards completed. +{prism_value:g} direct Growth"
                     ),
                     self.state.active_plant_id,
@@ -5579,6 +6490,18 @@ class GardenGameEngine:
         )
 
     def _committed_answer_baseline(self) -> dict[str, Any]:
+        mastery_funded = sum(
+            max(0, int(units))
+            for units in (
+                self.state.cultivation_mastery
+                .growth_units_funded_by_species.values()
+            )
+        )
+        legacy_funded = (
+            max(0, int(self.state.garden_legacy_level))
+            * GARDEN_LEGACY_LEVEL_COST_UNITS
+            + max(0, int(self.state.garden_legacy_progress_units))
+        )
         return {
             "plants": tuple(
                 self._committed_plant_snapshot(plant)
@@ -5587,6 +6510,11 @@ class GardenGameEngine:
             "stored_growth_units": max(
                 0, int(getattr(self.state, "stored_growth_units", 0) or 0)
             ),
+            "landmark_growth_units": max(
+                0, int(self.state.garden_project.landmark_growth_units_funded)
+            ),
+            "mastery_growth_units": mastery_funded,
+            "legacy_growth_units": legacy_funded,
             "active_plant_id": str(self.state.active_plant_id or ""),
             "transaction_ids": {
                 str(transaction.transaction_id)
@@ -5714,8 +6642,27 @@ class GardenGameEngine:
             ),
             landmark_growth_after_units=max(
                 0,
-                int(self.state.garden_project.contributed_growth_units),
+                int(self.state.garden_project.landmark_growth_units_funded),
             ),
+            mastery_growth_before_units=max(
+                0, int(baseline.get("mastery_growth_units", 0) or 0)
+            ),
+            mastery_growth_after_units=sum(
+                max(0, int(units))
+                for units in (
+                    self.state.cultivation_mastery
+                    .growth_units_funded_by_species.values()
+                )
+            ),
+            legacy_growth_before_units=max(
+                0, int(baseline.get("legacy_growth_units", 0) or 0)
+            ),
+            legacy_growth_after_units=(
+                max(0, int(self.state.garden_legacy_level))
+                * GARDEN_LEGACY_LEVEL_COST_UNITS
+                + max(0, int(self.state.garden_legacy_progress_units))
+            ),
+            project_allocations=tuple(award.project_allocations),
             active_plant_before_id=str(
                 baseline.get("active_plant_id", "") or ""
             ),
@@ -5728,12 +6675,19 @@ class GardenGameEngine:
         *,
         latest_revlog_id: int = 0,
         due_status: DueObligationStatus | None = None,
+        collect_results: bool = True,
     ) -> tuple[CommittedAnswerResult, ...]:
         """Commit reviewer rows and return exact typed results.
 
         When ``due_status`` is supplied, a final-due completion reward is
         evaluated before the shared state/ledger commit and grouped under the
         last committed answer correlation.
+
+        Annual production-parity replays may set ``collect_results=False`` to
+        skip renderer-facing before/after snapshots that they do not consume.
+        Every answer still traverses the same reward, state, ledger, due-card,
+        and atomic persistence paths; the default typed-result contract is
+        unchanged.
         """
 
         if not reviews:
@@ -5747,6 +6701,7 @@ class GardenGameEngine:
         previous_correlation = self._current_correlation_id
         self.rollover_if_needed(persist=False)
         results: list[CommittedAnswerResult] = []
+        committed_count = 0
         pending: tuple[
             Mapping[str, Any], ReviewAward, Mapping[str, Any]
         ] | None = None
@@ -5757,13 +6712,18 @@ class GardenGameEngine:
             for payload in ordered:
                 if pending is not None:
                     previous_payload, previous_award, previous_baseline = pending
-                    results.append(self._committed_answer_result(
-                        payload=previous_payload,
-                        award=previous_award,
-                        baseline=previous_baseline,
-                    ))
+                    if collect_results:
+                        results.append(self._committed_answer_result(
+                            payload=previous_payload,
+                            award=previous_award,
+                            baseline=previous_baseline,
+                        ))
+                    committed_count += 1
                     pending = None
-                baseline = self._committed_answer_baseline()
+                baseline = (
+                    self._committed_answer_baseline()
+                    if collect_results else {}
+                )
                 self._current_correlation_id = self._answer_correlation_id(payload)
                 award = self._register_review_in_memory(payload)
                 if award.correlation_id:
@@ -5775,7 +6735,9 @@ class GardenGameEngine:
                     persist=False,
                     correlation_id=self._current_correlation_id,
                     record_completed_delta=True,
-                    completed_obligation_limit=max(1, len(results) + 1),
+                    completed_obligation_limit=max(
+                        1, committed_count + 1
+                    ),
                 )
             self.state.last_processed_revlog_id = max(
                 self.state.last_processed_revlog_id,
@@ -5783,11 +6745,12 @@ class GardenGameEngine:
             )
             if pending is not None:
                 payload, award, baseline = pending
-                results.append(self._committed_answer_result(
-                    payload=payload,
-                    award=award,
-                    baseline=baseline,
-                ))
+                if collect_results:
+                    results.append(self._committed_answer_result(
+                        payload=payload,
+                        award=award,
+                        baseline=baseline,
+                    ))
             self._persist_or_restore(snapshot)
         except Exception:
             self._pending_stage_transitions = transition_snapshot
@@ -6188,6 +7151,12 @@ class GardenGameEngine:
         card_count: int = 0,
         resulting_cards_remaining: int = 0,
         queued_doses: int = 0,
+        fertilizer_stored_item_disposition: (
+            FertilizerStoredItemDisposition | None
+        ) = None,
+        duration_delta_seconds: int = 0,
+        card_queue_delta: int = 0,
+        fertilizer_expires_at_ms: int | None = None,
         inventory_before: int = 0,
         inventory_after: int = 0,
         current_equipped_name: str = "",
@@ -6249,6 +7218,12 @@ class GardenGameEngine:
             card_count=max(0, int(card_count)),
             resulting_cards_remaining=max(0, int(resulting_cards_remaining)),
             queued_doses=max(0, int(queued_doses)),
+            fertilizer_stored_item_disposition=(
+                fertilizer_stored_item_disposition
+            ),
+            duration_delta_seconds=max(0, int(duration_delta_seconds)),
+            card_queue_delta=max(0, int(card_queue_delta)),
+            fertilizer_expires_at_ms=fertilizer_expires_at_ms,
         )
 
     def quote_purchase(
@@ -6593,7 +7568,7 @@ class GardenGameEngine:
                     else ""
                 ),
                 current_effect=(
-                    f"+{int(predecessor_batch.growth_per_card_units) // GROWTH_UNITS_PER_POINT:,} Growth per eligible card answer"
+                    f"+{int(predecessor_batch.growth_per_card_units) // GROWTH_UNITS_PER_POINT:,} Growth per eligible card"
                     if predecessor_batch is not None
                     else ""
                 ),
@@ -6606,6 +7581,12 @@ class GardenGameEngine:
                 card_count=spec.card_count,
                 resulting_cards_remaining=scheduled_cards + spec.card_count,
                 queued_doses=len(queued_batches) + (1 if queuing else 0),
+                fertilizer_stored_item_disposition=(
+                    FertilizerStoredItemDisposition.QUEUE
+                    if live_batches
+                    else FertilizerStoredItemDisposition.USE
+                ),
+                card_queue_delta=spec.card_count,
                 state_signature={
                     "plant_id": plant.plant_id,
                     "planted": plant.planted,
@@ -6735,6 +7716,23 @@ class GardenGameEngine:
                 "starter_complete": bool(self.state.starter_selection_complete),
             },
         )
+
+    def purchase_projection(
+        self,
+        kind: PurchaseKind | str,
+        item_id: str,
+        *,
+        quantity: int = 1,
+        target_id: str | None = None,
+    ) -> PurchaseProjection:
+        """Return action, price, balance, and disposition as separate fields."""
+
+        return build_purchase_projection(self.quote_purchase(
+            kind,
+            item_id,
+            quantity=quantity,
+            target_id=target_id,
+        ))
 
     @staticmethod
     def _purchase_failure(
@@ -7084,6 +8082,14 @@ class GardenGameEngine:
                     result_id=result_id,
                     applied=False,
                     equipped=False,
+                    fertilizer_stored_item_disposition=(
+                        quote.fertilizer_stored_item_disposition
+                    ),
+                    duration_delta_seconds=quote.duration_delta_seconds,
+                    card_queue_delta=quote.card_queue_delta,
+                    fertilizer_expires_at_ms=(
+                        quote.fertilizer_expires_at_ms
+                    ),
                 )
             plant = fertilizer_target
             assert plant is not None
@@ -7136,6 +8142,22 @@ class GardenGameEngine:
             result_id=result_id,
             applied=applied,
             equipped=equipped,
+            fertilizer_stored_item_disposition=(
+                quote.fertilizer_stored_item_disposition
+                if quote.kind is PurchaseKind.FERTILIZER else None
+            ),
+            duration_delta_seconds=(
+                quote.duration_delta_seconds
+                if quote.kind is PurchaseKind.FERTILIZER else 0
+            ),
+            card_queue_delta=(
+                quote.card_queue_delta
+                if quote.kind is PurchaseKind.FERTILIZER else 0
+            ),
+            fertilizer_expires_at_ms=(
+                quote.fertilizer_expires_at_ms
+                if quote.kind is PurchaseKind.FERTILIZER else None
+            ),
         )
 
     def _compat_purchase(
@@ -7651,14 +8673,18 @@ class GardenGameEngine:
         try:
             self._lock_scenery_loadout(event_ms=self._now_ms())
             self.state.consumables[quote.charge_id] -= 1
-            awarded = self._apply_direct_growth(
+            growth_flow = self._apply_direct_growth_units(
                 plant,
-                quote.granted_growth,
+                quote.granted_growth * GROWTH_UNITS_PER_POINT,
                 stats_field="charge_growth",
                 transition_source="charge",
             )
+            awarded = growth_flow.requested_units // GROWTH_UNITS_PER_POINT
             if awarded != quote.granted_growth or plant is None:
                 raise RuntimeError("Growth Charge projection changed during commit")
+            aggregates = self.state.lifetime_economy_aggregates
+            aggregates.growth_generated_units += growth_flow.requested_units
+            aggregates.growth_applied_to_plants_units += growth_flow.applied_units
             self._update_achievements(
                 correlation_id=f"growth-charge:{request.request_id}"
             )
@@ -7727,11 +8753,24 @@ class GardenGameEngine:
                     max(0, int(outcome.growth_granted))
                     * GROWTH_UNITS_PER_POINT
                 ),
+                growth_flow_kind="generated",
+                growth_generated_units=growth_flow.requested_units,
+                growth_applied_to_plants_units=growth_flow.applied_units,
+                growth_routed_to_storage_units_lifetime=growth_flow.stored_units,
+                stored_growth_balance_delta_units=growth_flow.stored_units,
+                growth_contributed_to_landmarks_units=(
+                    growth_flow.landmark_units
+                ),
+                growth_contributed_to_mastery_units=growth_flow.mastery_units,
+                growth_contributed_to_legacy_units=growth_flow.legacy_units,
                 item_id=request.charge_id,
                 quantity=1,
-                metric_deltas={
-                    "consumables_used": {request.charge_id: 1}
-                },
+                metric_deltas=_project_allocation_metric_deltas(
+                    growth_flow.project_allocations,
+                    existing={
+                        "consumables_used": {request.charge_id: 1}
+                    },
+                ),
             ))
             self._persist_or_restore(snapshot)
             return outcome
@@ -7825,33 +8864,95 @@ class GardenGameEngine:
             return None
 
     def landmark_catalog_summary(self) -> dict[str, Any]:
-        snapshot = self._landmark_snapshot()
-        selected = snapshot.selected_landmark_id
+        projects = self.growth_projects_snapshot()
+        track = projects.landmark_track
+        active = projects.active_target
+        landmark_active = bool(
+            active is not None
+            and active.target_type is GrowthTargetType.LANDMARK
+        )
+        claimed_ids = [row.tier_id for row in track.tiers if row.claimed]
+        next_row = next((row for row in track.tiers if not row.claimed), None)
+        selected = next_row.tier_id if landmark_active and next_row else ""
+        displayed = str(
+            self.state.garden_project.displayed_landmark_tier_id or ""
+        )
+        items: list[dict[str, Any]] = []
+        previous_threshold = 0
+        for row in track.tiers:
+            required = (
+                row.cumulative_growth_threshold_units - previous_threshold
+            )
+            contributed = max(0, min(
+                required,
+                track.growth_units_funded - previous_threshold,
+            ))
+            items.append({
+                # Schema-26 renderer compatibility.
+                "landmark_id": row.tier_id,
+                "display_name": row.display_name,
+                "contributed_growth_units": contributed,
+                "required_growth_units": required,
+                "ready_to_complete": row.claimable,
+                "auto_contribute": landmark_active,
+                "growth_cost_units": required,
+                "coin_cost": row.coin_cost,
+                "completed": row.claimed,
+                "selected": row.tier_id == selected,
+                "displayed": row.tier_id == displayed,
+                # Schema-27 cumulative authority.
+                "cumulative_growth_threshold_units": (
+                    row.cumulative_growth_threshold_units
+                ),
+                "remaining_growth_units": row.remaining_growth_units,
+                "funded": row.funded,
+                "claimed": row.claimed,
+                "claimable": row.claimable,
+                "can_claim_now": row.can_claim_now,
+                "state": row.state,
+                "artwork_id": row.artwork_id,
+                "effect_description": row.effect_description,
+                "acquisition_route": row.acquisition_route,
+                "allowed_actions": list(row.allowed_actions),
+            })
+            previous_threshold = row.cumulative_growth_threshold_units
+        selected_item = next(
+            (item for item in items if item["landmark_id"] == selected), None
+        )
         return {
-            "unlocked": self._landmark_unlocked(),
-            "stored_growth_units": max(0, int(self.state.stored_growth_units)),
-            "auto_contribute": bool(self.state.garden_project.auto_contribute),
+            "unlocked": projects.unlocked,
+            "stored_growth_units": projects.stored_balance_units,
+            "stored_growth_balance_units": projects.stored_balance_units,
+            "auto_contribute": landmark_active,
             "selected_landmark_id": selected,
-            "next_landmark_id": next_landmark_id(snapshot),
-            "displayed_landmark_id": snapshot.displayed_landmark_id,
-            "completed_landmark_ids": list(snapshot.completed_landmark_ids),
-            "contributed_growth_units": snapshot.contributed_growth_units,
-            "required_growth_units": (
-                LANDMARK_GROWTH_COST_UNITS[selected] if selected else 0
+            "next_landmark_id": next_row.tier_id if next_row else None,
+            "displayed_landmark_id": displayed,
+            "completed_landmark_ids": claimed_ids,
+            "contributed_growth_units": (
+                int(selected_item["contributed_growth_units"])
+                if selected_item else 0
             ),
-            "ready_to_complete": snapshot.ready_to_complete,
-            "items": [
-                {
-                    "landmark_id": item_id,
-                    "display_name": LANDMARK_BY_ID[item_id].display_name,
-                    "growth_cost_units": LANDMARK_GROWTH_COST_UNITS[item_id],
-                    "coin_cost": LANDMARK_BY_ID[item_id].coin_cost,
-                    "completed": item_id in snapshot.completed_landmark_ids,
-                    "selected": item_id == selected,
-                    "displayed": item_id == snapshot.displayed_landmark_id,
-                }
-                for item_id in LANDMARK_ORDER
+            "required_growth_units": (
+                int(selected_item["required_growth_units"])
+                if selected_item else 0
+            ),
+            "ready_to_complete": bool(
+                selected_item and selected_item["ready_to_complete"]
+            ),
+            "landmark_growth_units_funded": track.growth_units_funded,
+            "remaining_capacity_units": track.remaining_capacity_units,
+            "landmark_highest_claimed_tier": len(claimed_ids),
+            "landmark_claimable_tiers": [
+                row.tier_id for row in track.tiers if row.claimable
             ],
+            "active_growth_target_type": (
+                active.target_type.value if active is not None else ""
+            ),
+            "active_growth_target_id": (
+                active.target_id if active is not None else ""
+            ),
+            "items": items,
+            "growth_projects": projects.to_dict(),
         }
 
     def quote_landmark(self, request: LandmarkRequest) -> LandmarkQuote:
@@ -7922,6 +9023,10 @@ class GardenGameEngine:
             ):
                 raise RuntimeError("Garden Coin balance changed during Landmark commit")
             self._apply_landmark_snapshot(outcome.snapshot)
+            if outcome.growth_spent_units:
+                self.state.lifetime_economy_aggregates.growth_contributed_to_landmarks_units += (
+                    outcome.growth_spent_units
+                )
             stager = getattr(self.storage, "stage_idempotency_record", None)
             if callable(stager):
                 stager(IdempotencyRecord(
@@ -7940,6 +9045,30 @@ class GardenGameEngine:
                 occurred_at=occurred_at,
                 coins_spent=outcome.coins_spent,
                 growth_spent_on_landmarks=outcome.growth_spent_units,
+                growth_flow_kind=(
+                    "manual_contribution"
+                    if outcome.growth_spent_units else
+                    "claim"
+                    if request.action is LandmarkAction.COMPLETE else ""
+                ),
+                stored_growth_balance_delta_units=(
+                    -outcome.growth_spent_units
+                ),
+                growth_contributed_to_landmarks_units=(
+                    outcome.growth_spent_units
+                ),
+                item_id=(
+                    request.landmark_id
+                    if request.action is LandmarkAction.COMPLETE else ""
+                ),
+                quantity=(1 if request.action is LandmarkAction.COMPLETE else 0),
+                metric_deltas=_project_allocation_metric_deltas((
+                    ProjectGrowthAllocation(
+                        GrowthTargetType.LANDMARK,
+                        "garden_landmark",
+                        outcome.growth_spent_units,
+                    ),
+                ) if outcome.growth_spent_units else ()),
             ))
             if request.action is LandmarkAction.COMPLETE:
                 self._queue_feedback(
@@ -7981,6 +9110,19 @@ class GardenGameEngine:
             return False, "Select a Garden Landmark first."
         snapshot = self._state_snapshot()
         self.state.garden_project.auto_contribute = bool(enabled)
+        if enabled:
+            self.state.active_growth_target_type = GrowthTargetType.LANDMARK.value
+            self.state.active_growth_target_id = "garden_landmark"
+            self.state.active_growth_target_activation_identity = (
+                f"legacy-landmark-selection:{self.state.daily_stats.day}"
+            )
+        elif (
+            self.state.active_growth_target_type
+            == GrowthTargetType.LANDMARK.value
+        ):
+            self.state.active_growth_target_type = ""
+            self.state.active_growth_target_id = ""
+            self.state.active_growth_target_activation_identity = ""
         try:
             self._persist_or_restore(snapshot)
         except Exception:
@@ -7996,6 +9138,7 @@ class GardenGameEngine:
             return False, "Complete this Landmark before displaying it."
         snapshot = self._state_snapshot()
         self.state.garden_project.displayed_project_id = item_id
+        self.state.garden_project.displayed_landmark_tier_id = item_id
         try:
             self._persist_or_restore(snapshot)
         except Exception:
@@ -8003,35 +9146,95 @@ class GardenGameEngine:
         return True, f"Displaying {LANDMARK_BY_ID[item_id].display_name}."
 
     def mastery_catalog_summary(self) -> dict[str, Any]:
-        snapshot = self._mastery_snapshot()
+        projects = self.growth_projects_snapshot()
         full_bloom_species = {
             plant.species for plant in self.state.plants if plant.fully_grown
         }
         return {
-            "stored_growth_units": max(0, int(self.state.stored_growth_units)),
-            "highest_rank_by_species": dict(snapshot.highest_rank_by_species),
+            "stored_growth_units": projects.stored_balance_units,
+            "stored_growth_balance_units": projects.stored_balance_units,
+            "highest_rank_by_species": dict(
+                self.state.cultivation_mastery
+                .highest_claimed_rank_by_species
+            ),
+            "mastery_growth_units_funded_by_species": {
+                species_id: track.growth_units_funded
+                for species_id, track in projects.mastery_tracks_by_species
+            },
+            "mastery_ranks_claimed": {
+                species_id: track.highest_claimed_id
+                for species_id, track in projects.mastery_tracks_by_species
+                if track.highest_claimed_id
+            },
+            "mastery_ranks_available_to_claim": {
+                species_id: [
+                    row.tier_id for row in track.tiers if row.claimable
+                ]
+                for species_id, track in projects.mastery_tracks_by_species
+            },
             "species": [
                 {
                     "species_id": species_id,
                     "eligible": species_id in full_bloom_species,
-                    "current_rank_id": snapshot.rank_for(species_id) or "",
-                    "next_rank_id": next_mastery_rank_id(snapshot, species_id),
+                    "current_rank_id": track.highest_claimed_id,
+                    "next_rank_id": next((
+                        row.tier_id for row in track.tiers if not row.claimed
+                    ), None),
+                    "growth_units_funded": track.growth_units_funded,
+                    "remaining_capacity_units": track.remaining_capacity_units,
+                    "display_name": track.display_name,
+                    "artwork_id": track.artwork_id,
+                    "effect_description": track.effect_description,
+                    "acquisition_route": track.acquisition_route,
+                    "ranks": [row.to_dict() for row in track.tiers],
+                    "allowed_actions": list(track.allowed_actions),
                 }
                 # Cultivation Mastery is a release-catalog progression system.
                 # Historical compatibility species remain loadable, but they
                 # are deliberately outside the ten-species Mastery catalog and
                 # cannot be passed to ``next_mastery_rank_id()``.
-                for species_id in CURRENT_CATALOG_SPECIES_ORDER
+                for species_id, track in projects.mastery_tracks_by_species
             ],
+            "garden_legacy": projects.legacy_track.to_dict(),
+            "coins_required_for_claimable_content": (
+                projects.coins_required_for_claimable_content
+            ),
         }
 
     def quote_mastery(self, request: MasteryRequest) -> MasteryQuote:
+        stored_balance = max(0, int(self.state.stored_growth_units))
+        funded = max(0, int(
+            self.state.cultivation_mastery.growth_units_funded_by_species.get(
+                request.species_id, 0
+            )
+        ))
+        cumulative_threshold = (
+            MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[request.rank_id]
+        )
+        funding_deficit = max(0, cumulative_threshold - funded)
         quote = quote_mastery_request(
             self._mastery_snapshot(),
             request,
-            available_growth_units=max(0, int(self.state.stored_growth_units)),
+            # The schema-26 quote validates rank order against incremental
+            # costs. Include already funded cumulative Growth for that check;
+            # the renderer-neutral quote below exposes only the true deficit.
+            available_growth_units=(
+                stored_balance
+                + max(0, MASTERY_GROWTH_COST_UNITS[request.rank_id] - funding_deficit)
+            ),
             available_coins=max(0, int(self.state.currency_balance)),
         )
+        if quote.can_apply and stored_balance < funding_deficit:
+            return replace(
+                quote,
+                disposition=ProgressionDisposition.INSUFFICIENT_GROWTH,
+                can_apply=False,
+                message="Not enough stored Growth for this Mastery rank.",
+                growth_spend_units=0,
+                coin_spend=0,
+            )
+        if quote.can_apply:
+            quote = replace(quote, growth_spend_units=funding_deficit)
         eligible = any(
             plant.species == request.species_id and plant.fully_grown
             for plant in self.state.plants
@@ -8078,8 +9281,16 @@ class GardenGameEngine:
         outcome = project_mastery_request(
             before,
             request,
-            available_growth_units=max(0, int(self.state.stored_growth_units)),
+            # Rank/order projection still uses the schema-26 incremental
+            # contract; the fresh quote above already calculated the exact
+            # cumulative funding deficit that may actually be debited.
+            available_growth_units=MASTERY_GROWTH_COST_UNITS[request.rank_id],
             available_coins=max(0, int(self.state.currency_balance)),
+        )
+        outcome = replace(
+            outcome,
+            growth_spent_units=quote.growth_spend_units,
+            coins_spent=quote.coin_spend,
         )
         snapshot = self._state_snapshot()
         occurred_at = utc_now_iso()
@@ -8095,6 +9306,10 @@ class GardenGameEngine:
             ):
                 raise RuntimeError("Garden Coin balance changed during Mastery commit")
             self._apply_mastery_snapshot(outcome.snapshot)
+            if outcome.growth_spent_units:
+                self.state.lifetime_economy_aggregates.growth_contributed_to_mastery_units += (
+                    outcome.growth_spent_units
+                )
             stager = getattr(self.storage, "stage_idempotency_record", None)
             if callable(stager):
                 stager(IdempotencyRecord(
@@ -8113,6 +9328,25 @@ class GardenGameEngine:
                 occurred_at=occurred_at,
                 coins_spent=outcome.coins_spent,
                 growth_spent_on_mastery=outcome.growth_spent_units,
+                growth_flow_kind=(
+                    "manual_contribution"
+                    if outcome.growth_spent_units else "claim"
+                ),
+                stored_growth_balance_delta_units=(
+                    -outcome.growth_spent_units
+                ),
+                growth_contributed_to_mastery_units=(
+                    outcome.growth_spent_units
+                ),
+                item_id=request.rank_id,
+                quantity=1,
+                metric_deltas=_project_allocation_metric_deltas((
+                    ProjectGrowthAllocation(
+                        GrowthTargetType.MASTERY,
+                        request.species_id,
+                        outcome.growth_spent_units,
+                    ),
+                ) if outcome.growth_spent_units else ()),
             ))
             self._queue_feedback(
                 f"mastery:{request.request_id}",
@@ -8403,6 +9637,7 @@ class GardenGameEngine:
     ) -> tuple[bool, str]:
         """Use one stored Fertilizer dose on the nurtured plant."""
 
+        self.last_fertilizer_stored_item_result = None
         normalized_tier = str(tier or "basic").lower()
         spec = self.FERTILIZERS.get(normalized_tier)
         if spec is None:
@@ -8437,6 +9672,14 @@ class GardenGameEngine:
         )
         if dose_count >= self.EFFECT_DOSE_CAP:
             return False, "This plant already has five Fertilizer doses."
+        stored_item_result = build_fertilizer_stored_item_projection(
+            FertilizerStoredItemDisposition.QUEUE
+            if dose_count else FertilizerStoredItemDisposition.USE,
+            card_queue_delta=spec.card_count,
+            # Card-counted Fertilizer has no wall-clock expiration. Legacy
+            # timed projections may populate this field explicitly.
+            expires_at_ms=None,
+        )
         _ = bool(replace_active)  # Different tiers now queue; no confirmation needed.
         snapshot = self._state_snapshot()
         try:
@@ -8495,7 +9738,60 @@ class GardenGameEngine:
         except Exception:
             self._restore_state(snapshot)
             return False, f"Couldn’t use {spec.name}."
+        self.last_fertilizer_stored_item_result = stored_item_result
         return True, message
+
+    def fertilizer_stored_item_projection(
+        self,
+        plant_id: str | None = None,
+        *,
+        tier: str = "basic",
+    ) -> FertilizerStoredItemProjection | None:
+        """Project an inventory dose action without inferring it in the UI.
+
+        Production emits only ``USE`` or ``QUEUE`` with a card delta and a
+        null ``expires_at_ms``. Schema-25 timed doses are converted to this
+        card-counted queue during migration. ``ADD_ONE_HOUR`` and
+        ``ADD_TWO_HOURS`` remain compatibility-builder values only; the
+        production engine never emits them.
+        """
+
+        normalized_tier = str(tier or "basic").lower()
+        spec = self.FERTILIZERS.get(normalized_tier)
+        target_id = (
+            str(self.state.active_plant_id or "")
+            if plant_id is None else str(plant_id)
+        )
+        plant = self.plant_story(target_id)
+        if spec is None or plant is None or plant.fully_grown or not plant.planted:
+            return None
+        active, queued = self._card_effect_lists(plant, "fertilizer")
+        live_count = sum(
+            1 for batch in (*active, *queued)
+            if int(batch.remaining_cards) > 0
+        )
+        return build_fertilizer_stored_item_projection(
+            FertilizerStoredItemDisposition.QUEUE
+            if live_count else FertilizerStoredItemDisposition.USE,
+            card_queue_delta=spec.card_count,
+            expires_at_ms=None,
+        )
+
+    def use_fertilizer_item_with_result(
+        self,
+        plant_id: str | None = None,
+        *,
+        tier: str = "basic",
+        replace_active: bool = False,
+    ) -> tuple[bool, str, FertilizerStoredItemProjection | None]:
+        """Use an inventory dose and return its explicit committed disposition."""
+
+        ok, message = self.use_fertilizer_item(
+            plant_id,
+            tier=tier,
+            replace_active=replace_active,
+        )
+        return ok, message, self.last_fertilizer_stored_item_result
 
     def use_basic_fertilizer(
         self,
@@ -9286,7 +10582,9 @@ class GardenGameEngine:
                         or f"achievement:{definition.achievement_id}"
                     ),
                 )
-        self._refresh_achievement_progress()
+        # `_unlock_achievement` sets the committed row to progress 1.0. Its
+        # current rewards (Coins, inventory, beds, and cosmetics) cannot alter
+        # any achievement progress input, so a second full scan is identical.
 
     def _finalize_day_achievements(
         self,

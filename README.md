@@ -17,9 +17,13 @@ achievement, and economy rules, see the
   35,000 Growth, limits six-bed output to 150%, and uses completion-based
   Garden Rhythm instead of streak Growth.
 - Every starter appearance is economically equal, every later species costs
-  250 Coins, Beds 3–6 are earned from plant progression, and optional cosmetic,
-  Garden Landmark, and Cultivation Mastery sinks keep Stored Growth useful
-  after the base collection is complete.
+  250 Garden Coins, Beds 3–6 are earned from plant progression, and optional cosmetic,
+  Garden Landmark, Cultivation Mastery, and evergreen Garden Legacy projects
+  keep Stored Growth useful after the base collection is complete.
+- Ordinary completed days still grant 12 Garden Coins: 4 on the first eligible
+  answer and 8 for Today’s Cards. Every fifth valid completion adds an
+  automatic Garden Cycle reward of 30 Garden Coins without resetting after a
+  missed day.
 - A clearer first-run path explains that plant Growth and repeatable rewards begin
   after the learner chooses and nurtures a starter and are not backfilled;
   reliably reconstructable one-time achievements are handled separately from
@@ -37,7 +41,7 @@ achievement, and economy rules, see the
 - Hidden progress pages render lazily, wall-time refresh timers run only while visible timed status exists, static scene animation timers stop, and bounded per-widget caches reuse scene layout and raster work without changing learner state.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- Capture contract v26 uses contract schema 2 and scenario schema 3 to compile one Qt-free surface registry into an immutable manifest. The representative/full profiles contain 18/38 structurally distinct surfaces and two/six generated sheets. Every v26 surface records `scenario_id`, `fixture_id`, and one-based `scenario_step`; the shared lineages are `first_run` 01–04, `fertilizer_queue` 09–10, and `growth_charge_transition` 33–34, while 27–30 use named single-surface scenarios and all other surfaces default to their stable ID, fixture `v1`, and step 1. V25 evidence is frozen but rejected for v26 reuse. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Deprecated visible copy, DOM/root overflow, progress fractions, asset mapping, Reviewer exclusion rectangles, four-state scrolling, acquisition, lifecycle, and lineage are hard gates. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
+- Capture contract v26 uses contract schema 2 and scenario schema 3 to compile one Qt-free surface registry into an immutable manifest. The full profile contains 34 structurally distinct surfaces and five generated sheets. Every v26 surface records `scenario_id`, `fixture_id`, and one-based `scenario_step`. V25 evidence is frozen but rejected for v26 reuse. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Deprecated visible copy, DOM/root overflow, progress fractions, asset mapping, Reviewer exclusion rectangles, four-state scrolling, acquisition, lifecycle, and lineage are hard gates. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
 
 ## Gameplay terms
 
@@ -48,8 +52,9 @@ achievement, and economy rules, see the
 | **Growth** | A plant's progress toward its next visual stage. | Unlocks Seed, Sprout, Young, Mature, Flowering, and Full Bloom stages. |
 | **Answer Growth** | Growth calculated when a card is completed. | Combines 10 base Growth with Garden Rhythm, Fertilizer, Potion, the snapshotted Garden Bonus, and Scenery Effect. Each other planted bed creates a separate 10% Shared Growth lane. |
 | **Instant Growth** | A fixed Growth reward from Finds, Growth Charges, or completion effects. | Uses no card modifiers and is not shared, but overflow is redirected or stored instead of lost. |
-| **Garden Rhythm** | Verified Today’s Cards completions among the prior seven eligible study days. | Adds 0–10% to the 10 base Growth without a missed-day reset cliff. Anki streak remains separate for streak Coins and achievements. |
-| **Today’s Cards** | The live collection-wide cards and learning steps that must be finished before Anki's cutoff. | Completing them grants 10 Garden Coins and the locked Scenery completion gift. |
+| **Garden Rhythm** | Verified Today’s Cards completions among the prior seven eligible study days. | Adds 0–10% to the 10 base Growth without a missed-day reset cliff. Anki streak remains separate for streak Garden Coins and achievements. |
+| **Today’s Cards** | The live collection-wide cards and learning steps that must be finished before Anki's cutoff. | Completing them grants 8 Garden Coins, advances Garden Cycle, and grants the locked Scenery completion gift. |
+| **Garden Cycle** | Five verified Today’s Cards completions; the days do not need to be consecutive. | Automatically grants 30 Garden Coins on the fifth, tenth, fifteenth, and later qualifying completions. |
 | **Garden Coins** | A separate spendable reward recorded in the reward and transaction ledgers. | Earned from daily study, streak rewards, achievements, Today’s Cards, plant milestones, environment effects, and Garden Finds; spent in the Nursery. |
 | **Garden Find** | A deterministic chance after an eligible, newly processed card, with protection from long gaps and a daily limit. | Can grant Garden Coins, Instant Growth, a consumable, or an unowned Garden Decoration or Scenery item. |
 | **Fertilizer** | A card-counted bonus to Answer Growth. | Adds `+1` for 100, `+2` for 200, or `+3` for 400 eligible cards. Review speed and time outside Anki do not change its value. |
@@ -57,7 +62,7 @@ achievement, and economy rules, see the
 | **Growth Charge** | A stored one-use supplement applied to any owned, planted, unfinished plant. | Adds `+100`, `+500`, or `+2,000` Instant Growth. Any excess is redirected or stored. |
 | **Garden Decoration** | One displayed prop chosen independently from one active Garden Bonus. | Appearance can change without changing the day’s snapshotted mechanics. |
 | **Scenery** | One displayed garden setting chosen independently from one active Scenery Effect. | Appearance and mechanics may come from different owned Scenery entries. |
-| **Stored Growth** | Exact Growth that no unfinished planted target could accept. | Funds cosmetic Garden Landmark projects and per-species Cultivation Mastery; it never decays. |
+| **Stored Growth** | Exact Growth that no unfinished plant or acknowledged active project could accept. | Can be contributed to Landmark, per-species Mastery, or unlocked Garden Legacy projects; it never decays or spends itself. |
 
 ## Progression details
 
@@ -74,19 +79,24 @@ achievement, and economy rules, see the
 - Plants use Seed, Sprout, Young, Mature, Flowering, and player-facing **Full Bloom** stages at `0`, `400`, `2,000`, `6,000`, `15,000`, and `35,000` Growth.
 - Shared progression projections preserve internal `rare` state while displaying **Full Bloom**. Compact status identifies both stage and position, for example `Sprout · 2 of 6 stages`.
 - Each stage pool pays at 25%, 50%, 75%, and completion. Full Bloom also grants one Small Growth Charge, a permanent collection record, and automatic continuation to the next planted unfinished plant.
-- Growth never disappears at a plant cap or when no plant is selected. It continues to another eligible plant or enters Stored Growth until the learner chooses a plant.
+- Growth never disappears at a plant cap or when no plant is selected. Final
+  overflow continues to the acknowledged active long-term project, when one
+  has capacity, and otherwise enters Stored Growth.
 - After activation, each eligible newly processed card independently checks the Standard and unowned-environment Garden Find pools. The Standard cap is three below 200 cards, four at 200–399, and five at 400 or more. A Standard Find and an environment discovery may stack with other rewards from the same card.
 - Standard Find Growth is Instant Growth. It receives no streak or card modifier and is not shared. If no plant can receive it, the complete value enters Stored Growth.
 
 ## Anki-day reward rules
 
-An Anki day follows Anki's configured next-day cutoff. The first eligible completed card starts or continues the streak and grants 2 Garden Coins.
+An Anki day follows Anki's configured next-day cutoff. The first eligible
+completed card starts or continues the streak and grants 4 Garden Coins.
 
 Every seventh active-streak day grants 10 Garden Coins. One-time achievements
-may stack with recurring rewards. Completing **Today’s Cards** grants 10 Garden
-Coins plus the locked Scenery completion gift. The first valid completion also
-grants a 5-Coin first-completion bonus. A single learner-facing result groups
-every reward produced by the same completed card.
+may stack with recurring rewards. Completing **Today’s Cards** grants 8 Garden Coins
+plus the locked Scenery completion gift. Every fifth valid completion
+also grants the separate **Garden Cycle** reward of 30 Garden Coins. Missing days
+do not reset the cycle, and a no-card day does not advance it. The first valid
+completion also grants a first-completion bonus of 5 Garden Coins. A single
+learner-facing result groups every reward produced by the same completed card.
 
 Today’s Cards uses a live collection-wide check at the moment of completion. It includes:
 
@@ -98,7 +108,7 @@ Scheduler-available new cards count from the start; moving one into Learning doe
 
 The compact HUD keeps Today's Cards globally scoped. In progress it emphasizes
 the number of **cards left** alongside completed/starting progress. Completion
-becomes **Today’s Cards Complete**, the exact Coin reward, and the committed
+becomes **Today’s Cards Complete**, the exact Garden Coin reward, and the committed
 cards-complete total. Find caps,
 pity state, `Daily limit reached`, and an `ALL DECKS` control are never persistent
 Reviewer copy.
@@ -171,7 +181,7 @@ major rewards. A Charge can target any owned, planted,
 unfinished plant from its selected-plant panel or Plant Growth card.
 Confirmation revalidates the target, inventory, Growth, reward terms, and
 request identity; it receives no card modifiers and is not shared. Overflow is
-redirected or stored. Normal milestone and Coin rewards still apply. A failed save restores Growth,
+redirected or stored. Normal milestone and Garden Coin rewards still apply. A failed save restores Growth,
 inventory, rewards, feedback, and the replay ledger.
 
 ## Garden Decorations, Scenery, and Garden Finds
@@ -203,16 +213,16 @@ not suppress either Garden Find pool.
 | Garden Decoration | Acquisition | Garden Bonus |
 |---|---|---|
 | Seedling Sign | Included | None |
-| Wind Chime | Nursery: 100 Coins | +1 Growth every 10 eligible cards |
-| Harvest Bell | Nursery: 175 Coins | +5 Coins when Today’s Cards is complete |
-| Watering Station | Nursery: 250 Coins | +1 Growth every 5 eligible cards among the first 100 daily |
-| Herbalist’s Hourglass | Nursery: 350 Coins | Booster every 30 active completions; activated Potions receive 25 extra cards |
+| Wind Chime | Nursery: 100 Garden Coins | +1 Growth every 10 eligible cards |
+| Harvest Bell | Nursery: 175 Garden Coins | +5 Garden Coins when Today’s Cards is complete |
+| Watering Station | Nursery: 250 Garden Coins | +1 Growth every 5 eligible cards among the first 100 daily |
+| Herbalist’s Hourglass | Nursery: 350 Garden Coins | Booster every 30 active completions; activated Potions receive 25 extra cards |
 | Firefly Lantern | Rare environment discovery | +3 Instant Growth every 5 eligible cards to the closest checkpoint |
 | Prism Trellis | Very Rare environment discovery | Banks 1 Growth on the first 100 daily cards, up to 300, and releases it on completion while active |
 
 The Standard Find pool contains Garden Coin awards, 40/60/100 Instant Growth,
 Small and Standard Growth Charges, Basic Fertilizer (shown as **Rich Compost**),
-a Booster Potion, and the exceptional 40-Coin Garden Treasury. The full Garden
+a Booster Potion, and the exceptional Garden Treasury worth 40 Garden Coins. The full Garden
 may explain the cap, protection, and guarantee; the persistent Reviewer HUD
 shows a Find only when it is earned and never exposes those counters. The
 independent environment
@@ -231,8 +241,9 @@ and six unique Full Blooms.
 
 Collection reports species and catalog coverage separately: the canonical
 fixture shows `10 of 10 species discovered` and
-`30 of 93 collection entries discovered`. The latter is never labeled as a
-plant count.
+`30 of 39 collection entries discovered`. Landmark tiers, Mastery ranks,
+Legacy levels, and cosmetic status remain separate progress records and never
+inflate that Collection denominator.
 
 | Species | Garden Coins |
 |---|---:|
@@ -247,21 +258,25 @@ plant count.
 | Wisteria | 250 |
 | Dahlia | 250 |
 
-Five optional cosmetic Display Decorations cost 150–400 Coins. After the
-first Full Bloom, Stored Growth and Coins may fund six sequential Garden
-Landmarks and four cosmetic Cultivation Mastery ranks per species. Neither
-system creates a Growth multiplier, Coin faucet, Find bonus, or extra effect
-slot.
+Five optional cosmetic Display Decorations cost 150–400 Garden Coins. After
+the first Full Bloom, Growth may continuously fund the six cumulative Garden
+Landmark tiers or four cumulative cosmetic Cultivation Mastery ranks per Full
+Bloom species. Sequential claims spend Garden Coins only; funding is never
+deducted twice. After all finite Growth tracks are funded, Garden Legacy uses
+500,000 Growth per cosmetic level forever. None of these systems creates a
+Growth multiplier, Garden Coin faucet, Find bonus, or extra effect slot.
 
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. Schema 26 stores exact hundredth-Growth units, Stored Growth,
+add-on upgrades. Schema 27 stores exact hundredth-Growth units, Stored Growth,
 card-counted Fertilizer and Booster queues, Garden Rhythm and effect snapshots,
 independent appearance/effect choices, dual environment pity, earned beds,
-Landmark, Mastery, and lifetime economy aggregates. Recent UI receipts remain
+active Growth targets, cumulative Landmark and Mastery funding and claims,
+Garden Legacy, Garden Cycle, and provenance-qualified lifetime economy
+aggregates. Recent UI receipts remain
 bounded while permanent answer, Find, purchase, Charge, Landmark, Mastery, and
-migration identities remain authoritative in SQLite. Supported schema 10–25
+migration identities remain authoritative in SQLite. Supported schema 10–26
 profiles migrate forward and failed reads or writes remain fail-closed.
 Legacy Full Moon completion progress carries into the six-completion cadence
 proportionally, rounded up so a positive earned remainder is not erased.

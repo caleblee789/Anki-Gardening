@@ -13,6 +13,10 @@ from types import SimpleNamespace
 os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
 
 from ankigarden.config import DEFAULT_CONFIG
+from ankigarden.economy_progression import (
+    GrowthTargetType,
+    ProjectGrowthAllocation,
+)
 from ankigarden.game import CommittedAnswerResult, GardenGameEngine, ReviewAward
 from ankigarden.growth import GrowthAllocation
 from ankigarden.models.state import (
@@ -178,7 +182,7 @@ def test_engine_committed_result_contains_causal_receipts_and_due_rewards(monkey
     assert result.origin == "local"
     assert result.daily_completion_rewarded is True
     assert {receipt.source for receipt in result.reward_receipts} >= {
-        "daily_activity", "all_due"
+        "first_eligible_answer", "todays_cards"
     }
     assert all(
         receipt.correlation_id == result.correlation_id
@@ -239,6 +243,60 @@ def test_typed_committed_result_carries_exact_landmark_progress(monkeypatch):
 
     assert event is not None
     assert event.landmark_growth_delta_units == 300
+
+
+def test_typed_committed_result_carries_generic_project_allocations(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(state=SimpleNamespace()),
+    )
+    result = CommittedAnswerResult(
+        event_id="answer:projects",
+        correlation_id="answer:projects",
+        scheduler_day=DAY,
+        occurred_at_ms=1_788_000_010_000,
+        origin="local",
+        award=ReviewAward(
+            None,
+            10,
+            0,
+            0,
+            0,
+            correlation_id="answer:projects",
+        ),
+        project_allocations=(
+            ProjectGrowthAllocation(
+                GrowthTargetType.LANDMARK,
+                "garden_landmark",
+                250,
+            ),
+            ProjectGrowthAllocation(
+                GrowthTargetType.MASTERY,
+                "bonsai",
+                100,
+            ),
+            ProjectGrowthAllocation(
+                GrowthTargetType.LEGACY,
+                "garden_legacy",
+                25,
+            ),
+            ProjectGrowthAllocation(
+                GrowthTargetType.MASTERY,
+                "bonsai",
+                0,
+            ),
+        ),
+    )
+
+    event = handler._session_event_from_result(result)
+
+    assert event is not None
+    assert [(row.target_type, row.target_id, row.units) for row in event.project_allocations] == [
+        ("landmark", "garden_landmark", 250),
+        ("mastery", "bonsai", 100),
+        ("legacy", "garden_legacy", 25),
+    ]
 
 
 def test_engine_committed_result_owns_standard_find_count():

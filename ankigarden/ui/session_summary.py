@@ -791,6 +791,62 @@ def _unique_reward_receipts(
 
 
 @dataclass(frozen=True)
+class SessionProjectGrowthAllocation:
+    """Immutable committed Growth credit for one stable project target.
+
+    This renderer-neutral value mirrors the local and sync engine allocation
+    shape. Mastery and Legacy identity comes from a committed result, never a
+    later mutable-state difference.
+    """
+
+    target_type: str
+    target_id: str
+    units: int
+
+    def __post_init__(self) -> None:
+        target_type = str(self.target_type or "").strip().casefold()
+        target_id = str(self.target_id or "").strip()
+        units = _positive(self.units, "project allocation units")
+        if target_type not in {"landmark", "mastery", "legacy"}:
+            raise ValueError("Unknown Growth project target type")
+        if not target_id:
+            raise ValueError("Growth project target id is required")
+        object.__setattr__(self, "target_type", target_type)
+        object.__setattr__(self, "target_id", target_id)
+        object.__setattr__(self, "units", units)
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "units": self.units,
+        }
+
+
+def _merge_project_allocations(
+    allocations: Iterable[SessionProjectGrowthAllocation],
+) -> tuple[SessionProjectGrowthAllocation, ...]:
+    """Coalesce committed credits by stable target without reading state."""
+
+    totals: dict[tuple[str, str], int] = {}
+    order: list[tuple[str, str]] = []
+    for allocation in allocations:
+        if not isinstance(allocation, SessionProjectGrowthAllocation):
+            raise TypeError(
+                "project_allocations must contain SessionProjectGrowthAllocation values"
+            )
+        key = (allocation.target_type, allocation.target_id)
+        if key not in totals:
+            order.append(key)
+            totals[key] = 0
+        totals[key] += allocation.units
+    return tuple(
+        SessionProjectGrowthAllocation(target_type, target_id, totals[(target_type, target_id)])
+        for target_type, target_id in order
+    )
+
+
+@dataclass(frozen=True)
 class CommittedSessionEvent:
     """Exact deltas from one authoritative local Garden transaction."""
 
@@ -807,6 +863,7 @@ class CommittedSessionEvent:
     environment_discoveries: tuple[EnvironmentDiscovery, ...] = ()
     reward_receipts: tuple[RewardReceipt, ...] = ()
     total_finds: int = 0
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
     landmark_growth_delta_units: int = 0
 
     def __post_init__(self) -> None:
@@ -836,6 +893,11 @@ class CommittedSessionEvent:
             self,
             "stored_growth_delta_units",
             int(self.stored_growth_delta_units),
+        )
+        object.__setattr__(
+            self,
+            "project_allocations",
+            _merge_project_allocations(self.project_allocations),
         )
         object.__setattr__(
             self,
@@ -1089,6 +1151,7 @@ class SessionDaySummary:
     effects_at_end: EffectsSnapshot
     effects_remaining: tuple[EffectRow, ...]
     total_finds: int = 0
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
     landmark_growth_delta_units: int = 0
     coin_sources_reconciled: bool = field(default=True, init=False)
     additional_coins_earned: int = field(default=0, init=False)
@@ -1136,6 +1199,11 @@ class SessionDaySummary:
 
         total_finds = _nonnegative(self.total_finds, "total_finds")
         object.__setattr__(self, "total_finds", total_finds)
+        object.__setattr__(
+            self,
+            "project_allocations",
+            _merge_project_allocations(self.project_allocations),
+        )
         object.__setattr__(
             self,
             "landmark_growth_delta_units",
@@ -1189,7 +1257,7 @@ class SessionDaySummary:
             self.plant_growth_total_units,
             self.shared_growth_total_units,
             self.stored_growth.delta_units,
-            self.landmark_growth_delta_units,
+            self.project_growth_total_units,
             self.garden_coins_earned,
             self.total_finds,
             self.milestones,
@@ -1205,6 +1273,21 @@ class SessionDaySummary:
     @property
     def continue_reviews_available(self) -> bool:
         return self.today_cards_end.can_continue_reviews
+
+    @property
+    def project_growth_total_units(self) -> int:
+        """Exact project credit, retaining legacy Landmark-only compatibility."""
+
+        allocated = sum(item.units for item in self.project_allocations)
+        landmark_allocated = sum(
+            item.units
+            for item in self.project_allocations
+            if item.target_type == "landmark"
+        )
+        return allocated + max(
+            0,
+            self.landmark_growth_delta_units - landmark_allocated,
+        )
 
 
 @dataclass(frozen=True)
@@ -1241,6 +1324,16 @@ class SessionSummaryPayload:
             and self.terminal_today_cards.can_continue_reviews
         )
 
+    @property
+    def project_allocations(self) -> tuple[SessionProjectGrowthAllocation, ...]:
+        """Session-wide target totals from committed immutable events only."""
+
+        return _merge_project_allocations(
+            allocation
+            for segment in self.segments
+            for allocation in segment.project_allocations
+        )
+
 
 @dataclass(frozen=True)
 class LiveSessionSnapshot:
@@ -1270,6 +1363,7 @@ class LiveSessionSnapshot:
     milestones: tuple[PlantMilestone, ...]
     environment_discoveries: tuple[EnvironmentDiscovery, ...]
     reward_receipts: tuple[RewardReceipt, ...]
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
     landmark_growth_delta_units: int = 0
 
     @property
@@ -1280,7 +1374,20 @@ class LiveSessionSnapshot:
             self.plant_growth_total_units
             + self.shared_growth_total_units
             + self.stored_growth.added_units
-            + self.landmark_growth_delta_units
+            + self.project_growth_total_units
+        )
+
+    @property
+    def project_growth_total_units(self) -> int:
+        allocated = sum(item.units for item in self.project_allocations)
+        landmark_allocated = sum(
+            item.units
+            for item in self.project_allocations
+            if item.target_type == "landmark"
+        )
+        return allocated + max(
+            0,
+            self.landmark_growth_delta_units - landmark_allocated,
         )
 
     @property
@@ -1394,6 +1501,7 @@ class SessionDayProjection:
     highlights: HighlightProjection = field(default_factory=HighlightProjection)
     growth_applied_total_units: int = 0
     continue_reviews_available: bool = False
+    project_allocations: tuple[SessionProjectGrowthAllocation, ...] = ()
     landmark_growth_delta_units: int = 0
 
 
@@ -1761,6 +1869,7 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
         highlights=_session_highlights(summary),
         growth_applied_total_units=summary.growth_applied_total_units,
         continue_reviews_available=summary.continue_reviews_available,
+        project_allocations=summary.project_allocations,
         landmark_growth_delta_units=summary.landmark_growth_delta_units,
     )
 
@@ -2073,6 +2182,11 @@ class SessionSummaryAccumulator:
             delta for event in events for delta in event.shared_growth
         )
         stored_deltas = [event.stored_growth_delta_units for event in events]
+        project_allocations = _merge_project_allocations(
+            allocation
+            for event in events
+            for allocation in event.project_allocations
+        )
         landmark_growth_delta_units = sum(
             event.landmark_growth_delta_units for event in events
         )
@@ -2155,6 +2269,7 @@ class SessionSummaryAccumulator:
             ),
             reward_receipts=reward_receipts,
             total_finds=total_finds,
+            project_allocations=project_allocations,
             landmark_growth_delta_units=landmark_growth_delta_units,
             direct_growth_total_units=plant_total,
             growth_applied_total_units=plant_total + shared_total,
@@ -2230,6 +2345,11 @@ class SessionSummaryAccumulator:
                 receipt
                 for segment in segments
                 for receipt in segment.reward_receipts
+            ),
+            project_allocations=_merge_project_allocations(
+                allocation
+                for segment in segments
+                for allocation in segment.project_allocations
             ),
             landmark_growth_delta_units=sum(
                 segment.landmark_growth_delta_units for segment in segments
@@ -2342,6 +2462,7 @@ __all__ = [
     "SessionDaySummary",
     "SessionEndSnapshot",
     "SessionHighlight",
+    "SessionProjectGrowthAllocation",
     "SessionStartSnapshot",
     "SessionSummaryAccumulator",
     "SessionSummaryPayload",

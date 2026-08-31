@@ -20,18 +20,20 @@ def _typographic(value: str) -> str:
     return value.replace("'", "’")
 
 
-def test_current_economy_docs_identify_schema26_catalog_authority() -> None:
+def test_current_economy_docs_identify_schema27_catalog_authority() -> None:
     reference = _text(REFERENCE)
     readme = _text(README)
     docs_index = _text(DOCS_INDEX)
     release_notes = _text(RELEASE_NOTES)
 
-    assert "Anki Garden 2.2.0 and state schema 26" in reference
+    assert "Anki Garden 2.2.0 and state schema 27" in reference
     assert "ankigarden/balance_catalog.py" in reference
-    assert "Schema 26" in readme
-    assert "schema-26 Anki Garden 2.2.0" in docs_index
+    assert "Schema 27" in readme
+    assert "schema-27 Anki Garden 2.2.0" in docs_index
     assert "Anki Garden 2.2.0 release notes" in release_notes
     assert "release-notes-2.2.0.md" in docs_index
+    assert "Garden Cycle" in reference and "30 Garden Coins" in reference
+    assert "Garden Legacy" in reference and "500,000 Growth" in reference
 
 
 def test_reference_covers_every_canonical_catalog_family() -> None:
@@ -43,7 +45,7 @@ def test_reference_covers_every_canonical_catalog_family() -> None:
     for species in balance_catalog.SPECIES:
         assert (
             f"| {species.display_name} | Eligible | "
-            f"{species.purchase_price_coins:,} Coins |"
+            f"{species.purchase_price_coins:,} Garden Coins |"
         ) in reference
     for item in (
         *balance_catalog.CONSUMABLES,
@@ -60,7 +62,7 @@ def test_reference_covers_every_canonical_catalog_family() -> None:
             display_name in reference or _typographic(display_name) in reference
         )
 
-    assert "30 of 93 collection entries discovered" in reference
+    assert "30 of 39 collection entries discovered" in reference
     assert "0–199" in reference and "200–399" in reference and "400+" in reference
     assert "60 completions" in reference
     assert "180 completions" in reference
@@ -70,7 +72,9 @@ def test_reference_covers_every_canonical_catalog_family() -> None:
 def test_current_reference_and_readme_exclude_retired_balance_rules() -> None:
     current = _text(REFERENCE) + "\n" + _text(README)
     for retired in (
-        "30 of 39 collection entries discovered",
+        "30 of 93 collection entries discovered",
+        "First eligible committed answer | 2 Coins",
+        "Today’s Cards complete | 10 Coins",
         "Each other planted plant creates a separate 20% Shared Growth",
         "Fertilizer uses real elapsed time",
         "Full Moon Garden to 125",

@@ -13,7 +13,7 @@ from ..growth import GROWTH_STAGES, stage_presentation
 MAX_SYNC_SUMMARY_ROWS = 256
 MAX_SYNC_SUMMARY_DAYS = 366
 MAX_SYNC_SUMMARY_TEXT = 240
-SYNC_REWARD_MODEL_VERSION = 3
+SYNC_REWARD_MODEL_VERSION = 4
 
 
 def _text(value: Any, *, limit: int = MAX_SYNC_SUMMARY_TEXT) -> str:
@@ -57,6 +57,65 @@ def _records(value: Any) -> tuple[dict[str, Any], ...]:
                 clean[key] = _text(raw_value)
         result.append(clean)
     return tuple(result)
+
+
+@dataclass(frozen=True)
+class SyncProjectGrowthAllocation:
+    """Exact project Growth committed by the production engine during sync."""
+
+    target_type: str
+    target_id: str
+    units: int
+
+    def __post_init__(self) -> None:
+        target_type = _text(self.target_type, limit=32).casefold()
+        target_id = _text(self.target_id, limit=96)
+        units = _nonnegative(self.units)
+        if target_type not in {"landmark", "mastery", "legacy"}:
+            raise ValueError("Unknown Growth project target type")
+        if not target_id:
+            raise ValueError("Growth project target id is required")
+        if units <= 0:
+            raise ValueError("Growth project allocation must be positive")
+        object.__setattr__(self, "target_type", target_type)
+        object.__setattr__(self, "target_id", target_id)
+        object.__setattr__(self, "units", units)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "units": self.units,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> SyncProjectGrowthAllocation | None:
+        if not isinstance(raw, Mapping):
+            return None
+        try:
+            return cls(
+                target_type=_text(raw.get("target_type"), limit=32),
+                target_id=_text(raw.get("target_id"), limit=96),
+                units=_nonnegative(raw.get("units")),
+            )
+        except ValueError:
+            return None
+
+
+def _merge_project_allocations(
+    *groups: Iterable[SyncProjectGrowthAllocation],
+) -> tuple[SyncProjectGrowthAllocation, ...]:
+    totals: dict[tuple[str, str], int] = {}
+    for group in groups:
+        for allocation in group:
+            key = (allocation.target_type, allocation.target_id)
+            totals[key] = totals.get(key, 0) + allocation.units
+    return tuple(
+        SyncProjectGrowthAllocation(target_type, target_id, units)
+        for (target_type, target_id), units in tuple(totals.items())[
+            :MAX_SYNC_SUMMARY_ROWS
+        ]
+    )
 
 
 @dataclass(frozen=True)
@@ -139,6 +198,7 @@ class SyncPlantResult:
     stage_event_id: str = ""
     stage_event_text: str = ""
     full_bloom: bool = False
+    transition_source: str = ""
 
     @property
     def stage_changed(self) -> bool:
@@ -264,6 +324,10 @@ class SyncPlantResult:
             ],
             "stage_event_id": _text(self.stage_event_id, limit=96),
             "stage_event_text": _text(self.stage_event_text),
+            "transition_source": _text(self.transition_source, limit=64),
+            "stage_transition_source": _text(
+                self.transition_source, limit=64
+            ),
             "full_bloom": self.reached_full_bloom,
         }
 
@@ -306,6 +370,11 @@ class SyncPlantResult:
             checkpoints=checkpoints,
             stage_event_id=_text(raw.get("stage_event_id"), limit=96),
             stage_event_text=_text(raw.get("stage_event_text")),
+            transition_source=_text(
+                raw.get("transition_source")
+                or raw.get("stage_transition_source"),
+                limit=64,
+            ),
             full_bloom=bool(raw.get("full_bloom", False)),
         ).canonicalized()
 
@@ -360,6 +429,11 @@ class SyncRewardSummary:
     # Appended for positional compatibility with retained v1/v2 callers.
     # Older persisted receipts omit this field and load it as zero.
     landmark_growth_delta_units: int = 0
+    # Schema-27 project funding is emitted from committed engine results. The
+    # Landmark scalar remains above as a retained compatibility field.
+    mastery_growth_delta_units: int = 0
+    legacy_growth_delta_units: int = 0
+    project_allocations: tuple[SyncProjectGrowthAllocation, ...] = ()
 
     @property
     def first_anki_day(self) -> str:
@@ -376,6 +450,9 @@ class SyncRewardSummary:
             and (
                 self.growth_total_units > 0
                 or self.landmark_growth_delta_units > 0
+                or self.mastery_growth_delta_units > 0
+                or self.legacy_growth_delta_units > 0
+                or self.project_allocations
                 or self.garden_coin_delta > 0
                 or self.finds
                 or self.environment_discoveries
@@ -421,6 +498,11 @@ class SyncRewardSummary:
             "shared_growth_delta_units": self.shared_growth_delta_units,
             "stored_growth_delta_units": self.stored_growth_delta_units,
             "landmark_growth_delta_units": self.landmark_growth_delta_units,
+            "mastery_growth_delta_units": self.mastery_growth_delta_units,
+            "legacy_growth_delta_units": self.legacy_growth_delta_units,
+            "project_allocations": [
+                allocation.to_dict() for allocation in self.project_allocations
+            ],
             "garden_coin_delta": self.garden_coin_delta,
             "finds": [dict(item) for item in self.finds],
             "environment_discoveries": [
@@ -477,6 +559,18 @@ class SyncRewardSummary:
             )[:MAX_SYNC_SUMMARY_ROWS]
             if (result := SyncPlantResult.from_dict(value)) is not None
         )
+        raw_project_allocations = raw.get("project_allocations")
+        project_allocations = tuple(
+            allocation
+            for value in (
+                raw_project_allocations
+                if isinstance(raw_project_allocations, (list, tuple))
+                else ()
+            )[:MAX_SYNC_SUMMARY_ROWS]
+            if (
+                allocation := SyncProjectGrowthAllocation.from_dict(value)
+            ) is not None
+        )
         return cls(
             batch_id=batch_id,
             anki_days=tuple(days),
@@ -494,6 +588,13 @@ class SyncRewardSummary:
             landmark_growth_delta_units=_nonnegative(
                 raw.get("landmark_growth_delta_units")
             ),
+            mastery_growth_delta_units=_nonnegative(
+                raw.get("mastery_growth_delta_units")
+            ),
+            legacy_growth_delta_units=_nonnegative(
+                raw.get("legacy_growth_delta_units")
+            ),
+            project_allocations=project_allocations,
             garden_coin_delta=_nonnegative(raw.get("garden_coin_delta")),
             finds=_records(raw.get("finds")),
             environment_discoveries=_records(raw.get("environment_discoveries")),
@@ -556,6 +657,18 @@ class SyncRewardSummary:
             landmark_growth_delta_units=(
                 self.landmark_growth_delta_units
                 + newer.landmark_growth_delta_units
+            ),
+            mastery_growth_delta_units=(
+                self.mastery_growth_delta_units
+                + newer.mastery_growth_delta_units
+            ),
+            legacy_growth_delta_units=(
+                self.legacy_growth_delta_units
+                + newer.legacy_growth_delta_units
+            ),
+            project_allocations=_merge_project_allocations(
+                self.project_allocations,
+                newer.project_allocations,
             ),
             garden_coin_delta=self.garden_coin_delta + newer.garden_coin_delta,
             finds=finds,
@@ -667,6 +780,7 @@ def _group_legacy_plant_results(
             "stage_event_id": "",
             "stage_event_text": "",
             "full_bloom": False,
+            "transition_source": "",
         }
     for raw in progression_events:
         item = dict(raw)
@@ -692,6 +806,7 @@ def _group_legacy_plant_results(
                 "stage_event_id": "",
                 "stage_event_text": "",
                 "full_bloom": False,
+                "transition_source": "",
             }
         target = rows[plant_id]
         event_type = _text(item.get("event_type"), limit=32).casefold()
@@ -715,6 +830,11 @@ def _group_legacy_plant_results(
         else:
             target["stage_event_id"] = _text(item.get("event_id"), limit=96)
             target["stage_event_text"] = _text(item.get("display_text"))
+            target["transition_source"] = _text(
+                item.get("transition_source")
+                or item.get("stage_transition_source"),
+                limit=64,
+            )
             if event_type == "full_bloom":
                 target["full_bloom"] = True
                 target["fully_grown"] = True
@@ -764,6 +884,9 @@ def _merge_plant_results(
             stage_event_id=item.stage_event_id or current.stage_event_id,
             stage_event_text=item.stage_event_text or current.stage_event_text,
             full_bloom=current.full_bloom or item.full_bloom,
+            transition_source=(
+                item.transition_source or current.transition_source
+            ),
         ).canonicalized()
     return tuple(
         result[key].canonicalized()

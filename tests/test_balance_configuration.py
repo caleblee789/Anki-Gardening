@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from scripts.balance_analysis.model import (
     APPROVED_COHORTS,
+    APPROVED_CONSUMABLE_POLICY_BY_STRATEGY,
     APPROVED_EDGE_CASES,
+    APPROVED_SCENARIO_IDS,
+    APPROVED_SCENARIO_SUFFIXES,
     APPROVED_STRATEGIES,
     DEFAULT_SEED_COUNT,
     approved_scenarios,
@@ -42,6 +45,24 @@ def test_scenario_matrix_has_six_strategies_and_five_separate_edge_cases():
         for cohort in APPROVED_COHORTS
     )
     assert len({row.scenario_id for row in rows}) == len(rows)
+    assert tuple(row.scenario_id for row in rows) == APPROVED_SCENARIO_IDS
+    assert APPROVED_SCENARIO_SUFFIXES == (
+        ("no_spend", "baseline"),
+        ("collection_first", "baseline"),
+        ("cosmetic_first", "baseline"),
+        ("consumable_heavy", "baseline"),
+        ("optimal_growth", "baseline"),
+        ("optimal_coin", "baseline"),
+        ("collection_first", "incomplete_days"),
+        ("collection_first", "missed_week"),
+        ("optimal_growth", "all_environments"),
+        ("no_spend", "all_plants_complete"),
+        ("optimal_coin", "landmark_mastery"),
+    )
+    assert APPROVED_CONSUMABLE_POLICY_BY_STRATEGY == tuple(
+        (row.strategy_id, row.consumable_policy)
+        for row in APPROVED_STRATEGIES
+    )
 
 
 def test_completion_and_missed_week_calendars_are_deterministic():

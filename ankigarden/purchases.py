@@ -11,6 +11,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from .balance_catalog import (
+    BED_UNLOCK_BY_NUMBER,
+    CONSUMABLE_BY_ID,
+    canonical_consumable_id,
+)
+
 
 class PurchaseKind(str, Enum):
     SPECIES = "species"
@@ -66,22 +72,107 @@ class PurchaseAction(str, Enum):
     UNLOCK = "unlock"
 
 
+class PurchaseAppearanceState(str, Enum):
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+
+
+class FertilizerStoredItemDisposition(str, Enum):
+    """Explicit inventory action; renderers never infer it from schedules."""
+
+    ADD_ONE_HOUR = "add_one_hour"
+    ADD_TWO_HOURS = "add_two_hours"
+    QUEUE = "queue"
+    USE = "use"
+
+    @property
+    def action_text(self) -> str:
+        return {
+            FertilizerStoredItemDisposition.ADD_ONE_HOUR: "Add 1 hour",
+            FertilizerStoredItemDisposition.ADD_TWO_HOURS: "Add 2 hours",
+            FertilizerStoredItemDisposition.QUEUE: "Queue",
+            FertilizerStoredItemDisposition.USE: "Use",
+        }[self]
+
+
+@dataclass(frozen=True)
+class FertilizerStoredItemProjection:
+    disposition: FertilizerStoredItemDisposition
+    action_text: str
+    duration_delta_seconds: int
+    card_queue_delta: int
+    expires_at_ms: int | None = None
+
+
+def fertilizer_stored_item_projection(
+    disposition: FertilizerStoredItemDisposition | str,
+    *,
+    duration_delta_seconds: int = 0,
+    card_queue_delta: int = 0,
+    expires_at_ms: int | None = None,
+) -> FertilizerStoredItemProjection:
+    """Project an authoritative fertilizer result without schedule arithmetic."""
+
+    resolved = FertilizerStoredItemDisposition(disposition)
+    duration_delta = int(duration_delta_seconds)
+    queue_delta = int(card_queue_delta)
+    if duration_delta < 0 or queue_delta < 0:
+        raise ValueError("Fertilizer result deltas cannot be negative")
+    if expires_at_ms is not None and (
+        isinstance(expires_at_ms, bool)
+        or not isinstance(expires_at_ms, int)
+        or expires_at_ms <= 0
+    ):
+        raise ValueError("expires_at_ms must be a positive epoch millisecond")
+    required_duration = {
+        FertilizerStoredItemDisposition.ADD_ONE_HOUR: 3_600,
+        FertilizerStoredItemDisposition.ADD_TWO_HOURS: 7_200,
+    }.get(resolved)
+    if required_duration is not None and duration_delta != required_duration:
+        raise ValueError(
+            f"{resolved.value} requires duration_delta_seconds={required_duration}"
+        )
+    if required_duration is not None and expires_at_ms is None:
+        raise ValueError(
+            f"{resolved.value} requires an absolute expires_at_ms"
+        )
+    if required_duration is not None and queue_delta:
+        raise ValueError(f"{resolved.value} cannot add card-counted queue value")
+    if resolved in {
+        FertilizerStoredItemDisposition.QUEUE,
+        FertilizerStoredItemDisposition.USE,
+    } and duration_delta:
+        raise ValueError(f"{resolved.value} cannot add timed duration")
+    if resolved in {
+        FertilizerStoredItemDisposition.QUEUE,
+        FertilizerStoredItemDisposition.USE,
+    } and expires_at_ms is not None:
+        raise ValueError(
+            f"{resolved.value} is card-counted and cannot have expires_at_ms"
+        )
+    return FertilizerStoredItemProjection(
+        resolved,
+        resolved.action_text,
+        duration_delta,
+        queue_delta,
+        expires_at_ms,
+    )
+
+
 def fertilizer_action_label(
     disposition: PurchaseDisposition,
     *,
     owned: bool,
 ) -> str:
-    """Return the shared Apply/Queue/Extend Fertilizer action vocabulary."""
+    """Return the frozen card-counted Fertilizer action vocabulary."""
 
     try:
         resolved = PurchaseDisposition(disposition)
     except (TypeError, ValueError):
         resolved = PurchaseDisposition.APPLIED
-    if resolved is PurchaseDisposition.EXTENDED:
-        return "Extend"
-    if resolved is PurchaseDisposition.QUEUED:
+    if resolved in {PurchaseDisposition.EXTENDED, PurchaseDisposition.QUEUED}:
         return "Queue" if owned else "Buy and queue"
-    return "Apply" if owned else "Buy and apply"
+    return "Use"
 
 
 class PurchasePreviewStyle(str, Enum):
@@ -180,6 +271,10 @@ class PurchaseQuote:
     card_count: int = 0
     resulting_cards_remaining: int = 0
     queued_doses: int = 0
+    fertilizer_stored_item_disposition: FertilizerStoredItemDisposition | None = None
+    duration_delta_seconds: int = 0
+    card_queue_delta: int = 0
+    fertilizer_expires_at_ms: int | None = None
 
     @property
     def ready(self) -> bool:
@@ -232,6 +327,28 @@ class PurchasePresentation:
     activity_label: str = ""
     success_message: str = ""
     next_actions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PurchaseTransactionRow:
+    key: str
+    label: str
+    amount_coins: int
+
+
+@dataclass(frozen=True)
+class PurchaseProjection:
+    """Small, stable purchase API for renderer-owned surfaces."""
+
+    item_id: str
+    action_text: str
+    price_coins: int | None
+    wallet_balance_coins: int
+    transaction_rows: tuple[PurchaseTransactionRow, ...]
+    can_commit: bool
+    blocking_reason: str
+    appearance_state: PurchaseAppearanceState
+    fertilizer_stored_item: FertilizerStoredItemProjection | None = None
 
 
 def compact_duration(seconds: int) -> str:
@@ -288,7 +405,7 @@ def _eligible_answer_effect(value: str) -> str:
         flags=re.IGNORECASE,
     )
     effect = re.sub(r"\s+per\s+card$", "", effect, flags=re.IGNORECASE)
-    return f"{effect or 'Growth'} per eligible card answer"
+    return f"{effect or 'Growth'} per eligible card"
 
 
 def _effect_duration(value: str) -> str:
@@ -315,10 +432,8 @@ def _bed_unlock_counts(quote: PurchaseQuote) -> tuple[int, int]:
 
 def _priced_action(
     action: PurchaseAction,
-    price: int,
+    _price: int,
 ) -> tuple[str, str, str]:
-    visible_price = _coin_amount(price)
-    accessible_price = _coin_amount(price, formal=True)
     short = {
         PurchaseAction.PURCHASE: "Buy",
         PurchaseAction.PURCHASE_APPLY: "Buy and apply",
@@ -335,19 +450,24 @@ def _priced_action(
         PurchaseAction.PURCHASE_REPLACE: "Applying…",
         PurchaseAction.UNLOCK: "Unlocking…",
     }[action]
-    visible = {
-        PurchaseAction.PURCHASE: f"Buy for {visible_price}",
-        PurchaseAction.PURCHASE_APPLY: f"Buy and apply · {visible_price}",
-        PurchaseAction.PURCHASE_QUEUE: f"Buy and queue · {visible_price}",
-        PurchaseAction.EXTEND: f"Extend · {visible_price}",
-        PurchaseAction.PURCHASE_REPLACE: f"Replace for {visible_price}",
-        PurchaseAction.UNLOCK: f"Unlock for {visible_price}",
-    }[action]
-    return (
-        visible,
-        f"{short} for {accessible_price}",
-        processing,
-    )
+    return short, short, processing
+
+
+def _canonical_action_text(quote: PurchaseQuote, action: PurchaseAction) -> str:
+    if quote.kind is PurchaseKind.GROWTH_CHARGE:
+        item = CONSUMABLE_BY_ID.get(canonical_consumable_id(quote.item_id))
+        return str(getattr(item, "purchase_action_text", "") or "Buy charge")
+    if quote.kind is PurchaseKind.FERTILIZER and action is PurchaseAction.PURCHASE_QUEUE:
+        item = CONSUMABLE_BY_ID.get(canonical_consumable_id(quote.item_id))
+        return str(getattr(item, "queued_purchase_action_text", "") or "Buy and queue")
+    if quote.kind is PurchaseKind.BED:
+        _before, bed_number = _bed_unlock_counts(quote)
+        definition = BED_UNLOCK_BY_NUMBER.get(bed_number)
+        return str(
+            getattr(definition, "purchase_action_text", "")
+            or f"Unlock Bed {bed_number}"
+        )
+    return _priced_action(action, quote.total_price)[0]
 
 
 def _stale_price_copy(item_name: str, message: str, current_price: int) -> str:
@@ -507,6 +627,8 @@ def purchase_presentation(
     primary_label, primary_accessible, processing_label = _priced_action(
         action, quote.total_price
     )
+    primary_label = _canonical_action_text(quote, action)
+    primary_accessible = primary_label
     display_title = title
     display_outcome = outcome
     visible_facts = tuple(facts)
@@ -546,7 +668,7 @@ def purchase_presentation(
             0,
             int(quote.total_price) - max(0, int(quote.balance_before)),
         )
-        shortfall_unit = "coin" if shortfall == 1 else "coins"
+        shortfall_unit = "Garden Coin" if shortfall == 1 else "Garden Coins"
         display_outcome = (
             f"You need {shortfall:,} more {shortfall_unit} to buy {item_name}."
         )
@@ -562,6 +684,8 @@ def purchase_presentation(
             action,
             quote.total_price,
         )
+        primary_label = _canonical_action_text(quote, action)
+        primary_accessible = primary_label
         primary_route = ""
         terminal = True
     elif effective_status is PurchaseStatus.ITEM_UNAVAILABLE:
@@ -707,6 +831,83 @@ def purchase_presentation(
     )
 
 
+def purchase_projection(
+    quote: PurchaseQuote,
+    *,
+    status: PurchaseStatus | None = None,
+    message: str = "",
+    ignore_status: bool = False,
+) -> PurchaseProjection:
+    """Return the price-free action and exact transaction data separately."""
+
+    effective_status = (
+        PurchaseStatus.READY
+        if ignore_status
+        else status if status is not None else quote.status
+    )
+    presentation = purchase_presentation(
+        quote,
+        status=status,
+        message=message,
+        ignore_status=ignore_status,
+    )
+    rows: list[PurchaseTransactionRow] = []
+    if presentation.show_cost:
+        rows.append(PurchaseTransactionRow("price", "Price", quote.total_price))
+        rows.append(
+            PurchaseTransactionRow("balance", "Balance", quote.balance_before)
+        )
+        if presentation.balance_after is not None:
+            rows.append(
+                PurchaseTransactionRow(
+                    "balance_after",
+                    "After purchase",
+                    presentation.balance_after,
+                )
+            )
+    stored_item: FertilizerStoredItemProjection | None = None
+    if quote.fertilizer_stored_item_disposition is not None:
+        stored_item = fertilizer_stored_item_projection(
+            quote.fertilizer_stored_item_disposition,
+            duration_delta_seconds=quote.duration_delta_seconds,
+            card_queue_delta=quote.card_queue_delta,
+            expires_at_ms=quote.fertilizer_expires_at_ms,
+        )
+    can_commit = effective_status is PurchaseStatus.READY
+    blocking_reason = (
+        ""
+        if can_commit or effective_status is PurchaseStatus.SUCCESS
+        else str(message or quote.message or presentation.outcome)
+    )
+    action_text = str(presentation.primary_label)
+    if quote.kind is PurchaseKind.FERTILIZER and stored_item is not None:
+        action_text = (
+            "Buy and queue"
+            if stored_item.disposition is FertilizerStoredItemDisposition.QUEUE
+            and quote.total_price > 0
+            else stored_item.action_text
+        )
+    elif quote.kind is PurchaseKind.BED:
+        action_text = _canonical_action_text(quote, PurchaseAction.UNLOCK)
+    return PurchaseProjection(
+        item_id=str(quote.item_id),
+        action_text=action_text,
+        price_coins=(
+            None if quote.kind is PurchaseKind.BED else quote.total_price
+        ),
+        wallet_balance_coins=max(0, int(quote.balance_before)),
+        transaction_rows=tuple(rows),
+        can_commit=can_commit,
+        blocking_reason=blocking_reason,
+        appearance_state=(
+            PurchaseAppearanceState.ENABLED
+            if can_commit
+            else PurchaseAppearanceState.DISABLED
+        ),
+        fertilizer_stored_item=stored_item,
+    )
+
+
 @dataclass(frozen=True)
 class PurchaseRequest:
     request_id: str
@@ -773,10 +974,25 @@ class PurchaseOutcome:
     result_id: str = ""
     applied: bool = False
     equipped: bool = False
+    fertilizer_stored_item_disposition: FertilizerStoredItemDisposition | None = None
+    duration_delta_seconds: int = 0
+    card_queue_delta: int = 0
+    fertilizer_expires_at_ms: int | None = None
 
     @property
     def success(self) -> bool:
         return self.status is PurchaseStatus.SUCCESS
+
+    @property
+    def fertilizer_stored_item(self) -> FertilizerStoredItemProjection | None:
+        if self.fertilizer_stored_item_disposition is None:
+            return None
+        return fertilizer_stored_item_projection(
+            self.fertilizer_stored_item_disposition,
+            duration_delta_seconds=self.duration_delta_seconds,
+            card_queue_delta=self.card_queue_delta,
+            expires_at_ms=self.fertilizer_expires_at_ms,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -793,6 +1009,14 @@ class PurchaseOutcome:
             "result_id": self.result_id,
             "applied": self.applied,
             "equipped": self.equipped,
+            "fertilizer_stored_item_disposition": (
+                None
+                if self.fertilizer_stored_item_disposition is None
+                else self.fertilizer_stored_item_disposition.value
+            ),
+            "duration_delta_seconds": self.duration_delta_seconds,
+            "card_queue_delta": self.card_queue_delta,
+            "fertilizer_expires_at_ms": self.fertilizer_expires_at_ms,
         }
 
     @staticmethod
@@ -831,6 +1055,41 @@ class PurchaseOutcome:
             return None
         if not isinstance(applied, bool) or not isinstance(equipped, bool):
             return None
+        raw_fertilizer_disposition = value.get("fertilizer_stored_item_disposition")
+        fertilizer_disposition: FertilizerStoredItemDisposition | None = None
+        if raw_fertilizer_disposition is not None:
+            try:
+                fertilizer_disposition = FertilizerStoredItemDisposition(
+                    str(raw_fertilizer_disposition)
+                )
+            except ValueError:
+                return None
+        duration_delta_seconds = value.get("duration_delta_seconds", 0)
+        card_queue_delta = value.get("card_queue_delta", 0)
+        if any(
+            not isinstance(candidate, int)
+            or isinstance(candidate, bool)
+            or candidate < 0
+            for candidate in (duration_delta_seconds, card_queue_delta)
+        ):
+            return None
+        fertilizer_expires_at_ms = value.get("fertilizer_expires_at_ms")
+        if fertilizer_expires_at_ms is not None and (
+            not isinstance(fertilizer_expires_at_ms, int)
+            or isinstance(fertilizer_expires_at_ms, bool)
+            or fertilizer_expires_at_ms <= 0
+        ):
+            return None
+        if fertilizer_disposition is not None:
+            try:
+                fertilizer_stored_item_projection(
+                    fertilizer_disposition,
+                    duration_delta_seconds=duration_delta_seconds,
+                    card_queue_delta=card_queue_delta,
+                    expires_at_ms=fertilizer_expires_at_ms,
+                )
+            except ValueError:
+                return None
         return PurchaseOutcome(
             status=status,
             item_id=str(value["item_id"]),
@@ -845,6 +1104,10 @@ class PurchaseOutcome:
             result_id=result_id,
             applied=applied,
             equipped=equipped,
+            fertilizer_stored_item_disposition=fertilizer_disposition,
+            duration_delta_seconds=duration_delta_seconds,
+            card_queue_delta=card_queue_delta,
+            fertilizer_expires_at_ms=fertilizer_expires_at_ms,
         )
 
 

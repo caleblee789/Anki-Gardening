@@ -90,6 +90,11 @@ def test_beds_are_presented_as_earned_milestones() -> None:
     assert [row.unlocked for row in rows] == [True, True, True, False, False, False]
     assert rows[3].requirement == "First unique species reaches Full Bloom"
     assert rows[5].requirement == "6 unique species reach Full Bloom"
+    assert rows[2].action_text == "Unlock Bed 3"
+    assert rows[2].artwork_id == "bg_verdant_twilight_any_soil_master_v6"
+    assert rows[2].unlock_policy == "automatic_achievement"
+    assert rows[2].price_coins is None
+    assert rows[2].can_commit is False
 
 
 def test_cosmetic_projection_keeps_display_separate_from_bonus() -> None:

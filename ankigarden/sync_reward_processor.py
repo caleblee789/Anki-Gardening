@@ -14,6 +14,7 @@ from .models.state import GROWTH_STAGES
 from .models.sync_reward import (
     SyncPlantCheckpoint,
     SyncPlantResult,
+    SyncProjectGrowthAllocation,
     SyncRewardSummary,
 )
 from .sync_review_detector import SyncAttemptSnapshot
@@ -253,20 +254,50 @@ def build_sync_reward_summary(
         "stored_growth_units", results[-1].stored_growth_after_units
     ) or 0))
     stored_delta = max(0, stored_after - stored_before)
-    landmark_before = max(0, int(before_facts.get(
-        "landmark_growth_units", results[0].landmark_growth_before_units
-    ) or 0))
-    landmark_after = max(0, int(after_facts.get(
-        "landmark_growth_units", results[-1].landmark_growth_after_units
-    ) or 0))
-    landmark_delta = max(0, landmark_after - landmark_before)
-    accounted_growth_units = stored_delta + landmark_delta + sum(
-        max(
-            0,
-            int(after.get("growth_units", 0) or 0)
-            - int(before_plants.get(plant_id, {}).get("growth_units", 0) or 0),
+    # Project funding is copied only from immutable committed answer results.
+    # Mutable post-sync state is deliberately not a presentation authority.
+    landmark_delta = sum(
+        max(0, int(result.landmark_growth_delta_units)) for result in results
+    )
+    mastery_delta = sum(
+        max(0, int(result.mastery_growth_delta_units)) for result in results
+    )
+    legacy_delta = sum(
+        max(0, int(result.legacy_growth_delta_units)) for result in results
+    )
+    project_totals: dict[tuple[str, str], int] = {}
+    for result in results:
+        for allocation in result.project_allocations:
+            raw_type = getattr(allocation, "target_type", "")
+            target_type = str(getattr(raw_type, "value", raw_type) or "")
+            target_id = str(getattr(allocation, "target_id", "") or "")
+            units = max(0, int(getattr(allocation, "units", 0) or 0))
+            if target_type not in {"landmark", "mastery", "legacy"}:
+                continue
+            if not target_id or units <= 0:
+                continue
+            key = (target_type, target_id)
+            project_totals[key] = project_totals.get(key, 0) + units
+    project_allocations = tuple(
+        SyncProjectGrowthAllocation(target_type, target_id, units)
+        for (target_type, target_id), units in project_totals.items()
+    )
+    accounted_growth_units = (
+        stored_delta
+        + landmark_delta
+        + mastery_delta
+        + legacy_delta
+        + sum(
+            max(
+                0,
+                int(after.get("growth_units", 0) or 0)
+                - int(
+                    before_plants.get(plant_id, {}).get("growth_units", 0)
+                    or 0
+                ),
+            )
+            for plant_id, after in after_plants.items()
         )
-        for plant_id, after in after_plants.items()
     )
     if "total_growth_units" in before_facts and "total_growth_units" in after_facts:
         growth_total_units = max(
@@ -426,6 +457,7 @@ def build_sync_reward_summary(
                 else f"{name} advanced {count} stages and reached {stage_name}" if count > 1
                 else f"{name} reached {stage_name}"
             ),
+            "transition_source": str(final.source or ""),
         })
     covered_stage_claims = {
         (str(transition.plant_id), str(transition.new_stage))
@@ -592,6 +624,9 @@ def build_sync_reward_summary(
             stage_event_id=str(stage_event.get("event_id", "") or ""),
             stage_event_text=str(stage_event.get("display_text", "") or ""),
             full_bloom=full_bloom,
+            transition_source=str(
+                stage_event.get("transition_source", "") or ""
+            ),
         ))
     plant_results.sort(key=lambda row: (
         not row.active,
@@ -610,6 +645,9 @@ def build_sync_reward_summary(
         shared_growth_delta_units=shared_growth_units,
         stored_growth_delta_units=stored_delta,
         landmark_growth_delta_units=landmark_delta,
+        mastery_growth_delta_units=mastery_delta,
+        legacy_growth_delta_units=legacy_delta,
+        project_allocations=project_allocations,
         garden_coin_delta=coins,
         finds=finds,
         environment_discoveries=discoveries,

@@ -170,7 +170,7 @@ def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_
 
     migrated = storage_at(state_path)._load()
 
-    assert migrated.version == STATE_VERSION == 26
+    assert migrated.version == STATE_VERSION == 27
     assert migrated.currency_balance == 777
     assert migrated.completed_purchase_requests == []
     assert migrated.onboarding.step is OnboardingStep.NURTURE

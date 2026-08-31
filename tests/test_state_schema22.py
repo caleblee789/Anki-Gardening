@@ -136,7 +136,7 @@ def test_schema22_exact_progression_fields_round_trip() -> None:
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 26
+    assert restored.version == STATE_VERSION == 27
     assert restored.plants[0].growth_units == 99_975
     assert restored.plants[0].fertilizer_card_batches == [batch]
     assert restored.stored_growth_units == 1_250

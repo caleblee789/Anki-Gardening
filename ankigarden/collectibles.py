@@ -37,6 +37,18 @@ CATEGORY_LABELS: dict[CollectibleCategory, str] = {
     "mastery": "Cultivation Mastery",
 }
 
+# The Collection grid and compact Entries metric retain the established 39
+# discoverable/usable entries. Display Decorations are managed separately, and
+# long-term Landmark/Mastery/Legacy progress is projected as project status —
+# neither silently inflates the Collection denominator.
+COLLECTION_ENTRY_CATEGORIES = frozenset({
+    "plants",
+    "scenery",
+    "garden_features",
+    "garden_beds",
+    "growth_items",
+})
+
 
 @dataclass(frozen=True)
 class CollectibleDefinition:
@@ -248,7 +260,7 @@ def environment_discovery_progress(
 
 
 def collection_summary(state: Any) -> CollectionSummary:
-    views = collectible_views(state)
+    views = collection_entry_views(state)
     plant_views = tuple(
         view for view in views if view.definition.category == "plants"
     )
@@ -257,6 +269,26 @@ def collection_summary(state: Any) -> CollectionSummary:
         plant_species_total=len(plant_views),
         collectibles_owned=sum(1 for view in views if view.owned),
         collectibles_total=len(views),
+    )
+
+
+def collection_entry_registry() -> tuple[CollectibleDefinition, ...]:
+    """Return the canonical 39 records allowed in the Collection grid."""
+
+    return tuple(
+        definition
+        for definition in collectible_registry()
+        if definition.category in COLLECTION_ENTRY_CATEGORIES
+    )
+
+
+def collection_entry_views(state: Any) -> tuple[CollectibleView, ...]:
+    """Project only actual Collection entries, excluding project/status rows."""
+
+    return tuple(
+        view
+        for view in collectible_views(state)
+        if view.definition.category in COLLECTION_ENTRY_CATEGORIES
     )
 
 
@@ -311,7 +343,7 @@ def _cosmetic_definitions() -> Iterable[CollectibleDefinition]:
             rarity="Cosmetic",
             descriptor=EffectDescriptor(
                 function="Adds an optional Display Decoration appearance.",
-                buff="Cosmetic only. It never changes Growth, Coins, or Finds.",
+                buff="Cosmetic only. It never changes Growth, Garden Coins, or Finds.",
                 activation_condition="Select it as the displayed decoration after unlocking it.",
                 duration="Stays owned permanently.",
                 stacking="One Display Decoration is shown at a time.",
@@ -365,7 +397,7 @@ def _mastery_definitions() -> Iterable[CollectibleDefinition]:
                 rarity="Mastery",
                 descriptor=EffectDescriptor(
                     function=f"Unlocks the {rank.display_name} cosmetic mastery treatment for {species_name}.",
-                    buff="Cosmetic only. Mastery never changes Growth, Coins, or Find odds.",
+                    buff="Cosmetic only. Mastery never changes Growth, Garden Coins, or Find odds.",
                     activation_condition="The species must have reached Full Bloom.",
                     duration="The mastery treatment remains unlocked permanently.",
                     stacking="Ranks unlock sequentially for each species.",

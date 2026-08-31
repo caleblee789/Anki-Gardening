@@ -16,7 +16,11 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Iterable, Mapping
 
-from .balance_catalog import STANDARD_FIND_MAXIMUM_DAILY_CAP
+from .balance_catalog import (
+    LANDMARKS,
+    MASTERY_RANKS,
+    STANDARD_FIND_MAXIMUM_DAILY_CAP,
+)
 from .environment import (
     DEFAULT_GARDEN_FEATURE_ID,
     DEFAULT_SCENERY_ID,
@@ -27,14 +31,22 @@ from .environment import (
 from .models.state import (
     ActivePlantPeriod,
     Achievement,
+    CURRENT_CATALOG_SPECIES_ORDER,
     CurrencyTransaction,
     COSMETIC_DISPLAY_IDS,
+    CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
+    CULTIVATION_MASTERY_RANKS,
     DailyEconomySnapshot,
+    GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
+    GARDEN_PROJECT_IDS,
+    GARDEN_LEGACY_LEVEL_COST_UNITS,
     GardenFindOutcome,
     GardenState,
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
     LifetimeEconomyAggregates,
+    LANDMARK_MAX_GROWTH_UNITS,
+    MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
     MAX_PROCESSED_REVLOG_IDS,
     MAX_TRANSACTION_HISTORY,
     OnboardingProgress,
@@ -45,6 +57,8 @@ from .models.state import (
     PLANT_SPECIES,
     PendingEconomyMigrationGrant,
     STATE_VERSION,
+    STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE,
+    STORED_GROWTH_OPENING_IDENTITY_MIGRATION,
 )
 from .reward_ledger import (
     AnswerConsumptionRecord,
@@ -58,6 +72,7 @@ from .reward_ledger import (
     RevlogAliasRecord,
     RewardEventRecord,
     RewardLedger,
+    RewardLedgerCorruptionError,
     RewardLedgerSchemaError,
     UNBOUNDED_STATE_AUTHORITY_KEYS,
 )
@@ -67,13 +82,23 @@ logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
 MODERN_PREVIOUS_STATE_VERSIONS = frozenset({
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
 })
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 MAX_HISTORICAL_REVLOG_ENTRIES = 1_000_000
 DEFAULT_HISTORY_PAGE_SIZE = 5_000
 REWARD_DATABASE_FILENAME = "garden_state.sqlite3"
 RECENT_FIND_CACHE_LIMIT = 32
+SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID = (
+    "migration:schema27:economy-authorities"
+)
+SCHEMA27_ENDGAME_RECONCILIATION_VERSION = 1
+LANDMARK_COIN_COST_BY_ID = {
+    str(item.landmark_id): int(item.coin_cost) for item in LANDMARKS
+}
+MASTERY_COIN_COST_BY_ID = {
+    str(item.rank_id): int(item.coin_cost) for item in MASTERY_RANKS
+}
 
 
 class StatePreservationError(RuntimeError):
@@ -1296,7 +1321,10 @@ def _migrate_schema26_economy_payload(
     # every valid hundredth-Growth unit by routing only the excess to Stored
     # Growth; this is conservation, not a player-visible compensation grant.
     stored_growth_units = _legacy_nonnegative_int(
-        payload.get("stored_growth_units")
+        payload.get(
+            "stored_growth_units",
+            payload.get("stored_growth_balance_units"),
+        )
     )
     plant_rows = payload.get("plants")
     for plant in plant_rows if isinstance(plant_rows, list) else []:
@@ -1481,6 +1509,181 @@ def _migrate_schema26_economy_payload(
     payload["version"] = STATE_VERSION
 
 
+def _migrate_schema27_endgame_payload(
+    payload: dict[str, Any],
+    *,
+    source_version: int,
+) -> None:
+    """Install cumulative endgame authorities without spending player value."""
+
+    old_stored = _legacy_nonnegative_int(payload.pop("stored_growth_units", 0))
+    payload["stored_growth_balance_units"] = (
+        old_stored
+        if source_version <= 26
+        else _legacy_nonnegative_int(
+            payload.get("stored_growth_balance_units"), old_stored
+        )
+    )
+    if source_version <= 26:
+        payload["stored_growth_opening_balance_units"] = payload[
+            "stored_growth_balance_units"
+        ]
+        payload["stored_growth_opening_balance_source"] = (
+            "schema_27_migration_preserved_balance"
+        )
+        payload["stored_growth_opening_balance_identity"] = (
+            STORED_GROWTH_OPENING_IDENTITY_MIGRATION
+        )
+
+    project = payload.get("garden_project")
+    if not isinstance(project, dict):
+        project = {}
+    completed_raw = project.get("completed_project_ids", [])
+    completed_candidates = (
+        {item for item in completed_raw if isinstance(item, str)}
+        if isinstance(completed_raw, list) else set()
+    )
+    completed: list[str] = []
+    for project_id in GARDEN_PROJECT_IDS:
+        if project_id not in completed_candidates:
+            break
+        completed.append(project_id)
+    claimed = min(
+        len(GARDEN_PROJECT_IDS),
+        max(
+            len(completed),
+            _legacy_nonnegative_int(
+                project.get("landmark_highest_claimed_tier")
+            ),
+        ),
+    )
+    claimed_floor = (
+        GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+            GARDEN_PROJECT_IDS[claimed - 1]
+        ]
+        if claimed else 0
+    )
+    selected = project.get("selected_project_id")
+    partial = _legacy_nonnegative_int(project.get("contributed_growth_units"))
+    if not isinstance(selected, str) or selected not in GARDEN_PROJECT_IDS:
+        partial = 0
+    existing_funded = _legacy_nonnegative_int(
+        project.get("landmark_growth_units_funded")
+    )
+    funded = max(claimed_floor, existing_funded)
+    if "landmark_growth_units_funded" not in project:
+        funded += partial
+    landmark_max = GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+        GARDEN_PROJECT_IDS[-1]
+    ]
+    funded = min(landmark_max, funded)
+    displayed = project.get(
+        "displayed_landmark_tier_id",
+        project.get("displayed_project_id", ""),
+    )
+    claimed_ids = list(GARDEN_PROJECT_IDS[:claimed])
+    if displayed not in claimed_ids:
+        displayed = ""
+    project.update({
+        "landmark_growth_units_funded": funded,
+        "landmark_highest_claimed_tier": claimed,
+        "displayed_landmark_tier_id": displayed,
+        "grandfathered_funding_units": max(
+            _legacy_nonnegative_int(project.get("grandfathered_funding_units")),
+            funded if source_version <= 26 else 0,
+        ),
+        "selected_project_id": "",
+        "contributed_growth_units": max(0, funded - claimed_floor),
+        "ready_to_complete": False,
+        "completed_project_ids": claimed_ids,
+        "displayed_project_id": displayed,
+        "auto_contribute": False,
+    })
+    payload["garden_project"] = project
+
+    mastery = payload.get("cultivation_mastery")
+    if not isinstance(mastery, dict):
+        mastery = {}
+    raw_claims = mastery.get(
+        "highest_claimed_rank_by_species",
+        mastery.get("highest_rank_by_species", {}),
+    )
+    claims = dict(raw_claims) if isinstance(raw_claims, dict) else {}
+    raw_funding = mastery.get("growth_units_funded_by_species", {})
+    funding = dict(raw_funding) if isinstance(raw_funding, dict) else {}
+    raw_grandfathered = mastery.get(
+        "grandfathered_funding_units_by_species", {}
+    )
+    grandfathered = (
+        dict(raw_grandfathered) if isinstance(raw_grandfathered, dict) else {}
+    )
+    for species_id, rank_id in list(claims.items()):
+        if rank_id not in CULTIVATION_MASTERY_RANKS:
+            continue
+        floor = CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[rank_id]
+        funding[species_id] = max(
+            floor, _legacy_nonnegative_int(funding.get(species_id))
+        )
+        if source_version <= 26:
+            grandfathered[species_id] = max(
+                floor,
+                _legacy_nonnegative_int(grandfathered.get(species_id)),
+            )
+    for species_id in CURRENT_CATALOG_SPECIES_ORDER:
+        amount = min(
+            MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
+            _legacy_nonnegative_int(funding.get(species_id)),
+        )
+        if amount:
+            funding[species_id] = amount
+            if source_version <= 26:
+                grandfathered[species_id] = max(
+                    amount,
+                    _legacy_nonnegative_int(grandfathered.get(species_id)),
+                )
+    mastery.update({
+        "growth_units_funded_by_species": funding,
+        "highest_claimed_rank_by_species": claims,
+        "grandfathered_funding_units_by_species": grandfathered,
+        "highest_rank_by_species": claims,
+    })
+    payload["cultivation_mastery"] = mastery
+
+    payload["active_growth_target_type"] = ""
+    payload["active_growth_target_id"] = ""
+    payload["active_growth_target_activation_identity"] = ""
+    if source_version <= 26:
+        payload["garden_legacy_level"] = 0
+        payload["garden_legacy_progress_units"] = 0
+    else:
+        payload.setdefault("garden_legacy_level", 0)
+        payload.setdefault("garden_legacy_progress_units", 0)
+    payload.setdefault("garden_cycle_remainder", 0)
+    payload.setdefault("garden_cycle_migration_version", STATE_VERSION)
+    payload.setdefault("garden_cycle_history_complete", False)
+
+    aggregates = payload.get("lifetime_economy_aggregates")
+    if not isinstance(aggregates, dict):
+        aggregates = {}
+    for key in (
+        "growth_generated_units",
+        "growth_applied_to_plants_units",
+        "growth_routed_to_storage_units_lifetime",
+        "growth_contributed_to_landmarks_units",
+        "growth_contributed_to_mastery_units",
+        "growth_contributed_to_legacy_units",
+        "growth_unallocated_overflow_units",
+    ):
+        aggregates.setdefault(key, 0)
+    if source_version <= 26:
+        aggregates["history_complete"] = False
+        aggregates.setdefault(
+            "authoritative_from_event_identity", "migration:schema27"
+        )
+    payload["lifetime_economy_aggregates"] = aggregates
+    payload["version"] = STATE_VERSION
+
+
 def migrate_previous_state(raw: Any) -> GardenState:
     """Convert the supported schema-10 release into the current state contract.
 
@@ -1589,6 +1792,7 @@ def migrate_previous_state(raw: Any) -> GardenState:
     _migrate_reward_state_payload(payload)
     _migrate_schema22_progression_payload(payload)
     _migrate_schema26_economy_payload(payload)
+    _migrate_schema27_endgame_payload(payload, source_version=PREVIOUS_STATE_VERSION)
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
@@ -1612,10 +1816,16 @@ def migrate_modern_state(
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
     def finish(*, materialize: bool = True) -> GardenState:
-        _migrate_schema26_economy_payload(payload, migrated_at=migrated_at)
+        if source_version < 26:
+            _migrate_schema26_economy_payload(payload, migrated_at=migrated_at)
+        _migrate_schema27_endgame_payload(
+            payload, source_version=source_version
+        )
         state = GardenState.from_dict(payload)
         return _materialize_unlocked_species(state) if materialize else state
 
+    if source_version == 26:
+        return finish()
     if source_version == 25:
         payload.setdefault("pending_sync_reward_summary", None)
         return finish()
@@ -1917,6 +2127,7 @@ class GardenStorage:
                     state = migrate_modern_state(
                         dict(snapshot.payload), migrated_at=time.time()
                     )
+                    self._initialize_schema27_migration_metadata(ledger, state)
                     self._stage_legacy_economy_idempotency(ledger, state)
                     self._apply_pending_economy_migration_grants(ledger, state)
                     committed = ledger.commit_state(
@@ -1945,6 +2156,10 @@ class GardenStorage:
                     GardenState.from_dict(payload)
                 )
                 self._ledger_revision = snapshot.revision
+                # Validate every exact endgame and Stored Growth authority at
+                # the reload boundary, before any repair can save the state.
+                self.state = state
+                self.refresh_lifetime_economy_aggregates()
                 self._refresh_reanswer_hint_cache(state)
                 self._refresh_recent_find_cache(state)
                 return state
@@ -2002,6 +2217,160 @@ class GardenStorage:
         state.garden_find_daily_counts = {}
         state.garden_find_reward_daily_counts = {}
         state.garden_find_outcomes = {}
+
+    @staticmethod
+    def _initialize_schema27_migration_metadata(
+        ledger: RewardLedger,
+        state: GardenState,
+    ) -> None:
+        """Record conservative, retry-safe schema-27 migration provenance."""
+
+        operation_id = SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID
+        existing = ledger.idempotency_record("migration", operation_id)
+        if existing is not None:
+            outcome = dict(existing.outcome)
+            remainder = outcome.get("garden_cycle_remainder")
+            history_complete = outcome.get("garden_cycle_history_complete")
+            if (
+                isinstance(remainder, bool)
+                or not isinstance(remainder, int)
+                or remainder not in range(5)
+                or not isinstance(history_complete, bool)
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 Garden Cycle migration outcome is invalid."
+                )
+            state.garden_cycle_remainder = remainder
+            state.garden_cycle_history_complete = history_complete
+            state.garden_cycle_migration_version = STATE_VERSION
+            return
+        if (
+            state.garden_cycle_migration_version >= STATE_VERSION
+            and state.garden_cycle_history_complete
+        ):
+            history_complete = True
+            state.garden_cycle_remainder = max(
+                0, min(4, int(state.garden_cycle_remainder))
+            )
+        else:
+            completion_days = ledger.verified_today_cards_completion_days_before(
+                "9999-12-31"
+            )
+            recorded_count = max(
+                0,
+                int(state.lifetime_economy_aggregates.today_cards_completions),
+            )
+            explicit_empty_new_profile = bool(
+                not completion_days
+                and recorded_count == 0
+                and max(0, int(state.total_reviews)) == 0
+                and state.stored_growth_opening_balance_identity
+                == STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE
+            )
+            history_complete = bool(
+                explicit_empty_new_profile
+                or (
+                    completion_days
+                    and recorded_count == len(completion_days)
+                )
+            )
+            state.garden_cycle_remainder = (
+                len(completion_days) % 5 if history_complete else 0
+            )
+        state.garden_cycle_migration_version = STATE_VERSION
+        state.garden_cycle_history_complete = history_complete
+        landmark_funding = max(
+            0,
+            min(
+                LANDMARK_MAX_GROWTH_UNITS,
+                int(state.garden_project.landmark_growth_units_funded),
+            ),
+        )
+        state.garden_project.grandfathered_funding_units = landmark_funding
+        mastery_funding = {
+            species_id: min(
+                MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
+                max(
+                    0,
+                    int(
+                        state.cultivation_mastery
+                        .growth_units_funded_by_species.get(species_id, 0)
+                    ),
+                ),
+            )
+            for species_id in CURRENT_CATALOG_SPECIES_ORDER
+            if int(
+                state.cultivation_mastery
+                .growth_units_funded_by_species.get(species_id, 0)
+            ) > 0
+        }
+        state.cultivation_mastery.grandfathered_funding_units_by_species = (
+            dict(mastery_funding)
+        )
+        landmark_claimed = max(
+            0,
+            min(
+                len(GARDEN_PROJECT_IDS),
+                int(state.garden_project.landmark_highest_claimed_tier),
+            ),
+        )
+        mastery_claims = {
+            species_id: rank_id
+            for species_id, rank_id in (
+                state.cultivation_mastery
+                .highest_claimed_rank_by_species.items()
+            )
+            if species_id in CURRENT_CATALOG_SPECIES_ORDER
+            and rank_id in CULTIVATION_MASTERY_RANKS
+        }
+        legacy_total = (
+            max(0, int(state.garden_legacy_level))
+            * GARDEN_LEGACY_LEVEL_COST_UNITS
+            + max(0, int(state.garden_legacy_progress_units))
+        )
+        payload = {
+            "endgame_reconciliation_version": (
+                SCHEMA27_ENDGAME_RECONCILIATION_VERSION
+            ),
+            "garden_cycle_remainder": state.garden_cycle_remainder,
+            "garden_cycle_history_complete": history_complete,
+            "lifetime_growth_history_complete": bool(
+                state.lifetime_economy_aggregates.history_complete
+            ),
+            "lifetime_growth_history_authority": str(
+                state.lifetime_economy_aggregates
+                .authoritative_from_event_identity
+                or operation_id
+            ),
+            "stored_growth_opening_balance_units": (
+                state.stored_growth_opening_balance_units
+            ),
+            "stored_growth_opening_balance_source": (
+                state.stored_growth_opening_balance_source
+            ),
+            "stored_growth_opening_balance_identity": (
+                state.stored_growth_opening_balance_identity
+            ),
+            "landmark_grandfathered_funding_units": (
+                landmark_funding
+            ),
+            "landmark_highest_claimed_tier_baseline": landmark_claimed,
+            "mastery_grandfathered_funding_units_by_species": dict(
+                mastery_funding
+            ),
+            "mastery_highest_claimed_rank_baseline_by_species": mastery_claims,
+            "garden_legacy_total_units_baseline": legacy_total,
+        }
+        fingerprint = hashlib.sha256(json.dumps(
+            payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
+        ledger.stage_idempotency_record(IdempotencyRecord(
+            operation_kind="migration",
+            operation_id=operation_id,
+            request_fingerprint=fingerprint,
+            outcome={"status": "applied", **payload},
+            occurred_at=datetime.now(timezone.utc).isoformat(),
+        ))
 
     @staticmethod
     def _apply_pending_economy_migration_grants(
@@ -2084,6 +2453,7 @@ class GardenStorage:
         try:
             ledger = RewardLedger(temporary)
             self._stage_legacy_authorities(ledger, state)
+            self._initialize_schema27_migration_metadata(ledger, state)
             self._stage_legacy_economy_idempotency(ledger, state)
             self._apply_pending_economy_migration_grants(ledger, state)
             committed = ledger.commit_state(
@@ -2356,6 +2726,327 @@ class GardenStorage:
             return
         self._reward_ledger.stage_economy_event(record)
 
+    def _schema27_migration_outcome(self) -> Mapping[str, Any] | None:
+        if self._reward_ledger is None:
+            return None
+        record = self._reward_ledger.idempotency_record(
+            "migration", SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID
+        )
+        return dict(record.outcome) if record is not None else None
+
+    def _reconcile_schema27_endgame_state(self) -> Mapping[str, Any] | None:
+        """Verify cumulative project state against exact permanent events."""
+
+        ledger = self._reward_ledger
+        if ledger is None:
+            return None
+        migration = self._schema27_migration_outcome()
+        if migration is None:
+            landmark_funding = 0
+            landmark_claimed = 0
+            mastery_funding = {
+                species_id: 0 for species_id in CURRENT_CATALOG_SPECIES_ORDER
+            }
+            mastery_claimed = {}
+            legacy_total = 0
+        else:
+            if migration.get("endgame_reconciliation_version") != (
+                SCHEMA27_ENDGAME_RECONCILIATION_VERSION
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 endgame migration baseline is incomplete."
+                )
+
+            def baseline_int(
+                key: str,
+                *,
+                maximum: int | None = None,
+            ) -> int:
+                value = migration.get(key)
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 0
+                    or (maximum is not None and value > maximum)
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "The schema-27 endgame migration baseline is invalid: "
+                        + key
+                    )
+                return int(value)
+
+            landmark_funding = baseline_int(
+                "landmark_grandfathered_funding_units",
+                maximum=LANDMARK_MAX_GROWTH_UNITS,
+            )
+            landmark_claimed = baseline_int(
+                "landmark_highest_claimed_tier_baseline",
+                maximum=len(GARDEN_PROJECT_IDS),
+            )
+            raw_mastery_funding = migration.get(
+                "mastery_grandfathered_funding_units_by_species"
+            )
+            raw_mastery_claimed = migration.get(
+                "mastery_highest_claimed_rank_baseline_by_species"
+            )
+            if not isinstance(raw_mastery_funding, Mapping) or not isinstance(
+                raw_mastery_claimed, Mapping
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 Mastery migration baseline is invalid."
+                )
+            if set(raw_mastery_funding).difference(
+                CURRENT_CATALOG_SPECIES_ORDER
+            ) or set(raw_mastery_claimed).difference(
+                CURRENT_CATALOG_SPECIES_ORDER
+            ):
+                raise RewardLedgerCorruptionError(
+                    "The schema-27 Mastery migration baseline has an unknown species."
+                )
+            mastery_funding = {
+                species_id: 0 for species_id in CURRENT_CATALOG_SPECIES_ORDER
+            }
+            for species_id, value in raw_mastery_funding.items():
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 0
+                    or value > MASTERY_MAX_GROWTH_UNITS_PER_SPECIES
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "The schema-27 Mastery funding baseline is invalid."
+                    )
+                mastery_funding[str(species_id)] = int(value)
+            mastery_claimed = {}
+            for species_id, rank_id in raw_mastery_claimed.items():
+                if rank_id not in CULTIVATION_MASTERY_RANKS:
+                    raise RewardLedgerCorruptionError(
+                        "The schema-27 Mastery claim baseline is invalid."
+                    )
+                mastery_claimed[str(species_id)] = str(rank_id)
+            legacy_total = baseline_int(
+                "garden_legacy_total_units_baseline"
+            )
+
+        landmark_claimed_floor = (
+            GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                GARDEN_PROJECT_IDS[landmark_claimed - 1]
+            ]
+            if landmark_claimed else 0
+        )
+        if landmark_funding < landmark_claimed_floor:
+            raise RewardLedgerCorruptionError(
+                "Grandfathered Landmark claims exceed their funded Growth."
+            )
+        for species_id, rank_id in mastery_claimed.items():
+            threshold = (
+                CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                    rank_id
+                ]
+            )
+            if mastery_funding[species_id] < threshold:
+                raise RewardLedgerCorruptionError(
+                    "Grandfathered Mastery claims exceed their funded Growth."
+                )
+        landmark_funding_baseline = landmark_funding
+        mastery_funding_baseline = dict(mastery_funding)
+
+        def claim_landmark(event: EconomyEventRecord, claim_id: str) -> None:
+            nonlocal landmark_claimed
+            expected = (
+                GARDEN_PROJECT_IDS[landmark_claimed]
+                if landmark_claimed < len(GARDEN_PROJECT_IDS) else ""
+            )
+            if (
+                not expected
+                or claim_id != expected
+                or event.item_id != expected
+                or event.quantity != 1
+                or event.coins_spent != LANDMARK_COIN_COST_BY_ID[expected]
+                or landmark_funding
+                < GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[expected]
+            ):
+                raise RewardLedgerCorruptionError(
+                    "A Landmark claim is out of order, unfunded, or unpaid: "
+                    + event.event_key
+                )
+            landmark_claimed += 1
+
+        def claim_mastery(
+            event: EconomyEventRecord,
+            species_id: str,
+            rank_id: str,
+        ) -> None:
+            if species_id not in CURRENT_CATALOG_SPECIES_ORDER:
+                raise RewardLedgerCorruptionError(
+                    "A Mastery claim targets an unknown species: "
+                    + event.event_key
+                )
+            previous = mastery_claimed.get(species_id, "")
+            previous_index = (
+                CULTIVATION_MASTERY_RANKS.index(previous)
+                if previous else -1
+            )
+            expected_index = previous_index + 1
+            expected = (
+                CULTIVATION_MASTERY_RANKS[expected_index]
+                if expected_index < len(CULTIVATION_MASTERY_RANKS) else ""
+            )
+            if (
+                not expected
+                or rank_id != expected
+                or event.item_id != expected
+                or event.quantity != 1
+                or event.coins_spent != MASTERY_COIN_COST_BY_ID[expected]
+                or mastery_funding[species_id]
+                < CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                    expected
+                ]
+            ):
+                raise RewardLedgerCorruptionError(
+                    "A Mastery claim is out of order, unfunded, or unpaid: "
+                    + event.event_key
+                )
+            mastery_claimed[species_id] = expected
+
+        for event in ledger.economy_events():
+            if event.growth_flow_kind == "legacy_unreconciled":
+                continue
+            allocations = dict(
+                (event.metric_deltas or {}).get("project_allocations", {})
+            )
+            for target_key, units in allocations.items():
+                target_type, _, target_id = str(target_key).partition(":")
+                amount = int(units)
+                if target_type == "landmark" and target_id == "garden_landmark":
+                    landmark_funding += amount
+                    if landmark_funding > LANDMARK_MAX_GROWTH_UNITS:
+                        raise RewardLedgerCorruptionError(
+                            "Landmark Growth exceeds its maximum."
+                        )
+                elif target_type == "mastery" and target_id in mastery_funding:
+                    mastery_funding[target_id] += amount
+                    if mastery_funding[target_id] > (
+                        MASTERY_MAX_GROWTH_UNITS_PER_SPECIES
+                    ):
+                        raise RewardLedgerCorruptionError(
+                            "Mastery Growth exceeds its species maximum."
+                        )
+                elif target_type == "legacy" and target_id == "garden_legacy":
+                    if (
+                        landmark_funding < LANDMARK_MAX_GROWTH_UNITS
+                        or any(
+                            mastery_funding[species_id]
+                            < MASTERY_MAX_GROWTH_UNITS_PER_SPECIES
+                            for species_id in CURRENT_CATALOG_SPECIES_ORDER
+                        )
+                    ):
+                        raise RewardLedgerCorruptionError(
+                            "Garden Legacy received Growth before finite funding."
+                        )
+                    legacy_total += amount
+                else:
+                    raise RewardLedgerCorruptionError(
+                        "A project allocation targets unknown content: "
+                        + event.event_key
+                    )
+
+            if event.event_kind == "growth_project_claim":
+                if event.growth_flow_kind != "claim":
+                    raise RewardLedgerCorruptionError(
+                        "A Growth project claim has an invalid Growth flow."
+                    )
+                if event.sink_id == "garden_landmark":
+                    claim_landmark(event, event.item_id)
+                elif event.sink_id in mastery_funding:
+                    claim_mastery(event, event.sink_id, event.item_id)
+                else:
+                    raise RewardLedgerCorruptionError(
+                        "A Growth project claim has no valid target: "
+                        + event.event_key
+                    )
+            elif event.event_kind == "landmark_complete":
+                if (
+                    event.growth_flow_kind != "claim"
+                    or event.sink_id != event.item_id
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "A Landmark claim target differs from its claim ID."
+                    )
+                claim_landmark(event, event.item_id)
+            elif event.event_kind == "mastery_purchase":
+                species_id, separator, rank_id = event.sink_id.partition(":")
+                if (
+                    event.growth_flow_kind not in {
+                        "claim", "manual_contribution"
+                    }
+                    or not separator
+                    or rank_id != event.item_id
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "A Mastery claim target differs from its claim ID."
+                    )
+                claim_mastery(event, species_id, rank_id)
+            elif event.growth_flow_kind == "claim":
+                raise RewardLedgerCorruptionError(
+                    "An unknown project claim was committed: " + event.event_key
+                )
+
+        actual_landmark_funding = max(
+            0, int(self.state.garden_project.landmark_growth_units_funded)
+        )
+        actual_landmark_claimed = max(
+            0, int(self.state.garden_project.landmark_highest_claimed_tier)
+        )
+        actual_mastery_funding = {
+            species_id: max(
+                0,
+                int(
+                    self.state.cultivation_mastery
+                    .growth_units_funded_by_species.get(species_id, 0)
+                ),
+            )
+            for species_id in CURRENT_CATALOG_SPECIES_ORDER
+        }
+        actual_mastery_claimed = dict(
+            self.state.cultivation_mastery.highest_claimed_rank_by_species
+        )
+        actual_legacy_total = (
+            max(0, int(self.state.garden_legacy_level))
+            * GARDEN_LEGACY_LEVEL_COST_UNITS
+            + max(0, int(self.state.garden_legacy_progress_units))
+        )
+        if (
+            actual_landmark_funding != landmark_funding
+            or actual_landmark_claimed != landmark_claimed
+            or actual_mastery_funding != mastery_funding
+            or actual_mastery_claimed != mastery_claimed
+            or actual_legacy_total != legacy_total
+        ):
+            raise RewardLedgerCorruptionError(
+                "Endgame funding or claims do not reconcile with the exact ledger."
+            )
+        if self.state.garden_project.grandfathered_funding_units != (
+            landmark_funding_baseline
+        ):
+            raise RewardLedgerCorruptionError(
+                "The Landmark migration funding baseline changed."
+            )
+        expected_mastery_grandfathered = {
+            species_id: amount
+            for species_id, amount in mastery_funding_baseline.items()
+            if amount
+        }
+        if (
+            self.state.cultivation_mastery
+            .grandfathered_funding_units_by_species
+            != expected_mastery_grandfathered
+        ):
+            raise RewardLedgerCorruptionError(
+                "The Mastery migration funding baseline changed."
+            )
+        return migration
+
     def lifetime_economy_aggregates(self) -> Mapping[str, Any]:
         if self._reward_ledger is None:
             return self.state.lifetime_economy_aggregates.to_dict()
@@ -2367,6 +3058,40 @@ class GardenStorage:
         """Rebuild and persist the state projection from permanent events."""
 
         values = self.lifetime_economy_aggregates()
+        if self._reward_ledger is not None:
+            migration = self._reconcile_schema27_endgame_state()
+            if migration is not None:
+                history_complete = migration.get(
+                    "lifetime_growth_history_complete"
+                )
+                if not isinstance(history_complete, bool):
+                    raise RewardLedgerCorruptionError(
+                        "The lifetime Growth migration provenance is invalid."
+                    )
+                if not history_complete:
+                    values = {
+                        **dict(values),
+                        "history_complete": False,
+                        "authoritative_from_event_identity": str(
+                            migration.get("lifetime_growth_history_authority")
+                            or SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID
+                        ),
+                    }
+            expected_stored = (
+                max(
+                    0,
+                    int(self.state.stored_growth_opening_balance_units),
+                )
+                + self._reward_ledger.stored_growth_balance_net_delta_units()
+            )
+            actual_stored = max(
+                0, int(self.state.stored_growth_balance_units)
+            )
+            if expected_stored != actual_stored:
+                raise RewardLedgerCorruptionError(
+                    "Stored Growth balance does not reconcile with exact "
+                    f"ledger deltas ({actual_stored} != {expected_stored})"
+                )
         aggregate = LifetimeEconomyAggregates(
             coins_earned_by_source=dict(
                 values.get("coins_earned_by_source", {})
@@ -2380,6 +3105,31 @@ class GardenStorage:
             ),
             growth_spent_on_mastery=int(
                 values.get("growth_spent_on_mastery", 0)
+            ),
+            growth_generated_units=int(
+                values.get("growth_generated_units", 0)
+            ),
+            growth_applied_to_plants_units=int(
+                values.get("growth_applied_to_plants_units", 0)
+            ),
+            growth_routed_to_storage_units_lifetime=int(
+                values.get("growth_routed_to_storage_units_lifetime", 0)
+            ),
+            growth_contributed_to_landmarks_units=int(
+                values.get("growth_contributed_to_landmarks_units", 0)
+            ),
+            growth_contributed_to_mastery_units=int(
+                values.get("growth_contributed_to_mastery_units", 0)
+            ),
+            growth_contributed_to_legacy_units=int(
+                values.get("growth_contributed_to_legacy_units", 0)
+            ),
+            growth_unallocated_overflow_units=int(
+                values.get("growth_unallocated_overflow_units", 0)
+            ),
+            history_complete=bool(values.get("history_complete", False)),
+            authoritative_from_event_identity=str(
+                values.get("authoritative_from_event_identity", "")
             ),
             finds_by_outcome=dict(values.get("finds_by_outcome", {})),
             environment_discoveries=dict(
@@ -2797,6 +3547,7 @@ class GardenStorage:
         if self._reward_ledger is None:
             self._atomic_write_json(self.data_path, self.state.to_dict())
             return
+        self.refresh_lifetime_economy_aggregates()
         committed = self._reward_ledger.commit_state(
             self._bounded_state_payload(self.state),
             schema_version=STATE_VERSION,

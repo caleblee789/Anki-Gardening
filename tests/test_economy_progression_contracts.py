@@ -16,6 +16,12 @@ from ankigarden.economy_progression import (  # noqa: E402
     LANDMARK_ORDER,
     MASTERY_GROWTH_COST_UNITS,
     MASTERY_RANK_ORDER,
+    ContributionMode,
+    GrowthProjectAction,
+    GrowthProjectConfirmation,
+    GrowthProjectRequest,
+    GrowthTargetRef,
+    GrowthTargetType,
     LandmarkAction,
     LandmarkProjectSnapshot,
     LandmarkRequest,
@@ -23,13 +29,17 @@ from ankigarden.economy_progression import (  # noqa: E402
     MasterySnapshot,
     ProgressionDisposition,
     canonical_request_id,
+    build_growth_projects_snapshot,
+    growth_project_outcome_from_dict,
     landmark_snapshot,
     mastery_snapshot,
     next_landmark_id,
     next_mastery_rank_id,
     project_landmark_request,
+    project_growth_project_request,
     project_mastery_request,
     quote_landmark_request,
+    quote_growth_project_request,
     quote_mastery_request,
     request_fingerprint,
 )
@@ -360,3 +370,79 @@ def test_contracts_and_catalog_indexes_are_immutable() -> None:
         LANDMARK_GROWTH_COST_UNITS["mossy_stone_path"] = 1
     with pytest.raises(TypeError):
         MASTERY_GROWTH_COST_UNITS["bronze"] = 1
+
+
+def test_cumulative_project_quote_claim_and_idempotency_contract() -> None:
+    target = GrowthTargetRef(GrowthTargetType.LANDMARK, "garden_landmark")
+    snapshot = build_growth_projects_snapshot(
+        state_revision=7,
+        stored_balance_units=300_000_000,
+        wallet_balance_coins=5_000,
+        full_bloom_species=("bonsai",),
+    )
+    assert snapshot.landmark_track.tiers[0].remaining_growth_units == 2_500_000
+    assert snapshot.landmark_track.allowed_actions == ("activate",)
+    activate = GrowthProjectRequest(
+        request_id(50), 7, GrowthProjectAction.ACTIVATE, target
+    )
+    selected = project_growth_project_request(snapshot, activate)
+    assert selected.applied
+    assert selected.snapshot.landmark_track.allowed_actions == ("contribute",)
+    assert selected.ledger_identity == f"growth-project:{activate.request_id}"
+    assert (selected.state_revision_before, selected.state_revision_after) == (7, 8)
+    assert len(selected.catalog_digest) == 64
+    assert GrowthProjectConfirmation.from_quote(
+        quote_growth_project_request(snapshot, activate)
+    ).request_id == activate.request_id
+
+    fund = GrowthProjectRequest(
+        request_id(51),
+        8,
+        GrowthProjectAction.CONTRIBUTE,
+        target,
+        ContributionMode.MAXIMUM,
+    )
+    funded = project_growth_project_request(selected.snapshot, fund)
+    assert funded.applied
+    assert funded.snapshot.landmark_track.growth_units_funded == 247_500_000
+    assert funded.snapshot.landmark_track.tiers[-1].funded
+    assert not funded.snapshot.landmark_track.tiers[-1].claimed
+    assert funded.snapshot.stored_balance_units == 52_500_000
+
+    coin_short_snapshot = build_growth_projects_snapshot(
+        state_revision=9,
+        stored_balance_units=0,
+        wallet_balance_coins=0,
+        full_bloom_species=("bonsai",),
+        active_target=target,
+        active_target_activation_identity=activate.request_id,
+        landmark_growth_units_funded=2_500_000,
+    )
+    coin_short = quote_growth_project_request(
+        coin_short_snapshot,
+        GrowthProjectRequest(
+            request_id(53), 9, GrowthProjectAction.CLAIM, target,
+            claim_id="mossy_stone_path",
+        ),
+    )
+    assert coin_short.disposition is ProgressionDisposition.INSUFFICIENT_COINS
+    assert coin_short.coin_cost == 250
+    assert coin_short.wallet_balance_after_coins == 0
+
+    claim = GrowthProjectRequest(
+        request_id(52),
+        9,
+        GrowthProjectAction.CLAIM,
+        target,
+        claim_id="mossy_stone_path",
+    )
+    claimed = project_growth_project_request(funded.snapshot, claim)
+    assert claimed.applied
+    assert claimed.coins_spent == 250
+    assert claimed.stored_balance_delta_units == 0
+    assert claimed.snapshot.landmark_track.growth_units_funded == 247_500_000
+    assert claimed.snapshot.landmark_track.highest_claimed_id == "mossy_stone_path"
+    assert claimed.catalog_digest == quote_growth_project_request(
+        funded.snapshot, claim
+    ).catalog_digest
+    assert growth_project_outcome_from_dict(claimed.to_dict()) == claimed

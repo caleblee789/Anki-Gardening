@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -41,6 +41,7 @@ from ankigarden.models.state import (
     PLANT_SPECIES,
     PLANT_SPECIES_ORDER,
     Plant,
+    RewardReceipt,
     STATE_VERSION,
 )
 from ankigarden.storage import (
@@ -185,6 +186,131 @@ def test_new_scheduler_day_floor_ignores_future_scalar_cursor_and_counts_answer(
     assert gained == 10
 
 
+def test_public_batch_selects_only_new_receipts_without_pruning_history():
+    engine, storage = make_engine()
+    state = storage.state
+    state.starter_selection_complete = True
+    state.garden_setup_version = 1
+    state.reward_state_initialized = True
+    state.reward_activation_ms = storage.day_start_ms
+    state.progression_activation_ms = storage.day_start_ms
+    state.garden_find_activation_ms = storage.now_ms + 1_000_000
+    existing = RewardReceipt(
+        event_key="existing",
+        reward_type="coins",
+        source="achievement",
+        source_id="existing",
+        scheduler_day=storage.day,
+        correlation_id="existing",
+        occurred_at="2026-08-08T00:00:00Z",
+        amount=1,
+    )
+    state.recent_reward_receipts.append(existing)
+    first_id = storage.now_ms + 1_000
+    second_id = first_id + 1_000
+
+    results = engine.apply_same_day_reviews_with_results(
+        [
+            {
+                "queue": 2,
+                "ease": 3,
+                "revlog_id": first_id,
+                "answered_at_ms": first_id,
+                "correlation_id": "answer:first",
+            },
+            {
+                "queue": 2,
+                "ease": 3,
+                "revlog_id": second_id,
+                "answered_at_ms": second_id,
+                "correlation_id": "answer:second",
+            },
+        ],
+        latest_revlog_id=second_id,
+    )
+
+    assert [receipt.event_key for receipt in results[0].reward_receipts] == [
+        f"daily_activity:{storage.day}",
+    ]
+    assert results[1].reward_receipts == ()
+    assert [receipt.event_key for receipt in state.recent_reward_receipts] == [
+        "existing",
+        f"daily_activity:{storage.day}",
+    ]
+
+
+def test_public_batch_can_skip_result_snapshots_without_changing_commit_state():
+    payloads = [
+        {
+            "queue": 2,
+            "ease": ease,
+            "revlog_id": 1_786_150_001_000 + index,
+            "answered_at_ms": 1_786_150_001_000 + index,
+            "card_id": index,
+            "answer_identity": f"batch-result-mode:{index}",
+            "emit_feedback": False,
+        }
+        for index, ease in enumerate((1, 2, 3, 4), start=1)
+    ]
+
+    engines = []
+    for collect_results in (True, False):
+        engine, storage = make_engine()
+        state = storage.state
+        state.starter_selection_complete = True
+        state.garden_setup_version = 1
+        state.reward_state_initialized = True
+        state.reward_activation_ms = storage.day_start_ms
+        state.progression_activation_ms = storage.day_start_ms
+        state.garden_find_activation_ms = storage.now_ms + 1_000_000
+        results = engine.apply_same_day_reviews_with_results(
+            payloads,
+            latest_revlog_id=int(payloads[-1]["revlog_id"]),
+            due_status=DueObligationStatus(review_count=0),
+            collect_results=collect_results,
+        )
+        assert len(results) == (4 if collect_results else 0)
+        engines.append((engine, storage))
+
+    def committed_projection(engine, storage):
+        state = engine.state
+        return {
+            "wallet": state.currency_balance,
+            "plants": tuple(
+                (plant.plant_id, plant.growth_units, plant.growth_stage)
+                for plant in state.plants
+            ),
+            "daily": dict(vars(state.daily_stats)),
+            "reward_keys": tuple(state.applied_reward_event_keys),
+            "receipts": tuple(
+                (
+                    receipt.event_key,
+                    receipt.reward_type,
+                    receipt.source,
+                    receipt.source_id,
+                    receipt.amount,
+                    receipt.item_id,
+                )
+                for receipt in state.recent_reward_receipts
+            ),
+            "transactions": tuple(
+                (
+                    row.event_key,
+                    row.transaction_type,
+                    row.source,
+                    row.source_id,
+                    row.delta,
+                    row.balance,
+                )
+                for row in state.currency_transactions
+            ),
+            "aggregates": state.lifetime_economy_aggregates.to_dict(),
+            "save_count": storage.save_count,
+        }
+
+    assert committed_projection(*engines[0]) == committed_projection(*engines[1])
+
+
 def test_scheduler_rollover_clears_migration_stale_growth_accounting():
     engine, storage = make_engine()
     storage.state.daily_stats.growth_accounting_stale = True
@@ -246,7 +372,7 @@ def test_rollover_does_not_consume_the_new_open_day_answer_from_history():
         tx.delta
         for tx in storage.state.currency_transactions
         if tx.event_key == f"daily_activity:{storage.day}"
-    ) == 2
+    ) == 4
 
 
 def test_first_history_failure_retains_activation_for_later_synced_answer():
@@ -286,7 +412,7 @@ def test_first_history_failure_retains_activation_for_later_synced_answer():
     assert reconciled
     assert storage.state.reward_activation_ms == 100
     assert storage.state.plants[0].growth_points == 10
-    assert storage.state.currency_balance == 2
+    assert storage.state.currency_balance == 4
 
 
 def test_closed_day_delayed_ingestion_uses_durable_cutoffs_target_and_effects():
@@ -331,7 +457,7 @@ def test_closed_day_delayed_ingestion_uses_durable_cutoffs_target_and_effects():
     assert storage.state.plants[0].growth_points == 16
     assert storage.state.plants[1].growth_points == 1
     assert storage.state.plants[1].growth_remainder_units == 60
-    assert storage.state.currency_balance == 2
+    assert storage.state.currency_balance == 4
     assert set(storage.state.processed_answer_keys) == {
         consumption_id(stable_answer_event_identity(
             entry.revlog_id,
@@ -553,7 +679,7 @@ def test_first_post_activation_answer_can_start_the_current_weekly_cycle():
 
     answer(engine, storage)
 
-    assert storage.state.currency_balance == 12
+    assert storage.state.currency_balance == 14
     assert storage.state.achievements["streak_7"].unlocked
     assert {
         tx.event_key for tx in storage.state.currency_transactions
@@ -572,7 +698,7 @@ def test_progress_export_reports_growth_reconciliation_without_mutation():
 
     report = json.loads(engine.export_progress_summary())
 
-    assert report["schema_version"] == STATE_VERSION == 26
+    assert report["schema_version"] == STATE_VERSION == 27
     assert report["growth_reconciliation"]["study_source_total"] == 10
     assert report["growth_reconciliation"]["study_growth_generated"] == 10
     assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 10}
@@ -1094,7 +1220,7 @@ def test_simultaneous_nurtured_and_passive_stage_rewards_are_once_per_plant():
     transitions = engine.peek_stage_transitions()
     assert [(item.plant_id, item.source, item.new_stage) for item in transitions] == [
         ("p1", "nurtured", "sprout"),
-        ("p2", "passive", "sprout"),
+        ("p2", "shared_growth", "sprout"),
     ]
     assert [transaction.event_key for transaction in storage.state.currency_transactions] == [
         f"daily_activity:{storage.day}",
@@ -1300,7 +1426,7 @@ def test_stage_completion_uses_the_final_checkpoint_split_and_is_durable():
     assert plant.growth_stage == "sprout"
     assert engine.peek_stage_transitions()[0].new_stage == "sprout"
     assert engine.peek_stage_transitions()[0].source == "nurtured"
-    assert storage.state.currency_balance == 4
+    assert storage.state.currency_balance == 6
     assert any(
         tx.event_key == "stage:p1:sprout" and tx.delta == 2
         for tx in storage.state.currency_transactions
@@ -1419,7 +1545,7 @@ def test_full_bloom_grants_the_completion_package_once():
         if transaction.event_key == "stage:p1:rare"
     ]
     assert len(full_bloom_coin_awards) == 1
-    assert full_bloom_coin_awards[0].source == "full_bloom_bonus"
+    assert full_bloom_coin_awards[0].source == "plant_milestone"
     assert full_bloom_coin_awards[0].source_id == plant.plant_id
     assert full_bloom_coin_awards[0].included_in_total is True
 
@@ -1442,6 +1568,31 @@ def test_exact_fractional_growth_is_conserved_when_every_plant_fills():
     assert award.applied_growth_units + award.stored_growth_units == (
         award.total_growth_units + award.total_growth_units // 10
     )
+
+
+def test_all_full_bloom_beds_keep_shared_lanes_for_endgame_storage():
+    engine, storage = make_engine()
+    storage.state.plants = [
+        Plant(
+            f"p{index + 1}",
+            CURRENT_CATALOG_SPECIES_ORDER[index],
+            f"Plant {index + 1}",
+            index,
+            growth_points=GROWTH_THRESHOLDS[-1],
+        )
+        for index in range(6)
+    ]
+    storage.state.active_plant_id = None
+    storage.state.active_plant_periods = [
+        ActivePlantPeriod(storage.day, None, storage.day_start_ms)
+    ]
+
+    award = answer(engine, storage)
+
+    assert award.total_growth_units == 1_000
+    assert award.applied_growth_units == 0
+    assert award.stored_growth_units == 1_500
+    assert storage.state.stored_growth_balance_units == 1_500
 
 
 def test_full_bloom_conserves_growth_and_auto_continues_to_the_next_plant():
@@ -1608,6 +1759,64 @@ def test_todays_cards_completion_is_verified_live_and_claimed_once():
     assert storage.state.daily_completion.remaining_required_reviews == 9
     assert storage.state.daily_completion.remaining_learning_steps == 4
     assert storage.state.currency_balance == balance
+
+
+def test_garden_cycle_cadence_is_visible_nonconsecutive_and_idempotent():
+    engine, storage = make_engine()
+    initial_day = datetime.fromisoformat(storage.day)
+    for offset in (0, 1, 3, 4, 7):
+        if offset:
+            next_day = initial_day + timedelta(days=offset)
+            storage.day = next_day.date().isoformat()
+            storage.day_start_ms += 86_400_000
+            storage.now_ms = storage.day_start_ms + 1_000
+            engine.rollover_if_needed()
+        assert engine.observe_due_start(DueObligationStatus(review_count=1))
+        answer(engine, storage)
+        ok, _message = engine.evaluate_today_cards(
+            DueObligationStatus(),
+            record_completed_delta=True,
+        )
+        assert ok
+        balance = storage.state.currency_balance
+        assert not engine.evaluate_today_cards(DueObligationStatus())[0]
+        assert storage.state.currency_balance == balance
+
+    by_source: dict[str, int] = {}
+    for transaction in storage.state.currency_transactions:
+        by_source[transaction.source] = (
+            by_source.get(transaction.source, 0) + transaction.delta
+        )
+    assert by_source["first_eligible_answer"] == 5 * 4
+    assert by_source["todays_cards"] == 5 * 8
+    assert by_source["completion_cycle_5"] == 30
+    assert storage.state.garden_cycle_remainder == 0
+    cycle = next(
+        receipt for receipt in storage.state.recent_reward_receipts
+        if receipt.source == "completion_cycle_5"
+    )
+    assert (cycle.title, cycle.description, cycle.amount) == (
+        "Garden Cycle complete",
+        "5 completed review days",
+        30,
+    )
+
+    next_day = initial_day + timedelta(days=9)
+    storage.day = next_day.date().isoformat()
+    storage.day_start_ms += 86_400_000
+    storage.now_ms = storage.day_start_ms + 1_000
+    engine.rollover_if_needed()
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    answer(engine, storage)
+    assert engine.evaluate_today_cards(
+        DueObligationStatus(), record_completed_delta=True
+    )[0]
+    assert storage.state.garden_cycle_remainder == 1
+    assert sum(
+        transaction.delta
+        for transaction in storage.state.currency_transactions
+        if transaction.source == "completion_cycle_5"
+    ) == 30
 
 
 def test_no_due_baseline_remains_not_eligible_on_later_live_refresh():
@@ -1821,7 +2030,7 @@ def test_committed_answer_result_groups_final_due_rewards_under_answer_identity(
         receipt.correlation_id for receipt in result.reward_receipts
     } == {result.correlation_id}
     assert any(
-        transaction.source == "all_due"
+        transaction.source == "todays_cards"
         for transaction in result.currency_transactions
     )
 
@@ -2222,7 +2431,7 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
         if event.event_id == f"reward-summary:{first.correlation_id}"
     )
     assert feedback.message == (
-        "+2 Garden Coins and +40 Growth"
+        "+4 Garden Coins and +40 Growth"
     )
     assert feedback.correlation_id == first.correlation_id
     assert feedback.amount == 0
@@ -2663,7 +2872,7 @@ def test_failed_save_rolls_back_review_and_currency_state():
 
     assert retry.total_growth == 10
     assert storage.state.reward_activation_ms == event_id
-    assert storage.state.currency_balance == 2
+    assert storage.state.currency_balance == 4
 
 
 def test_failed_same_day_batch_rolls_back_growth_cursor_and_transitions():

@@ -13,6 +13,7 @@ from ankigarden.models.sync_reward import (
     MAX_SYNC_SUMMARY_ROWS,
     MAX_SYNC_SUMMARY_TEXT,
     SYNC_REWARD_MODEL_VERSION,
+    SyncProjectGrowthAllocation,
     SyncRewardSummary,
 )
 from ankigarden.ui.sync_reward_summary import (
@@ -340,14 +341,14 @@ def test_presentation_model_round_trip_is_normalized_and_bounded() -> None:
     assert SyncRewardSummary.from_dict(restored.to_dict()) == restored
 
 
-def test_landmark_growth_v3_round_trip_and_v2_missing_field_default() -> None:
+def test_landmark_growth_v4_round_trip_and_v2_missing_field_default() -> None:
     current = _summary(
         growth_total_units=53_000,
         landmark_growth_delta_units=1_000,
     )
 
     encoded = current.to_dict()
-    assert encoded["model_version"] == SYNC_REWARD_MODEL_VERSION == 3
+    assert encoded["model_version"] == SYNC_REWARD_MODEL_VERSION == 4
     assert encoded["landmark_growth_delta_units"] == 1_000
     restored = SyncRewardSummary.from_dict(encoded)
     assert restored is not None
@@ -359,7 +360,7 @@ def test_landmark_growth_v3_round_trip_and_v2_missing_field_default() -> None:
     retained_v2.pop("landmark_growth_delta_units")
     migrated = SyncRewardSummary.from_dict(retained_v2)
     assert migrated is not None
-    assert migrated.model_version == SYNC_REWARD_MODEL_VERSION == 3
+    assert migrated.model_version == SYNC_REWARD_MODEL_VERSION == 4
     assert migrated.landmark_growth_delta_units == 0
     assert migrated.to_dict()["landmark_growth_delta_units"] == 0
 
@@ -538,6 +539,55 @@ def test_merge_adds_landmark_growth_without_double_counting_total_growth() -> No
     )
 
 
+def test_project_allocations_round_trip_merge_and_drive_meaningful_state() -> None:
+    older = _summary(
+        batch_id="batch-project-a",
+        eligible_answer_count=1,
+        growth_total_units=0,
+        plant_growth=(),
+        shared_growth_delta_units=0,
+        stored_growth_delta_units=0,
+        garden_coin_delta=0,
+        mastery_growth_delta_units=200,
+        project_allocations=(
+            SyncProjectGrowthAllocation("mastery", "bonsai", 200),
+        ),
+        source_batch_ids=("batch-project-a",),
+    )
+    newer = _summary(
+        batch_id="batch-project-b",
+        eligible_answer_count=1,
+        growth_total_units=0,
+        plant_growth=(),
+        shared_growth_delta_units=0,
+        stored_growth_delta_units=0,
+        garden_coin_delta=0,
+        mastery_growth_delta_units=300,
+        legacy_growth_delta_units=400,
+        project_allocations=(
+            SyncProjectGrowthAllocation("mastery", "bonsai", 300),
+            SyncProjectGrowthAllocation("legacy", "garden_legacy", 400),
+        ),
+        source_batch_ids=("batch-project-b",),
+    )
+
+    merged = older.merge(newer)
+    restored = SyncRewardSummary.from_dict(merged.to_dict())
+
+    assert older.meaningful is True
+    assert merged.mastery_growth_delta_units == 500
+    assert merged.legacy_growth_delta_units == 400
+    assert tuple(row.to_dict() for row in merged.project_allocations) == (
+        {"target_type": "mastery", "target_id": "bonsai", "units": 500},
+        {
+            "target_type": "legacy",
+            "target_id": "garden_legacy",
+            "units": 400,
+        },
+    )
+    assert restored == merged
+
+
 def test_merge_backfills_art_for_a_legacy_pending_boost_receipt() -> None:
     older = _summary(
         fertilizer_cards_remaining=90,
@@ -620,7 +670,7 @@ def test_schema24_round_trips_pending_summary_and_fails_closed_when_malformed() 
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 26
+    assert restored.version == STATE_VERSION == 27
     assert SyncRewardSummary.from_dict(restored.pending_sync_reward_summary) == summary
 
     malformed = state.to_dict()

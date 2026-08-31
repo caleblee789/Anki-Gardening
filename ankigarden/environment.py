@@ -185,7 +185,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Common",
         "purchase",
-        "Every 10 eligible card answers: +1 Growth.",
+        "Every 10 eligible cards: +1 Growth.",
         "Nursery: 100 Garden Coins.",
         100,
         effects=(EnvironmentEffect(
@@ -202,7 +202,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Common",
         "purchase",
-        "+5 Coins when today’s cards are complete.",
+        "+5 Garden Coins when today’s cards are complete.",
         "Nursery: 175 Garden Coins.",
         175,
         effects=(EnvironmentEffect(
@@ -218,7 +218,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Uncommon",
         "purchase",
-        "Every fifth eligible answer among the first 100 each Anki day: +1 Growth.",
+        "Every fifth eligible card among the first 100 each Anki day: +1 Growth.",
         "Nursery: 250 Garden Coins.",
         250,
         effects=(EnvironmentEffect(
@@ -262,7 +262,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Rare",
         "drop",
-        "Every fifth eligible answer: +3 Instant Growth to the unfinished planted plant closest to its next checkpoint.",
+        "Every fifth eligible card: +3 Instant Growth to the unfinished planted plant closest to its next checkpoint.",
         "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="rare_environment",
         effects=(EnvironmentEffect(
@@ -344,7 +344,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Uncommon",
         "purchase",
-        "+4 Coins when Today’s Cards is complete, plus +50% Coins from plant checkpoints and first-time stage completion.",
+        "+4 Garden Coins when Today’s Cards is complete, plus +50% Garden Coins from plant checkpoints and first-time stage completion.",
         "Nursery: 500 Garden Coins.",
         500,
         effects=(

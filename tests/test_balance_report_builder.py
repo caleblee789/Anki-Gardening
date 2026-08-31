@@ -29,14 +29,39 @@ def test_frozen_report_has_a_concise_fifteen_page_outline(frozen_report):
     assert len(REPORT_SECTIONS) == len(outline) == 15
     assert outline[0]["section_id"] == "cover"
     assert outline[-1]["section_id"] == "method"
-    assert len(frozen_report["catalog"]["records"]) == 110
+    assert len(frozen_report["catalog"]["records"]) == 121
     assert frozen_report["analysis"]["standard_finds"]["guarantee_answer"] == 75
+    release_status = frozen_report["release_status"]
+    assert release_status["automated"]["status"] == "pass"
+    assert release_status["modeled_acceptance"]["status"] == "not_evaluated"
+    assert release_status["production_parity"]["status"] == "not_run"
+    assert release_status["migration_tests"]["status"] == "not_run"
+    assert release_status["native_macos_smoke"]["status"] == "not_run"
+    assert release_status["human_review"]["status"] == "pending"
+    assert release_status["platform_macos_100_percent_text"]["status"] == "not_run"
+    assert release_status["release_ready"] is False
+    assert set(release_status["blocking_gates"]) == {
+        "production_parity",
+        "modeled_acceptance",
+        "migration_tests",
+        "native_macos_smoke",
+        "human_review",
+        "platform_macos_100_percent_text",
+    }
 
 
 def test_report_validation_rejects_hash_mismatch(frozen_report):
     changed = deepcopy(frozen_report)
     changed["catalog"]["sha256"] = "0" * 64
     with pytest.raises(ValueError, match="hash mismatch"):
+        validate_frozen_report(changed)
+
+
+def test_report_validation_rejects_false_release_promotion(frozen_report):
+    changed = deepcopy(frozen_report)
+    changed["release_status"]["release_ready"] = True
+    changed["release_status"]["blocking_gates"] = []
+    with pytest.raises(ValueError, match="cannot bypass"):
         validate_frozen_report(changed)
 
 
@@ -92,13 +117,10 @@ def _release_scorecard_fixture(frozen_report):
     values = {
         ("light:collection_first:baseline", "plants.full_bloom"): {"p50": 3},
         ("headline:collection_first:baseline", "plants.full_bloom"): {"p50": 10},
-        ("light:collection_first:baseline", "coins.gross"): {"p50": 4_446},
-        ("headline:optimal_coin:landmark_mastery", "landmarks.owned"): {"max": 0},
-        ("headline:optimal_coin:landmark_mastery", "mastery.owned"): {"max": 18},
-        ("heavy:optimal_coin:landmark_mastery", "landmarks.owned"): {"max": 0},
-        ("heavy:optimal_coin:landmark_mastery", "mastery.owned"): {"max": 25},
-        ("power:optimal_coin:landmark_mastery", "landmarks.owned"): {"max": 2},
-        ("power:optimal_coin:landmark_mastery", "mastery.owned"): {"max": 31},
+        ("light:collection_first:baseline", "coins.gross"): {"p10": 4_446},
+        ("light:collection_first:baseline", "catalog.functional_completion_day"): {"p50": 365},
+        ("headline:collection_first:baseline", "catalog.pre_endgame_completion_day"): {"p50": 220},
+        ("power:collection_first:baseline", "catalog.pre_endgame_completion_day"): {"p50": 160},
     }
     scenario_index = {
         row["scenario_id"]: row
@@ -114,6 +136,74 @@ def _release_scorecard_fixture(frozen_report):
             "metric_id": metric_id,
             **summary,
         })
+    for scenario in scenario_index.values():
+        common = {
+            "scenario_id": scenario["scenario_id"],
+            "strategy_id": scenario["strategy_id"],
+            "case_id": scenario["case_id"],
+            "checkpoint_day": 365,
+        }
+        changed["statistics"].append({
+            **common,
+            "metric_id": "catalog.finite_permanent_remaining_coins",
+            "min": 1,
+        })
+        if (
+            scenario["cohort_id"]
+            in {"very_light", "light", "moderate", "headline"}
+            and scenario["strategy_id"] == "collection_first"
+            and scenario["case_id"] == "baseline"
+        ):
+            changed["statistics"].append({
+                **common,
+                "metric_id": "coins.gross_without_completion_rewards",
+                "min": 1,
+            })
+            changed["coin_concentration"].append({
+                **common,
+                "ledger_source_hhi": 0.30,
+                "top_source_share": 0.40,
+                "completion_family_share": 0.60,
+                "gross_without_completion_rewards": 4_000,
+                "gross_without_completion_share": 0.40,
+            })
+        if (
+            scenario["strategy_id"] == "optimal_coin"
+            and scenario["case_id"] == "landmark_mastery"
+        ):
+            changed["statistics"].extend((
+                {
+                    **common,
+                    "metric_id": "endgame.finite_growth_remaining_units",
+                    "min": 1,
+                },
+                {
+                    **common,
+                    "metric_id": "endgame.finite_targets_remaining",
+                    "min": 1,
+                },
+                {
+                    **common,
+                    "metric_id": "endgame.active_project_no_unallocated_storage",
+                    "min": 1,
+                },
+            ))
+        if (
+            scenario["strategy_id"] == "no_spend"
+            and scenario["case_id"] == "all_plants_complete"
+        ):
+            changed["statistics"].extend((
+                {
+                    **common,
+                    "metric_id": "endgame.no_project_preserves_entire_reserve",
+                    "min": 1,
+                },
+                {
+                    **common,
+                    "metric_id": "endgame.no_project_preservation_delta_units",
+                    "max": 0,
+                },
+            ))
     return changed
 
 
@@ -127,11 +217,25 @@ def test_scorecard_exposes_release_pacing_and_coin_miss_without_blocking(frozen_
         "PACE-10-FIRST-FULL-BLOOM",
         "PACE-25-FULL-BLOOMS",
         "PACE-100-FULL-BLOOMS",
-        "COINS-25-CORE-AFFORDABILITY",
-        "ENDGAME-100-REMAINS-OPEN",
-        "ENDGAME-200-400-REMAINS-OPEN",
+        "COINS-FUNCTIONAL-DEMAND",
+        "COINS-PRE-ENDGAME-DEMAND",
         "COINS-PERMANENT-DEMAND",
+        "COINS-25-CORE-AFFORDABILITY",
+        "COINS-25-FUNCTIONAL-DAY",
+        "COINS-100-PRE-ENDGAME-DAY",
+        "COINS-400-PRE-ENDGAME-DAY",
         "FAIRNESS-FERTILIZER-SPEED",
+        "COINS-ALL-COHORTS-PERMANENT-REMAINS",
+        "COINS-100-200-400-PERMANENT-REMAINS",
+        "ENDGAME-FINITE-GROWTH-REMAINS",
+        "ENDGAME-100-200-400-TARGETS-REMAIN",
+        "ENDGAME-ACTIVE-PROJECT-NO-STORAGE",
+        "ENDGAME-NO-PROJECT-PRESERVES-RESERVE",
+        "COINS-LEDGER-HHI",
+        "COINS-TOP-SOURCE-SHARE",
+        "COINS-COMPLETION-FAMILY-WATCH",
+        "COINS-NON-COMPLETION-PROGRESSION",
+        "INTEGRITY-PRODUCTION-PARITY",
     ]
     assert rows["PACE-10-FIRST-FULL-BLOOM"]["status"] == "pass"
     assert rows["PACE-10-FIRST-FULL-BLOOM"]["evidence"].startswith("350 active days")
@@ -140,27 +244,76 @@ def test_scorecard_exposes_release_pacing_and_coin_miss_without_blocking(frozen_
     assert rows["COINS-25-CORE-AFFORDABILITY"]["status"] == "attention"
     assert "4,446" in rows["COINS-25-CORE-AFFORDABILITY"]["evidence"]
     assert "5,825" in rows["COINS-25-CORE-AFFORDABILITY"]["evidence"]
-    assert rows["ENDGAME-100-REMAINS-OPEN"]["status"] == "pass"
-    assert rows["ENDGAME-200-400-REMAINS-OPEN"]["status"] == "pass"
+    assert rows["COINS-FUNCTIONAL-DEMAND"]["status"] == "pass"
+    assert rows["COINS-PRE-ENDGAME-DEMAND"]["status"] == "pass"
     assert rows["COINS-PERMANENT-DEMAND"] == {
         "criterion_id": "COINS-PERMANENT-DEMAND",
         "status": "pass",
-        "criterion": "Long-term permanent Coin demand matches the release specification",
-        "evidence": "19,775 Coins",
-        "target": "19,775 Coins",
+        "criterion": "All finite permanent Garden Coin demand matches the release specification",
+        "evidence": "19,775 Garden Coins",
+        "target": "19,775 Garden Coins",
     }
     assert rows["FAIRNESS-FERTILIZER-SPEED"]["status"] == "pass"
+    assert rows["COINS-25-FUNCTIONAL-DAY"]["status"] == "pass"
+    assert rows["COINS-100-PRE-ENDGAME-DAY"]["status"] == "pass"
+    assert rows["COINS-400-PRE-ENDGAME-DAY"]["status"] == "pass"
+    assert rows["COINS-ALL-COHORTS-PERMANENT-REMAINS"]["status"] == "pass"
+    assert rows["COINS-100-200-400-PERMANENT-REMAINS"]["status"] == "pass"
+    assert rows["ENDGAME-FINITE-GROWTH-REMAINS"]["status"] == "pass"
+    assert rows["ENDGAME-100-200-400-TARGETS-REMAIN"]["status"] == "pass"
+    assert rows["ENDGAME-ACTIVE-PROJECT-NO-STORAGE"]["status"] == "pass"
+    assert rows["ENDGAME-NO-PROJECT-PRESERVES-RESERVE"]["status"] == "pass"
+    assert rows["COINS-LEDGER-HHI"]["status"] == "pass"
+    assert rows["COINS-TOP-SOURCE-SHARE"]["status"] == "pass"
+    assert rows["COINS-COMPLETION-FAMILY-WATCH"]["status"] == "pass"
+    assert rows["COINS-NON-COMPLETION-PROGRESSION"]["status"] == "pass"
+    assert "40.0% to 40.0%" in rows[
+        "COINS-NON-COMPLETION-PROGRESSION"
+    ]["evidence"]
+    assert rows["INTEGRITY-PRODUCTION-PARITY"]["status"] == "not modeled"
 
 
-def test_scorecard_marks_wrong_permanent_demand_for_attention(frozen_report):
+@pytest.mark.parametrize(("field_name", "criterion_id", "wrong_value"), (
+    ("functional_catalog_cost_total", "COINS-FUNCTIONAL-DEMAND", 5_824),
+    ("pre_endgame_permanent_cost_total", "COINS-PRE-ENDGAME-DEMAND", 7_124),
+    ("permanent_cost_total", "COINS-PERMANENT-DEMAND", 13_025),
+))
+def test_scorecard_marks_wrong_catalog_demand_for_attention(
+    frozen_report,
+    field_name,
+    criterion_id,
+    wrong_value,
+):
     report = _release_scorecard_fixture(frozen_report)
-    report["analysis"]["coins"]["permanent_cost_total"] = 13_025
+    report["analysis"]["coins"][field_name] = wrong_value
     rows = {
         row["criterion_id"]: row
         for row in balance_scorecard_rows(report)
     }
-    assert rows["COINS-PERMANENT-DEMAND"]["status"] == "attention"
-    assert rows["COINS-PERMANENT-DEMAND"]["evidence"] == "13,025 Coins"
+    assert rows[criterion_id]["status"] == "attention"
+    assert rows[criterion_id]["evidence"] == f"{wrong_value:,} Garden Coins"
+
+
+def test_scorecard_requires_all_four_coin_concentration_cohorts(frozen_report):
+    report = _release_scorecard_fixture(frozen_report)
+    report["coin_concentration"] = [
+        row for row in report["coin_concentration"]
+        if not (
+            row.get("scenario_id") == "very_light:collection_first:baseline"
+            and row.get("checkpoint_day") == 365
+        )
+    ]
+    rows = {
+        row["criterion_id"]: row
+        for row in balance_scorecard_rows(report)
+    }
+    for criterion_id in (
+        "COINS-LEDGER-HHI",
+        "COINS-TOP-SOURCE-SHARE",
+        "COINS-COMPLETION-FAMILY-WATCH",
+    ):
+        assert rows[criterion_id]["status"] == "not modeled"
+        assert "3/4 cohorts" in rows[criterion_id]["evidence"]
 
 
 def test_catalog_cost_labels_preserve_every_release_cost_axis(frozen_report):
@@ -184,3 +337,6 @@ def test_catalog_cost_labels_preserve_every_release_cost_axis(frozen_report):
     assert catalog_record_price_status(
         "mastery", records[("mastery", "iridescent")]
     ) == "200,000 G + 400 C / species"
+    assert catalog_record_price_status(
+        "consumable", records[("consumable", "booster_potion")]
+    ) == "Garden Find / Garden reward"

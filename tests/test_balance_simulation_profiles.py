@@ -62,16 +62,32 @@ def test_edge_cases_are_modeled_as_separate_rows(short_report):
         "headline:optimal_growth:all_environments",
         "environments.discovered",
     )
+    ownership_suppression = _stat(
+        short_report,
+        "headline:optimal_growth:all_environments",
+        "environments.rare_environment.ownership_suppression_rate",
+    )
     all_plants = _stat(
         short_report,
         "headline:no_spend:all_plants_complete",
-        "growth.stored_units",
+        "growth.stored_balance_units",
     )
 
     assert baseline["mean"] == 30
     assert incomplete["mean"] == 24
     assert all_environments["min"] == all_environments["max"] == 6
+    assert ownership_suppression["min"] == ownership_suppression["max"] == 1
     assert all_plants["min"] > 0
+    assert _stat(
+        short_report,
+        "headline:no_spend:all_plants_complete",
+        "endgame.no_project_preserves_entire_reserve",
+    )["min"] == 1
+    assert _stat(
+        short_report,
+        "headline:no_spend:all_plants_complete",
+        "endgame.no_project_preservation_delta_units",
+    )["max"] == 0
 
 
 def test_find_caps_and_guarantee_hold_for_every_scenario(short_report):
@@ -81,3 +97,102 @@ def test_find_caps_and_guarantee_hold_for_every_scenario(short_report):
     ]
     assert guarantee_rows
     assert all(row["max"] <= 75 for row in guarantee_rows)
+
+
+def test_release_report_exposes_policy_accounting_and_item_level_evidence(short_report):
+    baseline = {
+        row["strategy_id"]: row["consumable_policy"]
+        for row in short_report["scenario_matrix"]["scenarios"]
+        if row["cohort_id"] == "headline" and row["case_id"] == "baseline"
+    }
+    assert baseline == {
+        "no_spend": "never_use_earned",
+        "collection_first": "use_immediately",
+        "cosmetic_first": "save_for_100_card_session",
+        "consumable_heavy": "consumable_heavy",
+        "optimal_growth": "save_until_today_cards_completion",
+        "optimal_coin": "purchase_none_use_earned",
+    }
+    metric_ids = {row["metric_id"] for row in short_report["statistics"]}
+    assert "growth.stored_units" not in metric_ids
+    consumable_fields = (
+        "units_earned",
+        "units_purchased",
+        "units_activated",
+        "units_consumed",
+        "units_remaining",
+        "cards_of_effect_remaining",
+        "growth_generated",
+        "coins_spent",
+    )
+    assert tuple(
+        short_report["analysis"]["consumable_reporting"]["canonical_fields"]
+    ) == consumable_fields
+    consumable_ids = short_report["analysis"]["consumable_reporting"][
+        "item_ids"
+    ]
+    assert all(
+        f"consumables.{item_id}.{field}" in metric_ids
+        for item_id in consumable_ids
+        for field in consumable_fields
+    )
+    assert {
+        "growth.generated_units",
+        "growth.applied_to_plants_units",
+        "growth.routed_to_storage_units_lifetime",
+        "growth.stored_balance_units",
+        "growth.contributed_to_landmarks_units",
+        "growth.contributed_to_mastery_units",
+        "growth.contributed_to_legacy_units",
+        "landmarks.tiers_funded",
+        "landmarks.tiers_claimed",
+        "mastery.ranks_funded",
+        "mastery.ranks_claimed",
+        "catalog.finite_permanent_remaining_coins",
+        "endgame.finite_coin_claim_demand_remaining",
+        "endgame.finite_growth_remaining_units",
+        "endgame.finite_targets_remaining",
+        "endgame.active_project_no_unallocated_storage",
+        "endgame.no_project_preserves_entire_reserve",
+        "environments.any_tier_simultaneous_forced_user",
+    } <= metric_ids
+    environment_contract = short_report["analysis"][
+        "environment_acquisition_reporting"
+    ]
+    assert environment_contract["timing_percentiles"] == ["p10", "p50", "p90"]
+    for tier in short_report["analysis"]["environment_tiers"]:
+        prefix = f"environments.{tier['tier_id']}."
+        for field in (
+            *environment_contract["calendar_day_fields"],
+            *environment_contract["eligible_card_fields"],
+            *environment_contract["route_fields"],
+            "simultaneous_forced_acquisitions",
+            environment_contract["simultaneous_forced_user_rate_field"],
+            "ownership_blocked_card_checks",
+            "ownership_blocked_completion_checks",
+            "ownership_blocked_checks",
+            "ownership_check_opportunities",
+            environment_contract["ownership_suppression_rate_field"],
+        ):
+            assert prefix + field in metric_ids
+        timing = next(
+            row for row in short_report["statistics"]
+            if row["metric_id"] == prefix + "first_discovery_day"
+        )
+        assert timing["censoring"] == "right_censored_at_checkpoint"
+        assert timing["population_scope"].endswith("|all_paired_seeds")
+        assert "conditional_reacher_p50" in timing
+    concentration = next(
+        row for row in short_report["coin_concentration"]
+        if row["scenario_id"] == "headline:collection_first:baseline"
+        and row["checkpoint_day"] == 30
+    )
+    assert sum(concentration["source_totals"].values()) == concentration[
+        "gross_coins_pooled"
+    ]
+    assert concentration["behavioral_family_totals"][
+        "todays_cards_completion"
+    ] == sum(
+        concentration["source_totals"][source]
+        for source in ("todays_cards", "completion_cycle_5")
+    )

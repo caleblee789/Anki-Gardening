@@ -36,25 +36,33 @@ class StrategySpec:
     permanent_priority: Tuple[str, ...] = ()
     buys_consumables: bool = False
     optimize_for: str = ""
+    consumable_policy: str = "use_immediately"
 
 
 APPROVED_STRATEGIES: Tuple[StrategySpec, ...] = (
-    StrategySpec("no_spend", "No purchases"),
+    StrategySpec(
+        "no_spend",
+        "No purchases",
+        consumable_policy="never_use_earned",
+    ),
     StrategySpec(
         "collection_first",
         "Collection first",
         ("species", "bed", "garden_bonus", "scenery", "cosmetic"),
+        consumable_policy="use_immediately",
     ),
     StrategySpec(
         "cosmetic_first",
         "Cosmetic first",
         ("cosmetic", "garden_bonus", "scenery", "species", "bed"),
+        consumable_policy="save_for_100_card_session",
     ),
     StrategySpec(
         "consumable_heavy",
         "Consumable heavy",
         buys_consumables=True,
         optimize_for="growth",
+        consumable_policy="consumable_heavy",
     ),
     StrategySpec(
         "optimal_growth",
@@ -68,6 +76,7 @@ APPROVED_STRATEGIES: Tuple[StrategySpec, ...] = (
         ),
         buys_consumables=True,
         optimize_for="growth",
+        consumable_policy="save_until_today_cards_completion",
     ),
     StrategySpec(
         "optimal_coin",
@@ -79,8 +88,9 @@ APPROVED_STRATEGIES: Tuple[StrategySpec, ...] = (
             "species",
             "cosmetic",
         ),
-        buys_consumables=True,
+        buys_consumables=False,
         optimize_for="coin",
+        consumable_policy="purchase_none_use_earned",
     ),
 )
 
@@ -132,6 +142,39 @@ APPROVED_EDGE_CASES: Tuple[EdgeCaseSpec, ...] = (
 )
 
 
+# Release configuration authority.  These identities and policy assignments are
+# intentionally frozen independently from ``approved_scenarios`` so a later
+# refactor cannot silently change the 10,000-seed population being compared.
+APPROVED_SCENARIO_SUFFIXES: Tuple[Tuple[str, str], ...] = (
+    ("no_spend", "baseline"),
+    ("collection_first", "baseline"),
+    ("cosmetic_first", "baseline"),
+    ("consumable_heavy", "baseline"),
+    ("optimal_growth", "baseline"),
+    ("optimal_coin", "baseline"),
+    ("collection_first", "incomplete_days"),
+    ("collection_first", "missed_week"),
+    ("optimal_growth", "all_environments"),
+    ("no_spend", "all_plants_complete"),
+    ("optimal_coin", "landmark_mastery"),
+)
+
+APPROVED_SCENARIO_IDS: Tuple[str, ...] = tuple(
+    f"{cohort.cohort_id}:{strategy_id}:{case_id}"
+    for cohort in APPROVED_COHORTS
+    for strategy_id, case_id in APPROVED_SCENARIO_SUFFIXES
+)
+
+APPROVED_CONSUMABLE_POLICY_BY_STRATEGY: Tuple[Tuple[str, str], ...] = (
+    ("no_spend", "never_use_earned"),
+    ("collection_first", "use_immediately"),
+    ("cosmetic_first", "save_for_100_card_session"),
+    ("consumable_heavy", "consumable_heavy"),
+    ("optimal_growth", "save_until_today_cards_completion"),
+    ("optimal_coin", "purchase_none_use_earned"),
+)
+
+
 @dataclass(frozen=True)
 class ScenarioSpec:
     scenario_id: str
@@ -163,8 +206,9 @@ def approved_scenarios(
     """
 
     rows = []
+    normalized_cohorts = tuple(cohorts)
     strategies = {row.strategy_id: row for row in APPROVED_STRATEGIES}
-    for cohort in tuple(cohorts):
+    for cohort in normalized_cohorts:
         for strategy in APPROVED_STRATEGIES:
             rows.append(ScenarioSpec(
                 scenario_id=f"{cohort.cohort_id}:{strategy.strategy_id}:baseline",
@@ -185,7 +229,18 @@ def approved_scenarios(
                 all_plants_complete=case.all_plants_complete,
                 landmark_mastery_spending=case.landmark_mastery_spending,
             ))
-    return tuple(rows)
+    result = tuple(rows)
+    if normalized_cohorts == APPROVED_COHORTS:
+        scenario_ids = tuple(row.scenario_id for row in result)
+        if scenario_ids != APPROVED_SCENARIO_IDS:
+            raise AssertionError("approved 66-scenario identity contract changed")
+        policies = tuple(
+            (row.strategy_id, row.consumable_policy)
+            for row in APPROVED_STRATEGIES
+        )
+        if policies != APPROVED_CONSUMABLE_POLICY_BY_STRATEGY:
+            raise AssertionError("approved consumable policy mapping changed")
+    return result
 
 
 @dataclass(frozen=True)

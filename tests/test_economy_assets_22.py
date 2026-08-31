@@ -10,7 +10,11 @@ from PIL import Image
 import ankigarden
 from ankigarden.asset_manager import AssetManager
 from ankigarden.balance_catalog import COSMETICS, LANDMARKS, MASTERY_RANKS
-from ankigarden.collectibles import collectible_registry, collectible_views
+from ankigarden.collectibles import (
+    collection_entry_registry,
+    collectible_registry,
+    collectible_views,
+)
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import GardenState
 
@@ -164,6 +168,11 @@ def test_collection_registry_is_complete_and_fertilizer_copy_is_card_counted() -
         "landmarks": 6,
         "mastery": 40,
     }
+    collection_rows = collection_entry_registry()
+    assert len(collection_rows) == 39
+    assert not {
+        row.category for row in collection_rows
+    }.intersection({"cosmetics", "landmarks", "mastery"})
     fertilizers = tuple(
         row for row in rows if "fertilizer" in row.item_id
     )

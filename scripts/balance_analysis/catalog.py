@@ -98,6 +98,8 @@ def _identifier(value: Any, category: str, index: int) -> str:
         "discovery_id",
         "achievement_id",
         "cosmetic_id",
+        "source_id",
+        "legacy_id",
         "landmark_id",
         "rank_id",
         "tier_id",
@@ -248,6 +250,8 @@ class CatalogFacts:
     daily_activity_coins: int
     completion_coins: int
     weekly_streak_coins: int
+    garden_cycle_completions: int
+    garden_cycle_coins: int
     stages: Tuple[StageFact, ...]
     rhythm_tiers: Tuple[Tuple[int, int], ...]
     species_ids: Tuple[str, ...]
@@ -314,6 +318,8 @@ _REGISTRY_NAMES = (
     ("landmark", "LANDMARKS"),
     ("mastery", "MASTERY_RANKS"),
     ("bed", "BED_UNLOCKS"),
+    ("coin_source", "COIN_SOURCES"),
+    ("garden_legacy", "GARDEN_LEGACY"),
 )
 
 
@@ -321,6 +327,8 @@ def _registry(module: Any, name: str) -> Tuple[Any, ...]:
     value = getattr(module, name, ())
     if isinstance(value, Mapping):
         return tuple(value.values())
+    if is_dataclass(value):
+        return (value,)
     return tuple(value or ())
 
 
@@ -577,7 +585,11 @@ def _purchase_options(
         for index, item in enumerate(_registry(module, "SPECIES"))
     )
     for category, registry_name in _REGISTRY_NAMES:
-        if category in {"stage", "rhythm", "standard_find", "environment_tier", "environment_discovery", "achievement"}:
+        if category in {
+            "stage", "rhythm", "standard_find", "environment_tier",
+            "environment_discovery", "achievement", "coin_source",
+            "garden_legacy",
+        }:
             continue
         for index, item in enumerate(_registry(module, registry_name)):
             item_id = _identifier(item, category, index)
@@ -749,6 +761,10 @@ def load_catalog_facts() -> CatalogFacts:
         daily_activity_coins=int(module.DAILY_ACTIVITY_COINS),
         completion_coins=int(module.ALL_DUE_BASE_COINS),
         weekly_streak_coins=int(module.WEEKLY_STREAK_COINS),
+        garden_cycle_completions=int(
+            getattr(module, "GARDEN_CYCLE_COMPLETIONS", 5)
+        ),
+        garden_cycle_coins=int(getattr(module, "GARDEN_CYCLE_COINS", 30)),
         stages=_stage_facts(module),
         rhythm_tiers=_rhythm_tiers(module),
         species_ids=tuple(

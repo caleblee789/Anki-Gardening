@@ -21,6 +21,7 @@ from ankigarden.ui.session_summary import (
     ReviewContinuationTarget,
     RewardComponent,
     SessionEndSnapshot,
+    SessionProjectGrowthAllocation,
     SessionStartSnapshot,
     SessionSummaryAccumulator,
     StandardFind,
@@ -120,6 +121,7 @@ def _event(
     shared_growth: tuple[PlantGrowthDelta, ...] = (),
     stored: int = 0,
     landmark: int = 0,
+    projects: tuple[SessionProjectGrowthAllocation, ...] = (),
     coins: tuple[CoinAward, ...] = (),
     finds: tuple[StandardFind, ...] = (),
     milestones: tuple[PlantMilestone, ...] = (),
@@ -135,6 +137,7 @@ def _event(
         plant_growth=plant_growth,
         shared_growth=shared_growth,
         stored_growth_delta_units=stored,
+        project_allocations=projects,
         landmark_growth_delta_units=landmark,
         coin_awards=coins,
         standard_finds=finds,
@@ -260,6 +263,48 @@ def test_landmark_progress_flows_through_live_final_and_projection_surfaces():
     ) in [
         (row.key, row.label, row.value) for row in projection.result_rows
     ]
+
+
+def test_committed_project_allocations_flow_without_mutable_state_inference():
+    accumulator = _accumulator()
+    assert accumulator.accept_committed(_event(
+        "card:projects-1",
+        plant_growth=(PlantGrowthDelta("rose", "Rose", 1_000),),
+        landmark=250,
+        projects=(
+            SessionProjectGrowthAllocation("landmark", "garden_landmark", 250),
+            SessionProjectGrowthAllocation("mastery", "bonsai", 100),
+        ),
+    ))
+    assert accumulator.accept_committed(_event(
+        "card:projects-2",
+        projects=(
+            SessionProjectGrowthAllocation("mastery", "bonsai", 50),
+            SessionProjectGrowthAllocation("legacy", "garden_legacy", 25),
+        ),
+    ))
+
+    end = SessionEndSnapshot(_today(remaining=18, complete=142, total=160))
+    live = accumulator.live_snapshot(
+        ended_at="2026-08-28T10:30:00Z",
+        end_snapshot=end,
+    )
+    expected = [
+        ("landmark", "garden_landmark", 250),
+        ("mastery", "bonsai", 150),
+        ("legacy", "garden_legacy", 25),
+    ]
+    assert [(row.target_type, row.target_id, row.units) for row in live.project_allocations] == expected
+    assert live.project_growth_total_units == 425
+    assert live.footer_growth_units == 1_425
+
+    payload = _finish(accumulator, end=end)
+    assert payload is not None
+    summary = payload.segments[0]
+    projection = project_session_day(summary)
+    assert [(row.target_type, row.target_id, row.units) for row in summary.project_allocations] == expected
+    assert [(row.target_type, row.target_id, row.units) for row in payload.project_allocations] == expected
+    assert [(row.target_type, row.target_id, row.units) for row in projection.project_allocations] == expected
 
 
 def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():

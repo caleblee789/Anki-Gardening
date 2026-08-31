@@ -18,12 +18,12 @@ DASHBOARD = (
 
 
 def test_fertilizer_action_vocabulary_uses_the_authoritative_disposition() -> None:
-    assert fertilizer_action_label(PurchaseDisposition.APPLIED, owned=True) == "Apply"
+    assert fertilizer_action_label(PurchaseDisposition.APPLIED, owned=True) == "Use"
     assert fertilizer_action_label(PurchaseDisposition.QUEUED, owned=True) == "Queue"
-    assert fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=True) == "Extend"
+    assert fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=True) == "Queue"
     assert (
         fertilizer_action_label(PurchaseDisposition.APPLIED, owned=False)
-        == "Buy and apply"
+        == "Use"
     )
     assert (
         fertilizer_action_label(PurchaseDisposition.QUEUED, owned=False)
@@ -31,7 +31,7 @@ def test_fertilizer_action_vocabulary_uses_the_authoritative_disposition() -> No
     )
     assert (
         fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=False)
-        == "Extend"
+        == "Buy and queue"
     )
 
 

@@ -29,8 +29,10 @@ MAX_GARDEN_SLOTS = 6
 STAGE_CHECKPOINT_PERCENTAGES = (25, 50, 75)
 STAGE_REWARD_CHECKPOINT_PERCENTAGES = (25, 50, 75, 100)
 
-DAILY_ACTIVITY_COINS = 2
-ALL_DUE_BASE_COINS = 10
+DAILY_ACTIVITY_COINS = 4
+ALL_DUE_BASE_COINS = 8
+GARDEN_CYCLE_COMPLETIONS = 5
+GARDEN_CYCLE_COINS = 30
 WEEKLY_STREAK_COINS = 10
 BOOSTER_GROWTH_PER_ANSWER = 5
 BOOSTER_CARD_COUNT = 100
@@ -187,6 +189,39 @@ class MasteryRankId(StableStringEnum):
     IRIDESCENT = "iridescent"
 
 
+class CoinSourceId(StableStringEnum):
+    """Canonical identities written to the Garden Coin ledger."""
+
+    FIRST_ELIGIBLE_ANSWER = "first_eligible_answer"
+    TODAYS_CARDS = "todays_cards"
+    COMPLETION_CYCLE_5 = "completion_cycle_5"
+    SEVEN_DAY_STREAK_CYCLE = "seven_day_streak_cycle"
+    ACHIEVEMENT = "achievement"
+    PLANT_MILESTONE = "plant_milestone"
+    STANDARD_FIND = "standard_find"
+    HARVEST_BELL = "harvest_bell"
+    AUTUMN_HEARTH = "autumn_hearth"
+    OTHER = "other"
+
+
+class CoinBehaviorFamily(StableStringEnum):
+    """Behavioral groupings used for honest concentration reporting."""
+
+    STUDY_ATTENDANCE = "study_attendance"
+    TODAYS_CARDS_COMPLETION = "todays_cards_completion"
+    STREAK = "streak"
+    ACHIEVEMENTS = "achievements"
+    PLANT_PROGRESSION = "plant_progression"
+    FINDS = "finds"
+    EQUIPPED_EFFECTS = "equipped_effects"
+    OTHER = "other"
+
+
+class RewardSummaryPolicy(StableStringEnum):
+    DETAIL_ROW = "detail_row"
+    DETAIL_ROW_FEATURE_IF_ONLY_MAJOR = "detail_row_feature_if_only_major"
+
+
 class AcquisitionKind(StableStringEnum):
     INCLUDED = "included"
     STARTER = "starter"
@@ -336,6 +371,9 @@ class ConsumableDefinition:
     instant_growth: int = 0
     rarity: Rarity = Rarity.COMMON
     how_to_acquire: str = ""
+    effect_description: str = ""
+    purchase_action_text: str = ""
+    queued_purchase_action_text: str = ""
 
     @property
     def purchasable(self) -> bool:
@@ -387,6 +425,7 @@ class GardenBonusDefinition:
     effects: tuple[EffectDefinition, ...]
     asset_id: str
     how_to_acquire: str
+    effect_description: str
 
     @property
     def purchasable(self) -> bool:
@@ -403,6 +442,7 @@ class SceneryDefinition:
     effects: tuple[EffectDefinition, ...]
     asset_id: str
     how_to_acquire: str
+    effect_description: str
 
     @property
     def purchasable(self) -> bool:
@@ -508,12 +548,33 @@ class CosmeticDefinition:
 
 
 @dataclass(frozen=True)
+class CoinSourceDefinition:
+    """Ledger identity plus renderer-neutral receipt and modifier policy."""
+
+    source_id: CoinSourceId
+    display_name: str
+    behavioral_family: CoinBehaviorFamily
+    eligibility_rule: str
+    fixed_amount_coins: Optional[int] = None
+    receipt_title: str = ""
+    receipt_detail: str = ""
+    artwork_id: str = "ui_garden_coin"
+    summary_policy: RewardSummaryPolicy = RewardSummaryPolicy.DETAIL_ROW
+    affected_by_harvest_bell: bool = False
+    affected_by_autumn_hearth: bool = False
+    affected_by_plant_checkpoint_multiplier: bool = False
+
+
+@dataclass(frozen=True)
 class GardenLandmarkDefinition:
     landmark_id: GardenLandmarkId
     display_name: str
     growth_cost: int
+    cumulative_growth_threshold: int
     coin_cost: int
     asset_id: str
+    effect_description: str
+    how_to_acquire: str
 
 
 @dataclass(frozen=True)
@@ -521,7 +582,22 @@ class MasteryRankDefinition:
     rank_id: MasteryRankId
     display_name: str
     growth_cost: int
+    cumulative_growth_threshold: int
     coin_cost: int
+    asset_id: str
+    effect_description: str
+    how_to_acquire: str
+
+
+@dataclass(frozen=True)
+class GardenLegacyDefinition:
+    legacy_id: str
+    display_name: str
+    growth_cost_per_level: int
+    coin_cost: int
+    asset_id: str
+    effect_description: str
+    how_to_acquire: str
 
 
 @dataclass(frozen=True)
@@ -529,6 +605,21 @@ class BedUnlockDefinition:
     bed_number: int
     included: bool
     source_achievement_id: Optional[AchievementId]
+    requirement_copy: str
+
+    @property
+    def purchase_action_text(self) -> str:
+        return f"Unlock Bed {self.bed_number}"
+
+    @property
+    def unlock_policy(self) -> str:
+        return "included" if self.included else "automatic_achievement"
+
+    @property
+    def price_coins(self) -> None:
+        """Garden beds are progression rewards and never have a Coin price."""
+
+        return None
 
 
 @dataclass(frozen=True)
@@ -540,6 +631,7 @@ class BalanceCatalog:
     daily_activity_coins: int
     completion_coins: int
     weekly_streak_coins: int
+    coin_sources: tuple[CoinSourceDefinition, ...]
     stages: tuple[StageDefinition, ...]
     rhythm_tiers: tuple[RhythmTier, ...]
     species: tuple[SpeciesDefinition, ...]
@@ -556,6 +648,7 @@ class BalanceCatalog:
     cosmetics: tuple[CosmeticDefinition, ...]
     landmarks: tuple[GardenLandmarkDefinition, ...]
     mastery_ranks: tuple[MasteryRankDefinition, ...]
+    garden_legacy: GardenLegacyDefinition
     bed_unlocks: tuple[BedUnlockDefinition, ...]
 
 
@@ -604,6 +697,84 @@ def _effect(
         target_policy=target_policy,
         target_tie_break=target_tie_break,
     )
+
+
+COIN_SOURCES = (
+    CoinSourceDefinition(
+        CoinSourceId.FIRST_ELIGIBLE_ANSWER,
+        "First eligible answer",
+        CoinBehaviorFamily.STUDY_ATTENDANCE,
+        "First eligible committed answer of the Anki day.",
+        fixed_amount_coins=DAILY_ACTIVITY_COINS,
+        receipt_title="First answer",
+        receipt_detail="First eligible answer today",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.TODAYS_CARDS,
+        "Today’s Cards",
+        CoinBehaviorFamily.TODAYS_CARDS_COMPLETION,
+        "Verified Today’s Cards completion after at least one eligible committed answer.",
+        fixed_amount_coins=ALL_DUE_BASE_COINS,
+        receipt_title="Today’s Cards complete",
+        receipt_detail="All due cards completed",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.COMPLETION_CYCLE_5,
+        "Garden Cycle",
+        CoinBehaviorFamily.TODAYS_CARDS_COMPLETION,
+        "Every fifth verified Today’s Cards completion; days need not be consecutive.",
+        fixed_amount_coins=GARDEN_CYCLE_COINS,
+        receipt_title="Garden Cycle complete",
+        receipt_detail="5 completed review days",
+        summary_policy=RewardSummaryPolicy.DETAIL_ROW_FEATURE_IF_ONLY_MAJOR,
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.SEVEN_DAY_STREAK_CYCLE,
+        "Seven-day streak cycle",
+        CoinBehaviorFamily.STREAK,
+        "Every seventh Anki streak day.",
+        fixed_amount_coins=WEEKLY_STREAK_COINS,
+        receipt_title="Seven-day streak",
+        receipt_detail="7-day Anki streak cycle",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.ACHIEVEMENT,
+        "Achievements",
+        CoinBehaviorFamily.ACHIEVEMENTS,
+        "One-time or recurring achievement reward.",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.PLANT_MILESTONE,
+        "Plant milestones",
+        CoinBehaviorFamily.PLANT_PROGRESSION,
+        "First-time plant checkpoint or stage reward.",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.STANDARD_FIND,
+        "Standard Finds",
+        CoinBehaviorFamily.FINDS,
+        "Committed Standard Find with a Garden Coin outcome.",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.HARVEST_BELL,
+        "Harvest Bell",
+        CoinBehaviorFamily.EQUIPPED_EFFECTS,
+        "Separate equipped-effect reward on a verified Today’s Cards completion.",
+        fixed_amount_coins=5,
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.AUTUMN_HEARTH,
+        "Autumn Hearth",
+        CoinBehaviorFamily.EQUIPPED_EFFECTS,
+        "Separate equipped-effect reward from completion or plant progression.",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.OTHER,
+        "Other",
+        CoinBehaviorFamily.OTHER,
+        "Reserved fallback family for future cataloged Garden Coin sources.",
+    ),
+)
 
 
 STAGES = (
@@ -658,7 +829,10 @@ CONSUMABLES = (
         price_coins=30,
         growth_per_card=1,
         card_count=100,
-        how_to_acquire="Nursery for 30 Coins or the Rich Compost Garden Find.",
+        how_to_acquire="Nursery for 30 Garden Coins or the Rich Compost Garden Find.",
+        effect_description="Adds 1 Growth to each of the next 100 eligible cards.",
+        purchase_action_text="Buy",
+        queued_purchase_action_text="Buy and queue",
     ),
     ConsumableDefinition(
         ConsumableId.FERTILIZER_QUALITY,
@@ -669,7 +843,10 @@ CONSUMABLES = (
         growth_per_card=2,
         card_count=200,
         rarity=Rarity.UNCOMMON,
-        how_to_acquire="Nursery for 100 Coins.",
+        how_to_acquire="Nursery for 100 Garden Coins.",
+        effect_description="Adds 2 Growth to each of the next 200 eligible cards.",
+        purchase_action_text="Buy",
+        queued_purchase_action_text="Buy and queue",
     ),
     ConsumableDefinition(
         ConsumableId.FERTILIZER_PREMIUM,
@@ -680,7 +857,10 @@ CONSUMABLES = (
         growth_per_card=3,
         card_count=400,
         rarity=Rarity.RARE,
-        how_to_acquire="Nursery for 300 Coins.",
+        how_to_acquire="Nursery for 300 Garden Coins.",
+        effect_description="Adds 3 Growth to each of the next 400 eligible cards.",
+        purchase_action_text="Buy",
+        queued_purchase_action_text="Buy and queue",
     ),
     ConsumableDefinition(
         ConsumableId.BOOSTER_POTION,
@@ -691,6 +871,7 @@ CONSUMABLES = (
         card_count=100,
         rarity=Rarity.RARE,
         how_to_acquire="Garden rewards and Garden Finds; not purchasable.",
+        effect_description="Adds 5 Growth to each of the next 100 eligible cards.",
     ),
     ConsumableDefinition(
         ConsumableId.GROWTH_CHARGE_SMALL,
@@ -704,7 +885,9 @@ CONSUMABLES = (
         ),
         price_coins=30,
         instant_growth=100,
-        how_to_acquire="Nursery for 30 Coins or Garden rewards.",
+        how_to_acquire="Nursery for 30 Garden Coins or Garden rewards.",
+        effect_description="Adds 100 Growth instantly to an unfinished plant.",
+        purchase_action_text="Buy charge",
     ),
     ConsumableDefinition(
         ConsumableId.GROWTH_CHARGE_STANDARD,
@@ -719,7 +902,9 @@ CONSUMABLES = (
         price_coins=125,
         instant_growth=500,
         rarity=Rarity.RARE,
-        how_to_acquire="Nursery for 125 Coins or Garden rewards.",
+        how_to_acquire="Nursery for 125 Garden Coins or Garden rewards.",
+        effect_description="Adds 500 Growth instantly to an unfinished plant.",
+        purchase_action_text="Buy charge",
     ),
     ConsumableDefinition(
         ConsumableId.GROWTH_CHARGE_GRAND,
@@ -728,7 +913,10 @@ CONSUMABLES = (
         (AcquisitionKind.ACHIEVEMENT,),
         instant_growth=2_000,
         rarity=Rarity.VERY_RARE,
-        how_to_acquire="Selected achievements; not purchasable.",
+        how_to_acquire=(
+            "Botanical Collection and Old Growth achievements; not purchasable."
+        ),
+        effect_description="Adds 2,000 Growth instantly to an unfinished plant.",
     ),
 )
 
@@ -743,6 +931,7 @@ GARDEN_BONUSES = (
         (),
         "garden_feature_seedling_sign",
         "Included.",
+        "Cosmetic Garden Decoration; no gameplay effect.",
     ),
     GardenBonusDefinition(
         GardenBonusId.WIND_CHIME,
@@ -760,7 +949,8 @@ GARDEN_BONUSES = (
             target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_feature_wind_chime",
-        "Nursery for 100 Coins.",
+        "Nursery for 100 Garden Coins.",
+        "Every 10 eligible cards: +1 Growth.",
     ),
     GardenBonusDefinition(
         GardenBonusId.HARVEST_BELL,
@@ -775,7 +965,8 @@ GARDEN_BONUSES = (
             5,
         ),),
         "garden_feature_harvest_bell",
-        "Nursery for 175 Coins.",
+        "Nursery for 175 Garden Coins.",
+        "+5 Garden Coins when Today’s Cards is complete.",
     ),
     GardenBonusDefinition(
         GardenBonusId.WATERING_STATION,
@@ -794,7 +985,8 @@ GARDEN_BONUSES = (
             target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_feature_watering_station",
-        "Nursery for 250 Coins.",
+        "Nursery for 250 Garden Coins.",
+        "Every fifth eligible card among the first 100 each Anki day: +1 Growth.",
     ),
     GardenBonusDefinition(
         GardenBonusId.HERBALIST_HOURGLASS,
@@ -821,7 +1013,8 @@ GARDEN_BONUSES = (
             ),
         ),
         "garden_feature_herbalist_hourglass",
-        "Nursery for 350 Coins.",
+        "Nursery for 350 Garden Coins.",
+        "Every 30 Today’s Cards completions while active, gain 1 Booster Potion; activated Potions affect 25 additional cards.",
     ),
     GardenBonusDefinition(
         GardenBonusId.FIREFLY_LANTERN,
@@ -843,6 +1036,7 @@ GARDEN_BONUSES = (
         ),),
         "garden_feature_firefly_lantern",
         "Rare Garden discovery.",
+        "Every fifth eligible card: +3 Instant Growth to the unfinished planted plant closest to its next checkpoint.",
     ),
     GardenBonusDefinition(
         GardenBonusId.PRISM_TRELLIS,
@@ -868,6 +1062,7 @@ GARDEN_BONUSES = (
         ),
         "garden_feature_prism_trellis",
         "Very Rare Garden discovery.",
+        "Bank 1 Growth on each of the first 100 eligible cards per day, up to 300; release it on Today’s Cards completion while active.",
     ),
 )
 
@@ -882,6 +1077,7 @@ SCENERIES = (
         (),
         "garden_background",
         "Included.",
+        "Cosmetic Scenery; no gameplay effect.",
     ),
     SceneryDefinition(
         SceneryId.SPRING,
@@ -899,7 +1095,8 @@ SCENERIES = (
             target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_spring",
-        "Nursery for 400 Coins.",
+        "Nursery for 400 Garden Coins.",
+        "+2 Growth on your first 20 cards each Anki day.",
     ),
     SceneryDefinition(
         SceneryId.SUMMER,
@@ -918,7 +1115,8 @@ SCENERIES = (
             target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_summer",
-        "Nursery for 600 Coins.",
+        "Nursery for 600 Garden Coins.",
+        "+1 Growth on every second card among your first 120 each Anki day.",
     ),
     SceneryDefinition(
         SceneryId.AUTUMN,
@@ -941,7 +1139,8 @@ SCENERIES = (
             ),
         ),
         "garden_autumn",
-        "Nursery for 500 Coins.",
+        "Nursery for 500 Garden Coins.",
+        "+4 Garden Coins when Today’s Cards is complete, plus +50% Garden Coins from plant checkpoints and first-time stage completion.",
     ),
     SceneryDefinition(
         SceneryId.SNOWY,
@@ -960,7 +1159,8 @@ SCENERIES = (
             target_policy=TargetPolicy.INVENTORY,
         ),),
         "garden_snowy",
-        "Nursery for 1,200 Coins.",
+        "Nursery for 1,200 Garden Coins.",
+        "Every second Today’s Cards completion while active grants 1 Small Growth Charge.",
     ),
     SceneryDefinition(
         SceneryId.RAINBOW_HORIZON,
@@ -979,6 +1179,7 @@ SCENERIES = (
         ),),
         "garden_rainbow_horizon",
         "Rare Garden discovery.",
+        "+1 Growth on your first 75 cards each Anki day.",
     ),
     SceneryDefinition(
         SceneryId.HALLOWEEN,
@@ -1005,6 +1206,7 @@ SCENERIES = (
         ),
         "garden_halloween",
         "Very Rare Garden discovery.",
+        "When Today’s Cards is complete: Small Charge 95%, Standard Charge 4%, or Booster Potion 1%.",
     ),
     SceneryDefinition(
         SceneryId.FULL_MOON,
@@ -1024,6 +1226,7 @@ SCENERIES = (
         ),),
         "garden_full_moon",
         "Ultra Rare Garden discovery.",
+        "Every sixth Today’s Cards completion while active grants 1 Booster Potion.",
     ),
     SceneryDefinition(
         SceneryId.ECLIPSE,
@@ -1042,8 +1245,54 @@ SCENERIES = (
         ),),
         "garden_eclipse",
         "Ultra Rare Garden discovery.",
+        "+1 Growth on your first 125 cards each Anki day.",
     ),
 )
+
+
+# Production resolves these stable mechanics identities directly. A new catalog
+# effect must be paired with an engine resolver before catalog validation passes.
+KNOWN_EFFECT_RESOLVER_IDS = frozenset({
+    "growth_every_10_plus_1",
+    "completion_coins_plus_5",
+    "growth_every_5_first_100_plus_1",
+    "hourglass_completion_booster",
+    "booster_cards_plus_25",
+    "instant_growth_every_5_plus_3_closest_checkpoint",
+    "prism_bank_per_answer_1",
+    "spring_growth_first_20",
+    "summer_growth_every_2_first_120",
+    "autumn_completion_coins",
+    "autumn_milestone_coin_percent",
+    "snowy_small_charge_every_2_completions",
+    "rainbow_horizon_growth_first_75",
+    "halloween_completion_gift",
+    "full_moon_booster_every_6_completions",
+    "eclipse_growth_first_125",
+})
+
+CONSUMABLE_ARTWORK_IDS: Mapping[str, str] = MappingProxyType({
+    "fertilizer_basic": "ui_fertilizer_basic",
+    "fertilizer_quality": "ui_fertilizer_quality",
+    "fertilizer_premium": "ui_fertilizer_magical",
+    "booster_potion": "ui_booster_potion",
+    "growth_charge_small": "ui_growth_charge_small",
+    "growth_charge_standard": "ui_growth_charge_standard",
+    "growth_charge_grand": "ui_growth_charge_grand",
+})
+
+SPECIES_ARTWORK_IDS: Mapping[str, str] = MappingProxyType({
+    item.species_id.value: f"plant_{item.species_id.value}_seed_twilight_v6"
+    for item in SPECIES
+})
+
+# Beds are regions of the canonical Garden scene rather than standalone
+# inventory icons. This scene asset is the stable artwork identity for every
+# earned bed milestone.
+BED_ARTWORK_IDS: Mapping[str, str] = MappingProxyType({
+    f"bed_{number}": "bg_verdant_twilight_any_soil_master_v6"
+    for number in range(1, MAX_GARDEN_SLOTS + 1)
+})
 
 
 STANDARD_FINDS = (
@@ -1539,62 +1788,127 @@ LANDMARKS = (
         GardenLandmarkId.MOSSY_STONE_PATH,
         "Mossy Stone Path",
         growth_cost=25_000,
+        cumulative_growth_threshold=25_000,
         coin_cost=250,
         asset_id="landmark_mossy_stone_path",
+        effect_description="Cosmetic Garden Landmark construction; no gameplay effect.",
+        how_to_acquire="Fund 25,000 Growth, then claim for 250 Garden Coins.",
     ),
     GardenLandmarkDefinition(
         GardenLandmarkId.BIRDBATH_TERRACE,
         "Birdbath Terrace",
         growth_cost=75_000,
+        cumulative_growth_threshold=100_000,
         coin_cost=350,
         asset_id="landmark_birdbath_terrace",
+        effect_description="Cosmetic Garden Landmark construction; no gameplay effect.",
+        how_to_acquire="Reach 100,000 cumulative Landmark Growth, then claim for 350 Garden Coins.",
     ),
     GardenLandmarkDefinition(
         GardenLandmarkId.LILY_POND,
         "Lily Pond",
         growth_cost=175_000,
+        cumulative_growth_threshold=275_000,
         coin_cost=550,
         asset_id="landmark_lily_pond",
+        effect_description="Cosmetic Garden Landmark construction; no gameplay effect.",
+        how_to_acquire="Reach 275,000 cumulative Landmark Growth, then claim for 550 Garden Coins.",
     ),
     GardenLandmarkDefinition(
         GardenLandmarkId.WOODEN_FOOTBRIDGE,
         "Wooden Footbridge",
         growth_cost=350_000,
+        cumulative_growth_threshold=625_000,
         coin_cost=800,
         asset_id="landmark_wooden_footbridge",
+        effect_description="Cosmetic Garden Landmark construction; no gameplay effect.",
+        how_to_acquire="Reach 625,000 cumulative Landmark Growth, then claim for 800 Garden Coins.",
     ),
     GardenLandmarkDefinition(
         GardenLandmarkId.GARDEN_PERGOLA,
         "Garden Pergola",
         growth_cost=650_000,
+        cumulative_growth_threshold=1_275_000,
         coin_cost=1_200,
         asset_id="landmark_garden_pergola",
+        effect_description="Cosmetic Garden Landmark construction; no gameplay effect.",
+        how_to_acquire="Reach 1,275,000 cumulative Landmark Growth, then claim for 1,200 Garden Coins.",
     ),
     GardenLandmarkDefinition(
         GardenLandmarkId.GLASSHOUSE_CONSERVATORY,
         "Glasshouse Conservatory",
         growth_cost=1_200_000,
+        cumulative_growth_threshold=2_475_000,
         coin_cost=2_000,
         asset_id="landmark_glasshouse_conservatory",
+        effect_description="Cosmetic Garden Landmark construction; no gameplay effect.",
+        how_to_acquire="Reach 2,475,000 cumulative Landmark Growth, then claim for 2,000 Garden Coins.",
     ),
 )
 
 
 MASTERY_RANKS = (
-    MasteryRankDefinition(MasteryRankId.BRONZE, "Bronze", 25_000, 50),
-    MasteryRankDefinition(MasteryRankId.SILVER, "Silver", 50_000, 100),
-    MasteryRankDefinition(MasteryRankId.GOLD, "Gold", 100_000, 200),
-    MasteryRankDefinition(MasteryRankId.IRIDESCENT, "Iridescent", 200_000, 400),
+    MasteryRankDefinition(
+        MasteryRankId.BRONZE, "Bronze", 25_000, 25_000, 50,
+        "mastery_bronze", "Cosmetic Cultivation Mastery rank; no gameplay effect.",
+        "Fund 25,000 Growth for a Full Bloom species, then claim for 50 Garden Coins.",
+    ),
+    MasteryRankDefinition(
+        MasteryRankId.SILVER, "Silver", 50_000, 75_000, 100,
+        "mastery_silver", "Cosmetic Cultivation Mastery rank; no gameplay effect.",
+        "Reach 75,000 cumulative species Mastery Growth, then claim for 100 Garden Coins.",
+    ),
+    MasteryRankDefinition(
+        MasteryRankId.GOLD, "Gold", 100_000, 175_000, 200,
+        "mastery_gold", "Cosmetic Cultivation Mastery rank; no gameplay effect.",
+        "Reach 175,000 cumulative species Mastery Growth, then claim for 200 Garden Coins.",
+    ),
+    MasteryRankDefinition(
+        MasteryRankId.IRIDESCENT, "Iridescent", 200_000, 375_000, 400,
+        "mastery_iridescent", "Cosmetic Cultivation Mastery rank; no gameplay effect.",
+        "Reach 375,000 cumulative species Mastery Growth, then claim for 400 Garden Coins.",
+    ),
+)
+
+
+GARDEN_LEGACY = GardenLegacyDefinition(
+    legacy_id="garden_legacy",
+    display_name="Garden Legacy",
+    growth_cost_per_level=500_000,
+    coin_cost=0,
+    asset_id="cosmetic_botanists_plaque",
+    effect_description="Cosmetic prestige level; no gameplay effect.",
+    how_to_acquire=(
+        "Fully fund all Landmark and species Mastery tracks, then contribute "
+        "500,000 Growth per level."
+    ),
 )
 
 
 BED_UNLOCKS = (
-    BedUnlockDefinition(1, True, None),
-    BedUnlockDefinition(2, True, None),
-    BedUnlockDefinition(3, False, AchievementId.FIRST_CANOPY),
-    BedUnlockDefinition(4, False, AchievementId.FIRST_FULL_BLOOM),
-    BedUnlockDefinition(5, False, AchievementId.GROWING_GARDEN),
-    BedUnlockDefinition(6, False, AchievementId.FLOURISHING_GARDEN),
+    BedUnlockDefinition(1, True, None, "Included"),
+    BedUnlockDefinition(2, True, None, "Included"),
+    BedUnlockDefinition(
+        3, False, AchievementId.FIRST_CANOPY, "First plant reaches Mature"
+    ),
+    BedUnlockDefinition(
+        4,
+        False,
+        AchievementId.FIRST_FULL_BLOOM,
+        "First unique species reaches Full Bloom",
+    ),
+    BedUnlockDefinition(
+        5,
+        False,
+        AchievementId.GROWING_GARDEN,
+        "3 unique species reach Full Bloom",
+    ),
+    BedUnlockDefinition(
+        6,
+        False,
+        AchievementId.FLOURISHING_GARDEN,
+        "6 unique species reach Full Bloom",
+    ),
 )
 
 
@@ -1618,6 +1932,7 @@ COSMETIC_BY_ID = _immutable_index(COSMETICS, "cosmetic_id")
 LANDMARK_BY_ID = _immutable_index(LANDMARKS, "landmark_id")
 MASTERY_RANK_BY_ID = _immutable_index(MASTERY_RANKS, "rank_id")
 BED_UNLOCK_BY_NUMBER = MappingProxyType({item.bed_number: item for item in BED_UNLOCKS})
+COIN_SOURCE_BY_ID = _immutable_index(COIN_SOURCES, "source_id")
 
 
 STAGE_ID_ALIASES: Mapping[str, str] = MappingProxyType({
@@ -1821,6 +2136,7 @@ CATALOG = BalanceCatalog(
     daily_activity_coins=DAILY_ACTIVITY_COINS,
     completion_coins=ALL_DUE_BASE_COINS,
     weekly_streak_coins=WEEKLY_STREAK_COINS,
+    coin_sources=COIN_SOURCES,
     stages=STAGES,
     rhythm_tiers=RHYTHM_TIERS,
     species=SPECIES,
@@ -1837,6 +2153,7 @@ CATALOG = BalanceCatalog(
     cosmetics=COSMETICS,
     landmarks=LANDMARKS,
     mastery_ranks=MASTERY_RANKS,
+    garden_legacy=GARDEN_LEGACY,
     bed_unlocks=BED_UNLOCKS,
 )
 
@@ -1903,7 +2220,7 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
             candidate.daily_activity_coins,
             candidate.completion_coins,
             candidate.weekly_streak_coins,
-        ) == (2, 10, 10),
+        ) == (4, 8, 10),
         "recurring Coin values drifted",
     )
 
@@ -1913,6 +2230,54 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
         for value in values:
             _require(bool(_IDENTIFIER_PATTERN.fullmatch(value)), f"invalid {label} ID: {value}")
         return values
+
+    coin_source_ids = unique_ids(candidate.coin_sources, "source_id", "Coin source")
+    _require(
+        coin_source_ids == tuple(item.value for item in CoinSourceId),
+        "Coin source registry drifted",
+    )
+    for source in candidate.coin_sources:
+        _require(bool(source.display_name.strip()), "Coin source needs display name")
+        _require(bool(source.eligibility_rule.strip()), "Coin source needs eligibility rule")
+        _require(bool(source.artwork_id.strip()), "Coin source needs artwork")
+        if source.fixed_amount_coins is not None:
+            _require(
+                _positive_integer(source.fixed_amount_coins),
+                "fixed Coin source amount must be positive",
+            )
+    cycle_source = next(
+        item
+        for item in candidate.coin_sources
+        if item.source_id is CoinSourceId.COMPLETION_CYCLE_5
+    )
+    _require(
+        (
+            GARDEN_CYCLE_COMPLETIONS,
+            cycle_source.fixed_amount_coins,
+            cycle_source.display_name,
+            cycle_source.receipt_title,
+            cycle_source.receipt_detail,
+            cycle_source.artwork_id,
+            cycle_source.behavioral_family,
+            cycle_source.summary_policy,
+        ) == (
+            5,
+            30,
+            "Garden Cycle",
+            "Garden Cycle complete",
+            "5 completed review days",
+            "ui_garden_coin",
+            CoinBehaviorFamily.TODAYS_CARDS_COMPLETION,
+            RewardSummaryPolicy.DETAIL_ROW_FEATURE_IF_ONLY_MAJOR,
+        ),
+        "Garden Cycle receipt contract drifted",
+    )
+    _require(
+        not cycle_source.affected_by_harvest_bell
+        and not cycle_source.affected_by_autumn_hearth
+        and not cycle_source.affected_by_plant_checkpoint_multiplier,
+        "Garden Cycle cannot be modified",
+    )
 
     stage_ids = unique_ids(candidate.stages, "stage_id", "stage")
     expected_stages = (
@@ -2030,16 +2395,31 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
             == expected_consumable_acquisition[item.consumable_id.value],
             "consumable acquisition route drifted",
         )
+        _require(bool(item.how_to_acquire.strip()), "consumable needs acquisition route")
+        _require(bool(item.effect_description.strip()), "consumable needs effect copy")
         if item.purchasable:
             _require(_positive_integer(item.price_coins), "purchased consumable needs a price")
+            _require(
+                bool(item.purchase_action_text.strip()),
+                "purchased consumable needs action text",
+            )
         else:
             _require(item.price_coins is None, "earned-only consumable cannot have a price")
+            _require(
+                not item.purchase_action_text and not item.queued_purchase_action_text,
+                "nonpurchasable consumable has active purchase route",
+            )
         if item.kind in {ConsumableKind.FERTILIZER, ConsumableKind.BOOSTER}:
             _require(
                 _positive_integer(item.growth_per_card) and _positive_integer(item.card_count),
                 "card effects require positive Growth and card count",
             )
             _require(item.instant_growth == 0, "card effects cannot grant instant Growth")
+            if item.kind is ConsumableKind.FERTILIZER and item.purchasable:
+                _require(
+                    item.queued_purchase_action_text == "Buy and queue",
+                    "queued Fertilizer action text drifted",
+                )
         else:
             _require(_positive_integer(item.instant_growth), "Growth Charge needs instant Growth")
             _require(item.growth_per_card == item.card_count == 0, "Growth Charge cannot be a card effect")
@@ -2051,6 +2431,14 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
             if item.consumable_id is ConsumableId.GROWTH_CHARGE_GRAND
         ),
         "Grand Growth Charge must be earned only",
+    )
+    _require(
+        next(
+            item.purchase_action_text
+            for item in candidate.consumables
+            if item.consumable_id is ConsumableId.GROWTH_CHARGE_SMALL
+        ) == "Buy charge",
+        "Small Growth Charge action text drifted",
     )
 
     cosmetic_ids_tuple = unique_ids(candidate.cosmetics, "cosmetic_id", "cosmetic")
@@ -2113,6 +2501,10 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
     effects: list[EffectDefinition] = []
     for item in (*candidate.garden_bonuses, *candidate.sceneries):
         item_id = str(getattr(item, "bonus_id", getattr(item, "scenery_id", "")))
+        _require(bool(item.display_name.strip()), "environment needs display name")
+        _require(bool(item.asset_id.strip()), "environment needs artwork")
+        _require(bool(item.how_to_acquire.strip()), "environment needs acquisition route")
+        _require(bool(item.effect_description.strip()), "environment needs effect copy")
         _require(item.price_coins == expected_environment_prices[item_id], "environment price drifted")
         _require(
             item.acquisition.value == expected_environment_acquisition[item_id],
@@ -2169,25 +2561,10 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
             )
 
     effects_by_id = {item.effect_id: item for item in effects}
-    expected_effect_ids = {
-        "growth_every_10_plus_1",
-        "completion_coins_plus_5",
-        "growth_every_5_first_100_plus_1",
-        "hourglass_completion_booster",
-        "booster_cards_plus_25",
-        "instant_growth_every_5_plus_3_closest_checkpoint",
-        "prism_bank_per_answer_1",
-        "spring_growth_first_20",
-        "summer_growth_every_2_first_120",
-        "autumn_completion_coins",
-        "autumn_milestone_coin_percent",
-        "snowy_small_charge_every_2_completions",
-        "rainbow_horizon_growth_first_75",
-        "halloween_completion_gift",
-        "full_moon_booster_every_6_completions",
-        "eclipse_growth_first_125",
-    }
-    _require(set(effects_by_id) == expected_effect_ids, "environment effect IDs drifted")
+    _require(
+        set(effects_by_id) == KNOWN_EFFECT_RESOLVER_IDS,
+        "unknown effect resolver or missing catalog effect",
+    )
 
     def effect_signature(effect_id: str) -> tuple[Any, ...]:
         item = effects_by_id[effect_id]
@@ -2426,40 +2803,86 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
 
     landmark_ids = unique_ids(candidate.landmarks, "landmark_id", "landmark")
     expected_landmarks = (
-        ("mossy_stone_path", 25_000, 250),
-        ("birdbath_terrace", 75_000, 350),
-        ("lily_pond", 175_000, 550),
-        ("wooden_footbridge", 350_000, 800),
-        ("garden_pergola", 650_000, 1_200),
-        ("glasshouse_conservatory", 1_200_000, 2_000),
+        ("mossy_stone_path", 25_000, 25_000, 250),
+        ("birdbath_terrace", 75_000, 100_000, 350),
+        ("lily_pond", 175_000, 275_000, 550),
+        ("wooden_footbridge", 350_000, 625_000, 800),
+        ("garden_pergola", 650_000, 1_275_000, 1_200),
+        ("glasshouse_conservatory", 1_200_000, 2_475_000, 2_000),
     )
     _require(
-        tuple((str(item.landmark_id), item.growth_cost, item.coin_cost) for item in candidate.landmarks)
+        tuple(
+            (
+                str(item.landmark_id),
+                item.growth_cost,
+                item.cumulative_growth_threshold,
+                item.coin_cost,
+            )
+            for item in candidate.landmarks
+        )
         == expected_landmarks,
         "Landmark spend costs drifted",
     )
     _require(len(landmark_ids) == 6, "catalog must contain six Landmarks")
     _require(
         all(
-            candidate.landmarks[index].growth_cost < candidate.landmarks[index + 1].growth_cost
-            and candidate.landmarks[index].coin_cost < candidate.landmarks[index + 1].coin_cost
+            candidate.landmarks[index].cumulative_growth_threshold
+            < candidate.landmarks[index + 1].cumulative_growth_threshold
+            and candidate.landmarks[index].coin_cost
+            < candidate.landmarks[index + 1].coin_cost
             for index in range(len(candidate.landmarks) - 1)
         ),
-        "Landmark spend costs must strictly increase",
+        "Landmark cumulative thresholds must strictly increase",
     )
+    for item in candidate.landmarks:
+        _require(bool(item.asset_id.strip()), "Landmark needs artwork")
+        _require(bool(item.effect_description.strip()), "Landmark needs effect copy")
+        _require(bool(item.how_to_acquire.strip()), "Landmark needs acquisition route")
 
     mastery_ids = unique_ids(candidate.mastery_ranks, "rank_id", "Mastery rank")
     _require(
-        tuple((str(item.rank_id), item.growth_cost, item.coin_cost) for item in candidate.mastery_ranks)
+        tuple(
+            (
+                str(item.rank_id),
+                item.growth_cost,
+                item.cumulative_growth_threshold,
+                item.coin_cost,
+            )
+            for item in candidate.mastery_ranks
+        )
         == (
-            ("bronze", 25_000, 50),
-            ("silver", 50_000, 100),
-            ("gold", 100_000, 200),
-            ("iridescent", 200_000, 400),
+            ("bronze", 25_000, 25_000, 50),
+            ("silver", 50_000, 75_000, 100),
+            ("gold", 100_000, 175_000, 200),
+            ("iridescent", 200_000, 375_000, 400),
         ),
         "Mastery spend costs drifted",
     )
     _require(len(mastery_ids) == 4, "catalog must contain four Mastery ranks")
+    for item in candidate.mastery_ranks:
+        _require(bool(item.asset_id.strip()), "Mastery rank needs artwork")
+        _require(bool(item.effect_description.strip()), "Mastery rank needs effect copy")
+        _require(bool(item.how_to_acquire.strip()), "Mastery rank needs acquisition route")
+
+    legacy = candidate.garden_legacy
+    _require(
+        (
+            legacy.legacy_id,
+            legacy.display_name,
+            legacy.growth_cost_per_level,
+            legacy.coin_cost,
+            legacy.asset_id,
+        ) == (
+            "garden_legacy",
+            "Garden Legacy",
+            500_000,
+            0,
+            "cosmetic_botanists_plaque",
+        ),
+        "Garden Legacy contract drifted",
+    )
+    _require(bool(legacy.effect_description.strip()), "Garden Legacy needs effect copy")
+    _require(bool(legacy.how_to_acquire.strip()), "Garden Legacy needs acquisition route")
 
     _require(
         tuple(
@@ -2478,6 +2901,46 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
             (6, False, "flourishing_garden"),
         ),
         "bed unlock schedule drifted",
+    )
+    _require(
+        candidate.bed_unlocks[2].purchase_action_text == "Unlock Bed 3",
+        "Bed 3 action text drifted",
+    )
+    _require(
+        tuple(item.requirement_copy for item in candidate.bed_unlocks) == (
+            "Included",
+            "Included",
+            "First plant reaches Mature",
+            "First unique species reaches Full Bloom",
+            "3 unique species reach Full Bloom",
+            "6 unique species reach Full Bloom",
+        ),
+        "bed unlock requirement copy drifted",
+    )
+    _require(
+        all(item.price_coins is None for item in candidate.bed_unlocks),
+        "progression-earned beds cannot have a Coin price",
+    )
+
+    # Discovery rows are ownership links and intentionally repeat the canonical
+    # item name. Only ownership definitions participate in name uniqueness.
+    canonical_names = [
+        str(item.display_name).strip().casefold()
+        for group in (
+            candidate.species,
+            candidate.consumables,
+            candidate.garden_bonuses,
+            candidate.sceneries,
+            candidate.cosmetics,
+            candidate.landmarks,
+            candidate.mastery_ranks,
+        )
+        for item in group
+    ]
+    canonical_names.append(candidate.garden_legacy.display_name.strip().casefold())
+    _require(
+        len(canonical_names) == len(set(canonical_names)),
+        "duplicate canonical display name",
     )
 
     alias_sets = (
@@ -2516,6 +2979,49 @@ def catalog_snapshot() -> dict[str, Any]:
     """Return a deterministic JSON-safe copy of the approved catalog."""
 
     snapshot = _json_safe(CATALOG)
+    snapshot["artwork_ids"] = {
+        **{
+            f"species:{item_id}": asset_id
+            for item_id, asset_id in SPECIES_ARTWORK_IDS.items()
+        },
+        **{
+            f"consumable:{item_id}": asset_id
+            for item_id, asset_id in CONSUMABLE_ARTWORK_IDS.items()
+        },
+        **{
+            f"garden_bonus:{item.bonus_id.value}": item.asset_id
+            for item in GARDEN_BONUSES
+        },
+        **{
+            f"scenery:{item.scenery_id.value}": item.asset_id
+            for item in SCENERIES
+        },
+        **{
+            f"cosmetic:{item.cosmetic_id.value}": item.asset_id
+            for item in COSMETICS
+        },
+        **{
+            f"landmark:{item.landmark_id.value}": item.asset_id
+            for item in LANDMARKS
+        },
+        **{
+            f"mastery:{item.rank_id.value}": item.asset_id
+            for item in MASTERY_RANKS
+        },
+        f"legacy:{GARDEN_LEGACY.legacy_id}": GARDEN_LEGACY.asset_id,
+        **{
+            f"bed:{item_id}": asset_id
+            for item_id, asset_id in BED_ARTWORK_IDS.items()
+        },
+        **{
+            f"coin_source:{item.source_id.value}": item.artwork_id
+            for item in COIN_SOURCES
+        },
+        **{
+            f"standard_find:{item.reward_id.value}": item.artwork_ref
+            for item in STANDARD_FINDS
+        },
+    }
     snapshot["runtime_constants"] = {
         "growth_units_per_point": GROWTH_UNITS_PER_POINT,
         "max_garden_slots": MAX_GARDEN_SLOTS,
@@ -2527,6 +3033,8 @@ def catalog_snapshot() -> dict[str, Any]:
         "booster_card_count": BOOSTER_CARD_COUNT,
         "effect_dose_cap": EFFECT_DOSE_CAP,
         "standard_guarantee_answer": STANDARD_GUARANTEE_ANSWER,
+        "garden_cycle_completions": GARDEN_CYCLE_COMPLETIONS,
+        "garden_cycle_coins": GARDEN_CYCLE_COINS,
     }
     snapshot["compatibility_aliases"] = {
         "stage_ids": dict(STAGE_ID_ALIASES),
@@ -2554,6 +3062,7 @@ __all__ = [
     "AchievementProgressMetric",
     "BALANCE_CATALOG_VERSION",
     "BASE_GROWTH_PER_REVIEW",
+    "BED_ARTWORK_IDS",
     "BED_UNLOCKS",
     "BED_UNLOCK_BY_NUMBER",
     "BOOSTER_CARD_COUNT",
@@ -2562,6 +3071,7 @@ __all__ = [
     "BedUnlockDefinition",
     "CATALOG",
     "CONSUMABLES",
+    "CONSUMABLE_ARTWORK_IDS",
     "CONSUMABLE_BY_ID",
     "CONSUMABLE_CATALOG",
     "CONSUMABLE_ID_ALIASES",
@@ -2576,6 +3086,11 @@ __all__ = [
     "CosmeticDefinition",
     "CosmeticId",
     "CounterScope",
+    "COIN_SOURCES",
+    "COIN_SOURCE_BY_ID",
+    "CoinBehaviorFamily",
+    "CoinSourceDefinition",
+    "CoinSourceId",
     "DAILY_ACTIVITY_COINS",
     "DEFAULT_GARDEN_FEATURE_ID",
     "DEFAULT_SCENERY_ID",
@@ -2610,6 +3125,9 @@ __all__ = [
     "GARDEN_BONUS_BY_ID",
     "GARDEN_FEATURE_CATALOG",
     "GROWTH_CHARGES",
+    "GARDEN_CYCLE_COINS",
+    "GARDEN_CYCLE_COMPLETIONS",
+    "GARDEN_LEGACY",
     "GROWTH_STAGES",
     "GROWTH_THRESHOLDS",
     "GROWTH_UNITS_PER_POINT",
@@ -2617,12 +3135,14 @@ __all__ = [
     "GardenBonusId",
     "GardenLandmarkDefinition",
     "GardenLandmarkId",
+    "GardenLegacyDefinition",
     "HISTORICAL_PLANT_SPECIES_ORDER",
     "HISTORICAL_SPECIES",
     "HISTORICAL_SPECIES_BY_ID",
     "LANDMARKS",
     "LANDMARK_BY_ID",
     "LANDMARK_CATALOG",
+    "KNOWN_EFFECT_RESOLVER_IDS",
     "LEGACY_ENVIRONMENT_POOL_VERSIONS",
     "LEGACY_STANDARD_POOL_VERSIONS",
     "LEGACY_WEATHER_TO_GARDEN_FEATURE",
@@ -2642,6 +3162,7 @@ __all__ = [
     "Rarity",
     "RewardGrant",
     "RewardKind",
+    "RewardSummaryPolicy",
     "SAFE_FALLBACK_REWARD",
     "SCENERIES",
     "SCENERY_BY_ID",
@@ -2650,6 +3171,7 @@ __all__ = [
     "SHARED_GROWTH_NUMERATOR",
     "SPECIAL_ENVIRONMENT_POOL",
     "SPECIES",
+    "SPECIES_ARTWORK_IDS",
     "SPECIES_BY_ID",
     "SPECIES_PRICES",
     "STAGES",

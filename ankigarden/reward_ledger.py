@@ -20,11 +20,20 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import time
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 import uuid
 
 
-LEDGER_SCHEMA_VERSION = 2
+LEDGER_SCHEMA_VERSION = 3
+GROWTH_FLOW_KINDS = frozenset({
+    "",
+    "generated",
+    "manual_contribution",
+    "claim",
+    "migration_audit",
+    "legacy_unreconciled",
+})
 FIND_OUTCOME_STATUSES = frozenset({"miss", "hit", "paused"})
 MAX_RECENT_HITS_QUERY = 1_000
 _SQL_IN_CHUNK = 500
@@ -173,6 +182,15 @@ class EconomyEventRecord:
     growth_earned_units: int = 0
     growth_spent_on_landmarks: int = 0
     growth_spent_on_mastery: int = 0
+    growth_flow_kind: str = ""
+    growth_generated_units: int = 0
+    growth_applied_to_plants_units: int = 0
+    growth_routed_to_storage_units_lifetime: int = 0
+    stored_growth_balance_delta_units: int = 0
+    growth_contributed_to_landmarks_units: int = 0
+    growth_contributed_to_mastery_units: int = 0
+    growth_contributed_to_legacy_units: int = 0
+    growth_unallocated_overflow_units: int = 0
     item_id: str = ""
     quantity: int = 0
     metric_deltas: Optional[Mapping[str, Any]] = None
@@ -226,6 +244,22 @@ CREATE TABLE economy_event (
         CHECK (growth_spent_on_landmarks >= 0),
     growth_spent_on_mastery INTEGER NOT NULL DEFAULT 0
         CHECK (growth_spent_on_mastery >= 0),
+    growth_flow_kind TEXT NOT NULL DEFAULT '',
+    growth_generated_units INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_generated_units >= 0),
+    growth_applied_to_plants_units INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_applied_to_plants_units >= 0),
+    growth_routed_to_storage_units_lifetime INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_routed_to_storage_units_lifetime >= 0),
+    stored_growth_balance_delta_units INTEGER NOT NULL DEFAULT 0,
+    growth_contributed_to_landmarks_units INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_contributed_to_landmarks_units >= 0),
+    growth_contributed_to_mastery_units INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_contributed_to_mastery_units >= 0),
+    growth_contributed_to_legacy_units INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_contributed_to_legacy_units >= 0),
+    growth_unallocated_overflow_units INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_unallocated_overflow_units >= 0),
     item_id TEXT NOT NULL DEFAULT '',
     quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
     metric_deltas_json TEXT NOT NULL DEFAULT '{}'
@@ -242,9 +276,29 @@ CREATE TABLE daily_economy_snapshot (
     snapshot_id TEXT NOT NULL UNIQUE
 )
 """
+_V2_ECONOMY_EVENT_TABLE_SQL = """
+CREATE TABLE economy_event (
+    event_key TEXT PRIMARY KEY,
+    event_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL DEFAULT '',
+    sink_id TEXT NOT NULL DEFAULT '',
+    scheduler_day TEXT NOT NULL DEFAULT '',
+    occurred_at TEXT NOT NULL DEFAULT '',
+    coins_earned INTEGER NOT NULL DEFAULT 0 CHECK (coins_earned >= 0),
+    coins_spent INTEGER NOT NULL DEFAULT 0 CHECK (coins_spent >= 0),
+    growth_earned_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_earned_units >= 0),
+    growth_spent_on_landmarks INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_spent_on_landmarks >= 0),
+    growth_spent_on_mastery INTEGER NOT NULL DEFAULT 0
+        CHECK (growth_spent_on_mastery >= 0),
+    item_id TEXT NOT NULL DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    metric_deltas_json TEXT NOT NULL DEFAULT '{}'
+)
+"""
 _V2_SCHEMA_STATEMENTS = (
     _IDEMPOTENCY_TABLE_SQL,
-    _ECONOMY_EVENT_TABLE_SQL,
+    _V2_ECONOMY_EVENT_TABLE_SQL,
     _DAILY_ECONOMY_SNAPSHOT_TABLE_SQL,
     """
     CREATE INDEX idempotency_record_day_idx
@@ -258,6 +312,19 @@ _V2_SCHEMA_STATEMENTS = (
     CREATE INDEX daily_economy_snapshot_id_idx
     ON daily_economy_snapshot(snapshot_id)
     """,
+)
+
+_V3_SCHEMA_STATEMENTS = (
+    "ALTER TABLE economy_event ADD COLUMN growth_flow_kind TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE economy_event ADD COLUMN growth_generated_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_generated_units >= 0)",
+    "ALTER TABLE economy_event ADD COLUMN growth_applied_to_plants_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_applied_to_plants_units >= 0)",
+    "ALTER TABLE economy_event ADD COLUMN growth_routed_to_storage_units_lifetime INTEGER NOT NULL DEFAULT 0 CHECK (growth_routed_to_storage_units_lifetime >= 0)",
+    "ALTER TABLE economy_event ADD COLUMN stored_growth_balance_delta_units INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE economy_event ADD COLUMN growth_contributed_to_landmarks_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_contributed_to_landmarks_units >= 0)",
+    "ALTER TABLE economy_event ADD COLUMN growth_contributed_to_mastery_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_contributed_to_mastery_units >= 0)",
+    "ALTER TABLE economy_event ADD COLUMN growth_contributed_to_legacy_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_contributed_to_legacy_units >= 0)",
+    "ALTER TABLE economy_event ADD COLUMN growth_unallocated_overflow_units INTEGER NOT NULL DEFAULT 0 CHECK (growth_unallocated_overflow_units >= 0)",
+    "UPDATE economy_event SET growth_flow_kind = 'legacy_unreconciled'",
 )
 
 
@@ -324,6 +391,7 @@ _SCHEMA_STATEMENTS = (
     )
     """,
     *_V2_SCHEMA_STATEMENTS,
+    *_V3_SCHEMA_STATEMENTS,
     "CREATE INDEX revlog_alias_lineage_idx ON revlog_alias(lineage_key)",
     "CREATE INDEX answer_lineage_card_idx ON answer_lineage(card_id)",
     """
@@ -393,7 +461,14 @@ _EXPECTED_COLUMNS = {
         "occurred_at", "coins_earned", "coins_spent",
         "growth_earned_units", "growth_spent_on_landmarks",
         "growth_spent_on_mastery", "item_id", "quantity",
-        "metric_deltas_json",
+        "metric_deltas_json", "growth_flow_kind",
+        "growth_generated_units", "growth_applied_to_plants_units",
+        "growth_routed_to_storage_units_lifetime",
+        "stored_growth_balance_delta_units",
+        "growth_contributed_to_landmarks_units",
+        "growth_contributed_to_mastery_units",
+        "growth_contributed_to_legacy_units",
+        "growth_unallocated_overflow_units",
     ),
     "daily_economy_snapshot": (
         "anki_day", "garden_rhythm_percent", "active_garden_bonus_id",
@@ -404,6 +479,17 @@ _EXPECTED_COLUMNS = {
 _V1_EXPECTED_COLUMNS = {
     key: value for key, value in _EXPECTED_COLUMNS.items()
     if key in _V1_REQUIRED_TABLES
+}
+
+_V2_EXPECTED_COLUMNS = {
+    **_EXPECTED_COLUMNS,
+    "economy_event": (
+        "event_key", "event_kind", "source_id", "sink_id", "scheduler_day",
+        "occurred_at", "coins_earned", "coins_spent",
+        "growth_earned_units", "growth_spent_on_landmarks",
+        "growth_spent_on_mastery", "item_id", "quantity",
+        "metric_deltas_json",
+    ),
 }
 
 _EXPECTED_PRIMARY_KEYS = {
@@ -1231,7 +1317,15 @@ class RewardLedger:
         row = self._connection.execute(
             "SELECT event_key, event_kind, source_id, sink_id, scheduler_day, "
             "occurred_at, coins_earned, coins_spent, growth_earned_units, "
-            "growth_spent_on_landmarks, growth_spent_on_mastery, item_id, "
+            "growth_spent_on_landmarks, growth_spent_on_mastery, "
+            "growth_flow_kind, growth_generated_units, "
+            "growth_applied_to_plants_units, "
+            "growth_routed_to_storage_units_lifetime, "
+            "stored_growth_balance_delta_units, "
+            "growth_contributed_to_landmarks_units, "
+            "growth_contributed_to_mastery_units, "
+            "growth_contributed_to_legacy_units, "
+            "growth_unallocated_overflow_units, item_id, "
             "quantity, metric_deltas_json FROM economy_event WHERE event_key = ?",
             (key,),
         ).fetchone()
@@ -1352,25 +1446,22 @@ class RewardLedger:
     def lifetime_economy_aggregates(self) -> Mapping[str, Any]:
         """Rebuild exact lifetime aggregates from permanent event deltas."""
 
-        self._ensure_open()
-        rows = self._connection.execute(
-            "SELECT event_key, event_kind, source_id, sink_id, scheduler_day, "
-            "occurred_at, coins_earned, coins_spent, growth_earned_units, "
-            "growth_spent_on_landmarks, growth_spent_on_mastery, item_id, "
-            "quantity, metric_deltas_json FROM economy_event ORDER BY rowid"
-        ).fetchall()
-        committed = [_economy_event_from_row(row) for row in rows]
-        pending_keys = set(self._pending_economy_events)
-        events = [
-            event for event in committed if event.event_key not in pending_keys
-        ]
-        events.extend(self._pending_economy_events.values())
+        events = self.economy_events()
         result: Dict[str, Any] = {
             "coins_earned_by_source": {},
             "coins_spent_by_sink": {},
             "growth_earned_by_source": {},
             "growth_spent_on_landmarks": 0,
             "growth_spent_on_mastery": 0,
+            "growth_generated_units": 0,
+            "growth_applied_to_plants_units": 0,
+            "growth_routed_to_storage_units_lifetime": 0,
+            "growth_contributed_to_landmarks_units": 0,
+            "growth_contributed_to_mastery_units": 0,
+            "growth_contributed_to_legacy_units": 0,
+            "growth_unallocated_overflow_units": 0,
+            "history_complete": True,
+            "authoritative_from_event_identity": "ledger:schema3:first-event",
             "finds_by_outcome": {},
             "environment_discoveries": {},
             "consumables_earned": {},
@@ -1401,6 +1492,34 @@ class RewardLedger:
                 event.growth_spent_on_landmarks
             )
             result["growth_spent_on_mastery"] += event.growth_spent_on_mastery
+            result["growth_generated_units"] += event.growth_generated_units
+            result["growth_applied_to_plants_units"] += (
+                event.growth_applied_to_plants_units
+            )
+            result["growth_routed_to_storage_units_lifetime"] += (
+                event.growth_routed_to_storage_units_lifetime
+            )
+            result["growth_contributed_to_landmarks_units"] += (
+                event.growth_contributed_to_landmarks_units
+            )
+            result["growth_contributed_to_mastery_units"] += (
+                event.growth_contributed_to_mastery_units
+            )
+            result["growth_contributed_to_legacy_units"] += (
+                event.growth_contributed_to_legacy_units
+            )
+            result["growth_unallocated_overflow_units"] += (
+                event.growth_unallocated_overflow_units
+            )
+            if event.growth_flow_kind == "legacy_unreconciled" or (
+                not event.growth_flow_kind
+                and any((
+                    event.growth_earned_units,
+                    event.growth_spent_on_landmarks,
+                    event.growth_spent_on_mastery,
+                ))
+            ):
+                result["history_complete"] = False
             for key, delta in dict(event.metric_deltas or {}).items():
                 if key in {
                     "finds_by_outcome",
@@ -1412,7 +1531,57 @@ class RewardLedger:
                         _increment_count(result[key], item_id, amount)
                 elif key in {"plants_completed", "today_cards_completions"}:
                     result[key] += int(delta)
+                elif key == "project_allocations":
+                    # Per-target allocations are reconciled against endgame
+                    # state separately; the category totals above remain the
+                    # public lifetime aggregate.
+                    continue
         return result
+
+    def economy_events(self) -> Tuple[EconomyEventRecord, ...]:
+        """Return committed and staged economy events in durable order."""
+
+        self._ensure_open()
+        rows = self._connection.execute(
+            "SELECT event_key, event_kind, source_id, sink_id, scheduler_day, "
+            "occurred_at, coins_earned, coins_spent, growth_earned_units, "
+            "growth_spent_on_landmarks, growth_spent_on_mastery, "
+            "growth_flow_kind, growth_generated_units, "
+            "growth_applied_to_plants_units, "
+            "growth_routed_to_storage_units_lifetime, "
+            "stored_growth_balance_delta_units, "
+            "growth_contributed_to_landmarks_units, "
+            "growth_contributed_to_mastery_units, "
+            "growth_contributed_to_legacy_units, "
+            "growth_unallocated_overflow_units, item_id, "
+            "quantity, metric_deltas_json FROM economy_event ORDER BY rowid"
+        ).fetchall()
+        committed = [_economy_event_from_row(row) for row in rows]
+        pending_keys = set(self._pending_economy_events)
+        events = [
+            event for event in committed if event.event_key not in pending_keys
+        ]
+        events.extend(self._pending_economy_events.values())
+        return tuple(events)
+
+    def stored_growth_balance_net_delta_units(self) -> int:
+        """Return the exact signed Stored Growth delta across durable events."""
+
+        rows = self._connection.execute(
+            "SELECT event_key, stored_growth_balance_delta_units "
+            "FROM economy_event ORDER BY rowid"
+        ).fetchall()
+        pending_keys = set(self._pending_economy_events)
+        total = sum(
+            int(row["stored_growth_balance_delta_units"])
+            for row in rows
+            if str(row["event_key"]) not in pending_keys
+        )
+        total += sum(
+            int(event.stored_growth_balance_delta_units)
+            for event in self._pending_economy_events.values()
+        )
+        return total
 
     def commit_state(
         self,
@@ -1514,6 +1683,29 @@ class RewardLedger:
         self._connection.execute("PRAGMA synchronous = FULL")
         self._connection.execute("PRAGMA journal_mode = WAL")
 
+    def _backup_before_schema_upgrade(self, version: int) -> Optional[Path]:
+        """Preserve the complete pre-upgrade database before any DDL."""
+
+        if self.database == ":memory:":
+            return None
+        source = Path(self.database)
+        target = source.with_suffix(
+            f".ledger-schema-{version}.legacy-{time.time_ns()}.sqlite3"
+        )
+        destination: Optional[sqlite3.Connection] = None
+        try:
+            destination = sqlite3.connect(str(target))
+            self._connection.backup(destination)
+            destination.close()
+            destination = None
+            _verify_backup_database(target, expected_version=version)
+            return target
+        except BaseException:
+            if destination is not None:
+                destination.close()
+            target.unlink(missing_ok=True)
+            raise
+
     def _initialize_or_validate_schema(self) -> None:
         version = int(self._connection.execute("PRAGMA user_version").fetchone()[0])
         tables = {
@@ -1556,9 +1748,12 @@ class RewardLedger:
                 required_unique_keys=_V1_REQUIRED_UNIQUE_KEYS,
                 required_named_indexes=_V1_REQUIRED_NAMED_INDEXES,
             )
+            self._backup_before_schema_upgrade(1)
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
                 for statement in _V2_SCHEMA_STATEMENTS:
+                    self._connection.execute(statement)
+                for statement in _V3_SCHEMA_STATEMENTS:
                     self._connection.execute(statement)
                 self._connection.execute(
                     "PRAGMA user_version = " + str(LEDGER_SCHEMA_VERSION)
@@ -1567,7 +1762,31 @@ class RewardLedger:
             except sqlite3.DatabaseError as error:
                 self._rollback_sql_transaction()
                 raise RewardLedgerSchemaError(
-                    "The reward-ledger schema-2 upgrade could not complete."
+                    "The reward-ledger schema-3 upgrade could not complete."
+                ) from error
+            self._validate_schema_shape()
+            return
+        if version == 2:
+            missing = _REQUIRED_TABLES - tables
+            if missing:
+                raise RewardLedgerSchemaError(
+                    "The schema-2 reward ledger is incomplete: "
+                    + ", ".join(sorted(missing))
+                )
+            self._validate_schema_shape(expected_columns=_V2_EXPECTED_COLUMNS)
+            self._backup_before_schema_upgrade(2)
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                for statement in _V3_SCHEMA_STATEMENTS:
+                    self._connection.execute(statement)
+                self._connection.execute(
+                    "PRAGMA user_version = " + str(LEDGER_SCHEMA_VERSION)
+                )
+                self._connection.execute("COMMIT")
+            except sqlite3.DatabaseError as error:
+                self._rollback_sql_transaction()
+                raise RewardLedgerSchemaError(
+                    "The reward-ledger schema-3 upgrade could not complete."
                 ) from error
             self._validate_schema_shape()
             return
@@ -1857,9 +2076,17 @@ class RewardLedger:
                 "INSERT INTO economy_event "
                 "(event_key, event_kind, source_id, sink_id, scheduler_day, "
                 "occurred_at, coins_earned, coins_spent, growth_earned_units, "
-                "growth_spent_on_landmarks, growth_spent_on_mastery, item_id, "
-                "quantity, metric_deltas_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "growth_spent_on_landmarks, growth_spent_on_mastery, "
+                "growth_flow_kind, growth_generated_units, "
+                "growth_applied_to_plants_units, "
+                "growth_routed_to_storage_units_lifetime, "
+                "stored_growth_balance_delta_units, "
+                "growth_contributed_to_landmarks_units, "
+                "growth_contributed_to_mastery_units, "
+                "growth_contributed_to_legacy_units, "
+                "growth_unallocated_overflow_units, item_id, quantity, "
+                "metric_deltas_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     record.event_key,
                     record.event_kind,
@@ -1872,6 +2099,15 @@ class RewardLedger:
                     record.growth_earned_units,
                     record.growth_spent_on_landmarks,
                     record.growth_spent_on_mastery,
+                    record.growth_flow_kind,
+                    record.growth_generated_units,
+                    record.growth_applied_to_plants_units,
+                    record.growth_routed_to_storage_units_lifetime,
+                    record.stored_growth_balance_delta_units,
+                    record.growth_contributed_to_landmarks_units,
+                    record.growth_contributed_to_mastery_units,
+                    record.growth_contributed_to_legacy_units,
+                    record.growth_unallocated_overflow_units,
                     record.item_id,
                     record.quantity,
                     _canonical_json(record.metric_deltas or {}, "metric_deltas"),
@@ -1928,6 +2164,12 @@ def _positive_int(value: Any, label: str) -> int:
 def _nonnegative_int(value: Any, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(label + " must be a nonnegative integer")
+    return int(value)
+
+
+def _signed_int(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(label + " must be an integer")
     return int(value)
 
 
@@ -2115,6 +2357,7 @@ _ECONOMY_MAP_METRICS = frozenset({
     "environment_discoveries",
     "consumables_earned",
     "consumables_used",
+    "project_allocations",
 })
 _ECONOMY_SCALAR_METRICS = frozenset({
     "plants_completed",
@@ -2135,6 +2378,25 @@ def _normalize_metric_deltas(value: Any) -> Mapping[str, Any]:
             normalized_map: Dict[str, int] = {}
             for raw_item_id, raw_amount in raw_delta.items():
                 item_id = _required_text(raw_item_id, str(key) + " item_id")
+                if key == "project_allocations":
+                    target_kind, separator, target_id = item_id.partition(":")
+                    if (
+                        not separator
+                        or not target_id
+                        or ":" in target_id
+                        or target_kind not in {"landmark", "mastery", "legacy"}
+                        or (
+                            target_kind == "landmark"
+                            and target_id != "garden_landmark"
+                        )
+                        or (
+                            target_kind == "legacy"
+                            and target_id != "garden_legacy"
+                        )
+                    ):
+                        raise ValueError(
+                            "project_allocations contains an invalid Growth target"
+                        )
                 amount = _nonnegative_int(raw_amount, str(key) + " amount")
                 if amount:
                     normalized_map[item_id] = amount
@@ -2159,7 +2421,81 @@ def _normalize_economy_event(record: EconomyEventRecord) -> EconomyEventRecord:
     growth_earned = _nonnegative_int(
         record.growth_earned_units, "growth_earned_units"
     )
-    if (coins_earned or growth_earned) and not source_id:
+    flow_kind = _optional_text(record.growth_flow_kind, "growth_flow_kind")
+    if flow_kind not in GROWTH_FLOW_KINDS:
+        raise ValueError("growth_flow_kind is unsupported")
+    generated = _nonnegative_int(
+        record.growth_generated_units, "growth_generated_units"
+    )
+    applied = _nonnegative_int(
+        record.growth_applied_to_plants_units,
+        "growth_applied_to_plants_units",
+    )
+    routed = _nonnegative_int(
+        record.growth_routed_to_storage_units_lifetime,
+        "growth_routed_to_storage_units_lifetime",
+    )
+    stored_delta = _signed_int(
+        record.stored_growth_balance_delta_units,
+        "stored_growth_balance_delta_units",
+    )
+    landmark_credit = _nonnegative_int(
+        record.growth_contributed_to_landmarks_units,
+        "growth_contributed_to_landmarks_units",
+    )
+    mastery_credit = _nonnegative_int(
+        record.growth_contributed_to_mastery_units,
+        "growth_contributed_to_mastery_units",
+    )
+    legacy_credit = _nonnegative_int(
+        record.growth_contributed_to_legacy_units,
+        "growth_contributed_to_legacy_units",
+    )
+    unallocated = _nonnegative_int(
+        record.growth_unallocated_overflow_units,
+        "growth_unallocated_overflow_units",
+    )
+    metric_deltas = _normalize_metric_deltas(record.metric_deltas)
+    project_allocations = dict(
+        metric_deltas.get("project_allocations", {})
+    )
+    allocation_totals = {"landmark": 0, "mastery": 0, "legacy": 0}
+    for target_key, units in project_allocations.items():
+        target_kind = str(target_key).partition(":")[0]
+        allocation_totals[target_kind] += int(units)
+    if allocation_totals != {
+        "landmark": landmark_credit,
+        "mastery": mastery_credit,
+        "legacy": legacy_credit,
+    }:
+        raise ValueError(
+            "project_allocations must exactly match project Growth credits"
+        )
+    if unallocated:
+        raise ValueError("committed Growth cannot retain unallocated overflow")
+    project_credit = landmark_credit + mastery_credit + legacy_credit
+    if flow_kind == "generated":
+        if stored_delta < 0 or routed != stored_delta:
+            raise ValueError(
+                "generated Growth requires matching positive storage routing"
+            )
+        if generated != applied + project_credit + stored_delta:
+            raise ValueError("generated Growth does not conserve exact units")
+    elif flow_kind == "manual_contribution":
+        if generated or applied or routed or stored_delta >= 0:
+            raise ValueError("manual contributions must debit Stored Growth")
+        if project_credit != -stored_delta:
+            raise ValueError("manual contribution Growth does not conserve exact units")
+    elif flow_kind in {"claim", "migration_audit"}:
+        if any((generated, applied, routed, stored_delta, project_credit)):
+            raise ValueError(flow_kind + " events cannot move Growth")
+    elif flow_kind == "" and any((
+        generated, applied, routed, stored_delta, project_credit, unallocated
+    )):
+        raise ValueError("explicit Growth deltas require growth_flow_kind")
+    if growth_earned and generated and growth_earned != generated:
+        raise ValueError("legacy and canonical generated Growth must agree")
+    if (coins_earned or growth_earned or generated) and not source_id:
         raise ValueError("earned resources require source_id")
     if coins_spent and not sink_id:
         raise ValueError("spent Coins require sink_id")
@@ -2181,9 +2517,18 @@ def _normalize_economy_event(record: EconomyEventRecord) -> EconomyEventRecord:
             record.growth_spent_on_mastery,
             "growth_spent_on_mastery",
         ),
+        growth_flow_kind=flow_kind,
+        growth_generated_units=generated,
+        growth_applied_to_plants_units=applied,
+        growth_routed_to_storage_units_lifetime=routed,
+        stored_growth_balance_delta_units=stored_delta,
+        growth_contributed_to_landmarks_units=landmark_credit,
+        growth_contributed_to_mastery_units=mastery_credit,
+        growth_contributed_to_legacy_units=legacy_credit,
+        growth_unallocated_overflow_units=unallocated,
         item_id=_optional_text(record.item_id, "item_id"),
         quantity=_nonnegative_int(record.quantity, "quantity"),
-        metric_deltas=_normalize_metric_deltas(record.metric_deltas),
+        metric_deltas=metric_deltas,
     )
 
 
@@ -2303,6 +2648,29 @@ def _economy_event_from_row(row: sqlite3.Row) -> EconomyEventRecord:
         growth_earned_units=int(row["growth_earned_units"]),
         growth_spent_on_landmarks=int(row["growth_spent_on_landmarks"]),
         growth_spent_on_mastery=int(row["growth_spent_on_mastery"]),
+        growth_flow_kind=str(row["growth_flow_kind"]),
+        growth_generated_units=int(row["growth_generated_units"]),
+        growth_applied_to_plants_units=int(
+            row["growth_applied_to_plants_units"]
+        ),
+        growth_routed_to_storage_units_lifetime=int(
+            row["growth_routed_to_storage_units_lifetime"]
+        ),
+        stored_growth_balance_delta_units=int(
+            row["stored_growth_balance_delta_units"]
+        ),
+        growth_contributed_to_landmarks_units=int(
+            row["growth_contributed_to_landmarks_units"]
+        ),
+        growth_contributed_to_mastery_units=int(
+            row["growth_contributed_to_mastery_units"]
+        ),
+        growth_contributed_to_legacy_units=int(
+            row["growth_contributed_to_legacy_units"]
+        ),
+        growth_unallocated_overflow_units=int(
+            row["growth_unallocated_overflow_units"]
+        ),
         item_id=str(row["item_id"]),
         quantity=int(row["quantity"]),
         metric_deltas=_decode_json_object(
@@ -2380,7 +2748,11 @@ def _chunks_text(values: List[str], size: int) -> Iterable[List[str]]:
         yield values[start:start + size]
 
 
-def _verify_backup_database(path: Path) -> None:
+def _verify_backup_database(
+    path: Path,
+    *,
+    expected_version: int = LEDGER_SCHEMA_VERSION,
+) -> None:
     connection: Optional[sqlite3.Connection] = None
     try:
         connection = sqlite3.connect(str(path))
@@ -2401,7 +2773,7 @@ def _verify_backup_database(path: Path) -> None:
             connection.close()
     if (
         integrity_result != ("ok",)
-        or version != LEDGER_SCHEMA_VERSION
+        or version != expected_version
         or foreign_key_errors
     ):
         raise RewardLedgerCorruptionError(

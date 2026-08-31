@@ -26,7 +26,7 @@ def _effect_rows(item):
 
 def test_normalized_garden_feature_effects_are_structured_and_player_copy_is_plain():
     assert GARDEN_FEATURE_CATALOG["harvest_bell"].effect == (
-        "+5 Coins when today’s cards are complete."
+        "+5 Garden Coins when today’s cards are complete."
     )
     assert _effect_rows(GARDEN_FEATURE_CATALOG["harvest_bell"]) == ((
         "completion_coins_plus_5",
@@ -112,4 +112,4 @@ def test_environment_copy_avoids_deprecated_completion_and_answer_terms():
     assert "all clear" not in player_copy
     assert "all due" not in player_copy
     assert "required card" not in player_copy
-    assert "eligible card answers" in player_copy
+    assert "eligible cards" in player_copy

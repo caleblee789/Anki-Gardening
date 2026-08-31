@@ -87,11 +87,11 @@ def test_collection_projection_names_exact_species_and_registry_denominators() -
     assert (
         projection.collection_entries_discovered,
         projection.collection_entries_total,
-    ) == (30, 93)
+    ) == (30, 39)
     assert projection.collection_complete
     assert projection.species_text == "10 of 10 species discovered"
     assert projection.collection_entries_text == (
-        "30 of 93 collection entries discovered"
+        "30 of 39 collection entries discovered"
     )
 
 

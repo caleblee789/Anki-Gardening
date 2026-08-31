@@ -8,10 +8,11 @@ with a small explicit seed count; they never silently reduce the CLI default.
 """
 
 import argparse
+import json
 import os
 from pathlib import Path
 import sys
-from typing import Optional, Sequence
+from typing import Mapping, Optional, Sequence
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +67,8 @@ def simulate_profiles(
     source_date_epoch: int = 0,
     finalize: bool = False,
     workers: int = 1,
+    parity_evidence: Optional[Mapping[str, object]] = None,
+    release_validation_evidence: Optional[Mapping[str, object]] = None,
 ):
     """Run all approved cohorts, strategies, and edge cases.
 
@@ -81,9 +84,20 @@ def simulate_profiles(
     )
     worker_count = max(1, int(workers))
     report = (
-        simulate_balance(config, facts=load_catalog_facts(), workers=1)
+        simulate_balance(
+            config,
+            facts=load_catalog_facts(),
+            workers=1,
+            parity_evidence=parity_evidence,
+            release_validation_evidence=release_validation_evidence,
+        )
         if worker_count == 1
-        else simulate_balance(config, workers=worker_count)
+        else simulate_balance(
+            config,
+            workers=worker_count,
+            parity_evidence=parity_evidence,
+            release_validation_evidence=release_validation_evidence,
+        )
     )
     return (
         finalize_report(report, repository_root=REPOSITORY_ROOT)
@@ -119,6 +133,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         type=Path,
         help="Write canonical JSON and CSV evidence to this directory.",
+    )
+    parser.add_argument(
+        "--parity-evidence",
+        type=Path,
+        help=(
+            "Validated JSON from the complete 66+32 GardenGameEngine parity "
+            "manifest. Omit to keep the release gate at not_run."
+        ),
+    )
+    parser.add_argument(
+        "--release-validation-evidence",
+        type=Path,
+        help=(
+            "JSON statuses for migration, native macOS smoke, 100 percent "
+            "text-scale platform, and human review gates."
+        ),
     )
     parser.add_argument(
         "--json",
@@ -176,10 +206,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             min(8, os.cpu_count() or 1)
             if args.seeds >= 128 else 1
         )
+    parity_evidence = None
+    if args.parity_evidence is not None:
+        with args.parity_evidence.open("r", encoding="utf-8") as source:
+            loaded = json.load(source)
+        if not isinstance(loaded, dict):
+            raise SystemExit("--parity-evidence must contain one JSON object")
+        parity_evidence = loaded
+    release_validation_evidence = None
+    if args.release_validation_evidence is not None:
+        with args.release_validation_evidence.open(
+            "r", encoding="utf-8"
+        ) as source:
+            loaded = json.load(source)
+        if not isinstance(loaded, dict):
+            raise SystemExit(
+                "--release-validation-evidence must contain one JSON object"
+            )
+        release_validation_evidence = loaded
     report = (
-        simulate_balance(config, facts=load_catalog_facts(), workers=1)
+        simulate_balance(
+            config,
+            facts=load_catalog_facts(),
+            workers=1,
+            parity_evidence=parity_evidence,
+            release_validation_evidence=release_validation_evidence,
+        )
         if workers == 1
-        else simulate_balance(config, workers=workers)
+        else simulate_balance(
+            config,
+            workers=workers,
+            parity_evidence=parity_evidence,
+            release_validation_evidence=release_validation_evidence,
+        )
     )
     frozen = finalize_report(report, repository_root=REPOSITORY_ROOT)
     if args.output_dir is not None:

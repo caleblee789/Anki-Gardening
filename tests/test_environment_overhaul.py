@@ -142,7 +142,7 @@ def assert_concise_player_copy(message: str) -> None:
 
 
 def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract():
-    assert STATE_VERSION == 26
+    assert STATE_VERSION == 27
     assert {item_id: item.price for item_id, item in WEATHER_CATALOG.items()} == {
         "seedling_sign": None,
         "wind_chime": 100,
@@ -655,10 +655,15 @@ def test_autumn_carries_fractional_bonus_across_checkpoint_payouts():
 
     milestone_payouts = [
         tx.delta for tx in storage.state.currency_transactions
-        if tx.event_key.startswith("stage")
+        if tx.source == "plant_milestone"
     ]
-    assert milestone_payouts == [1, 2, 1, 3]
-    assert sum(milestone_payouts) == 7
+    autumn_payouts = [
+        tx.delta for tx in storage.state.currency_transactions
+        if tx.source == "autumn_hearth"
+    ]
+    assert milestone_payouts == [1, 1, 1, 2]
+    assert autumn_payouts == [1, 1]
+    assert sum((*milestone_payouts, *autumn_payouts)) == 7
     assert storage.state.checkpoint_coin_carry_units == 50
 
 

@@ -164,7 +164,7 @@ def test_registry_is_exact_and_uses_shipped_bonus_values() -> None:
 
 def test_schema22_weather_migration_is_lossless_and_idempotent() -> None:
     first = migrate_modern_state(_legacy_schema22())
-    assert first.version == STATE_VERSION == 26
+    assert first.version == STATE_VERSION == 27
     assert first.inventory["garden_features"] == [
         "seedling_sign", "wind_chime", "firefly_lantern",
     ]

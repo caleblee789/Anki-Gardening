@@ -84,7 +84,7 @@ def test_schema26_round_trips_independent_effects_and_economy_models() -> None:
     state.inventory["garden_features"].append("wind_chime")
 
     payload = state.to_dict()
-    assert payload["version"] == STATE_VERSION == 26
+    assert payload["version"] == STATE_VERSION == 27
     assert payload["loadout"] == {
         "display_decoration_id": "garden_bench",
         "active_garden_bonus_id": "wind_chime",
@@ -102,7 +102,8 @@ def test_schema26_round_trips_independent_effects_and_economy_models() -> None:
     assert restored.plants[0].card_effect_queue.fertilizer_batches == [batch]
     assert restored.plants[0].card_effect_queue.booster_remaining_cards == 211
     assert restored.daily_economy_snapshot == state.daily_economy_snapshot
-    assert restored.garden_project == state.garden_project
+    assert restored.garden_project.to_dict() == payload["garden_project"]
+    assert not restored.garden_project.auto_contribute
     assert restored.cultivation_mastery == state.cultivation_mastery
     assert restored.lifetime_economy_aggregates == state.lifetime_economy_aggregates
     assert restored.environment_completion_pity_misses == {
@@ -173,3 +174,58 @@ def test_schema26_repairs_effect_counter_and_project_boundaries() -> None:
     assert restored.garden_project.contributed_growth_units == 7_500_000
     assert restored.garden_project.ready_to_complete
     assert restored.garden_project.displayed_project_id == ""
+
+
+def test_schema27_round_trips_unambiguous_growth_and_endgame_authorities() -> None:
+    state = GardenState(
+        stored_growth_units=1_234,
+        stored_growth_opening_balance_units=1_234,
+        stored_growth_opening_balance_source=(
+            "schema_27_migration_preserved_balance"
+        ),
+        stored_growth_opening_balance_identity=(
+            "migration:schema27:stored-growth-opening"
+        ),
+        active_growth_target_type="mastery",
+        active_growth_target_id="bonsai",
+        active_growth_target_activation_identity="activate:one",
+        garden_project=GardenProjectState(
+            landmark_growth_units_funded=10_000_000,
+            landmark_highest_claimed_tier=1,
+            displayed_landmark_tier_id="mossy_stone_path",
+        ),
+        cultivation_mastery=CultivationMasteryState(
+            growth_units_funded_by_species={"bonsai": 7_500_000},
+            highest_claimed_rank_by_species={"bonsai": "bronze"},
+        ),
+        garden_legacy_level=2,
+        garden_legacy_progress_units=123,
+        garden_cycle_remainder=4,
+        garden_cycle_migration_version=27,
+        garden_cycle_history_complete=True,
+    )
+
+    payload = state.to_dict()
+
+    assert "stored_growth_units" not in payload
+    assert payload["stored_growth_balance_units"] == 1_234
+    assert payload["stored_growth_opening_balance_units"] == 1_234
+    restored = GardenState.from_dict(payload)
+    assert restored.stored_growth_units == restored.stored_growth_balance_units == 1_234
+    assert restored.stored_growth_opening_balance_units == 1_234
+    assert restored.stored_growth_opening_balance_source == (
+        "schema_27_migration_preserved_balance"
+    )
+    assert restored.active_growth_target_id == "bonsai"
+    assert restored.garden_project.landmark_growth_units_funded == 10_000_000
+    assert restored.garden_project.landmark_highest_claimed_tier == 1
+    assert restored.cultivation_mastery.growth_units_funded_by_species == {
+        "bonsai": 7_500_000
+    }
+    assert restored.cultivation_mastery.highest_rank_by_species == {
+        "bonsai": "bronze"
+    }
+    assert (restored.garden_legacy_level, restored.garden_legacy_progress_units) == (
+        2, 123
+    )
+    assert restored.garden_cycle_remainder == 4

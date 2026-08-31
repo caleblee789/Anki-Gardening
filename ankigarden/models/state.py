@@ -27,7 +27,18 @@ from ..growth import (
 from ..purchases import CompletedPurchaseRequest
 from .sync_reward import SyncRewardSummary
 
-STATE_VERSION = 26
+STATE_VERSION = 27
+
+STORED_GROWTH_OPENING_SOURCES = frozenset({
+    "new_profile_zero",
+    "schema_27_migration_preserved_balance",
+})
+STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE = (
+    "state-schema27:stored-growth-opening:new-profile"
+)
+STORED_GROWTH_OPENING_IDENTITY_MIGRATION = (
+    "migration:schema27:stored-growth-opening"
+)
 
 
 class GardenFeatureIdList(list[str]):
@@ -177,7 +188,33 @@ GARDEN_PROJECT_GROWTH_COST_UNITS = {
     "garden_pergola": 65_000_000,
     "glasshouse_conservatory": 120_000_000,
 }
+GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS = {
+    project_id: sum(
+        GARDEN_PROJECT_GROWTH_COST_UNITS[item_id]
+        for item_id in GARDEN_PROJECT_IDS[:index + 1]
+    )
+    for index, project_id in enumerate(GARDEN_PROJECT_IDS)
+}
 CULTIVATION_MASTERY_RANKS = ("bronze", "silver", "gold", "iridescent")
+CULTIVATION_MASTERY_GROWTH_COST_UNITS = {
+    "bronze": 2_500_000,
+    "silver": 5_000_000,
+    "gold": 10_000_000,
+    "iridescent": 20_000_000,
+}
+CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS = {
+    rank_id: sum(
+        CULTIVATION_MASTERY_GROWTH_COST_UNITS[item_id]
+        for item_id in CULTIVATION_MASTERY_RANKS[:index + 1]
+    )
+    for index, rank_id in enumerate(CULTIVATION_MASTERY_RANKS)
+}
+LANDMARK_MAX_GROWTH_UNITS = sum(GARDEN_PROJECT_GROWTH_COST_UNITS.values())
+MASTERY_MAX_GROWTH_UNITS_PER_SPECIES = sum(
+    CULTIVATION_MASTERY_GROWTH_COST_UNITS.values()
+)
+GARDEN_LEGACY_LEVEL_COST_UNITS = 50_000_000
+ACTIVE_GROWTH_TARGET_TYPES = frozenset({"landmark", "mastery", "legacy"})
 CARD_EFFECT_SPECS = {
     "fertilizer_basic": (100, 100, 100),
     "fertilizer_quality": (200, 200, 200),
@@ -292,6 +329,16 @@ class DailyEconomySnapshot:
 
 @dataclass
 class GardenProjectState:
+    """Cumulative Landmark construction state.
+
+    The schema-26 fields remain as derived compatibility projections while the
+    cumulative fields are the schema-27 authority.
+    """
+
+    landmark_growth_units_funded: int = 0
+    landmark_highest_claimed_tier: int = 0
+    displayed_landmark_tier_id: str = ""
+    grandfathered_funding_units: int = 0
     selected_project_id: str = ""
     contributed_growth_units: int = 0
     ready_to_complete: bool = False
@@ -299,23 +346,130 @@ class GardenProjectState:
     displayed_project_id: str = ""
     auto_contribute: bool = False
 
+    def __post_init__(self) -> None:
+        completed_prefix: list[str] = []
+        completed_candidates = set(self.completed_project_ids)
+        for project_id in GARDEN_PROJECT_IDS:
+            if project_id not in completed_candidates:
+                break
+            completed_prefix.append(project_id)
+        if not self.landmark_highest_claimed_tier and completed_prefix:
+            self.landmark_highest_claimed_tier = len(completed_prefix)
+        claimed = max(0, min(
+            len(GARDEN_PROJECT_IDS), int(self.landmark_highest_claimed_tier)
+        ))
+        floor = (
+            GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                GARDEN_PROJECT_IDS[claimed - 1]
+            ]
+            if claimed else 0
+        )
+        if not self.landmark_growth_units_funded:
+            self.landmark_growth_units_funded = min(
+                LANDMARK_MAX_GROWTH_UNITS,
+                floor + max(0, int(self.contributed_growth_units)),
+            )
+        else:
+            self.landmark_growth_units_funded = max(
+                floor,
+                min(
+                    LANDMARK_MAX_GROWTH_UNITS,
+                    int(self.landmark_growth_units_funded),
+                ),
+            )
+        if not self.displayed_landmark_tier_id:
+            self.displayed_landmark_tier_id = self.displayed_project_id
+        self.completed_project_ids = list(GARDEN_PROJECT_IDS[:claimed])
+        self.displayed_project_id = self.displayed_landmark_tier_id
+
     def to_dict(self) -> dict[str, Any]:
+        claimed = max(0, min(len(GARDEN_PROJECT_IDS), int(
+            self.landmark_highest_claimed_tier
+        )))
+        funded = max(0, min(
+            LANDMARK_MAX_GROWTH_UNITS,
+            int(self.landmark_growth_units_funded),
+        ))
+        completed_ids = list(GARDEN_PROJECT_IDS[:claimed])
+        claimed_floor = (
+            GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                GARDEN_PROJECT_IDS[claimed - 1]
+            ]
+            if claimed else 0
+        )
+        next_threshold = (
+            GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                GARDEN_PROJECT_IDS[claimed]
+            ]
+            if claimed < len(GARDEN_PROJECT_IDS) else LANDMARK_MAX_GROWTH_UNITS
+        )
+        displayed = (
+            self.displayed_landmark_tier_id
+            if self.displayed_landmark_tier_id in completed_ids
+            else ""
+        )
         return {
-            "selected_project_id": self.selected_project_id,
-            "contributed_growth_units": max(0, int(self.contributed_growth_units)),
-            "ready_to_complete": bool(self.ready_to_complete),
-            "completed_project_ids": list(self.completed_project_ids),
-            "displayed_project_id": self.displayed_project_id,
-            "auto_contribute": bool(self.auto_contribute),
+            "landmark_growth_units_funded": funded,
+            "landmark_highest_claimed_tier": claimed,
+            "displayed_landmark_tier_id": displayed,
+            "grandfathered_funding_units": max(
+                0, min(funded, int(self.grandfathered_funding_units))
+            ),
+            # Read-only compatibility projections for schema-26 consumers.
+            "selected_project_id": str(self.selected_project_id or ""),
+            "contributed_growth_units": max(
+                0, funded - claimed_floor
+            ),
+            "ready_to_complete": bool(
+                claimed < len(GARDEN_PROJECT_IDS) and funded >= next_threshold
+            ),
+            "completed_project_ids": completed_ids,
+            "displayed_project_id": displayed,
+            "auto_contribute": False,
         }
 
 
 @dataclass
 class CultivationMasteryState:
+    # Keep the schema-26 positional constructor/access boundary. The parser and
+    # serializer make this the same mapping as ``highest_claimed_rank_by_species``.
     highest_rank_by_species: Dict[str, str] = field(default_factory=dict)
+    growth_units_funded_by_species: Dict[str, int] = field(default_factory=dict)
+    highest_claimed_rank_by_species: Dict[str, str] = field(default_factory=dict)
+    grandfathered_funding_units_by_species: Dict[str, int] = field(
+        default_factory=dict
+    )
+
+    def __post_init__(self) -> None:
+        if not self.highest_claimed_rank_by_species and self.highest_rank_by_species:
+            self.highest_claimed_rank_by_species = dict(self.highest_rank_by_species)
+        self.highest_rank_by_species = self.highest_claimed_rank_by_species
+        for species, rank_id in self.highest_claimed_rank_by_species.items():
+            if rank_id not in CULTIVATION_MASTERY_RANKS:
+                continue
+            floor = CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                rank_id
+            ]
+            self.growth_units_funded_by_species[species] = max(
+                floor,
+                int(self.growth_units_funded_by_species.get(species, 0)),
+            )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"highest_rank_by_species": dict(self.highest_rank_by_species)}
+        return {
+            "growth_units_funded_by_species": dict(
+                self.growth_units_funded_by_species
+            ),
+            "highest_claimed_rank_by_species": dict(
+                self.highest_claimed_rank_by_species
+            ),
+            "grandfathered_funding_units_by_species": dict(
+                self.grandfathered_funding_units_by_species
+            ),
+            "highest_rank_by_species": dict(
+                self.highest_claimed_rank_by_species
+            ),
+        }
 
 
 @dataclass
@@ -330,6 +484,15 @@ class LifetimeEconomyAggregates:
     growth_earned_by_source: Dict[str, int] = field(default_factory=dict)
     growth_spent_on_landmarks: int = 0
     growth_spent_on_mastery: int = 0
+    growth_generated_units: int = 0
+    growth_applied_to_plants_units: int = 0
+    growth_routed_to_storage_units_lifetime: int = 0
+    growth_contributed_to_landmarks_units: int = 0
+    growth_contributed_to_mastery_units: int = 0
+    growth_contributed_to_legacy_units: int = 0
+    growth_unallocated_overflow_units: int = 0
+    history_complete: bool = True
+    authoritative_from_event_identity: str = ""
     finds_by_outcome: Dict[str, int] = field(default_factory=dict)
     environment_discoveries: Dict[str, int] = field(default_factory=dict)
     consumables_earned: Dict[str, int] = field(default_factory=dict)
@@ -346,6 +509,29 @@ class LifetimeEconomyAggregates:
                 0, int(self.growth_spent_on_landmarks)
             ),
             "growth_spent_on_mastery": max(0, int(self.growth_spent_on_mastery)),
+            "growth_generated_units": max(0, int(self.growth_generated_units)),
+            "growth_applied_to_plants_units": max(
+                0, int(self.growth_applied_to_plants_units)
+            ),
+            "growth_routed_to_storage_units_lifetime": max(
+                0, int(self.growth_routed_to_storage_units_lifetime)
+            ),
+            "growth_contributed_to_landmarks_units": max(
+                0, int(self.growth_contributed_to_landmarks_units)
+            ),
+            "growth_contributed_to_mastery_units": max(
+                0, int(self.growth_contributed_to_mastery_units)
+            ),
+            "growth_contributed_to_legacy_units": max(
+                0, int(self.growth_contributed_to_legacy_units)
+            ),
+            "growth_unallocated_overflow_units": max(
+                0, int(self.growth_unallocated_overflow_units)
+            ),
+            "history_complete": bool(self.history_complete),
+            "authoritative_from_event_identity": str(
+                self.authoritative_from_event_identity or ""
+            ),
             "finds_by_outcome": dict(self.finds_by_outcome),
             "environment_discoveries": dict(self.environment_discoveries),
             "consumables_earned": dict(self.consumables_earned),
@@ -528,7 +714,14 @@ class Plant:
 
     @property
     def fully_grown(self) -> bool:
-        return stage_progress(self.growth_points).fully_grown
+        # This hot predicate is evaluated for every routed answer lane. Full
+        # Bloom is exactly the final integer threshold, so constructing the
+        # complete renderer-facing StageProgress projection here is needless.
+        try:
+            growth = max(0, int(self.growth_points))
+        except (TypeError, ValueError):
+            growth = 0
+        return growth >= GROWTH_THRESHOLDS[-1]
 
     @property
     def planted(self) -> bool:
@@ -1102,7 +1295,19 @@ class GardenState:
     hourglass_completion_progress: int = 0
     snow_completion_progress: int = 0
     full_moon_completion_progress: int = 0
+    # Backing field retained for source compatibility. Schema 27 persists the
+    # canonical ``stored_growth_balance_units`` key instead.
     stored_growth_units: int = 0
+    # Reconciliation baseline, set exactly once. A migrated balance is an
+    # opening reserve, not fabricated lifetime generated or routed Growth.
+    stored_growth_opening_balance_units: int = 0
+    stored_growth_opening_balance_source: str = "new_profile_zero"
+    stored_growth_opening_balance_identity: str = (
+        STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE
+    )
+    active_growth_target_type: str = ""
+    active_growth_target_id: str = ""
+    active_growth_target_activation_identity: str = ""
     garden_project: GardenProjectState = field(default_factory=GardenProjectState)
     cultivation_mastery: CultivationMasteryState = field(
         default_factory=CultivationMasteryState
@@ -1110,6 +1315,11 @@ class GardenState:
     lifetime_economy_aggregates: LifetimeEconomyAggregates = field(
         default_factory=LifetimeEconomyAggregates
     )
+    garden_legacy_level: int = 0
+    garden_legacy_progress_units: int = 0
+    garden_cycle_remainder: int = 0
+    garden_cycle_migration_version: int = 0
+    garden_cycle_history_complete: bool = False
     pending_economy_migration_grants: List[PendingEconomyMigrationGrant] = field(
         default_factory=list
     )
@@ -1275,6 +1485,16 @@ class GardenState:
         self.loadout.visibility = source
 
     @property
+    def stored_growth_balance_units(self) -> int:
+        """Current spendable Stored Growth balance in exact units."""
+
+        return max(0, int(self.stored_growth_units))
+
+    @stored_growth_balance_units.setter
+    def stored_growth_balance_units(self, value: int) -> None:
+        self.stored_growth_units = max(0, int(value))
+
+    @property
     def equipped(self) -> Dict[str, str]:
         """Read-only compatibility projection; never persisted as a mirror."""
 
@@ -1383,11 +1603,46 @@ class GardenState:
             "full_moon_completion_progress": max(
                 0, min(5, int(self.full_moon_completion_progress))
             ),
-            "stored_growth_units": self.stored_growth_units,
+            "stored_growth_balance_units": self.stored_growth_balance_units,
+            "stored_growth_opening_balance_units": max(
+                0, int(self.stored_growth_opening_balance_units)
+            ),
+            "stored_growth_opening_balance_source": str(
+                self.stored_growth_opening_balance_source
+                or "new_profile_zero"
+            ),
+            "stored_growth_opening_balance_identity": str(
+                self.stored_growth_opening_balance_identity
+                or STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE
+            ),
+            "active_growth_target_type": str(
+                self.active_growth_target_type or ""
+            ),
+            "active_growth_target_id": str(self.active_growth_target_id or ""),
+            "active_growth_target_activation_identity": str(
+                self.active_growth_target_activation_identity or ""
+            ),
             "garden_project": self.garden_project.to_dict(),
             "cultivation_mastery": self.cultivation_mastery.to_dict(),
             "lifetime_economy_aggregates": (
                 self.lifetime_economy_aggregates.to_dict()
+            ),
+            "garden_legacy_level": max(0, int(self.garden_legacy_level)),
+            "garden_legacy_progress_units": max(
+                0,
+                min(
+                    GARDEN_LEGACY_LEVEL_COST_UNITS - 1,
+                    int(self.garden_legacy_progress_units),
+                ),
+            ),
+            "garden_cycle_remainder": max(
+                0, min(4, int(self.garden_cycle_remainder))
+            ),
+            "garden_cycle_migration_version": max(
+                0, int(self.garden_cycle_migration_version)
+            ),
+            "garden_cycle_history_complete": bool(
+                self.garden_cycle_history_complete
             ),
             "pending_economy_migration_grants": [
                 grant.to_dict()
@@ -1578,9 +1833,54 @@ class GardenState:
             "full_moon_completion_progress",
             issues,
         )
-        state.stored_growth_units = _nonnegative_int(
-            data.get("stored_growth_units"), 0, "stored_growth_units", issues
+        state.stored_growth_balance_units = _nonnegative_int(
+            data.get("stored_growth_balance_units"),
+            0,
+            "stored_growth_balance_units",
+            issues,
         )
+        state.stored_growth_opening_balance_units = _nonnegative_int(
+            data.get("stored_growth_opening_balance_units"),
+            0,
+            "stored_growth_opening_balance_units",
+            issues,
+        )
+        opening_source = data.get(
+            "stored_growth_opening_balance_source", "new_profile_zero"
+        )
+        if opening_source not in STORED_GROWTH_OPENING_SOURCES:
+            issues.append(
+                "stored_growth_opening_balance_source: unsupported value"
+            )
+            opening_source = "new_profile_zero"
+        state.stored_growth_opening_balance_source = str(opening_source)
+        default_opening_identity = (
+            STORED_GROWTH_OPENING_IDENTITY_MIGRATION
+            if opening_source == "schema_27_migration_preserved_balance"
+            else STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE
+        )
+        state.stored_growth_opening_balance_identity = _optional_token(
+            data.get(
+                "stored_growth_opening_balance_identity",
+                default_opening_identity,
+            ),
+            "stored_growth_opening_balance_identity",
+            issues,
+        ) or default_opening_identity
+        state.active_growth_target_type, state.active_growth_target_id = (
+            _active_growth_target(
+                data.get("active_growth_target_type"),
+                data.get("active_growth_target_id"),
+                issues,
+            )
+        )
+        state.active_growth_target_activation_identity = _optional_token(
+            data.get("active_growth_target_activation_identity"),
+            "active_growth_target_activation_identity",
+            issues,
+        )
+        if not state.active_growth_target_type:
+            state.active_growth_target_activation_identity = ""
         state.garden_project = _garden_project_state(
             data.get("garden_project"), issues
         )
@@ -1590,6 +1890,41 @@ class GardenState:
         state.lifetime_economy_aggregates = _lifetime_economy_aggregates(
             data.get("lifetime_economy_aggregates"), issues
         )
+        state.garden_legacy_level = _nonnegative_int(
+            data.get("garden_legacy_level"),
+            0,
+            "garden_legacy_level",
+            issues,
+        )
+        state.garden_legacy_progress_units = _bounded_int(
+            data.get("garden_legacy_progress_units"),
+            0,
+            0,
+            GARDEN_LEGACY_LEVEL_COST_UNITS - 1,
+            "garden_legacy_progress_units",
+            issues,
+        )
+        state.garden_cycle_remainder = _bounded_int(
+            data.get("garden_cycle_remainder"),
+            0,
+            0,
+            4,
+            "garden_cycle_remainder",
+            issues,
+        )
+        state.garden_cycle_migration_version = _bounded_int(
+            data.get("garden_cycle_migration_version"),
+            0,
+            0,
+            STATE_VERSION,
+            "garden_cycle_migration_version",
+            issues,
+        )
+        raw_cycle_complete = data.get("garden_cycle_history_complete", False)
+        if not isinstance(raw_cycle_complete, bool):
+            issues.append("garden_cycle_history_complete: expected bool")
+            raw_cycle_complete = False
+        state.garden_cycle_history_complete = raw_cycle_complete
         state.pending_economy_migration_grants = _pending_migration_grants(
             data.get("pending_economy_migration_grants"), issues
         )
@@ -2446,6 +2781,33 @@ def _daily_economy_snapshot(
     )
 
 
+def _active_growth_target(
+    raw_type: Any,
+    raw_id: Any,
+    issues: list[str],
+) -> tuple[str, str]:
+    target_type = raw_type if isinstance(raw_type, str) else ""
+    target_id = raw_id if isinstance(raw_id, str) else ""
+    if target_type not in {"", *ACTIVE_GROWTH_TARGET_TYPES}:
+        issues.append("active_growth_target_type: unsupported value")
+        return "", ""
+    if not target_type:
+        if target_id:
+            issues.append("active_growth_target_id: target type is empty")
+        return "", ""
+    valid = (
+        target_id == "garden_landmark"
+        if target_type == "landmark"
+        else target_id in CURRENT_CATALOG_SPECIES_ORDER
+        if target_type == "mastery"
+        else target_id == "garden_legacy"
+    )
+    if not valid:
+        issues.append("active_growth_target_id: unsupported value")
+        return "", ""
+    return target_type, target_id
+
+
 def _garden_project_state(value: Any, issues: list[str]) -> GardenProjectState:
     if value is None:
         return GardenProjectState()
@@ -2479,34 +2841,83 @@ def _garden_project_state(value: Any, issues: list[str]) -> GardenProjectState:
     if selected and selected != first_incomplete:
         issues.append("garden_project.selected_project_id: repaired to strict order")
         selected = first_incomplete
-    contributed = _nonnegative_int(
-        value.get("contributed_growth_units"),
+    legacy_contributed = _nonnegative_int(
+        value.get("contributed_growth_units"), 0,
+        "garden_project.contributed_growth_units", issues,
+    )
+    previous_threshold = (
+        GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+            GARDEN_PROJECT_IDS[len(completed) - 1]
+        ]
+        if completed else 0
+    )
+    if "landmark_growth_units_funded" in value:
+        funded = _bounded_int(
+            value.get("landmark_growth_units_funded"),
+            previous_threshold,
+            previous_threshold,
+            LANDMARK_MAX_GROWTH_UNITS,
+            "garden_project.landmark_growth_units_funded",
+            issues,
+        )
+    else:
+        target_cost = GARDEN_PROJECT_GROWTH_COST_UNITS.get(selected, 0)
+        funded = min(
+            LANDMARK_MAX_GROWTH_UNITS,
+            previous_threshold + min(legacy_contributed, target_cost),
+        )
+    claimed = _bounded_int(
+        value.get("landmark_highest_claimed_tier"),
+        len(completed),
         0,
-        "garden_project.contributed_growth_units",
+        len(GARDEN_PROJECT_IDS),
+        "garden_project.landmark_highest_claimed_tier",
         issues,
     )
-    target = GARDEN_PROJECT_GROWTH_COST_UNITS.get(selected, 0)
-    contributed = min(contributed, target) if target else 0
-    ready = value.get("ready_to_complete", False)
-    if not isinstance(ready, bool):
-        issues.append("garden_project.ready_to_complete: expected bool")
-        ready = False
-    ready = bool(selected and target and contributed >= target)
-    displayed = value.get("displayed_project_id", "")
+    claimed_floor = (
+        GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+            GARDEN_PROJECT_IDS[claimed - 1]
+        ]
+        if claimed else 0
+    )
+    funded = max(funded, claimed_floor)
+    completed = list(GARDEN_PROJECT_IDS[:claimed])
+    displayed = value.get(
+        "displayed_landmark_tier_id",
+        value.get("displayed_project_id", ""),
+    )
     if not isinstance(displayed, str) or displayed not in {"", *GARDEN_PROJECT_IDS}:
         issues.append("garden_project.displayed_project_id: unsupported value")
         displayed = ""
-    auto_contribute = value.get("auto_contribute", False)
-    if not isinstance(auto_contribute, bool):
-        issues.append("garden_project.auto_contribute: expected bool")
-        auto_contribute = False
+    if displayed not in completed:
+        if displayed:
+            issues.append("garden_project.displayed_landmark_tier_id: unclaimed")
+        displayed = ""
+    grandfathered = _bounded_int(
+        value.get("grandfathered_funding_units"),
+        0,
+        0,
+        funded,
+        "garden_project.grandfathered_funding_units",
+        issues,
+    )
+    next_id = GARDEN_PROJECT_IDS[claimed] if claimed < len(GARDEN_PROJECT_IDS) else ""
+    next_threshold = (
+        GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[next_id]
+        if next_id else LANDMARK_MAX_GROWTH_UNITS
+    )
+    compatibility_contributed = max(0, funded - claimed_floor)
     return GardenProjectState(
+        landmark_growth_units_funded=funded,
+        landmark_highest_claimed_tier=claimed,
+        displayed_landmark_tier_id=displayed,
+        grandfathered_funding_units=grandfathered,
         selected_project_id=selected,
-        contributed_growth_units=contributed,
-        ready_to_complete=ready,
+        contributed_growth_units=compatibility_contributed,
+        ready_to_complete=bool(next_id and funded >= next_threshold),
         completed_project_ids=completed,
         displayed_project_id=displayed,
-        auto_contribute=auto_contribute,
+        auto_contribute=False,
     )
 
 
@@ -2519,19 +2930,81 @@ def _cultivation_mastery_state(
     if not isinstance(value, dict):
         issues.append("cultivation_mastery: expected object")
         return CultivationMasteryState()
-    raw = value.get("highest_rank_by_species", {})
-    if not isinstance(raw, dict):
-        issues.append("cultivation_mastery.highest_rank_by_species: expected object")
-        return CultivationMasteryState()
-    result: dict[str, str] = {}
-    for species, rank in raw.items():
+    raw_claims = value.get(
+        "highest_claimed_rank_by_species",
+        value.get("highest_rank_by_species", {}),
+    )
+    if not isinstance(raw_claims, dict):
+        issues.append(
+            "cultivation_mastery.highest_claimed_rank_by_species: expected object"
+        )
+        raw_claims = {}
+    claims: dict[str, str] = {}
+    for species, rank in raw_claims.items():
         if species in PLANT_SPECIES and rank in CULTIVATION_MASTERY_RANKS:
-            result[str(species)] = str(rank)
+            claims[str(species)] = str(rank)
         else:
             issues.append(
-                "cultivation_mastery.highest_rank_by_species: unsupported entry"
+                "cultivation_mastery.highest_claimed_rank_by_species: unsupported entry"
             )
-    return CultivationMasteryState(result)
+    raw_funding = value.get("growth_units_funded_by_species", {})
+    if not isinstance(raw_funding, dict):
+        issues.append(
+            "cultivation_mastery.growth_units_funded_by_species: expected object"
+        )
+        raw_funding = {}
+    funding: dict[str, int] = {}
+    for species in CURRENT_CATALOG_SPECIES_ORDER:
+        claimed_rank = claims.get(species)
+        claimed_floor = (
+            CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                claimed_rank
+            ]
+            if claimed_rank else 0
+        )
+        raw_amount = raw_funding.get(species, claimed_floor)
+        amount = _bounded_int(
+            raw_amount,
+            claimed_floor,
+            claimed_floor,
+            MASTERY_MAX_GROWTH_UNITS_PER_SPECIES,
+            f"cultivation_mastery.growth_units_funded_by_species.{species}",
+            issues,
+        )
+        if amount:
+            funding[species] = amount
+    unknown_funding = set(raw_funding).difference(CURRENT_CATALOG_SPECIES_ORDER)
+    if unknown_funding:
+        issues.append(
+            "cultivation_mastery.growth_units_funded_by_species: unsupported entry"
+        )
+    raw_grandfathered = value.get("grandfathered_funding_units_by_species", {})
+    if not isinstance(raw_grandfathered, dict):
+        issues.append(
+            "cultivation_mastery.grandfathered_funding_units_by_species: expected object"
+        )
+        raw_grandfathered = {}
+    grandfathered: dict[str, int] = {}
+    for species, funded in funding.items():
+        amount = _bounded_int(
+            raw_grandfathered.get(species),
+            0,
+            0,
+            funded,
+            (
+                "cultivation_mastery.grandfathered_funding_units_by_species."
+                + species
+            ),
+            issues,
+        )
+        if amount:
+            grandfathered[species] = amount
+    return CultivationMasteryState(
+        highest_rank_by_species=dict(claims),
+        growth_units_funded_by_species=funding,
+        highest_claimed_rank_by_species=claims,
+        grandfathered_funding_units_by_species=grandfathered,
+    )
 
 
 def _economy_count_map(
@@ -2591,6 +3064,64 @@ def _lifetime_economy_aggregates(
             0,
             "lifetime_economy_aggregates.growth_spent_on_mastery",
             issues,
+        ),
+        growth_generated_units=_nonnegative_int(
+            value.get("growth_generated_units"), 0,
+            "lifetime_economy_aggregates.growth_generated_units", issues,
+        ),
+        growth_applied_to_plants_units=_nonnegative_int(
+            value.get("growth_applied_to_plants_units"), 0,
+            "lifetime_economy_aggregates.growth_applied_to_plants_units", issues,
+        ),
+        growth_routed_to_storage_units_lifetime=_nonnegative_int(
+            value.get("growth_routed_to_storage_units_lifetime"), 0,
+            (
+                "lifetime_economy_aggregates."
+                "growth_routed_to_storage_units_lifetime"
+            ),
+            issues,
+        ),
+        growth_contributed_to_landmarks_units=_nonnegative_int(
+            value.get("growth_contributed_to_landmarks_units"), 0,
+            (
+                "lifetime_economy_aggregates."
+                "growth_contributed_to_landmarks_units"
+            ),
+            issues,
+        ),
+        growth_contributed_to_mastery_units=_nonnegative_int(
+            value.get("growth_contributed_to_mastery_units"), 0,
+            (
+                "lifetime_economy_aggregates."
+                "growth_contributed_to_mastery_units"
+            ),
+            issues,
+        ),
+        growth_contributed_to_legacy_units=_nonnegative_int(
+            value.get("growth_contributed_to_legacy_units"), 0,
+            (
+                "lifetime_economy_aggregates."
+                "growth_contributed_to_legacy_units"
+            ),
+            issues,
+        ),
+        growth_unallocated_overflow_units=_nonnegative_int(
+            value.get("growth_unallocated_overflow_units"), 0,
+            (
+                "lifetime_economy_aggregates."
+                "growth_unallocated_overflow_units"
+            ),
+            issues,
+        ),
+        history_complete=(
+            value.get("history_complete")
+            if isinstance(value.get("history_complete"), bool)
+            else False
+        ),
+        authoritative_from_event_identity=(
+            value.get("authoritative_from_event_identity", "")[:160]
+            if isinstance(value.get("authoritative_from_event_identity", ""), str)
+            else ""
         ),
         finds_by_outcome=_economy_count_map(
             value.get("finds_by_outcome"),
@@ -2791,7 +3322,25 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             issues=issues,
             limit=max(0, MAX_CARD_EFFECT_BATCHES - len(booster_card_batches)),
         )
-        has_schema26_queue = isinstance(raw.get("card_effect_queue"), dict)
+        # Schema 27 persists the explicit active/queued lists as the exact
+        # authority. ``card_effect_queue`` remains a read-only compatibility
+        # mirror; letting that mirror win would move an extended same-tier
+        # active dose into the queue after restart. Migrated schema-26 rows
+        # deliberately clear the explicit lists before parsing, so the legacy
+        # authority still applies when it is the only populated representation.
+        explicit_card_effects_present = any(
+            isinstance(raw.get(field_name), list) and raw.get(field_name)
+            for field_name in (
+                "fertilizer_card_batches",
+                "fertilizer_card_queue",
+                "booster_card_batches",
+                "booster_card_queue",
+            )
+        )
+        has_schema26_queue = (
+            isinstance(raw.get("card_effect_queue"), dict)
+            and not explicit_card_effects_present
+        )
         card_effect_queue = _card_effect_queue(
             raw.get("card_effect_queue"),
             label=f"plants[{index}].card_effect_queue",
@@ -2926,15 +3475,11 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             accepted.completed_on
             or accepted.completed_at_ms
             or accepted.full_bloom_reward_claimed
-            or accepted.completion_cards
-            or accepted.completion_active_days
         ):
             issues.append(f"plants[{index}]: removed Full Bloom metadata before completion")
             accepted.completed_on = None
             accepted.completed_at_ms = 0
             accepted.full_bloom_reward_claimed = False
-            accepted.completion_cards = 0
-            accepted.completion_active_days = 0
     return sorted(result, key=lambda plant: (plant.slot_index is None, plant.slot_index or 0, plant.plant_id))
 
 

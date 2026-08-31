@@ -360,25 +360,76 @@ def test_cosmetic_bed_landmark_and_mastery_spend_catalogs_are_exact() -> None:
         (6, False, catalog.AchievementId.FLOURISHING_GARDEN),
     ]
     assert [
-        (item.landmark_id.value, item.growth_cost, item.coin_cost)
+        (
+            item.landmark_id.value,
+            item.growth_cost,
+            item.cumulative_growth_threshold,
+            item.coin_cost,
+        )
         for item in catalog.LANDMARKS
     ] == [
-        ("mossy_stone_path", 25_000, 250),
-        ("birdbath_terrace", 75_000, 350),
-        ("lily_pond", 175_000, 550),
-        ("wooden_footbridge", 350_000, 800),
-        ("garden_pergola", 650_000, 1_200),
-        ("glasshouse_conservatory", 1_200_000, 2_000),
+        ("mossy_stone_path", 25_000, 25_000, 250),
+        ("birdbath_terrace", 75_000, 100_000, 350),
+        ("lily_pond", 175_000, 275_000, 550),
+        ("wooden_footbridge", 350_000, 625_000, 800),
+        ("garden_pergola", 650_000, 1_275_000, 1_200),
+        ("glasshouse_conservatory", 1_200_000, 2_475_000, 2_000),
     ]
     assert [
-        (item.rank_id.value, item.growth_cost, item.coin_cost)
+        (
+            item.rank_id.value,
+            item.growth_cost,
+            item.cumulative_growth_threshold,
+            item.coin_cost,
+        )
         for item in catalog.MASTERY_RANKS
     ] == [
-        ("bronze", 25_000, 50),
-        ("silver", 50_000, 100),
-        ("gold", 100_000, 200),
-        ("iridescent", 200_000, 400),
+        ("bronze", 25_000, 25_000, 50),
+        ("silver", 50_000, 75_000, 100),
+        ("gold", 100_000, 175_000, 200),
+        ("iridescent", 200_000, 375_000, 400),
     ]
+
+
+def test_user_facing_economy_metadata_is_catalog_owned_and_valid() -> None:
+    from ankigarden.ui.economy_presenters import coin_reward_receipt
+    from scripts.validate_economy_catalog import validate_catalog_integrity
+
+    assert (
+        catalog.DAILY_ACTIVITY_COINS,
+        catalog.ALL_DUE_BASE_COINS,
+        catalog.GARDEN_CYCLE_COMPLETIONS,
+        catalog.GARDEN_CYCLE_COINS,
+    ) == (4, 8, 5, 30)
+    receipt = coin_reward_receipt(catalog.CoinSourceId.COMPLETION_CYCLE_5)
+    assert (
+        receipt.title,
+        receipt.detail,
+        receipt.amount_coins,
+        receipt.behavioral_family,
+        receipt.artwork_id,
+    ) == (
+        "Garden Cycle complete",
+        "5 completed review days",
+        30,
+        "todays_cards_completion",
+        "ui_garden_coin",
+    )
+    assert not any((
+        receipt.affected_by_harvest_bell,
+        receipt.affected_by_autumn_hearth,
+        receipt.affected_by_plant_checkpoint_multiplier,
+    ))
+    assert (
+        catalog.GARDEN_LEGACY.legacy_id,
+        catalog.GARDEN_LEGACY.growth_cost_per_level,
+        catalog.GARDEN_LEGACY.coin_cost,
+        catalog.GARDEN_LEGACY.asset_id,
+    ) == ("garden_legacy", 500_000, 0, "cosmetic_botanists_plaque")
+    assert catalog.CONSUMABLE_BY_ID["fertilizer_premium"].display_name == (
+        "Magical Fertilizer"
+    )
+    assert validate_catalog_integrity()["status"] == "pass"
 
 
 def test_compatibility_aliases_and_environment_lookup_are_stable() -> None:

@@ -8,6 +8,12 @@ import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.economy_progression import (
+    ContributionMode,
+    GrowthProjectAction,
+    GrowthProjectConfirmation,
+    GrowthProjectRequest,
+    GrowthTargetRef,
+    GrowthTargetType,
     LandmarkAction,
     LandmarkRequest,
     MasteryRequest,
@@ -55,6 +61,7 @@ class _Storage:
         self._idempotency: dict[tuple[str, str], IdempotencyRecord] = {}
         self._pending_events: dict[str, EconomyEventRecord] = {}
         self._events: dict[str, EconomyEventRecord] = {}
+        self._ledger_revision = 1
 
     def save(self):
         if self.fail_save:
@@ -63,6 +70,7 @@ class _Storage:
         self._events.update(self._pending_events)
         self._pending_idempotency.clear()
         self._pending_events.clear()
+        self._ledger_revision += 1
 
     def reward_ledger_checkpoint(self):
         return (deepcopy(self._pending_idempotency), deepcopy(self._pending_events))
@@ -137,6 +145,174 @@ def test_landmark_commits_growth_then_requires_explicit_coin_completion() -> Non
     assert storage.state.garden_project.displayed_project_id == "mossy_stone_path"
 
 
+def test_cumulative_project_engine_conserves_claims_and_replays_exactly() -> None:
+    engine, storage = _engine()
+    target = GrowthTargetRef(GrowthTargetType.LANDMARK, "garden_landmark")
+
+    activate = GrowthProjectRequest(
+        _request_id(100),
+        engine.growth_projects_snapshot().state_revision,
+        GrowthProjectAction.ACTIVATE,
+        target,
+    )
+    activated_quote = engine.quote_growth_project(activate)
+    activated = engine.confirm_growth_project(
+        activate, GrowthProjectConfirmation.from_quote(activated_quote)
+    )
+    assert activated.applied
+    assert storage.state.active_growth_target_type == "landmark"
+
+    contribute = GrowthProjectRequest(
+        _request_id(101),
+        engine.growth_projects_snapshot().state_revision,
+        GrowthProjectAction.CONTRIBUTE,
+        target,
+        ContributionMode.SPECIFIED,
+        2_500_000,
+    )
+    contribution_quote = engine.quote_growth_project(contribute)
+    contributed = engine.confirm_growth_project(
+        contribute, GrowthProjectConfirmation.from_quote(contribution_quote)
+    )
+    event = storage._events[contributed.ledger_identity]
+    assert contributed.applied
+    assert contributed.stored_balance_delta_units == -2_500_000
+    assert storage.state.stored_growth_balance_units == 97_500_000
+    assert storage.state.garden_project.landmark_growth_units_funded == 2_500_000
+    assert event.growth_flow_kind == "manual_contribution"
+    assert event.growth_contributed_to_landmarks_units == 2_500_000
+    assert event.stored_growth_balance_delta_units == -2_500_000
+    summary = engine.landmark_catalog_summary()
+    assert summary["items"][0]["remaining_growth_units"] == 0
+    assert summary["remaining_capacity_units"] == 245_000_000
+
+    claim = GrowthProjectRequest(
+        _request_id(102),
+        engine.growth_projects_snapshot().state_revision,
+        GrowthProjectAction.CLAIM,
+        target,
+        claim_id="mossy_stone_path",
+    )
+    claim_quote = engine.quote_growth_project(claim)
+    claimed = engine.confirm_growth_project(
+        claim, GrowthProjectConfirmation.from_quote(claim_quote)
+    )
+    state_after_claim = storage.state.to_dict()
+    assert claimed.applied and claimed.coins_spent == 250
+    assert storage.state.currency_balance == 9_750
+    assert storage.state.garden_project.landmark_growth_units_funded == 2_500_000
+    assert storage.state.garden_project.landmark_highest_claimed_tier == 1
+    assert engine.confirm_growth_project(
+        claim, GrowthProjectConfirmation.from_quote(claim_quote)
+    ) == claimed
+    assert storage.state.to_dict() == state_after_claim
+
+
+def test_legacy_endgame_calls_never_redebit_prefunded_growth() -> None:
+    landmark_engine, landmark_storage = _engine()
+    landmark_target = GrowthTargetRef(
+        GrowthTargetType.LANDMARK, "garden_landmark"
+    )
+    activation = GrowthProjectRequest(
+        _request_id(110),
+        landmark_engine.growth_projects_snapshot().state_revision,
+        GrowthProjectAction.ACTIVATE,
+        landmark_target,
+    )
+    landmark_engine.confirm_growth_project(
+        activation,
+        GrowthProjectConfirmation.from_quote(
+            landmark_engine.quote_growth_project(activation)
+        ),
+    )
+    funding = GrowthProjectRequest(
+        _request_id(111),
+        landmark_engine.growth_projects_snapshot().state_revision,
+        GrowthProjectAction.CONTRIBUTE,
+        landmark_target,
+        ContributionMode.SPECIFIED,
+        10_000_000,
+    )
+    landmark_engine.confirm_growth_project(
+        funding,
+        GrowthProjectConfirmation.from_quote(
+            landmark_engine.quote_growth_project(funding)
+        ),
+    )
+    stored_before = landmark_storage.state.stored_growth_balance_units
+    legacy_landmark = LandmarkRequest(
+        _request_id(112), LandmarkAction.COMPLETE, "mossy_stone_path"
+    )
+    landmark_claim = landmark_engine.confirm_landmark(legacy_landmark)
+    assert landmark_claim.applied and landmark_claim.growth_spent_units == 0
+    assert landmark_claim.coins_spent == 250
+    assert landmark_storage.state.stored_growth_balance_units == stored_before
+    assert (
+        landmark_storage.state.garden_project.landmark_growth_units_funded
+        == 10_000_000
+    )
+    landmark_event = landmark_storage._events[
+        f"landmark:{legacy_landmark.request_id}"
+    ]
+    assert landmark_event.stored_growth_balance_delta_units == 0
+    assert landmark_event.growth_contributed_to_landmarks_units == 0
+    assert landmark_event.coins_spent == 250
+    state_after_landmark = landmark_storage.state.to_dict()
+    assert landmark_engine.confirm_landmark(legacy_landmark) == landmark_claim
+    assert landmark_storage.state.to_dict() == state_after_landmark
+
+    mastery_engine, mastery_storage = _engine()
+    mastery_target = GrowthTargetRef(GrowthTargetType.MASTERY, "bonsai")
+    activation = GrowthProjectRequest(
+        _request_id(120),
+        mastery_engine.growth_projects_snapshot().state_revision,
+        GrowthProjectAction.ACTIVATE,
+        mastery_target,
+    )
+    mastery_engine.confirm_growth_project(
+        activation,
+        GrowthProjectConfirmation.from_quote(
+            mastery_engine.quote_growth_project(activation)
+        ),
+    )
+    funding = GrowthProjectRequest(
+        _request_id(121),
+        mastery_engine.growth_projects_snapshot().state_revision,
+        GrowthProjectAction.CONTRIBUTE,
+        mastery_target,
+        ContributionMode.SPECIFIED,
+        2_500_000,
+    )
+    mastery_engine.confirm_growth_project(
+        funding,
+        GrowthProjectConfirmation.from_quote(
+            mastery_engine.quote_growth_project(funding)
+        ),
+    )
+    stored_before = mastery_storage.state.stored_growth_balance_units
+    legacy_mastery = MasteryRequest(
+        _request_id(122), "bonsai", "bronze"
+    )
+    mastery_claim = mastery_engine.confirm_mastery(legacy_mastery)
+    assert mastery_claim.applied and mastery_claim.growth_spent_units == 0
+    assert mastery_claim.coins_spent == 50
+    assert mastery_storage.state.stored_growth_balance_units == stored_before
+    assert (
+        mastery_storage.state.cultivation_mastery
+        .growth_units_funded_by_species["bonsai"]
+        == 2_500_000
+    )
+    mastery_event = mastery_storage._events[
+        f"mastery:{legacy_mastery.request_id}"
+    ]
+    assert mastery_event.stored_growth_balance_delta_units == 0
+    assert mastery_event.growth_contributed_to_mastery_units == 0
+    assert mastery_event.coins_spent == 50
+    state_after_mastery = mastery_storage.state.to_dict()
+    assert mastery_engine.confirm_mastery(legacy_mastery) == mastery_claim
+    assert mastery_storage.state.to_dict() == state_after_mastery
+
+
 def test_landmark_replay_survives_bounded_state_history_and_conflict_rejects() -> None:
     engine, storage = _engine()
     request = LandmarkRequest(
@@ -167,8 +343,9 @@ def test_auto_landmark_contribution_never_spends_coins_and_conserves_growth() ->
         transition_source="test_overflow",
     )
     assert result.conserved
-    assert result.landmark_units == 2_500_000
-    assert result.stored_units == 500_000
+    # Cumulative construction may fund beyond an unpaid Coin threshold.
+    assert result.landmark_units == 3_000_000
+    assert result.stored_units == 0
     assert storage.state.garden_project.ready_to_complete
     assert storage.state.currency_balance == before_coins
 

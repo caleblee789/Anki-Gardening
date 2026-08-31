@@ -48,6 +48,7 @@ from ..ui.session_summary import (
     PlantStateSnapshot,
     ReviewContinuationTarget,
     SessionEndSnapshot,
+    SessionProjectGrowthAllocation,
     SessionStartSnapshot,
     SessionSummaryAccumulator,
     StandardFind,
@@ -1359,6 +1360,24 @@ class ReviewerHookHandler:
                 occurred_at=str(receipt.occurred_at or self._session_now_iso()),
             ))
 
+        project_allocations: list[SessionProjectGrowthAllocation] = []
+        for allocation in tuple(
+            getattr(result, "project_allocations", ()) or ()
+        ):
+            target_type = getattr(allocation, "target_type", "")
+            target_type = getattr(target_type, "value", target_type)
+            units = int(getattr(allocation, "units", 0) or 0)
+            # The engine allocation value admits zero for quote/projection
+            # compatibility, but Session rows represent committed credit only.
+            # Match sync serialization by omitting a nonpositive no-op.
+            if units <= 0:
+                continue
+            project_allocations.append(SessionProjectGrowthAllocation(
+                target_type=str(target_type),
+                target_id=str(getattr(allocation, "target_id", "") or ""),
+                units=units,
+            ))
+
         return CommittedSessionEvent(
             event_id=event_id,
             anki_day_id=str(result.scheduler_day or self.scheduler_day(self.storage)),
@@ -1367,6 +1386,7 @@ class ReviewerHookHandler:
             plant_growth=tuple(plant_growth),
             shared_growth=tuple(shared_growth),
             stored_growth_delta_units=int(result.stored_growth_delta_units),
+            project_allocations=tuple(project_allocations),
             landmark_growth_delta_units=max(
                 0, int(result.landmark_growth_delta_units)
             ),

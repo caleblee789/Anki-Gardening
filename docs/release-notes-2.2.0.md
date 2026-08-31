@@ -8,19 +8,23 @@
 
 - Again, Hard, Good, and Easy remain economically equal at 10 base Growth.
 - Plant stages now begin at 0/400/2,000/6,000/15,000/35,000 Growth. Full Bloom
-  keeps its 120-Coin first-time milestone pool and Small Growth Charge.
+  keeps its first-time milestone pool of 120 Garden Coins and Small Growth Charge.
 - Each other planted bed adds one exact 10% Shared Growth lane, for 150% output
   with six beds. Full Bloom beds continue contributing while another planted
   plant is still growing.
 - Garden Rhythm replaces streak Growth: verified Today’s Cards completions
   among the prior seven eligible study days add 0–10% to base Growth without a
-  total-reset cliff. Anki streak still grants its recurring Coins and badges.
+  total-reset cliff. Anki streak still grants its recurring Garden Coins and badges.
 - Beds 3–6 are earned at Mature and unique Full Bloom milestones rather than
   purchased.
+- The first eligible answer now grants 4 Garden Coins and Today’s Cards grants
+  8, preserving the ordinary completed-day total. Every fifth valid Today’s
+  Cards completion adds an automatic Garden Cycle reward of 30 Garden Coins;
+  missing days do not reset it.
 
 ## Equal purchases and card-counted value
 
-- Any one starter is free and every other current species costs 250 Coins.
+- Any one starter is free and every other current species costs 250 Garden Coins.
   Appearance does not change Growth or rewards.
 - Basic, Quality, and Magical Fertilizer now grant +1/100, +2/200, and +3/400
   eligible cards. Time outside Anki never consumes purchased value.
@@ -37,7 +41,7 @@
 - Wind Chime remains uncapped; Watering Station is stronger for the first 100
   cards; Hourglass awards a Booster every 30 active completions and extends
   activated Potions by 25 cards.
-- Paid Scenery now has distinct short-day, general-Growth, Coin, and delayed
+- Paid Scenery now has distinct short-day, general-Growth, Garden Coin, and delayed
   Charge roles. Firefly Lantern, Prism Trellis, Rainbow Horizon, Halloween
   Garden, Full Moon Garden, and Celestial Eclipse use the canonical 2.2.0
   effects in `balance_catalog.py`.
@@ -53,30 +57,40 @@
 - Thirteen cumulative achievements add earned beds, completion milestones,
   lifetime answer milestones, Grand Charges, and three earned cosmetics to the
   original seven achievements.
-- Five cosmetic-only Display Decorations are available for 150–400 Coins.
-- Six sequential Garden Landmark projects turn Stored Growth into persistent
-  scene transformations after the first Full Bloom.
-- Four Cultivation Mastery ranks per species provide cosmetic favorite-plant
-  goals after Full Bloom.
-- Landmark and Mastery spend Stored Growth and Coins atomically but never add
-  recursive Growth, Coin, Find, or loadout-slot power.
+- Five cosmetic-only Display Decorations are available for 150–400 Garden Coins.
+- Six Garden Landmark thresholds form one cumulative construction track after
+  the first Full Bloom. Growth can prefund later thresholds while claims remain
+  sequential and spend Garden Coins only.
+- Four cumulative Cultivation Mastery ranks per species provide cosmetic
+  favorite-plant goals after Full Bloom; unpaid ranks do not block later Growth
+  funding.
+- A learner-acknowledged active project receives only final overflow after
+  plant routing. Existing Stored Growth can be contributed with a revalidated
+  atomic quote, while no-target play preserves the complete reserve.
+- Evergreen Garden Legacy unlocks once every finite Landmark and Mastery Growth
+  track is funded. Each cosmetic level uses 500,000 Growth, costs no Garden
+  Garden Coins, and grants no gameplay effect.
 
 ## Persistence and migration
 
-- State schema 26 stores exact card-effect queues, immutable daily economy
+- State schema 27 stores exact card-effect queues, immutable daily economy
   snapshots, appearance/effect separation, dual environment pity, earned beds,
-  Landmark and Mastery state, and lifetime economy aggregates.
+  Garden Cycle, active Growth targets, cumulative Landmark and Mastery funding
+  and claims, Garden Legacy, and provenance-qualified lifetime economy
+  aggregates.
 - Permanent answer, Find, discovery, purchase, Charge, Landmark, Mastery, and
   migration identities live independently from bounded UI receipt history.
 - Timed Fertilizer converts proportionally to cards with ceiling. Existing paid
-  beds remain unlocked and receive their fixed Coin refunds. Recorded plant
-  purchases above 250 Coins receive only the difference; cheaper purchases are
+  beds remain unlocked and receive their fixed Garden Coin refunds. Recorded plant
+  purchases above 250 Garden Coins receive only the difference; cheaper purchases are
   never debited. Rich Compost inventory becomes Basic Fertilizer.
 - Existing Full Moon progress carries from the old four-completion cadence to
   the new six-completion cadence proportionally, rounded up so positive earned
   progress is not erased.
-- Existing Stored Growth and owned environments are preserved. Migration never
-  auto-spends Stored Growth or grants retroactive calendar pity.
+- Existing Stored Growth, Landmark/Mastery claims and partial progress, and
+  owned environments are preserved. Migration never auto-spends Stored Growth,
+  recharges a claim, grants a retroactive Garden Cycle, or grants retroactive
+  calendar pity.
 
 The complete current mechanics and catalog are documented in the
 [progression, rewards, and effects reference](progression-rewards-effects-reference.md).

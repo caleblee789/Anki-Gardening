@@ -1,6 +1,6 @@
 # Documentation index
 
-These documents describe the current schema-26 Anki Garden 2.2.0 working-tree
+These documents describe the current schema-27 Anki Garden 2.2.0 working-tree
 candidate.
 Runtime source and persisted-state behavior remain authoritative when prose and
 implementation disagree.
@@ -11,7 +11,7 @@ implementation disagree.
   gates.
 - `progression-rewards-effects-reference.md`: complete current economy,
   progression, catalog, migration, and replay rules.
-- `release-notes-2.2.0.md`: learner-visible economy changes and schema-26
+- `release-notes-2.2.0.md`: learner-visible economy changes and schema-27
   compatibility notes.
 - `release-notes-2.1.0.md`: frozen notes for the merged UI prerequisite.
 - `display-validation-matrix.md`: prominent values and their authoritative
