@@ -21,20 +21,23 @@ from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import (
     ActivePlantPeriod,
     DailyStats,
-    Fertilizer,
     GardenState,
     Plant,
 )
 from ankigarden.purchases import (
+    FertilizerStoredItemDisposition,
+    PurchaseAppearanceState,
     PurchaseAction,
     PurchaseDisposition,
     PurchaseKind,
     PurchaseOutcome,
     PurchaseRequest,
     PurchaseStatus,
+    fertilizer_stored_item_projection,
     purchase_presentation,
+    purchase_projection,
 )
-from ankigarden.storage import DueObligationStatus
+from ankigarden.storage import DueObligationStatus, migrate_modern_state
 from ankigarden.ui.copy import cost_label
 
 
@@ -188,7 +191,7 @@ def test_unaffordable_purchase_never_debits_or_mutates_state(
 @pytest.mark.parametrize(
     ("kind", "item_id", "target_id", "expected_name", "expected_price"),
     (
-        (PurchaseKind.SPECIES, "sunflower", None, "Sunflower Seed", 150),
+        (PurchaseKind.SPECIES, "sunflower", None, "Sunflower Seed", 250),
         (
             PurchaseKind.GROWTH_CHARGE,
             "growth_charge_small",
@@ -199,7 +202,6 @@ def test_unaffordable_purchase_never_debits_or_mutates_state(
         (PurchaseKind.FERTILIZER, "basic", "p1", "Basic Fertilizer", 30),
         (PurchaseKind.GARDEN_FEATURE, "wind_chime", None, "Wind Chime", 100),
         (PurchaseKind.SCENERY, "spring", None, "Spring Bloom", 400),
-        (PurchaseKind.BED, "next", None, "Garden Bed 3", 150),
     ),
 )
 def test_purchase_quotes_share_exact_current_terms(
@@ -260,7 +262,7 @@ def test_price_copy_uses_lowercase_singular_and_plural_units() -> None:
             None,
             "Buy Sunflower Seed?",
             PurchaseAction.PURCHASE,
-            "Buy for 150 coins",
+            "Buy",
             set(),
         ),
         (
@@ -269,7 +271,7 @@ def test_price_copy_uses_lowercase_singular_and_plural_units() -> None:
             None,
             "Buy Small Growth Charge?",
             PurchaseAction.PURCHASE,
-            "Buy for 30 coins",
+            "Buy charge",
             {"inventory"},
         ),
         (
@@ -278,7 +280,7 @@ def test_price_copy_uses_lowercase_singular_and_plural_units() -> None:
             "p1",
             "Buy and apply Basic Fertilizer?",
             PurchaseAction.PURCHASE_APPLY,
-            "Buy and apply · 30 coins",
+            "Buy and apply",
             set(),
         ),
         (
@@ -287,16 +289,7 @@ def test_price_copy_uses_lowercase_singular_and_plural_units() -> None:
             None,
             "Buy Wind Chime?",
             PurchaseAction.PURCHASE,
-            "Buy for 100 coins",
-            set(),
-        ),
-        (
-            PurchaseKind.BED,
-            "next",
-            None,
-            "Unlock Bed 3?",
-            PurchaseAction.UNLOCK,
-            "Unlock for 150 coins",
+            "Buy",
             set(),
         ),
     ),
@@ -326,9 +319,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
     assert presentation.action is action
     assert {fact.key for fact in presentation.facts} == fact_keys
     assert presentation.primary_label == primary_label
-    assert presentation.primary_accessible_name.endswith(
-        f"for {quote.total_price:,} Garden Coins"
-    )
+    assert presentation.primary_accessible_name == primary_label
     assert presentation.balance_after == 5_000 - quote.total_price
     if kind is PurchaseKind.SPECIES:
         assert presentation.outcome == "Adds Sunflower to your collection."
@@ -338,7 +329,6 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         PurchaseKind.GROWTH_CHARGE: ("Use growth charge", "Keep browsing"),
         PurchaseKind.FERTILIZER: ("View plant", "Keep browsing"),
         PurchaseKind.GARDEN_FEATURE: ("View collection", "Keep browsing"),
-        PurchaseKind.BED: ("View garden", "Keep browsing"),
     }
     assert presentation.next_actions == expected_next_actions[kind]
     assert presentation.badges == ()
@@ -362,13 +352,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
 def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     engine, storage = _make_engine()
     storage.state.currency_balance = 500
-    engine._now_seconds = lambda: 1_000.0
-    storage.state.plants[0].fertilizer = Fertilizer(
-        "basic",
-        1,
-        3_700.0,
-        900.0,
-    )
+    assert engine.purchase_fertilizer("p1", "basic")[0]
 
     extension_quote = engine.quote_purchase(
         PurchaseKind.FERTILIZER,
@@ -378,11 +362,11 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     extension = purchase_presentation(extension_quote)
     assert extension.action is PurchaseAction.EXTEND
     assert extension.title == "Extend Basic Fertilizer?"
-    assert extension.primary_label == "Extend · 30 coins"
-    assert extension_quote.current_seconds_remaining == 2_700
-    assert extension_quote.resulting_seconds_remaining == 6_300
+    assert extension.primary_label == "Extend"
+    assert extension_quote.current_cards_remaining == 100
+    assert extension_quote.resulting_cards_remaining == 200
     assert extension.facts == ()
-    assert extension.outcome == "Adds 1 hour to Moss."
+    assert extension.outcome == "Adds 100 eligible cards to Moss."
 
     queued_quote = engine.quote_purchase(
         PurchaseKind.FERTILIZER,
@@ -394,13 +378,13 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     assert not queued_quote.replacement_required
     assert queued.action is PurchaseAction.PURCHASE_QUEUE
     assert queued.title == "Queue Magical Fertilizer?"
-    assert queued.primary_label == "Buy and queue · 300 coins"
+    assert queued.primary_label == "Buy and queue"
     assert queued.outcome == (
-        "Starts after Basic Fertilizer ends, then lasts 4 hours. "
-        "+3 Growth per eligible card answer."
+        "Starts after Basic Fertilizer ends, then lasts 400 eligible cards. "
+        "+3 Growth per eligible card."
     )
-    assert queued_quote.current_seconds_remaining == 2_700
-    assert queued_quote.resulting_seconds_remaining == 17_100
+    assert queued_quote.current_cards_remaining == 100
+    assert queued_quote.resulting_cards_remaining == 500
 
     failed_queue = purchase_presentation(
         queued_quote,
@@ -419,13 +403,133 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     )
 
 
+def test_purchase_projection_separates_actions_from_coin_rows() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    charge = purchase_projection(
+        engine.quote_purchase(PurchaseKind.GROWTH_CHARGE, "growth_charge_small")
+    )
+    assert charge.action_text == "Buy charge"
+    assert charge.price_coins == 30
+    assert charge.wallet_balance_coins == 5_000
+    assert [(row.key, row.amount_coins) for row in charge.transaction_rows] == [
+        ("price", 30),
+        ("balance", 5_000),
+        ("balance_after", 4_970),
+    ]
+    assert charge.appearance_state is PurchaseAppearanceState.ENABLED
+    assert "coin" not in charge.action_text.casefold()
+
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    queued = purchase_projection(
+        engine.quote_purchase(PurchaseKind.FERTILIZER, "premium", target_id="p1")
+    )
+    assert queued.action_text == "Buy and queue"
+
+    direct_engine, _direct_storage = _make_engine()
+    direct = purchase_projection(
+        direct_engine.quote_purchase(
+            PurchaseKind.FERTILIZER, "basic", target_id="p1"
+        )
+    )
+    assert direct.action_text == "Use"
+
+    bed = purchase_projection(engine.quote_purchase(PurchaseKind.BED, "next"))
+    assert bed.action_text == "Unlock Bed 3"
+    assert bed.price_coins is None
+    assert not bed.can_commit
+    assert bed.transaction_rows == ()
+
+
+@pytest.mark.parametrize(
+    ("disposition", "seconds", "cards", "action"),
+    (
+        (FertilizerStoredItemDisposition.ADD_ONE_HOUR, 3_600, 0, "Add 1 hour"),
+        (FertilizerStoredItemDisposition.ADD_TWO_HOURS, 7_200, 0, "Add 2 hours"),
+        (FertilizerStoredItemDisposition.QUEUE, 0, 100, "Queue"),
+        (FertilizerStoredItemDisposition.USE, 0, 100, "Use"),
+    ),
+)
+def test_fertilizer_stored_item_results_are_explicit(
+    disposition: FertilizerStoredItemDisposition,
+    seconds: int,
+    cards: int,
+    action: str,
+) -> None:
+    expires_at_ms = (
+        1_788_103_600_000
+        if disposition in {
+            FertilizerStoredItemDisposition.ADD_ONE_HOUR,
+            FertilizerStoredItemDisposition.ADD_TWO_HOURS,
+        }
+        else None
+    )
+    projected = fertilizer_stored_item_projection(
+        disposition,
+        duration_delta_seconds=seconds,
+        card_queue_delta=cards,
+        expires_at_ms=expires_at_ms,
+    )
+    assert (
+        projected.action_text,
+        projected.duration_delta_seconds,
+        projected.card_queue_delta,
+    ) == (action, seconds, cards)
+    assert projected.expires_at_ms == expires_at_ms
+
+
+def test_timed_fertilizer_projection_carries_authoritative_expiry() -> None:
+    projected = fertilizer_stored_item_projection(
+        FertilizerStoredItemDisposition.ADD_ONE_HOUR,
+        duration_delta_seconds=3_600,
+        expires_at_ms=1_788_103_600_000,
+    )
+    assert projected.expires_at_ms == 1_788_103_600_000
+    with pytest.raises(ValueError, match="absolute expires_at_ms"):
+        fertilizer_stored_item_projection(
+            FertilizerStoredItemDisposition.ADD_ONE_HOUR,
+            duration_delta_seconds=3_600,
+        )
+    with pytest.raises(ValueError, match="card-counted"):
+        fertilizer_stored_item_projection(
+            FertilizerStoredItemDisposition.USE,
+            card_queue_delta=100,
+            expires_at_ms=1_788_103_600_000,
+        )
+
+
+def test_migrated_timed_fertilizer_projects_a_card_counted_queue_action() -> None:
+    storage = _Storage()
+    payload = storage.state.to_dict()
+    payload["version"] = 25
+    payload["plants"][0]["fertilizer"] = {
+        "tier": "basic",
+        "growth_per_answer": 1,
+        "started_at": 1_000.0,
+        "expires_at": 4_600.0,
+    }
+    storage.state = migrate_modern_state(payload, migrated_at=2_000.0)
+    engine = GardenGameEngine(_Config(), storage)
+
+    projection = engine.fertilizer_stored_item_projection("p1", tier="basic")
+
+    assert storage.state.plants[0].fertilizer is None
+    assert storage.state.plants[0].fertilizer_card_batches
+    assert projection is not None
+    assert projection.disposition is FertilizerStoredItemDisposition.QUEUE
+    assert projection.action_text == "Queue"
+    assert projection.duration_delta_seconds == 0
+    assert projection.card_queue_delta == 100
+    assert projection.expires_at_ms is None
+
+
 @pytest.mark.parametrize(
     ("status", "title", "primary", "show_cost", "balance_after"),
     (
         (
             PurchaseStatus.INSUFFICIENT_COINS,
             "Not enough Garden Coins",
-            "Buy for 30 coins",
+            "Buy charge",
             True,
             None,
         ),
@@ -497,16 +601,16 @@ def test_purchase_copy_pluralizes_a_single_coin_price_and_deficit() -> None:
     )
 
     ready = purchase_presentation(quote, ignore_status=True)
-    assert ready.primary_label == "Buy for 1 coin"
-    assert ready.primary_accessible_name == "Buy for 1 Garden Coin"
+    assert ready.primary_label == "Buy charge"
+    assert ready.primary_accessible_name == "Buy charge"
 
     insufficient = purchase_presentation(
         quote,
         status=PurchaseStatus.INSUFFICIENT_COINS,
     )
-    assert insufficient.primary_label == "Buy for 1 coin"
+    assert insufficient.primary_label == "Buy charge"
     assert insufficient.outcome == (
-        "You need 1 more coin to buy Small Growth Charge."
+        "You need 1 more Garden Coin to buy Small Growth Charge."
     )
 
 
@@ -562,7 +666,7 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
         (fact.key, fact.label, fact.value)
         for fact in presentation.facts
     ] == [("inventory", "Inventory", "0 → 1")]
-    assert presentation.primary_label == "Buy for 30 coins"
+    assert presentation.primary_label == "Buy charge"
     if status is PurchaseStatus.STALE_BALANCE:
         assert presentation.title == "Buy Small Growth Charge?"
         assert presentation.update_label == "Balance updated"
@@ -581,7 +685,6 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
         (PurchaseKind.FERTILIZER, "basic", "p1"),
         (PurchaseKind.GARDEN_FEATURE, "wind_chime", None),
         (PurchaseKind.SCENERY, "spring", None),
-        (PurchaseKind.BED, "next", None),
     ),
 )
 def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
@@ -607,8 +710,7 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
         PurchaseKind.GROWTH_CHARGE: "Purchased Small Growth Charge",
         PurchaseKind.FERTILIZER: "Applied Basic Fertilizer to Moss",
         PurchaseKind.GARDEN_FEATURE: "Purchased Wind Chime",
-        PurchaseKind.SCENERY: "Purchased Spring Bloom",
-        PurchaseKind.BED: "Unlocked Garden Bed 3",
+            PurchaseKind.SCENERY: "Purchased Spring Bloom",
     }[kind]
     assert storage.state.completed_purchase_requests[-1].outcome == outcome
     assert outcome.message == {
@@ -616,8 +718,7 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
         PurchaseKind.GROWTH_CHARGE: "Small Growth Charge added.",
         PurchaseKind.FERTILIZER: "Basic Fertilizer applied.",
         PurchaseKind.GARDEN_FEATURE: "Wind Chime added to your collection.",
-        PurchaseKind.SCENERY: "Spring Bloom added to your collection.",
-        PurchaseKind.BED: "Bed 3 unlocked.",
+            PurchaseKind.SCENERY: "Spring Bloom added to your collection.",
     }[kind]
     assert outcome.message == presentation.success_message
     assert outcome.next_actions == presentation.next_actions
@@ -626,14 +727,14 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
     elif kind is PurchaseKind.GROWTH_CHARGE:
         assert storage.state.consumables[item_id] == 1
     elif kind is PurchaseKind.FERTILIZER:
-        assert storage.state.plants[0].fertilizer is not None
-        assert storage.state.plants[0].fertilizer.tier == item_id
+        batches = storage.state.plants[0].fertilizer_card_batches
+        assert len(batches) == 1
+        assert batches[0].effect_id == f"fertilizer_{item_id}"
+        assert batches[0].remaining_cards == 100
     elif kind is PurchaseKind.GARDEN_FEATURE:
         assert item_id in storage.state.inventory["garden_features"]
     elif kind is PurchaseKind.SCENERY:
         assert item_id in storage.state.inventory["scenery"]
-    else:
-        assert storage.state.unlocked_slots == 3
 
 
 def test_confirm_purchase_is_atomic_idempotent_and_rejects_request_id_conflict() -> None:
@@ -648,7 +749,7 @@ def test_confirm_purchase_is_atomic_idempotent_and_rejects_request_id_conflict()
 
     assert first.success
     assert second == first
-    assert storage.state.currency_balance == 350
+    assert storage.state.currency_balance == 250
     assert len([plant for plant in storage.state.plants if plant.species == "sunflower"]) == 1
     assert len([
         transaction
@@ -664,7 +765,7 @@ def test_confirm_purchase_is_atomic_idempotent_and_rejects_request_id_conflict()
     ))
 
     assert conflict.status is PurchaseStatus.REQUEST_ID_CONFLICT
-    assert storage.state.currency_balance == 350
+    assert storage.state.currency_balance == 250
     assert storage.state.consumables["growth_charge_small"] == 0
 
 
@@ -743,8 +844,12 @@ def test_confirmation_distinguishes_stale_terms_and_target_changes(
     storage.state.active_plant_id = "p1"
     bed_quote = engine.quote_purchase(PurchaseKind.BED, "next")
     bed_request = PurchaseRequest.from_quote(bed_quote)
-    storage.state.unlocked_slots += 1
-    assert engine.confirm_purchase(bed_request).status is PurchaseStatus.STALE_TARGET
+    slots_before = storage.state.unlocked_slots
+    coins_before = storage.state.currency_balance
+    assert bed_quote.status is PurchaseStatus.ITEM_UNAVAILABLE
+    assert engine.confirm_purchase(bed_request).status is PurchaseStatus.ITEM_UNAVAILABLE
+    assert storage.state.unlocked_slots == slots_before
+    assert storage.state.currency_balance == coins_before
 
 
 def test_fertilizer_confirmation_does_not_rebind_a_disappeared_source() -> None:
@@ -857,8 +962,8 @@ def test_different_fertilizer_tier_queues_without_authorization_or_discard() -> 
     assert not quote.replacement_required
     assert quote.disposition is PurchaseDisposition.QUEUED
     assert quote.current_item_name == "Basic Fertilizer"
-    assert quote.current_seconds_remaining == 3_400
-    assert quote.resulting_seconds_remaining == 17_800
+    assert quote.current_cards_remaining == 100
+    assert quote.resulting_cards_remaining == 500
 
     queued = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
     assert queued.success
@@ -868,13 +973,13 @@ def test_different_fertilizer_tier_queues_without_authorization_or_discard() -> 
     assert storage.state.currency_transactions[-1].reason == (
         "Queued Magical Fertilizer on Moss"
     )
-    active, waiting = engine.fertilizer_schedule(
-        storage.state.plants[0],
-        now=1_200.0,
-    )
-    assert active is not None and active.tier == "basic"
-    assert [period.tier for period in waiting] == ["premium"]
-    assert active.expires_at == waiting[0].started_at
+    plant = storage.state.plants[0]
+    assert [batch.effect_id for batch in plant.fertilizer_card_batches] == [
+        "fertilizer_basic"
+    ]
+    assert [batch.effect_id for batch in plant.fertilizer_card_queue] == [
+        "fertilizer_premium"
+    ]
 
 
 def test_fertilizer_queue_remains_bound_when_the_active_plant_changes() -> None:
@@ -887,19 +992,14 @@ def test_fertilizer_queue_remains_bound_when_the_active_plant_changes() -> None:
     assert engine.purchase_fertilizer(source.plant_id, "premium")[0]
     storage.state.active_plant_id = next_active.plant_id
 
-    source_active, source_queue = engine.fertilizer_schedule(
-        source,
-        now=1_000.0,
-    )
-    next_active_period, next_active_queue = engine.fertilizer_schedule(
-        next_active,
-        now=1_000.0,
-    )
-
-    assert source_active is not None and source_active.tier == "basic"
-    assert [period.tier for period in source_queue] == ["premium"]
-    assert next_active_period is None
-    assert next_active_queue == ()
+    assert [batch.effect_id for batch in source.fertilizer_card_batches] == [
+        "fertilizer_basic"
+    ]
+    assert [batch.effect_id for batch in source.fertilizer_card_queue] == [
+        "fertilizer_premium"
+    ]
+    assert next_active.fertilizer_card_batches == []
+    assert next_active.fertilizer_card_queue == []
 
 
 def test_fertilizer_queue_quote_names_the_actual_schedule_tail_predecessor() -> None:
@@ -918,32 +1018,33 @@ def test_fertilizer_queue_quote_names_the_actual_schedule_tail_predecessor() -> 
     )
     presentation = purchase_presentation(quote)
 
-    current, waiting = engine.fertilizer_schedule(
-        storage.state.plants[0],
-        now=1_200.0,
-    )
-    assert current is not None and current.tier == "basic"
-    assert [period.tier for period in waiting] == ["quality"]
+    plant = storage.state.plants[0]
+    assert [batch.effect_id for batch in plant.fertilizer_card_batches] == [
+        "fertilizer_basic"
+    ]
+    assert [batch.effect_id for batch in plant.fertilizer_card_queue] == [
+        "fertilizer_quality"
+    ]
     assert quote.target_id == "p1"
     assert quote.disposition is PurchaseDisposition.QUEUED
     assert quote.current_item_name == "Quality Fertilizer"
-    assert quote.current_effect == "+2 Growth per eligible card answer"
-    assert quote.current_seconds_remaining == 10_600
+    assert quote.current_effect == "+2 Growth per eligible card"
+    assert quote.current_cards_remaining == 200
+    assert quote.resulting_cards_remaining == 700
     assert presentation.outcome == (
-        "Starts after Quality Fertilizer ends, then lasts 4 hours. "
-        "+3 Growth per eligible card answer."
+        "Starts after Quality Fertilizer ends, then lasts 400 eligible cards. "
+        "+3 Growth per eligible card."
     )
 
     outcome = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
     assert outcome.success
     assert outcome.result_id == "p1"
-    current, waiting = engine.fertilizer_schedule(
-        storage.state.plants[0],
-        now=1_200.0,
-    )
-    assert current is not None and current.tier == "basic"
-    assert [period.tier for period in waiting] == ["quality", "premium"]
-    assert waiting[0].expires_at == waiting[1].started_at
+    assert [batch.effect_id for batch in plant.fertilizer_card_batches] == [
+        "fertilizer_basic"
+    ]
+    assert [batch.effect_id for batch in plant.fertilizer_card_queue] == [
+        "fertilizer_quality", "fertilizer_premium"
+    ]
 
 
 def test_fertilizer_actions_follow_the_queued_schedule_tail() -> None:
@@ -992,13 +1093,13 @@ def test_fertilizer_queue_debits_once_and_rolls_back_on_save_failure() -> None:
     assert storage.state.currency_balance == (
         balance_before - engine.FERTILIZERS["premium"].price
     )
-    assert storage.state.plants[0].fertilizer is not None
-    assert storage.state.plants[0].fertilizer.tier == "basic"
-    _active, waiting = engine.fertilizer_schedule(
-        storage.state.plants[0],
-        now=1_200.0,
-    )
-    assert [period.tier for period in waiting] == ["premium"]
+    plant = storage.state.plants[0]
+    assert [batch.effect_id for batch in plant.fertilizer_card_batches] == [
+        "fertilizer_basic"
+    ]
+    assert [batch.effect_id for batch in plant.fertilizer_card_queue] == [
+        "fertilizer_premium"
+    ]
 
     failing_engine, failing_storage = _make_engine()
     failing_storage.state.currency_balance = 500
@@ -1345,7 +1446,7 @@ def test_nursery_timed_fertilizer_queues_without_confirmation_and_uses_item_once
         tier="basic",
         name="Basic Fertilizer",
         growth_per_answer=1,
-        duration_seconds=3_600,
+        card_count=100,
     )
 
     def use_item(
@@ -1441,7 +1542,7 @@ def test_nursery_owned_fertilizer_keeps_the_card_source_plant_id() -> None:
         tier="basic",
         name="Basic Fertilizer",
         growth_per_answer=1,
-        duration_seconds=3_600,
+        card_count=100,
     )
     use_fertilizer = _compiled_method(
         DASHBOARD_PATH,
@@ -1504,7 +1605,7 @@ def test_nursery_owned_fertilizer_fails_when_explicit_source_disappears() -> Non
         tier="basic",
         name="Basic Fertilizer",
         growth_per_answer=1,
-        duration_seconds=3_600,
+        card_count=100,
     )
     use_fertilizer = _compiled_method(
         DASHBOARD_PATH,

@@ -174,8 +174,8 @@ def test_growth_is_capped_at_rare_and_stage_names_are_unchanged():
     plant = GardenState.from_dict(payload).plants[0]
 
     assert GROWTH_STAGES == ["seed", "sprout", "young", "mature", "flowering", "rare"]
-    assert GROWTH_THRESHOLDS == [0, 500, 2_500, 8_000, 20_000, 50_000]
-    assert plant.growth_points == 50_000
+    assert GROWTH_THRESHOLDS == [0, 400, 2_000, 6_000, 15_000, 35_000]
+    assert plant.growth_points == 35_000
     assert plant.growth_stage == "rare"
 
 
@@ -253,7 +253,7 @@ def test_active_plant_must_be_planted_and_unfinished():
     payload = base_payload()
     payload["plants"] = [
         {"plant_id": "shelved", "species": "peony", "name": "Pearl", "slot_index": None},
-        {"plant_id": "rare", "species": "rose", "name": "Briar", "slot_index": 0, "growth_points": 50_000},
+        {"plant_id": "rare", "species": "rose", "name": "Briar", "slot_index": 0, "growth_points": 35_000},
     ]
     payload["active_plant_id"] = "shelved"
     assert GardenState.from_dict(payload).active_plant_id is None

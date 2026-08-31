@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 
+from ankigarden.economy_progression import (
+    GrowthTargetType,
+    ProjectGrowthAllocation,
+)
 from ankigarden.game import (
     CommittedAnswerResult,
     CommittedPlantSnapshot,
@@ -26,6 +30,13 @@ def _result(
     scheduler_day: str,
     before_units: int,
     after_units: int,
+    landmark_before_units: int = 0,
+    landmark_after_units: int = 0,
+    mastery_before_units: int = 0,
+    mastery_after_units: int = 0,
+    legacy_before_units: int = 0,
+    legacy_after_units: int = 0,
+    project_allocations: tuple[ProjectGrowthAllocation, ...] = (),
     receipts: tuple[RewardReceipt, ...] = (),
 ) -> CommittedAnswerResult:
     before = CommittedPlantSnapshot(
@@ -59,11 +70,27 @@ def _result(
             0,
             0,
             correlation_id=event_id,
-            base_growth_units=max(0, after_units - before_units),
+            base_growth_units=max(
+                0,
+                (after_units - before_units)
+                + (landmark_after_units - landmark_before_units)
+                + (mastery_after_units - mastery_before_units)
+                + (legacy_after_units - legacy_before_units),
+            ),
+            landmark_growth_units=max(
+                0, landmark_after_units - landmark_before_units
+            ),
         ),
         reward_receipts=receipts,
         plants_before=(before,),
         plants_after=(after,),
+        landmark_growth_before_units=landmark_before_units,
+        landmark_growth_after_units=landmark_after_units,
+        mastery_growth_before_units=mastery_before_units,
+        mastery_growth_after_units=mastery_after_units,
+        legacy_growth_before_units=legacy_before_units,
+        legacy_growth_after_units=legacy_after_units,
+        project_allocations=project_allocations,
         active_plant_before_id="bluebell",
         active_plant_after_id="bluebell",
     )
@@ -165,7 +192,105 @@ def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id(
     assert summary.plant_growth[0]["growth_delta_units"] == 2_000
     assert summary.plant_results[0].plant_id == "bluebell"
     assert summary.plant_results[0].growth_delta_units == 2_000
-    assert summary.to_dict()["model_version"] == 2
+    assert summary.to_dict()["model_version"] == 4
+
+
+def test_landmark_only_import_preserves_total_growth_and_allocation() -> None:
+    result = _result(
+        event_id="answer:300",
+        scheduler_day=CURRENT_DAY,
+        before_units=3_500_000,
+        after_units=3_500_000,
+        landmark_before_units=25_000,
+        landmark_after_units=26_000,
+    )
+
+    summary = build_sync_reward_summary(
+        "sync-landmark-only",
+        (result,),
+        baseline={},
+        engine=SimpleNamespace(_scheduler_day=lambda: CURRENT_DAY),
+    )
+
+    assert summary is not None
+    assert summary.eligible_answer_count == 1
+    assert summary.plant_results == ()
+    assert summary.plant_growth == ()
+    assert summary.stored_growth_delta_units == 0
+    assert summary.landmark_growth_delta_units == 1_000
+    assert summary.growth_total_units == 1_000
+    assert summary.meaningful is True
+
+
+def test_sync_exposes_exact_committed_allocations_for_every_project_type() -> None:
+    results = (
+        _result(
+            event_id="answer:301",
+            scheduler_day=CURRENT_DAY,
+            before_units=3_500_000,
+            after_units=3_500_000,
+            landmark_before_units=25_000,
+            landmark_after_units=25_100,
+            project_allocations=(ProjectGrowthAllocation(
+                GrowthTargetType.LANDMARK,
+                "garden_landmark",
+                100,
+            ),),
+        ),
+        _result(
+            event_id="answer:302",
+            scheduler_day=CURRENT_DAY,
+            before_units=3_500_000,
+            after_units=3_500_000,
+            mastery_before_units=75_000,
+            mastery_after_units=75_200,
+            project_allocations=(ProjectGrowthAllocation(
+                GrowthTargetType.MASTERY,
+                "bonsai",
+                200,
+            ),),
+        ),
+        _result(
+            event_id="answer:303",
+            scheduler_day=CURRENT_DAY,
+            before_units=3_500_000,
+            after_units=3_500_000,
+            legacy_before_units=500_000,
+            legacy_after_units=500_300,
+            project_allocations=(ProjectGrowthAllocation(
+                GrowthTargetType.LEGACY,
+                "garden_legacy",
+                300,
+            ),),
+        ),
+    )
+
+    summary = build_sync_reward_summary(
+        "sync-all-projects",
+        results,
+        baseline={"landmark_growth_units": 999_999_999},
+        engine=SimpleNamespace(_scheduler_day=lambda: CURRENT_DAY),
+    )
+
+    assert summary is not None
+    assert summary.growth_total_units == 600
+    assert summary.landmark_growth_delta_units == 100
+    assert summary.mastery_growth_delta_units == 200
+    assert summary.legacy_growth_delta_units == 300
+    assert tuple(row.to_dict() for row in summary.project_allocations) == (
+        {
+            "target_type": "landmark",
+            "target_id": "garden_landmark",
+            "units": 100,
+        },
+        {"target_type": "mastery", "target_id": "bonsai", "units": 200},
+        {
+            "target_type": "legacy",
+            "target_id": "garden_legacy",
+            "units": 300,
+        },
+    )
+    assert SyncRewardSummary.from_dict(summary.to_dict()) == summary
 
 
 def test_sync_named_find_replaces_legacy_category_icon_with_canonical_art() -> None:
@@ -217,7 +342,7 @@ def test_sync_active_boosts_keep_canonical_item_art_in_pending_summary() -> None
         _scheduler_day=lambda: CURRENT_DAY,
         sync_reward_baseline=lambda: {
             "fertilizer_signature": ("quality-after",),
-            "fertilizer_remaining_seconds": 1_080,
+            "fertilizer_cards_remaining": 90,
             "fertilizer_item_id": "fertilizer_quality",
             "booster_signature": ("booster-after",),
             "booster_cards_remaining": 12,
@@ -243,6 +368,8 @@ def test_sync_active_boosts_keep_canonical_item_art_in_pending_summary() -> None
 
     assert summary is not None
     assert summary.fertilizer_item_id == "fertilizer_quality"
+    assert summary.fertilizer_cards_remaining == 90
+    assert summary.fertilizer_remaining_seconds == 0
     assert summary.fertilizer_art_asset == "/art/fertilizer_quality.webp"
     assert summary.booster_item_id == "booster_potion"
     assert summary.booster_art_asset == "/art/booster_potion.webp"

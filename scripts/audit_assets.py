@@ -47,6 +47,9 @@ SCENERY = (
     "eclipse",
 )
 EXPECTED_COUNTS = {
+    "cosmetics": 8,
+    "landmarks": 6,
+    "mastery": 4,
     "backgrounds": 9,
     "plants": 60,
     "ui": 19,
@@ -62,6 +65,9 @@ RUNTIME_ROOTS = (
 # Retina requirement a release gate instead of a capture-review convention.
 RETINA_RASTER_MAX_CSS_SIZE = {
     "plants": (300, 300),
+    "cosmetics": (300, 300),
+    "landmarks": (300, 300),
+    "mastery": (300, 300),
     # The shared pad is a shallow 28% x 7% scene-height strip; decoration masters
     # in the same category are square 1024 px canvases and exceed this floor.
     "garden_features": (210, 59),

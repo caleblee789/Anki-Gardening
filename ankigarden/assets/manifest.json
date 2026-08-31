@@ -3,6 +3,186 @@
   "generated_by": "Anki Garden V6 Garden Decoration and scenery collection",
   "assets": [
     {
+      "asset_id": "cosmetic_garden_bench", "category": "cosmetics",
+      "slot": {"key": "cosmetic_garden_bench"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_garden_bench.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "cosmetic_birdhouse", "category": "cosmetics",
+      "slot": {"key": "cosmetic_birdhouse"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_birdhouse.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "cosmetic_butterfly_house", "category": "cosmetics",
+      "slot": {"key": "cosmetic_butterfly_house"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_butterfly_house.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "cosmetic_stone_lantern", "category": "cosmetics",
+      "slot": {"key": "cosmetic_stone_lantern"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_stone_lantern.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "cosmetic_sundial", "category": "cosmetics",
+      "slot": {"key": "cosmetic_sundial"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_sundial.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "cosmetic_botanists_plaque", "category": "cosmetics",
+      "slot": {"key": "cosmetic_botanists_plaque"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout", "achievement"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_botanists_plaque.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "cosmetic_garden_journal", "category": "cosmetics",
+      "slot": {"key": "cosmetic_garden_journal"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout", "achievement"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_garden_journal.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "cosmetic_golden_trowel", "category": "cosmetics",
+      "slot": {"key": "cosmetic_golden_trowel"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout", "achievement"],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_golden_trowel.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "landmark_mossy_stone_path", "category": "landmarks",
+      "slot": {"key": "mossy_stone_path"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/landmarks/landmark_mossy_stone_path.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "landmark_birdbath_terrace", "category": "landmarks",
+      "slot": {"key": "birdbath_terrace"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/landmarks/landmark_birdbath_terrace.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "landmark_lily_pond", "category": "landmarks",
+      "slot": {"key": "lily_pond"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/landmarks/landmark_lily_pond.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "landmark_wooden_footbridge", "category": "landmarks",
+      "slot": {"key": "wooden_footbridge"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/landmarks/landmark_wooden_footbridge.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "landmark_garden_pergola", "category": "landmarks",
+      "slot": {"key": "garden_pergola"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/landmarks/landmark_garden_pergola.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "landmark_glasshouse_conservatory", "category": "landmarks",
+      "slot": {"key": "glasshouse_conservatory"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/landmarks/landmark_glasshouse_conservatory.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "mastery_bronze", "category": "mastery",
+      "slot": {"key": "bronze"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_overlay"],
+      "file": "assets/v6_storybook_gouache/mastery/mastery_bronze.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "mastery_silver", "category": "mastery",
+      "slot": {"key": "silver"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_overlay"],
+      "file": "assets/v6_storybook_gouache/mastery/mastery_silver.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "mastery_gold", "category": "mastery",
+      "slot": {"key": "gold"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_overlay"],
+      "file": "assets/v6_storybook_gouache/mastery/mastery_gold.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "mastery_iridescent", "category": "mastery",
+      "slot": {"key": "iridescent"},
+      "variants": ["storybook_gouache", "economy_22", "transparent_overlay"],
+      "file": "assets/v6_storybook_gouache/mastery/mastery_iridescent.webp",
+      "width": 1024, "height": 1024, "format": "webp", "alpha": true,
+      "style_family": "storybook_gouache", "quality_tier": "ultra", "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
       "asset_id": "garden_feature_seedling_sign",
       "category": "garden_features",
       "slot": {"garden_feature": "seedling_sign"},

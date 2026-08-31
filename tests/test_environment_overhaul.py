@@ -30,7 +30,6 @@ from ankigarden.models.state import (
     Plant,
     STATE_VERSION,
 )
-from ankigarden.purchases import compact_duration
 from ankigarden.storage import DueObligationStatus, migrate_modern_state
 
 
@@ -132,6 +131,7 @@ def own_and_equip(
         if scenery not in engine.state.inventory["scenery"]:
             engine.state.inventory["scenery"].append(scenery)
         engine.state.selected_background = scenery
+        engine.state.loadout.active_scenery_effect_id = scenery
 
 
 def assert_concise_player_copy(message: str) -> None:
@@ -142,7 +142,7 @@ def assert_concise_player_copy(message: str) -> None:
 
 
 def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract():
-    assert STATE_VERSION == 25
+    assert STATE_VERSION == 27
     assert {item_id: item.price for item_id, item in WEATHER_CATALOG.items()} == {
         "seedling_sign": None,
         "wind_chime": 100,
@@ -176,7 +176,14 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
         for value in (0, 24_999, 49_999, 50_000)
     ] == [25_000, 25_000, 25_000, 25_000]
     assert [key for key, _label in collection_categories()] == [
-        "plants", "scenery", "garden_features", "garden_beds", "growth_items"
+        "plants",
+        "scenery",
+        "garden_features",
+        "garden_beds",
+        "growth_items",
+        "cosmetics",
+        "landmarks",
+        "mastery",
     ]
     assert ("garden_features", "Garden decorations") in collection_categories()
     registry = collectible_registry()
@@ -185,7 +192,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
     bed = next(
         item for item in registry if item.item_id == "garden_beds:0"
     )
-    assert "Each planted plant adds a 20% Shared Growth share" in bed.descriptor.buff
+    assert "Each planted plant adds a 10% Shared Growth share" in bed.descriptor.buff
     assert "reaches Full Bloom" in bed.descriptor.buff
     booster = next(
         item for item in registry
@@ -211,8 +218,8 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
         f"+{basic_fertilizer.growth_per_answer:,} Growth"
         in compost.descriptor.buff
     )
-    assert compost.descriptor.duration == compact_duration(
-        basic_fertilizer.duration_seconds
+    assert compost.descriptor.duration == (
+        f"{basic_fertilizer.card_count:,} eligible cards"
     )
     assert compost.descriptor.unlock_requirement == "Found while reviewing."
     assert quality_fertilizer.name == "Quality Fertilizer"
@@ -252,7 +259,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
     )
 
 
-def test_canonical_collection_capture_fixture_projects_thirty_of_thirty_nine():
+def test_canonical_collection_capture_fixture_projects_thirty_of_ninety_three():
     state = GardenState()
     state.unlocked_species = list(CURRENT_CATALOG_SPECIES_ORDER)
     state.unlocked_slots = MAX_GARDEN_SLOTS
@@ -283,6 +290,9 @@ def test_canonical_collection_capture_fixture_projects_thirty_of_thirty_nine():
             "garden_features",
             "garden_beds",
             "growth_items",
+            "cosmetics",
+            "landmarks",
+            "mastery",
         )
     }
     unowned_mysteries = {
@@ -296,7 +306,7 @@ def test_canonical_collection_capture_fixture_projects_thirty_of_thirty_nine():
         if not view.owned and view.definition.category == "growth_items"
     }
 
-    assert len(views) == 39
+    assert len(views) == 93
     assert len(owned) == 30
     assert totals_by_category == {
         "plants": 10,
@@ -304,6 +314,9 @@ def test_canonical_collection_capture_fixture_projects_thirty_of_thirty_nine():
         "garden_features": 7,
         "garden_beds": 6,
         "growth_items": 7,
+        "cosmetics": 8,
+        "landmarks": 6,
+        "mastery": 40,
     }
     assert len(unowned_mysteries) == 6
     assert unowned_growth_items == {
@@ -332,14 +345,15 @@ def test_collection_projects_finite_environment_guarantees_and_completed_tiers()
     assert (rare.label, rare.base_denominator, rare.hard_guarantee_cards) == (
         "Rare",
         2_500,
-        5_000,
+        10_000,
     )
     assert rare.progress_cards == 1_234
-    assert rare.cards_until_guaranteed == 3_766
-    assert rare.progress_value_text == "1,234 of 5,000 cards"
+    assert rare.cards_until_guaranteed == 8_766
+    assert rare.progress_value_text == "1,234 of 10,000 cards"
     assert rare.base_chance_text == "Tier chance: 1 in 2,500 per eligible card"
     assert rare.guarantee_text == (
-        "Next Rare discovery guaranteed within 3,766 cards"
+        "Next Rare discovery guaranteed within 8,766 cards or 60 Today’s "
+        "Cards completions, whichever comes first"
     )
     assert not rare.completed
     assert (rare.collected_items, rare.total_items) == (1, 2)
@@ -351,7 +365,8 @@ def test_collection_projects_finite_environment_guarantees_and_completed_tiers()
     assert ultra.progress_cards == 49_999
     assert ultra.cards_until_guaranteed == 1
     assert ultra.guarantee_text == (
-        "Next Ultra discovery guaranteed within 1 card"
+        "Next Ultra Rare discovery guaranteed within 1 card or 365 Today’s "
+        "Cards completions, whichever comes first"
     )
     assert not ultra.completed
 
@@ -378,12 +393,12 @@ def test_collection_marks_each_environment_tier_complete_without_a_pending_roll(
 
     tiers = environment_discovery_progress(state)
 
-    assert [tier.label for tier in tiers] == ["Rare", "Very Rare", "Ultra"]
+    assert [tier.label for tier in tiers] == ["Rare", "Very Rare", "Ultra Rare"]
     assert all(tier.completed for tier in tiers)
     assert [tier.completion_text for tier in tiers] == [
         "All Rare discoveries collected",
         "All Very Rare discoveries collected",
-        "All Ultra discoveries collected",
+        "All Ultra Rare discoveries collected",
     ]
 
 
@@ -504,7 +519,7 @@ def test_first_progress_event_locks_mechanics_and_later_equips_queue_for_tomorro
     second = answer(engine, storage)
 
     assert first.weather_growth == second.weather_growth == 0
-    assert first.scenery_growth == second.scenery_growth == 1
+    assert first.scenery_growth == second.scenery_growth == 2
     assert locked_at > 0
     assert engine.locked_environment_id("garden_feature") == "wind_chime"
     assert engine.locked_environment_id("scenery") == "spring"
@@ -553,14 +568,14 @@ def test_weather_and_scenery_review_passives_stack_and_stop_at_their_exact_limit
 
     awards = [answer(engine, storage) for _ in range(26)]
 
-    assert awards[0].total_growth == 11
-    assert awards[9].total_growth == 12
-    assert awards[10].total_growth == 11
-    assert awards[19].total_growth == 12
-    assert awards[24].total_growth == 11
+    assert awards[0].total_growth == 12
+    assert awards[9].total_growth == 13
+    assert awards[10].total_growth == 12
+    assert awards[19].total_growth == 13
+    assert awards[24].total_growth == 10
     assert awards[25].total_growth == 10
     assert storage.state.daily_stats.weather_growth == 2
-    assert storage.state.daily_stats.scenery_growth == 25
+    assert storage.state.daily_stats.scenery_growth == 40
 
 
 def test_secondary_growth_is_flat_and_never_multiplies_other_bonuses():
@@ -571,17 +586,18 @@ def test_secondary_growth_is_flat_and_never_multiplies_other_bonuses():
 
     assert awards[0].base_growth == 10
     assert awards[0].weather_growth == 0
-    assert awards[0].scenery_growth == 2
-    assert awards[0].total_growth == 12
-    assert awards[3].weather_growth == 3
-    assert awards[14].weather_growth == 0
-    assert awards[15].weather_growth == 3
-    assert awards[15].scenery_growth == 2
-    assert awards[15].total_growth == 15
-    assert awards[99].scenery_growth == 2
-    assert awards[99].weather_growth == 3
-    assert awards[100].scenery_growth == 0
-    assert awards[100].total_growth == 10
+    assert awards[0].scenery_growth == 1
+    assert awards[0].total_growth == 11
+    assert awards[4].weather_growth == 0
+    assert awards[4].decoration_result.direct_growth_awarded_units == 300
+    assert awards[14].decoration_result.direct_growth_awarded_units == 300
+    assert awards[15].weather_growth == 0
+    assert awards[15].scenery_growth == 1
+    assert awards[15].total_growth == 11
+    assert awards[99].scenery_growth == 1
+    assert awards[99].decoration_result.direct_growth_awarded_units == 300
+    assert awards[100].scenery_growth == 1
+    assert awards[100].total_growth == 11
 
 
 @pytest.mark.parametrize(
@@ -621,9 +637,9 @@ def test_todays_cards_environment_rewards_use_locked_mechanics_and_normal_accoun
         record_completed_delta=True,
     )
     assert ok
-    assert rainbow_storage.state.plants[0].growth_units == before_units + 150
-    assert rainbow.last_completion_result.prism_growth_released_units == 150
-    assert rainbow_storage.state.daily_stats.instant_growth_units == 150
+    assert rainbow_storage.state.plants[0].growth_units == before_units + 100
+    assert rainbow.last_completion_result.prism_growth_released_units == 100
+    assert rainbow_storage.state.daily_stats.instant_growth_units == 100
     assert rainbow_storage.state.currency_balance == 17
     assert rainbow.last_completion_result.prism_growth_destination == "plant_growth"
     assert_concise_player_copy(message)
@@ -633,16 +649,21 @@ def test_autumn_carries_fractional_bonus_across_checkpoint_payouts():
     engine, storage = make_engine()
     own_and_equip(engine, scenery="autumn")
     plant = storage.state.plants[0]
-    for before in (124, 249, 374, 499):
+    for before in (99, 199, 299, 399):
         plant.growth_points = before
         answer(engine, storage)
 
     milestone_payouts = [
         tx.delta for tx in storage.state.currency_transactions
-        if tx.event_key.startswith("stage")
+        if tx.source == "plant_milestone"
     ]
-    assert milestone_payouts == [1, 2, 1, 3]
-    assert sum(milestone_payouts) == 7
+    autumn_payouts = [
+        tx.delta for tx in storage.state.currency_transactions
+        if tx.source == "autumn_hearth"
+    ]
+    assert milestone_payouts == [1, 1, 1, 2]
+    assert autumn_payouts == [1, 1]
+    assert sum((*milestone_payouts, *autumn_payouts)) == 7
     assert storage.state.checkpoint_coin_carry_units == 50
 
 
@@ -651,22 +672,22 @@ def test_growth_charges_purchase_apply_transitions_without_losing_overflow():
     storage.state.currency_balance = 100
     own_and_equip(engine, scenery="autumn")
     plant = storage.state.plants[0]
-    plant.growth_points = 490
+    plant.growth_points = 390
 
     assert engine.purchase_growth_charge("growth_charge_small")[0]
     assert storage.state.currency_balance == 70
     ok, message = engine.use_growth_charge("growth_charge_small")
     assert ok
     assert "100 Growth" in message
-    assert plant.growth_points == 590
+    assert plant.growth_points == 490
     assert storage.state.daily_stats.charge_growth == 100
     assert storage.state.currency_balance == 73
 
-    plant.growth_points = 49_950
+    plant.growth_points = 34_950
     continuation = storage.state.plants[1]
     storage.state.consumables["growth_charge_small"] = 1
     assert engine.use_growth_charge("growth_charge_small")[0]
-    assert plant.growth_points == 50_000
+    assert plant.growth_points == 35_000
     assert continuation.growth_points == 50
     assert storage.state.active_plant_id == continuation.plant_id
     assert storage.state.consumables["growth_charge_small"] == 1
@@ -682,13 +703,14 @@ def test_equipped_weather_and_scenery_extend_booster_card_count_additively():
     assert engine.use_booster_potion()[0]
 
     batch = storage.state.plants[0].booster_card_batches[0]
-    assert batch.total_cards == batch.remaining_cards == 150
+    assert batch.total_cards == batch.remaining_cards == 125
 
 
 def test_todays_cards_scenery_gift_is_independent_of_capped_find_pools():
     engine, storage = make_engine()
     engine.initialize_reward_state()
     own_and_equip(engine, scenery="snowy")
+    storage.state.snow_completion_progress = 1
     storage.state.garden_find_daily_counts[storage.day] = 3
     storage.state.garden_find_drought_count = 40
     first_id = storage.now_ms + 1_000
