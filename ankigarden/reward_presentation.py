@@ -7,7 +7,7 @@ not mutate state, grant rewards, or make eligibility decisions.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
@@ -34,7 +34,9 @@ from .presentation import (
     STANDARD_FIND_INTERNAL_ID,
     visible_reward_term,
 )
-from .ui.formatters import format_quantity
+from .ui.copy import learner_card_copy
+from .ui.economy_presenters import coin_reward_receipt
+from .ui.formatters import format_garden_coins, format_quantity
 from .ui.session_summary import CommittedSessionEvent, format_growth_units
 
 
@@ -68,6 +70,208 @@ class RewardLine:
                 f"{_environment_item_destination(self.item_id)}"
             )
         return f"+{amount:,} {_identifier_name(self.reward_type or 'reward')}"
+
+
+@dataclass(frozen=True)
+class ProjectGrowthPresentation:
+    """One exact committed project allocation joined to canonical UI facts."""
+
+    target_type: str
+    target_id: str
+    units: int
+    display_name: str
+    artwork_id: str = ""
+    status: str = ""
+    progress: str = ""
+    effect_description: str = ""
+    acquisition_route: str = ""
+    claim_coin_cost: int = 0
+    can_claim_now: bool = False
+
+    @property
+    def status_copy(self) -> str:
+        """Return canonical state plus the authoritative unaffordable claim cost."""
+
+        if (
+            self.status == "Reward ready"
+            and self.claim_coin_cost > 0
+            and not self.can_claim_now
+        ):
+            return (
+                f"Reward ready · Claim requires "
+                f"{format_garden_coins(self.claim_coin_cost)}"
+            )
+        return self.status
+
+
+def _growth_project_track(snapshot: Any, target_type: str, target_id: str) -> Any:
+    """Resolve one public snapshot track without importing engine internals."""
+
+    if snapshot is None:
+        return None
+    if target_type == "landmark":
+        track = getattr(snapshot, "landmark_track", None)
+    elif target_type == "mastery":
+        resolver = getattr(snapshot, "mastery_track", None)
+        if not callable(resolver):
+            return None
+        try:
+            track = resolver(target_id)
+        except (TypeError, ValueError):
+            return None
+    elif target_type == "legacy":
+        track = getattr(snapshot, "legacy_track", None)
+    else:
+        return None
+    target = getattr(track, "target", None)
+    track_type = getattr(getattr(target, "target_type", ""), "value", None)
+    if str(track_type or getattr(target, "target_type", "") or "") != target_type:
+        return None
+    if str(getattr(target, "target_id", "") or "") != target_id:
+        return None
+    return track
+
+
+def _growth_project_status(snapshot: Any, track: Any) -> str:
+    target = getattr(track, "target", None)
+    active = target == getattr(snapshot, "active_target", None)
+    tiers = tuple(getattr(track, "tiers", ()) or ())
+    if any(bool(getattr(tier, "claimable", False)) for tier in tiers):
+        return "Reward ready"
+    remaining = getattr(track, "remaining_capacity_units", None)
+    if (
+        tiers and all(bool(getattr(tier, "claimed", False)) for tier in tiers)
+    ) or (
+        remaining is not None and max(0, int(remaining or 0)) == 0
+    ):
+        return "Completed"
+    funded = max(0, int(getattr(track, "growth_units_funded", 0) or 0)) > 0
+    if active or funded:
+        return "In progress"
+    if "activate" in tuple(getattr(track, "allowed_actions", ()) or ()):
+        return "Not started"
+    return "In progress"
+
+
+def _growth_project_progress(track: Any) -> str:
+    maximum = getattr(track, "maximum_growth_units", None)
+    funded = max(0, int(getattr(track, "growth_units_funded", 0) or 0))
+    if maximum is not None:
+        return (
+            f"{format_growth_units(funded)} / "
+            f"{format_growth_units(max(0, int(maximum or 0)))} Growth"
+        )
+    level = max(0, int(getattr(track, "level", 0) or 0))
+    progress = max(0, int(getattr(track, "level_progress_units", 0) or 0))
+    return (
+        f"Level {level:,} · {format_growth_units(progress)} Growth"
+        if level or progress else "Level 0"
+    )
+
+
+def project_growth_allocations(
+    allocations: Iterable[Any],
+    snapshot: Any = None,
+    *,
+    landmark_growth_units: int = 0,
+) -> tuple[ProjectGrowthPresentation, ...]:
+    """Join typed committed credit to canonical project facts, exactly once.
+
+    Input order is retained while duplicate target rows coalesce.  The legacy
+    scalar can contribute only a Landmark shortfall; it never creates a
+    Mastery species or Legacy identity.
+    """
+
+    totals: dict[tuple[str, str], int] = {}
+    order: list[tuple[str, str]] = []
+    for allocation in tuple(allocations or ()):
+        raw_type = getattr(allocation, "target_type", "")
+        target_type = str(getattr(raw_type, "value", raw_type) or "").casefold()
+        target_id = str(getattr(allocation, "target_id", "") or "").strip()
+        units = max(0, int(getattr(allocation, "units", 0) or 0))
+        if target_type not in {"landmark", "mastery", "legacy"}:
+            continue
+        if not target_id or units <= 0:
+            continue
+        key = (target_type, target_id)
+        if key not in totals:
+            order.append(key)
+            totals[key] = 0
+        totals[key] += units
+
+    typed_landmark_units = sum(
+        units
+        for (target_type, _target_id), units in totals.items()
+        if target_type == "landmark"
+    )
+    landmark_residual = max(
+        0,
+        max(0, int(landmark_growth_units or 0)) - typed_landmark_units,
+    )
+    if landmark_residual:
+        landmark_key = next(
+            (key for key in order if key[0] == "landmark"),
+            ("landmark", "garden_landmark"),
+        )
+        if landmark_key not in totals:
+            order.append(landmark_key)
+            totals[landmark_key] = 0
+        totals[landmark_key] += landmark_residual
+
+    result: list[ProjectGrowthPresentation] = []
+    for target_type, target_id in order:
+        committed_units = totals[(target_type, target_id)]
+        track = _growth_project_track(snapshot, target_type, target_id)
+        if track is None:
+            display_name = {
+                "landmark": "Garden Landmark",
+                "mastery": "Cultivation Mastery",
+                "legacy": "Garden Legacy",
+            }[target_type]
+            result.append(ProjectGrowthPresentation(
+                target_type,
+                target_id,
+                committed_units,
+                display_name,
+                status="Committed project Growth",
+            ))
+            continue
+        claimable_tier = next((
+            tier
+            for tier in tuple(getattr(track, "tiers", ()) or ())
+            if bool(getattr(tier, "claimable", False))
+        ), None)
+        status = _growth_project_status(snapshot, track)
+        # Sync receipts may be joined to the snapshot captured immediately
+        # before their committed allocation was applied.  The positive,
+        # engine-authored allocation is enough to advance only the visible
+        # zero-state label; thresholds, progress, and reward readiness remain
+        # entirely owned by the snapshot.
+        if status == "Not started" and committed_units > 0:
+            status = "In progress"
+        result.append(ProjectGrowthPresentation(
+            target_type,
+            target_id,
+            committed_units,
+            str(getattr(track, "display_name", "") or "Growth project"),
+            artwork_id=str(getattr(track, "artwork_id", "") or ""),
+            status=status,
+            progress=_growth_project_progress(track),
+            effect_description=str(
+                getattr(track, "effect_description", "") or ""
+            ),
+            acquisition_route=str(
+                getattr(track, "acquisition_route", "") or ""
+            ),
+            claim_coin_cost=max(
+                0,
+                int(getattr(claimable_tier, "coin_cost", 0) or 0),
+            ),
+            can_claim_now=bool(
+                getattr(claimable_tier, "can_claim_now", False)
+            ),
+        ))
+    return tuple(result)
 
 
 class RewardHero(str, Enum):
@@ -777,7 +981,7 @@ _STAGE_SORT_ORDER = {
 
 def _bundle_item_sort_key(
     pair: tuple[int, RewardItemProjection],
-) -> tuple[int, int, int, str]:
+) -> tuple[int, int, int, int, str]:
     index, item = pair
     # One answer may cross multiple stages. The highest ordinary stage becomes
     # the hero while every atomic transition remains available to history.
@@ -786,7 +990,13 @@ def _bundle_item_sort_key(
         if item.kind is RewardHero.STAGE_CHANGE
         else 0
     )
-    return item.kind.priority, stage_rank, index, item.event_id
+    return (
+        1 if item.routine else 0,
+        item.kind.priority,
+        stage_rank,
+        index,
+        item.event_id,
+    )
 
 
 def _same_full_bloom_plant(
@@ -875,7 +1085,7 @@ def _ordinary_coin_total(awards: Iterable[Any]) -> int:
 def _inventory_compact_label(item: RewardItemProjection) -> str:
     item_id, quantity = item.inventory_items[0]
     if "booster" in item_id.casefold():
-        name = "Booster"
+        name = "Booster Potion"
     else:
         # Event titles describe why the item was granted (for example,
         # "Full Bloom"), not the inventory item itself. Compact chips keep the
@@ -1040,7 +1250,7 @@ def _session_history_row(item: RewardItemProjection) -> RewardDetailRow:
 
     if item.kind is RewardHero.FULL_BLOOM:
         category = "Milestone"
-        name = "Full Bloom achieved"
+        name = "Full Bloom reached"
         values = tuple(value for value in (
             str(item.plant_name or item.title).strip(),
             (
@@ -1127,7 +1337,7 @@ def _project_compact_reward(
 
     hero = bundle.hero
     if hero.kind is RewardHero.FULL_BLOOM:
-        hero_title = "Full Bloom achieved"
+        hero_title = "Full Bloom reached"
         hero_subtitle = hero.plant_name or hero.title
     elif hero.kind is RewardHero.STAGE_CHANGE:
         hero_title = f"{_stage_label(hero.new_stage)} reached"
@@ -1236,7 +1446,8 @@ def _project_compact_reward(
             discovery_items[0].title
             if len(discovery_items) == 1
             else visible_reward_term(GARDEN_DISCOVERY_INTERNAL_ID).label(
-                len(discovery_items)
+                len(discovery_items),
+                include_quantity=True,
             )
         )
         ranked_summaries.append((
@@ -1254,7 +1465,7 @@ def _project_compact_reward(
         coin_total = sum(item.garden_coins for item in coin_items)
         ranked_summaries.append((min(item.sequence for item in coin_items), _compact_summary(
             key="coins",
-            label=f"+{format_quantity(coin_total, 'coin')}",
+            label=f"+{format_quantity(coin_total, 'Garden Coin', 'Garden Coins')}",
             items=coin_items,
             reward_type="coins",
         )))
@@ -1345,6 +1556,7 @@ def project_committed_reward_bundle(
         raise ValueError("reward bundle receipts must share the committed event correlation")
 
     items: list[RewardItemProjection] = []
+    feature_if_only_major_ids: set[str] = set()
     embedded_coins = 0
     embedded_direct_growth_units = 0
 
@@ -1510,6 +1722,20 @@ def project_committed_reward_bundle(
         if not any((coins, growth_units, inventory, environment_items)):
             continue
 
+        coin_presentation = None
+        if coins:
+            candidates = tuple(dict.fromkeys((
+                *(str(receipt.source or "") for receipt in group),
+                *(str(receipt.source_id or "") for receipt in group),
+            )))
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                projected = coin_reward_receipt(candidate, coins)
+                if projected.source_id == candidate:
+                    coin_presentation = projected
+                    break
+
         if "full_bloom" in sources:
             kind = RewardHero.FULL_BLOOM
             category = "Full Bloom"
@@ -1530,6 +1756,8 @@ def project_committed_reward_bundle(
             category = "Growth earned"
 
         title = next((str(receipt.title) for receipt in group if receipt.title), "")
+        if not title and coin_presentation is not None:
+            title = coin_presentation.title
         if not title and environment_items:
             title = _environment_item_name(environment_items[0])
         if not title and inventory:
@@ -1537,12 +1765,15 @@ def project_committed_reward_bundle(
         if not title:
             title = category
         artwork = environment_items[0] if environment_items else (
-            inventory[0][0] if inventory else ""
+            inventory[0][0] if inventory else
+            coin_presentation.artwork_id if coin_presentation is not None else ""
         )
         detail = next(
             (str(receipt.description) for receipt in group if receipt.description),
             "",
         )
+        if not detail and coin_presentation is not None:
+            detail = coin_presentation.detail
         routine_coin_only = bool(
             coins
             and not growth_units
@@ -1553,6 +1784,13 @@ def project_committed_reward_bundle(
         )
         embedded_coins += coins
         embedded_direct_growth_units += growth_units
+        feature_if_only_major = bool(
+            coin_presentation is not None
+            and coin_presentation.summary_policy
+            == "detail_row_feature_if_only_major"
+        )
+        if feature_if_only_major:
+            feature_if_only_major_ids.add(event_key)
         items.append(RewardItemProjection(
             event_id=event_key,
             kind=kind,
@@ -1565,7 +1803,7 @@ def project_committed_reward_bundle(
             artwork_ref=artwork,
             detail=detail,
             sequence=len(items),
-            is_routine=routine_coin_only,
+            is_routine=routine_coin_only or feature_if_only_major,
         ))
 
     # The live footer includes both the engine's base Coin total and positive
@@ -1623,6 +1861,16 @@ def project_committed_reward_bundle(
             growth_units=growth_units,
             sequence=len(items),
         ))
+
+    if feature_if_only_major_ids and not any(
+        not item.routine and item.event_id not in feature_if_only_major_ids
+        for item in items
+    ):
+        items = [
+            replace(item, is_routine=False)
+            if item.event_id in feature_if_only_major_ids else item
+            for item in items
+        ]
 
     if not items:
         return None
@@ -2101,7 +2349,9 @@ class AchievementPresentation:
 
     @property
     def criteria_text(self) -> str:
-        return self.persisted_requirement or self.description
+        return learner_card_copy(
+            self.persisted_requirement or self.description
+        )
 
     @property
     def reward_summary(self) -> str:
@@ -2143,6 +2393,9 @@ def _achievement_condition_lines(
 ) -> tuple[str, ...]:
     """Keep compound achievement requirements structured outside the UI."""
 
+    visible_requirement = learner_card_copy(persisted_requirement)
+    visible_description = learner_card_copy(definition.description)
+
     if definition.minimum_non_again_percent:
         if state is not None and not unlocked:
             daily_stats = getattr(state, "daily_stats", None)
@@ -2162,8 +2415,8 @@ def _achievement_condition_lines(
             return (
                 f"{answers:,} cards complete · {non_again_percent}% accuracy",
             )
-        return (persisted_requirement or definition.description,)
-    return (persisted_requirement or definition.description,)
+        return (visible_requirement or visible_description,)
+    return (visible_requirement or visible_description,)
 
 
 def _compound_accuracy_percent(
@@ -2226,12 +2479,12 @@ def achievement_presentation(
         rewarded_at = persisted.rewarded_at
         reward_event_key = persisted.reward_event_key
         historical_backfill = bool(persisted.historical_backfill)
-        persisted_requirement = persisted.requirement
+        persisted_requirement = learner_card_copy(persisted.requirement)
         persisted_reward_summary = persisted.reward_summary
     return AchievementPresentation(
         achievement_id=definition.achievement_id,
         name=definition.name,
-        description=definition.description,
+        description=learner_card_copy(definition.description),
         category=definition.category.value,
         evaluation_mode=definition.evaluation_mode.value,
         progress_metric=definition.progress_metric.value,
@@ -2285,6 +2538,7 @@ project_achievements = achievement_presentations
 __all__ = [
     "AchievementPresentation",
     "GardenFindPresentation",
+    "ProjectGrowthPresentation",
     "RecurringRewardPresentation",
     "RewardBundleProjection",
     "RewardCompactProjection",
@@ -2299,6 +2553,7 @@ __all__ = [
     "lookup",
     "project_achievements",
     "project_committed_reward_bundle",
+    "project_growth_allocations",
     "project_reward_detail_rows",
     "project_reward_session_history",
     "project_reward_bundle",

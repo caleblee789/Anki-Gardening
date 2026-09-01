@@ -48,6 +48,7 @@ from ..ui.session_summary import (
     PlantStateSnapshot,
     ReviewContinuationTarget,
     SessionEndSnapshot,
+    SessionProjectGrowthAllocation,
     SessionStartSnapshot,
     SessionSummaryAccumulator,
     StandardFind,
@@ -351,6 +352,50 @@ def session_summary_parent(main_window: Any) -> Any:
     return main_window
 
 
+def session_summary_exclusion_measurement_script() -> str:
+    """Measure the Home garden card in the summary overlay coordinate space."""
+
+    return r"""
+(() => {
+  const schemaVersion = 1;
+  const source = "home-garden-dom";
+  const viewport = {
+    width: Math.max(1, Math.round(window.innerWidth || 0)),
+    height: Math.max(1, Math.round(window.innerHeight || 0)),
+  };
+  const root = document.querySelector("#ag-home-root");
+  if (!root) {
+    return {schema_version: schemaVersion, source, measured: false, viewport};
+  }
+  const style = window.getComputedStyle(root);
+  const rect = root.getBoundingClientRect();
+  const measured = !(
+    style.display === "none" ||
+    style.visibility === "hidden" ||
+    Number(style.opacity || "1") === 0 ||
+    rect.width <= 0 ||
+    rect.height <= 0 ||
+    rect.right <= 0 ||
+    rect.bottom <= 0 ||
+    rect.left >= viewport.width ||
+    rect.top >= viewport.height
+  );
+  return {
+    schema_version: schemaVersion,
+    source,
+    measured,
+    viewport,
+    rect: measured ? {
+      left: Math.max(0, Math.floor(rect.left)),
+      top: Math.max(0, Math.floor(rect.top)),
+      right: Math.min(viewport.width, Math.ceil(rect.right)),
+      bottom: Math.min(viewport.height, Math.ceil(rect.bottom)),
+    } : null,
+  };
+})()
+"""
+
+
 def reviewer_modal_active(main_window: Any) -> bool:
     """Keep reward feedback queued while any application modal is active."""
 
@@ -486,6 +531,9 @@ class ReviewerHookHandler:
         self._pending_session_summary: Any | None = None
         self._session_summary_render_scheduled = False
         self._session_summary_escape_shortcut: Any | None = None
+        self._session_summary_exclusion_filter: Any | None = None
+        self._session_summary_exclusion_parent: Any | None = None
+        self._session_summary_exclusion_generation = 0
         self._session_cutoff_generation = 0
         self._session_summary_presentation_generation = 0
         self._session_summary_continuation_in_progress = False
@@ -758,52 +806,59 @@ class ReviewerHookHandler:
 
     def _effects_snapshot(self, *, at_ms: int | None = None) -> EffectsSnapshot:
         state = getattr(self.storage, "state", None)
-        current_ms = self._session_now_ms() if at_ms is None else max(0, int(at_ms))
-        current_seconds = current_ms / 1_000
         fertilizers: list[FertilizerSnapshot] = []
         boosters: list[BoosterSnapshot] = []
         specs = getattr(self.engine, "FERTILIZERS", {}) or {}
-        scheduler = getattr(self.engine, "fertilizer_schedule", None)
         for plant in tuple(getattr(state, "plants", ()) or ()):
             plant_id = str(getattr(plant, "plant_id", "") or "")
             if not plant_id:
                 continue
             plant_name = str(getattr(plant, "name", "") or "Plant")
-            current = None
-            if callable(scheduler):
-                try:
-                    current, _queued = scheduler(plant, now=current_seconds)
-                except Exception:
-                    current = None
-            else:
-                candidate = getattr(plant, "fertilizer", None)
-                if candidate is not None and float(
-                    getattr(candidate, "expires_at", 0) or 0
-                ) > current_seconds:
-                    current = candidate
-            if current is not None:
-                tier = str(getattr(current, "tier", "") or "")
-                started_at = float(getattr(current, "started_at", 0) or 0)
-                expires_at = float(getattr(current, "expires_at", 0) or 0)
-                remaining = max(0, int(math.ceil(expires_at - current_seconds)))
-                if remaining:
-                    spec = specs.get(tier)
-                    name = str(
-                        getattr(spec, "name", "")
-                        or f"{tier.replace('_', ' ').title()} Fertilizer"
-                    )
-                    fertilizers.append(FertilizerSnapshot(
-                        effect_id=(
-                            f"fertilizer:{plant_id}:{tier}:"
-                            f"{int(round(started_at * 1_000))}:"
-                            f"{int(round(expires_at * 1_000))}"
-                        ),
-                        name=name,
-                        remaining_seconds=remaining,
-                        expires_at_epoch_seconds=max(0, int(math.ceil(expires_at))),
-                        plant_id=plant_id,
-                        plant_name=plant_name,
-                    ))
+            fertilizer_batches = tuple(
+                batch
+                for batch in tuple(
+                    getattr(plant, "fertilizer_card_batches", ()) or ()
+                )
+                if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
+            )
+            if fertilizer_batches:
+                active_effect_id = str(
+                    getattr(fertilizer_batches[0], "effect_id", "") or ""
+                )
+                active_batches = tuple(
+                    batch
+                    for batch in fertilizer_batches
+                    if str(getattr(batch, "effect_id", "") or "")
+                    == active_effect_id
+                )
+                remaining_cards = sum(
+                    max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+                    for batch in active_batches
+                )
+                tier = active_effect_id.removeprefix("fertilizer_")
+                spec = specs.get(tier)
+                name = str(
+                    getattr(spec, "name", "")
+                    or {
+                        "basic": "Basic Fertilizer",
+                        "quality": "Quality Fertilizer",
+                        "premium": "Magical Fertilizer",
+                    }.get(tier, "Fertilizer")
+                )
+                source_ids = tuple(dict.fromkeys(
+                    str(getattr(batch, "source_event_key", "") or "")
+                    for batch in active_batches
+                    if str(getattr(batch, "source_event_key", "") or "")
+                ))
+                fertilizers.append(FertilizerSnapshot(
+                    effect_id=f"fertilizer:{plant_id}:{tier}",
+                    name=name,
+                    remaining_seconds=0,
+                    remaining_cards=remaining_cards,
+                    plant_id=plant_id,
+                    plant_name=plant_name,
+                    source_event_id=(source_ids[0] if len(source_ids) == 1 else ""),
+                ))
 
             batches = tuple(getattr(plant, "booster_card_batches", ()) or ())
             remaining_cards = sum(
@@ -1085,6 +1140,17 @@ class ReviewerHookHandler:
                 if str(getattr(plant, "plant_id", "") or "")
             },
             "stored_units": max(0, int(getattr(state, "stored_growth_units", 0) or 0)),
+            "landmark_units": max(
+                0,
+                int(
+                    getattr(
+                        getattr(state, "garden_project", None),
+                        "contributed_growth_units",
+                        0,
+                    )
+                    or 0
+                ),
+            ),
             "transaction_ids": {
                 self._transaction_identity(item)
                 for item in tuple(getattr(state, "currency_transactions", ()) or ())
@@ -1339,6 +1405,23 @@ class ReviewerHookHandler:
                 occurred_at=str(receipt.occurred_at or self._session_now_iso()),
             ))
 
+        project_allocations: list[SessionProjectGrowthAllocation] = []
+        for allocation in tuple(
+            getattr(result, "project_allocations", ()) or ()
+        ):
+            target_type = getattr(allocation, "target_type", "")
+            target_type = getattr(target_type, "value", target_type)
+            units = int(getattr(allocation, "units", 0) or 0)
+            # Engine projections may carry zero-unit quotes; Session rows are
+            # committed credit only and therefore remain strictly positive.
+            if units <= 0:
+                continue
+            project_allocations.append(SessionProjectGrowthAllocation(
+                target_type=str(target_type),
+                target_id=str(getattr(allocation, "target_id", "") or ""),
+                units=units,
+            ))
+
         return CommittedSessionEvent(
             event_id=event_id,
             anki_day_id=str(result.scheduler_day or self.scheduler_day(self.storage)),
@@ -1347,6 +1430,10 @@ class ReviewerHookHandler:
             plant_growth=tuple(plant_growth),
             shared_growth=tuple(shared_growth),
             stored_growth_delta_units=int(result.stored_growth_delta_units),
+            project_allocations=tuple(project_allocations),
+            landmark_growth_delta_units=max(
+                0, int(result.landmark_growth_delta_units)
+            ),
             coin_awards=coin_awards,
             standard_finds=standard_finds,
             milestones=tuple(milestones),
@@ -1594,6 +1681,20 @@ class ReviewerHookHandler:
 
         stored_after = max(0, int(getattr(state, "stored_growth_units", 0) or 0))
         stored_before = max(0, int(baseline.get("stored_units", 0) or 0))
+        landmark_after = max(
+            0,
+            int(
+                getattr(
+                    getattr(state, "garden_project", None),
+                    "contributed_growth_units",
+                    0,
+                )
+                or 0
+            ),
+        )
+        landmark_before = max(
+            0, int(baseline.get("landmark_units", 0) or 0)
+        )
         previous_receipt_ids = set(
             baseline.get("reward_receipt_ids", set()) or set()
         )
@@ -1612,6 +1713,9 @@ class ReviewerHookHandler:
             plant_growth=tuple(plant_growth),
             shared_growth=tuple(shared_growth),
             stored_growth_delta_units=stored_after - stored_before,
+            landmark_growth_delta_units=max(
+                0, landmark_after - landmark_before
+            ),
             coin_awards=coin_awards,
             standard_finds=tuple(standard_finds),
             milestones=tuple(milestones),
@@ -1828,9 +1932,204 @@ class ReviewerHookHandler:
                 exc_info=True,
             )
 
+    def _dispose_session_summary_exclusion_tracking(self) -> None:
+        """Detach the Home-card geometry watcher owned by a summary card."""
+
+        geometry_filter = self._session_summary_exclusion_filter
+        parent = self._session_summary_exclusion_parent
+        self._session_summary_exclusion_filter = None
+        self._session_summary_exclusion_parent = None
+        self._session_summary_exclusion_generation += 1
+        if geometry_filter is None:
+            return
+        if parent is not None:
+            try:
+                parent.removeEventFilter(geometry_filter)
+            except (AttributeError, RuntimeError, TypeError):
+                pass
+        try:
+            geometry_filter.deleteLater()
+        except (AttributeError, RuntimeError):
+            pass
+
+    def _request_session_summary_exclusion_geometry(
+        self,
+        card: Any,
+        parent: Any,
+        *,
+        retries_remaining: int = 0,
+    ) -> bool:
+        """Keep the nonmodal summary clear of the painted Home garden card."""
+
+        if (
+            card is None
+            or card is not self._session_summary_card
+            or parent is not self._session_summary_exclusion_parent
+        ):
+            return False
+        try:
+            from aqt.qt import QTimer
+
+            parent_width = max(1, int(parent.width()))
+            parent_height = max(1, int(parent.height()))
+        except (AttributeError, ImportError, RuntimeError, TypeError, ValueError):
+            return False
+
+        self._session_summary_exclusion_generation += 1
+        generation = self._session_summary_exclusion_generation
+
+        def retry() -> None:
+            if retries_remaining <= 0:
+                return
+            QTimer.singleShot(
+                120,
+                lambda: self._request_session_summary_exclusion_geometry(
+                    card,
+                    parent,
+                    retries_remaining=retries_remaining - 1,
+                ),
+            )
+
+        def accept(payload: Any) -> None:
+            if (
+                generation != self._session_summary_exclusion_generation
+                or card is not self._session_summary_card
+                or parent is not self._session_summary_exclusion_parent
+            ):
+                return
+            row = payload if isinstance(payload, dict) else {}
+            viewport = row.get("viewport")
+            rect = row.get("rect")
+            measured = bool(
+                row.get("schema_version") == 1
+                and row.get("source") == "home-garden-dom"
+                and row.get("measured") is True
+                and isinstance(viewport, dict)
+                and abs(int(viewport.get("width", 0) or 0) - parent_width) <= 2
+                and abs(int(viewport.get("height", 0) or 0) - parent_height) <= 2
+                and isinstance(rect, dict)
+            )
+            reserved_top: int | None = None
+            horizontal_overlap = False
+            if measured:
+                try:
+                    root_left = int(rect.get("left", -1))
+                    root_right = int(rect.get("right", -1))
+                    root_bottom = int(rect.get("bottom", -1))
+                    card_left = int(card.x())
+                    card_right = card_left + int(card.width())
+                    horizontal_overlap = bool(
+                        min(root_right, card_right) > max(root_left, card_left)
+                    )
+                    if horizontal_overlap and 0 < root_bottom < parent_height:
+                        reserved_top = root_bottom
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    measured = False
+                    reserved_top = None
+            try:
+                card.setProperty("summaryHomeClearanceMeasured", measured)
+                card.setProperty(
+                    "summaryHomeClearanceHorizontalOverlap",
+                    horizontal_overlap,
+                )
+                card.setProperty("summaryHomeClearanceTelemetry", dict(row))
+                card.set_reserved_top(
+                    reserved_top,
+                    source=(
+                        "home-garden-dom"
+                        if reserved_top is not None else
+                        "none"
+                    ),
+                )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return
+            if not measured:
+                retry()
+
+        script = session_summary_exclusion_measurement_script()
+        evaluate = getattr(parent, "evalWithCallback", None)
+        if callable(evaluate):
+            try:
+                evaluate(script, accept)
+                return True
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                logger.debug(
+                    "Anki Garden: Home garden geometry could not be measured",
+                    exc_info=True,
+                )
+        try:
+            page = parent.page()
+            run_javascript = getattr(page, "runJavaScript", None)
+        except (AttributeError, RuntimeError, TypeError):
+            run_javascript = None
+        if callable(run_javascript):
+            try:
+                run_javascript(script, accept)
+                return True
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                logger.debug(
+                    "Anki Garden: Home geometry bridge failed",
+                    exc_info=True,
+                )
+        accept(None)
+        return False
+
+    def _install_session_summary_exclusion_tracking(
+        self,
+        card: Any,
+        parent: Any,
+    ) -> None:
+        """Re-measure the Home card whenever the native host is resized."""
+
+        self._dispose_session_summary_exclusion_tracking()
+        try:
+            from aqt.qt import QEvent, QObject, QTimer
+        except ImportError:
+            return
+        owner = self
+
+        class _SessionSummaryExclusionFilter(QObject):
+            def eventFilter(self, watched: Any, event: Any) -> bool:
+                if (
+                    watched is parent
+                    and event.type() in {
+                        QEvent.Type.Resize,
+                        QEvent.Type.Show,
+                        QEvent.Type.LayoutRequest,
+                    }
+                ):
+                    QTimer.singleShot(
+                        0,
+                        lambda: owner._request_session_summary_exclusion_geometry(
+                            card,
+                            parent,
+                            retries_remaining=2,
+                        ),
+                    )
+                return False
+
+        geometry_filter = _SessionSummaryExclusionFilter(card)
+        try:
+            parent.installEventFilter(geometry_filter)
+        except (AttributeError, RuntimeError, TypeError):
+            geometry_filter.deleteLater()
+            return
+        self._session_summary_exclusion_filter = geometry_filter
+        self._session_summary_exclusion_parent = parent
+        card.setProperty("summaryHomeClearanceTracking", True)
+        QTimer.singleShot(
+            0,
+            lambda: self._request_session_summary_exclusion_geometry(
+                card,
+                parent,
+                retries_remaining=8,
+            ),
+        )
+
     def _hide_session_summary(self, *, clear_pending: bool = False) -> None:
         card = self._session_summary_card
         self._session_summary_card = None
+        self._dispose_session_summary_exclusion_tracking()
         if card is not None:
             try:
                 card.close()
@@ -1940,6 +2239,7 @@ class ReviewerHookHandler:
             shortcut.activated.connect(self._dismiss_session_summary_on_escape)
             self._session_summary_card = card
             self._session_summary_escape_shortcut = shortcut
+            self._install_session_summary_exclusion_tracking(card, parent)
             self._presented_session_summary_payload = payload
             self._pending_session_summary = None
         except Exception:
@@ -2112,6 +2412,22 @@ class ReviewerHookHandler:
         except Exception:
             logger.debug(
                 "Anki Garden: Garden could not open from Reviewer HUD",
+                exc_info=True,
+            )
+
+    def _open_collection_from_reviewer_hud(self) -> None:
+        """Open the app-owned Collection route without leaving a stale HUD."""
+
+        garden_callback = self.open_garden
+        owner = getattr(garden_callback, "__self__", None)
+        callback = getattr(owner, "open_collection", None)
+        if not callable(callback):
+            return
+        try:
+            callback()
+        except Exception:
+            logger.debug(
+                "Anki Garden: Collection could not open from Reviewer HUD",
                 exc_info=True,
             )
 
@@ -2801,6 +3117,7 @@ class ReviewerHookHandler:
                     parent,
                     on_open_garden=self._open_garden_from_reviewer_hud,
                     on_open_plant=self._open_active_plant_from_reviewer_hud,
+                    on_open_collection=self._open_collection_from_reviewer_hud,
                     on_select_plant=self._select_another_plant_from_reviewer_hud,
                     on_choose_plant=self._choose_plant_from_reviewer_hud,
                     on_toggle_collapsed=self._toggle_reviewer_hud,
@@ -2830,6 +3147,7 @@ class ReviewerHookHandler:
                     set_callbacks(
                         on_open_garden=self._open_garden_from_reviewer_hud,
                         on_open_plant=self._open_active_plant_from_reviewer_hud,
+                        on_open_collection=self._open_collection_from_reviewer_hud,
                         on_select_plant=self._select_another_plant_from_reviewer_hud,
                         on_choose_plant=self._choose_plant_from_reviewer_hud,
                         on_toggle_collapsed=self._toggle_reviewer_hud,
@@ -3505,7 +3823,7 @@ class ReviewerHookHandler:
                 f"border:1px solid {GARDEN_THEME['strong_border']};"
                 "border-radius:14px;}"
                 f"QLabel {{color:{GARDEN_THEME['text_primary']};font-size:12px;}}"
-                f"QLabel[rewardListTitle='true'] {{color:{GARDEN_THEME['coin_accent']};font-size:14px;font-weight:600;}}"
+                f"QLabel[rewardListTitle='true'] {{color:{GARDEN_THEME['text_primary']};font-size:14px;font-weight:600;}}"
                 f"QFrame[rewardListRow='true'] {{background:{GARDEN_THEME['raised_surface']};border:0;border-radius:8px;}}"
                 "QPushButton {background:transparent;border:0;border-radius:6px;}"
                 f"QPushButton:hover {{background:{GARDEN_THEME['selected_surface']};}}"
@@ -4351,7 +4669,7 @@ class ReviewerHookHandler:
             self._report_history_invalidation("review save failed")
             message = (
                 "Your card is safe in Anki, but Garden couldn’t save its Growth. "
-                "Open Garden to try again."
+                "Open garden to try again."
             )
             if USER_NOTICES.publish(message, key="review_history"):
                 try:
@@ -4587,11 +4905,15 @@ class ReviewerHookHandler:
 
         if presentations:
             find = presentations[0]
-            title = (
-                "Garden discovery"
-                if str(find.pool_id) == "environment" else
-                "Standard Find"
-            )
+            if str(find.pool_id) == "environment":
+                discovery_name = str(find.display_name or "").strip()
+                title = (
+                    f"{discovery_name} discovered"
+                    if discovery_name else
+                    "Garden discovery"
+                )
+            else:
+                title = "Standard Find"
             tier = self._display_tier(find.tier)
             if str(find.pool_id) == "environment" and environment_total:
                 message = "Added to Garden decorations"
@@ -5064,11 +5386,11 @@ class ReviewerHookHandler:
                 "QFrame#ankiGardenRewardToast {"
                 f" background: {GARDEN_THEME['elevated_surface']}; border: 1px solid {GARDEN_THEME['subtle_border']};"
                 " border-radius: 14px; }"
-                f"QLabel#ankiGardenRewardTitle {{ color: {GARDEN_THEME['coin_accent']};"
+                f"QLabel#ankiGardenRewardTitle {{ color: {GARDEN_THEME['text_primary']};"
                 " font-size: 13px; font-weight: 600; }"
                 f"QLabel#ankiGardenRewardMessage {{ color: {GARDEN_THEME['text_primary']};"
                 " font-size: 12px; }"
-                f"QLabel#ankiGardenRewardDetail {{ color: {GARDEN_THEME['coin_accent']};"
+                f"QLabel#ankiGardenRewardDetail {{ color: {GARDEN_THEME['text_secondary']};"
                 " font-size: 13px; font-weight: 600; }"
                 f"QLabel#ankiGardenRewardOverflow {{ color: {GARDEN_THEME['text_secondary']};"
                 " font-size: 12px; font-weight: 600; }"
@@ -5138,8 +5460,13 @@ class ReviewerHookHandler:
                         in {"garden_coin", "garden_coins"}
                         else "growth"
                     )
+                    icon_color = (
+                        GARDEN_THEME["coin_accent"]
+                        if icon_name == "coin"
+                        else GARDEN_THEME["growth_accent"]
+                    )
                     art.setPixmap(
-                        garden_icon(icon_name, color="#f5df9a").pixmap(32, 32)
+                        garden_icon(icon_name, color=icon_color).pixmap(32, 32)
                     )
                 except Exception:
                     pass

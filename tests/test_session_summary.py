@@ -22,6 +22,7 @@ from ankigarden.ui.session_summary import (
     RewardComponent,
     SessionEndSnapshot,
     SessionStartSnapshot,
+    SessionProjectGrowthAllocation,
     SessionSummaryAccumulator,
     StandardFind,
     TodayCardsSnapshot,
@@ -124,6 +125,8 @@ def _event(
     milestones: tuple[PlantMilestone, ...] = (),
     discoveries: tuple[EnvironmentDiscovery, ...] = (),
     receipts: tuple[RewardReceipt, ...] = (),
+    projects: tuple[SessionProjectGrowthAllocation, ...] = (),
+    landmark: int = 0,
     total_finds: int | None = None,
 ) -> CommittedSessionEvent:
     return CommittedSessionEvent(
@@ -139,6 +142,8 @@ def _event(
         milestones=milestones,
         environment_discoveries=discoveries,
         reward_receipts=receipts,
+        project_allocations=projects,
+        landmark_growth_delta_units=landmark,
         total_finds=(
             sum(find.quantity for find in finds)
             if total_finds is None else total_finds
@@ -247,8 +252,8 @@ def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
     assert summary.growth_applied_total_units == 208_000
     assert summary.stored_growth.delta_units == 1_250
     assert [(row.key, row.label, row.value) for row in projection.reward_metrics] == [
-        ("growth_applied", "Growth applied", "+2,080"),
-        ("garden_coins", "Coins", "+67"),
+        ("growth_applied", "Growth applied", "+2,092.5"),
+        ("garden_coins", "Garden Coins", "+67"),
         ("standard_finds", "Standard Finds", "+3"),
     ]
     assert not any(row.key == "shared_growth" for row in projection.result_rows)
@@ -418,7 +423,7 @@ def test_milestone_coin_component_has_an_explicit_total_inclusion_link():
     assert payload.segments[0].garden_coins_earned == 20
     assert highlight.coin_award_event_ids == ("coin:bloom",)
     assert highlight.coin_included_in_total is True
-    assert highlight.reward_text == "+20 coin bonus included"
+    assert highlight.reward_text == "+20 Garden Coins bonus included"
     assert payload.segments[0].milestones[0].reward is not None
     assert (
         payload.segments[0].milestones[0].reward.component_type
@@ -479,7 +484,7 @@ def test_additional_milestone_coin_component_names_the_displayed_total():
     assert summary.additional_coins_earned == 50
     assert summary.garden_coins_total == 67
     assert highlight.reward_text == (
-        "+50 coin bonus · included in +67 total"
+        "+50 Garden Coins bonus · included in +67 Garden Coins total"
     )
 
 
@@ -546,6 +551,11 @@ def test_live_snapshot_is_exact_once_non_finalizing_and_matches_final_reducer():
         plant_growth=(PlantGrowthDelta("juniper", "Juniper", 1_250),),
         shared_growth=(PlantGrowthDelta("rose", "Rose", 400),),
         stored=500,
+        projects=(
+            SessionProjectGrowthAllocation("landmark", "garden_landmark", 250),
+            SessionProjectGrowthAllocation("mastery", "rose", 100),
+        ),
+        landmark=300,
         coins=(CoinAward("coin:live:1", "find", "Standard Find", 4),),
         finds=(StandardFind(
             "find:live:1",
@@ -559,7 +569,14 @@ def test_live_snapshot_is_exact_once_non_finalizing_and_matches_final_reducer():
     )
     assert accumulator.accept_committed(event) is True
     assert accumulator.accept_committed(event) is False
-    accumulator.accept_committed(_event("card:live:2", stored=-300))
+    accumulator.accept_committed(_event(
+        "card:live:2",
+        stored=-300,
+        projects=(
+            SessionProjectGrowthAllocation("mastery", "rose", 50),
+            SessionProjectGrowthAllocation("legacy", "garden_legacy", 25),
+        ),
+    ))
     end = SessionEndSnapshot(_today(remaining=16))
 
     first = accumulator.live_snapshot(
@@ -583,7 +600,17 @@ def test_live_snapshot_is_exact_once_non_finalizing_and_matches_final_reducer():
         first.stored_growth.added_units,
         first.stored_growth.used_units,
     ) == (200, 500, 300)
-    assert first.footer_growth_units == 2_150
+    assert tuple(
+        (row.target_type, row.target_id, row.units)
+        for row in first.project_allocations
+    ) == (
+        ("landmark", "garden_landmark", 250),
+        ("mastery", "rose", 150),
+        ("legacy", "garden_legacy", 25),
+    )
+    assert first.landmark_growth_delta_units == 300
+    assert first.project_growth_total_units == 475
+    assert first.footer_growth_units == 2_625
     assert first.garden_coins_earned == 4
     assert first.footer_find_count == 1
 
@@ -738,12 +765,18 @@ def test_today_cards_projection_uses_approved_cards_language_only():
         waiting_cards=2,
         next_due_in_seconds=6 * 60,
     )
-    assert waiting.player_lines == ("2 remaining", "Next card in 6 minutes")
+    assert waiting.player_lines == (
+        "2 cards remaining",
+        "Next card in 6 minutes",
+    )
     progress = project_today_cards(
         _today(remaining=160, complete=0, total=160),
         _today(remaining=18, complete=142, total=160),
     )
-    assert progress.lines == ("18 remaining", "142 of 160 completed")
+    assert progress.lines == (
+        "18 cards remaining",
+        "142 of 160 cards completed",
+    )
     assert (progress.progress_value, progress.progress_max) == (142, 160)
     assert progress.progress_fraction == pytest.approx(0.8875)
     assert progress.start_progress_fraction == 0.0
@@ -755,14 +788,14 @@ def test_today_cards_projection_uses_approved_cards_language_only():
     )
     assert completed_during_session.lines == (
         "All of today’s cards complete",
-        "176 of 176 completed",
+        "176 of 176 cards completed",
     )
     assert completed_during_session.progress_fraction == 1.0
     assert completed_during_session.can_continue_reviews is False
     complete_at_both = project_today_cards(completed, completed)
     assert complete_at_both.lines == (
         "All of today’s cards complete",
-        "176 of 176 completed",
+        "176 of 176 cards completed",
     )
 
     all_copy = " ".join((
@@ -789,8 +822,8 @@ def test_today_cards_progress_is_semantic_across_exit_states():
             currently_due=0,
         ),
     )
-    assert waiting.status_text == "2 remaining"
-    assert waiting.supporting_text == "18 of 20 completed · Next card in 6 minutes"
+    assert waiting.status_text == "2 cards remaining"
+    assert waiting.supporting_text == "18 of 20 cards completed · Next card in 6 minutes"
     assert (waiting.progress_value, waiting.progress_max) == (18, 20)
     assert waiting.can_continue_reviews is False
 
@@ -799,15 +832,15 @@ def test_today_cards_progress_is_semantic_across_exit_states():
         _today("complete", remaining=None, complete=144, total=144),
     )
     assert complete.status_text == "All of today’s cards complete"
-    assert complete.supporting_text == "144 of 144 completed"
+    assert complete.supporting_text == "144 of 144 cards completed"
     assert complete.progress_fraction == 1.0
 
     increased = project_today_cards(
         _today(remaining=2, complete=0, total=2),
         _today(remaining=4, complete=0, total=4, currently_due=4),
     )
-    assert increased.status_text == "4 remaining"
-    assert increased.supporting_text == "0 of 4 completed"
+    assert increased.status_text == "4 cards remaining"
+    assert increased.supporting_text == "0 of 4 cards completed"
     assert increased.progress_fraction == 0.0
     assert increased.animate_progress is False
 
@@ -844,8 +877,8 @@ def test_second_session_keeps_session_work_separate_from_today_progress():
     assert summary.cards_completed == 42
     assert projection.cards_completed_value == "42"
     assert projection.today_cards.lines == (
-        "18 remaining",
-        "126 of 144 completed",
+        "18 cards remaining",
+        "126 of 144 cards completed",
     )
     assert projection.today_cards.start_progress_value == 84
     assert projection.today_cards.progress_value == 126
@@ -878,7 +911,7 @@ def test_today_kind_scope_and_continuation_are_explicit():
         _today(remaining=60, complete=84, total=144, contributing_decks=3),
         _today(remaining=18, complete=126, total=144, contributing_decks=3),
     )
-    assert multi_deck.status_text == "18 remaining across all decks"
+    assert multi_deck.status_text == "18 cards remaining across all decks"
     assert multi_deck.continuation_target == ReviewContinuationTarget(
         "deck", 1, "Default"
     )
@@ -1101,7 +1134,7 @@ def test_stored_growth_reports_added_used_and_net_without_double_counting():
     assert not any(
         item.key.startswith("stored_growth") for item in projection.result_rows
     )
-    assert projection.growth_applied_total_units == 0
+    assert projection.growth_applied_total_units == 5_000
 
 
 def test_only_positive_coin_awards_can_enter_the_session_contract():
@@ -1176,7 +1209,7 @@ def test_owned_environment_is_not_reported_as_a_new_discovery():
 @pytest.mark.parametrize(
     ("category", "label"),
     (
-        ("garden_item", "GARDEN DISCOVERY UNLOCKED"),
+        ("garden_item", "GARDEN DISCOVERY"),
         ("environment", "ENVIRONMENT UNLOCKED"),
         ("plant", "PLANT UNLOCKED"),
         ("planter", "PLANTER UNLOCKED"),
@@ -1248,8 +1281,14 @@ def test_legacy_owned_weather_alias_filters_canonical_garden_feature_discovery()
 def test_effect_rows_are_frozen_exit_snapshots_and_exclude_external_new_effects():
     start_effects = EffectsSnapshot(
         fertilizers=(
-            FertilizerSnapshot("fert:quality", "Quality Fertilizer", 3_000),
-            FertilizerSnapshot("fert:ended", "Basic Fertilizer", 42),
+            FertilizerSnapshot(
+                "fert:quality", "Quality Fertilizer", 3_000,
+                remaining_cards=30,
+            ),
+            FertilizerSnapshot(
+                "fert:ended", "Basic Fertilizer", 42,
+                remaining_cards=1,
+            ),
         ),
         boosters=(BoosterSnapshot("boost:1", 60),),
     )
@@ -1257,14 +1296,19 @@ def test_effect_rows_are_frozen_exit_snapshots_and_exclude_external_new_effects(
     accumulator.accept_committed(_event("card:1"))
     end_effects = EffectsSnapshot(
         fertilizers=(
-            FertilizerSnapshot("fert:quality", "Quality Fertilizer", 2_520),
+            FertilizerSnapshot(
+                "fert:quality", "Quality Fertilizer", 2_520,
+                remaining_cards=25,
+            ),
             FertilizerSnapshot(
                 "fert:manual", "Magical Fertilizer", 7_200,
                 source_event_id="manual:inventory",
+                remaining_cards=40,
             ),
             FertilizerSnapshot(
                 "fert:earned", "Magical Fertilizer", 7_200,
                 source_event_id="card:1",
+                remaining_cards=40,
             ),
         ),
         boosters=(BoosterSnapshot("boost:1", 31),),
@@ -1276,8 +1320,8 @@ def test_effect_rows_are_frozen_exit_snapshots_and_exclude_external_new_effects(
     assert payload is not None
     rows = payload.segments[0].effects_remaining
     assert [(row.effect_id, row.value, row.secondary) for row in rows] == [
-        ("fert:earned", "2 hr remaining", ""),
-        ("fert:quality", "42 min remaining", ""),
+        ("fert:earned", "40 cards remaining", ""),
+        ("fert:quality", "25 cards remaining", ""),
         ("boost:1", "31 cards remaining", ""),
     ]
     assert all(not row.ended_during_session for row in rows)
@@ -1383,7 +1427,7 @@ def test_unified_highlights_follow_product_priority_before_chronology():
     assert [item.unlock_category for item in highlights.featured] == [
         "plant", "garden_item"
     ]
-    assert highlights.featured[1].eyebrow == "GARDEN DISCOVERY UNLOCKED"
+    assert highlights.featured[1].eyebrow == "GARDEN DISCOVERY"
     assert (
         highlights.featured[1].supporting_text
         == "Added to your Garden collection"
@@ -1405,6 +1449,7 @@ def test_effect_snapshots_follow_full_bloom_transfer_without_false_end():
                 fertilizers=(FertilizerSnapshot(
                     "fert:plant-a", "Quality Fertilizer", 3_600,
                     plant_id="plant-a",
+                    remaining_cards=40,
                 ),),
                 boosters=(BoosterSnapshot(
                     "boost:plant-a", 40,
@@ -1422,6 +1467,7 @@ def test_effect_snapshots_follow_full_bloom_transfer_without_false_end():
                 fertilizers=(FertilizerSnapshot(
                     "fert:plant-b", "Quality Fertilizer", 3_540,
                     plant_id="plant-b",
+                    remaining_cards=39,
                 ),),
                 boosters=(BoosterSnapshot(
                     "boost:plant-b", 39,
@@ -1435,6 +1481,6 @@ def test_effect_snapshots_follow_full_bloom_transfer_without_false_end():
         (row.effect_id, row.value, row.ended_during_session)
         for row in payload.segments[0].effects_remaining
     ] == [
-        ("fert:plant-b", "59 min remaining", False),
+        ("fert:plant-b", "39 cards remaining", False),
         ("boost:plant-b", "39 cards remaining", False),
     ]

@@ -167,7 +167,7 @@ def test_today_page_copy_has_no_goal_or_find_drought_language() -> None:
         assert forbidden not in literals
     assert "at start" in literals
     assert "remaining today" in literals
-    assert "anki cutoff" in literals
+    assert "daily reset" in literals
     assert "queued for tomorrow" in literals
 
 
@@ -211,12 +211,12 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
     assert result.remaining_cards == 18
     assert result.cutoff_text == "cutoff:123000"
     assert result.status.finds_line == (
-        "Standard Finds · 3 of 3 today · Daily limit reached"
+        "3 / 3 earned today · Daily limit reached"
     )
     assert result.status.finds_detail == ""
     assert result.status.heading == "TODAY’S CARDS"
     assert result.status.primary == "18 cards remaining"
-    assert result.status.secondary == ("176 cards complete",)
+    assert result.status.secondary == ("176 cards completed",)
     assert result.weather_name == "Watering Station"
     assert result.scenery_name == "Spring Bloom"
     assert result.loadout_locked is True
@@ -257,7 +257,9 @@ def test_today_projection_uses_unavailable_copy_when_verification_fails() -> Non
         "Anki Garden could not verify today’s cards. "
         "Normal Garden Growth is unaffected."
     )
-    assert result.status.finds_line == "Standard Find · Next card guaranteed"
+    assert result.status.finds_line == (
+        "2 / 3 earned today · Next card guaranteed"
+    )
     assert result.starting_cards is None
     assert result.remaining_cards is None
     assert result.claim_state == "unavailable"

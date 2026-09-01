@@ -115,7 +115,7 @@ def _seed_state(_unused: int = 50) -> GardenState:
         currency_balance=35,
         plants=[
             Plant(plant_id="p-1", species="bonsai", name="Aster", slot_index=0, growth_points=250),
-            Plant(plant_id="p-2", species="wisteria", name="Wisp", slot_index=1, growth_points=50_000),
+            Plant(plant_id="p-2", species="wisteria", name="Wisp", slot_index=1, growth_points=35_000),
         ],
     )
 
@@ -150,7 +150,7 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert 'data-testid="home-title" aria-label="My Garden"' in html
     assert (
         'data-testid="home-support" '
-        'title="Aster · Seed · 250 / 500 Growth"'
+        'title="Aster · Seed · 250 / 400 Growth"'
         in html
     )
     assert "12 today" not in html
@@ -166,7 +166,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     assert 'data-testid="home-reviews"' not in before
     assert (
         'data-testid="home-support" '
-        'title="Aster · Seed · 250 / 500 Growth"'
+        'title="Aster · Seed · 250 / 400 Growth"'
         in before
     )
 
@@ -182,7 +182,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     assert (
         'data-testid="home-support" '
-        'title="Aster · Seed · 310 / 500 Growth"'
+        'title="Aster · Seed · 310 / 400 Growth"'
         in updated
     )
     assert "9-day streak" not in updated
@@ -190,7 +190,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     assert (
         'data-testid="home-support" '
-        'title="Aster · Seed · 310 / 500 Growth"'
+        'title="Aster · Seed · 310 / 400 Growth"'
         in refreshed
     )
     assert "9-day streak" not in refreshed
@@ -216,7 +216,7 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
         assert 'data-testid="home-reviews"' not in rendered
         assert (
             'data-testid="home-support" '
-            'title="Aster · Seed · 250 / 500 Growth"'
+            'title="Aster · Seed · 250 / 400 Growth"'
             in rendered
         )
         assert "12 today" not in rendered

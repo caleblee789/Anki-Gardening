@@ -191,8 +191,8 @@ def test_release_dialog_families_use_authoritative_content_fit_geometry() -> Non
         DialogSizeClass.PROGRESS: (950, 570),
         DialogSizeClass.LOADOUT: (1000, 540),
         DialogSizeClass.PLANT_STORY: (760, 500),
-        DialogSizeClass.SPECIES_DETAIL: (820, 550),
-        DialogSizeClass.GROWTH_CHARGE: (500, 300),
+        DialogSizeClass.SPECIES_DETAIL: (820, 440),
+        DialogSizeClass.GROWTH_CHARGE: (500, 460),
         DialogSizeClass.GARDEN_WORKSPACE: (1240, 840),
     }
     for family, size in expected.items():
@@ -239,7 +239,7 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "starter": (925, 940, 950, 370, 380, 410),
             "plants": (925, 940, 950, 300, 360, 520),
             "owned": (925, 940, 950, 470, 500, 530),
-            "fertilizer": (925, 940, 950, 500, 506, 541),
+            "fertilizer": (925, 940, 950, 500, 506, 557),
             "spaces": (925, 940, 950, 300, 325, 330),
             "garden_features": (925, 940, 950, 488, 575, 580),
             "collection-complete": (925, 940, 950, 308, 323, 338),
@@ -262,14 +262,15 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "default": (740, 760, 780, 480, 500, 520),
         },
         DialogSizeClass.SPECIES_DETAIL: {
-            "default": (800, 820, 840, 520, 550, 570),
-            "uncollected": (800, 820, 840, 520, 550, 570),
+            "default": (480, 820, 820, 260, 440, 900),
+            "collected": (480, 820, 820, 260, 440, 900),
+            "uncollected": (480, 820, 820, 260, 360, 900),
         },
         DialogSizeClass.GROWTH_CHARGE: {
-            "ready": (480, 500, 510, 350, 375, 400),
-            "loading": (480, 500, 510, 350, 375, 400),
-            "stale": (500, 510, 540, 380, 410, 450),
-            "success": (480, 500, 510, 300, 320, 340),
+            "ready": (480, 500, 500, 400, 460, 500),
+            "loading": (480, 500, 500, 400, 460, 500),
+            "stale": (480, 500, 500, 400, 460, 500),
+            "success": (480, 500, 500, 400, 460, 500),
         },
     }
 
@@ -287,6 +288,21 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
                 profile.max_height,
             )
             assert actual == dimensions
+
+
+def test_growth_charge_preview_commit_and_success_share_one_geometry_envelope() -> None:
+    policy = DIALOG_SIZE_POLICIES[DialogSizeClass.GROWTH_CHARGE]
+    profiles = [
+        dialog_height_profile(DialogSizeClass.GROWTH_CHARGE, state)
+        for state in ("ready", "loading", "success")
+    ]
+
+    assert profiles[0] == profiles[1] == profiles[2]
+    assert (
+        policy.preferred_width,
+        policy.max_width,
+        policy.screen_margin,
+    ) == (500, 500, 16)
 
 
 def test_view_width_resolution_prefers_each_view_not_the_family_width() -> None:

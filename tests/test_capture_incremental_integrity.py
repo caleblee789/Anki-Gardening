@@ -10,6 +10,8 @@ import pytest
 
 from scripts.capture_evidence import (
     CaptureEvidenceError,
+    V26_CAPTURE_ACCEPTANCE_POLICY,
+    _v26_surface_acceptance_issues,
     assemble_capture_manifest,
     plan_incremental_capture,
     recover_progress_manifest,
@@ -207,6 +209,56 @@ def test_v26_never_reuses_v25_surface_evidence(tmp_path: Path) -> None:
     assert plan["reused"] == []
     assert plan["recapture_required"] == [LABEL]
     assert plan["reasons"][LABEL] == ["v25-reuse-forbidden"]
+
+
+def test_v26_nursery_collection_count_authority_is_thirty_of_thirty_nine() -> None:
+    record = {
+        "label": "nursery-plants",
+        "fixture_validation": {
+            "semantic_audit_passed": True,
+            "postcondition": {"passed": True, "issues": []},
+        },
+        "capture_acceptance": {
+            "policy": V26_CAPTURE_ACCEPTANCE_POLICY,
+            "gross_checks": {"visible_nonzero_widget": True},
+            "gross_passed": True,
+            "semantic_audit_passed": True,
+            "passed": True,
+        },
+        "audit": {
+            "semantic_audit_passed": True,
+            "passed": True,
+            "fixture_state_passed": True,
+            "species_copy": "10 of 10 species discovered",
+            "collection_entries_copy": (
+                "30 of 39 collection entries discovered"
+            ),
+            "species_copy_visible": True,
+            "collection_entries_copy_visible": True,
+            "deprecated_visible_copy": {
+                "visible_copy": (
+                    "Nursery 10 of 10 species discovered "
+                    "30 of 39 collection entries discovered"
+                ),
+                "hits": [],
+                "collection_issues": [],
+                "passed": True,
+            },
+        },
+        "native_layout_telemetry": {"passed": True, "issues": []},
+        "visual_contract_audit": {"passed": True, "issues": []},
+        "dialog_scroll_audit": {"applicable": False},
+    }
+
+    assert _v26_surface_acceptance_issues(record) == ()
+
+    retired_count = copy.deepcopy(record)
+    retired_count["audit"]["collection_entries_copy"] = (
+        "30 of 93 collection entries discovered"
+    )
+    assert _v26_surface_acceptance_issues(retired_count) == (
+        "v26 Nursery collection counts are not canonical",
+    )
 
 
 def test_assembly_rejects_coherently_rewritten_selected_manifest(

@@ -122,14 +122,16 @@ isolated-Anki visual pass.
 ## v26 visual evidence
 
 Capture contract v26 uses contract schema 2 and scenario schema 3 with 18
-representative and 34 full surfaces, producing two and five sheets. Scenario
+representative and 38 full surfaces, producing two and six sheets. Scenario
 ID, fixture ID, and one-based step persist through every evidence layer; v25
 reuse is rejected. Asset mapping, visible-copy, overflow, progress, Reviewer
 exclusion, scroll-state, and lineage checks are hard gates.
 
 Current run paths, archive and capture hashes, artifact sizes, and validation
-totals are recorded only in the
-[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). The evidence remains
+totals are recorded in the
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and its
+[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
+The evidence remains
 `quality_status: review-required` and `release_ready: false`; manual macOS,
 cross-platform, mixed-DPI, forced-colors, screen-reader, keyboard, and human
 approval gates remain open.

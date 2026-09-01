@@ -10,6 +10,7 @@ from ankigarden.reward_presentation import (
     RewardLine,
     achievement_presentations,
     lookup,
+    project_growth_allocations,
     recent_reward_summaries,
     recurring_reward_presentations,
 )
@@ -74,6 +75,18 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
     assert RewardLine(
         "inventory_item", 2, item_id="growth_charge_small"
     ).learner_text == "+2 Small Growth Charges"
+
+    target = SimpleNamespace(target_type="mastery", target_id="rose")
+    track = SimpleNamespace(
+        target=target,
+        tiers=(SimpleNamespace(can_claim_now=True, claimable=True),),
+        display_name="Rose Cultivation Mastery",
+    )
+    project = project_growth_allocations(
+        (SimpleNamespace(target_type="mastery", target_id="rose", units=100),),
+        SimpleNamespace(active_target=target, mastery_track=lambda _species: track),
+    )[0]
+    assert project.status == "Reward ready"
 
 
 def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None:
@@ -163,6 +176,7 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
         "streak_7": Achievement(
             "streak_7", "Stale name", "Stale description", unlocked=True,
             progress=0.75, unlocked_at="2026-08-20T12:00:00+00:00",
+            requirement="Complete 7 eligible card answers.",
             rewarded_at="2026-08-20T12:00:00+00:00", reward_event_key="achievement:streak_7",
             historical_backfill=True,
         ),
@@ -172,6 +186,7 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
 
     assert projection.name == "7-Day Anki Streak"
     assert projection.description == "Reach a 7-day Anki streak."
+    assert projection.criteria_text == "Complete 7 cards."
     assert projection.progress == 0.75
     assert projection.progress_target == 7
     assert projection.unlocked is True
@@ -195,6 +210,11 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
         if item.achievement_id == "streak_30"
     )
     assert absent_but_derivable.historical_backfill is False
+    deep_canopy = next(
+        item for item in achievement_presentations(state)
+        if item.achievement_id == "deep_canopy"
+    )
+    assert deep_canopy.criteria_text == "Complete 10,000 cards."
 
 
 def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_state() -> None:

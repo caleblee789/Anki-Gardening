@@ -12,7 +12,7 @@ from ankigarden.capture.fixtures import (
     representative_collection_inventory_plan,
     validate_achievement_completion_schedule,
 )
-from ankigarden.collectibles import collectible_views
+from ankigarden.collectibles import collection_entry_views
 from ankigarden.models.state import (
     CURRENT_CATALOG_SPECIES_ORDER,
     MAX_GARDEN_SLOTS,
@@ -81,7 +81,7 @@ def test_representative_collection_fixture_derives_truthful_30_of_39() -> None:
     state.inventory["scenery"] = list(plan["scenery"])
     state.consumables.update(dict(plan["consumables"]))
 
-    views = collectible_views(state)
+    views = collection_entry_views(state)
     projection = project_collection(state)
 
     assert len(views) == 39

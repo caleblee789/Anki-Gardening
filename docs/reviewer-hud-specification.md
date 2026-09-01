@@ -20,7 +20,7 @@ The expanded HUD presents:
 4. One integrated reward dock after the first nonzero result.
 5. A compact `This session` total after it has a positive category.
 
-Persistent copy uses `card/cards` for quantities and estimates. `Next answer`
+Persistent copy uses `card/cards` for quantities and estimates. `Next card`
 remains the action label. Shared quantity formatting owns singular/plural forms
 for cards, effects, Finds, rewards, and Coins.
 
@@ -71,8 +71,8 @@ crossfades to the completed layout, applies the engine-confirmed reward, and
 settles after about 1.5 seconds.
 
 ```text
-check icon  All cards complete
-176 reviewed today                    +10 coins
+check icon  Today’s Cards Complete
+176 cards complete                    +10 coins
 ```
 
 The completed state does not primarily show `0 cards left` or `176 / 176`.
@@ -116,7 +116,7 @@ Distance, future reward, and immediate result form three parallel rows:
 ```text
 250 growth to next checkpoint              ~14 cards
 Checkpoint reward                            +2 coins
-Next answer                              +18 growth
+Next card                                +18 growth
 ```
 
 Only the icon and `+2 coins` are gold. No learner-facing quantity uses
@@ -240,8 +240,8 @@ events remain in session history and never replay on remount, sync, or resize.
 ## Visual hierarchy and data integrity
 
 Use a neutral shell, dark plant surface, restrained Today's Cards surface,
-tonal Next-answer inset, and raised reward dock. Border strength is shell,
-standard plant/dock, then subtle Today. Passive chips and Next answer have no
+tonal `Next card` inset, and raised reward dock. Border strength is shell,
+standard plant/dock, then subtle Today. Passive chips and `Next card` have no
 outline. Gold is reserved for Coins, next checkpoint, and temporary Full Bloom;
 mint is reserved for Growth.
 
@@ -268,15 +268,15 @@ or strand focus in the Reviewer.
 
 The reviewer-specific states are covered by capture contract v26 (contract
 schema 2, scenario schema 3) within the 18-surface representative and
-34-surface full topology. Representative output is two contact-sheet pages;
-full output is five. The separate Sync Rewards receipt remains its own
+38-surface full topology. Representative output is two contact-sheet pages;
+full output is six. The separate Sync Rewards receipt remains its own
 registered surface. Every capture record carries `scenario_id`, `fixture_id`,
 and one-based `scenario_step`; v25 evidence is ineligible for reuse. Native
 macOS review at 100 percent scaling exercises these transient states:
 
 1. 18 cards left.
 2. 1 card left.
-3. All cards complete.
+3. Today’s Cards Complete.
 4. No session rewards yet.
 5. Growth only.
 6. Growth and Coins.
@@ -304,8 +304,9 @@ mismatch among reveal, footer, history, and exit Session Summary.
 ## v26 evidence record
 
 Current run paths, archive and capture hashes, artifact sizes, and validation
-totals are recorded only in the
-[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md).
+totals are recorded in the
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and its
+[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
 
 The v26 gates fail closed on deprecated visible copy, root/DOM overflow,
 progress-fraction mismatches, asset mappings, Reviewer exclusion rectangles,

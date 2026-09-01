@@ -10,6 +10,8 @@ from scripts.validate_ui_capture import (
     growth_charge_rendered_value_issue_codes,
     growth_stage_strip_issue_codes,
     move_occupied_hover_issue_codes,
+    move_planter_contour_issue_codes,
+    nursery_bed_incomplete_state_issue_codes,
     nursery_supplement_state_matrix_issue_codes,
     reviewer_hud_acceptance_matrix_issue_codes,
     reviewer_reward_dock_issue_codes,
@@ -17,6 +19,32 @@ from scripts.validate_ui_capture import (
     streak_fold_geometry_issue_codes,
     visible_action_geometry_issue_codes,
 )
+
+
+def test_nursery_bed_progression_uses_current_automatic_unlock_copy() -> None:
+    evidence = {
+        "unlocked_beds": 2,
+        "summary": "2 of 6 beds unlocked",
+        "bed_number": 3,
+        "bed_title": "Next: Bed 3",
+        "requirement": "First plant reaches Mature",
+        "unlock_policy": "automatic_achievement",
+        "resulting_capacity": 3,
+        "capacity_copy": (
+            "Automatically unlocked when one plant reaches the Mature stage."
+        ),
+        "price_present": False,
+        "action_present": False,
+        "painted": True,
+        "contained": True,
+        "passed": True,
+    }
+
+    assert nursery_bed_incomplete_state_issue_codes(evidence) == ()
+    evidence["capacity_copy"] = "Unlocks automatically through Garden Progress."
+    assert nursery_bed_incomplete_state_issue_codes(evidence) == (
+        "nursery-bed-incomplete:capacity_copy",
+    )
 
 
 def _canonical_starter_nursery_geometry() -> dict[str, object]:
@@ -96,7 +124,7 @@ def _canonical_fertilizer_flow_records() -> dict[str, dict[str, object]]:
         "plant_id": "dev_rose",
         "plant_name": "Rose",
         "species": "rose",
-        "growth_points": 500,
+        "growth_points": 400,
         "growth_remainder_units": 0,
         "growth_stage": "sprout",
         "artwork_asset_id": "plant_rose_sprout_twilight_v6",
@@ -194,6 +222,38 @@ def test_move_occupied_hover_is_independently_validated() -> None:
         "move-hover:hovered-slot",
     )
 
+    contour_records = [
+        {
+            "slot": slot,
+            "depth_band": depth,
+            "variant": variant,
+            "outline_mode": "asset-alpha",
+            "record_matches_depth_asset": True,
+            "draw_rect_matches_planter": True,
+            "alpha_outline_available": True,
+            "outline_drawn": True,
+            "fallback_used": False,
+        }
+        for slot, depth, variant in (
+            (0, "far", "back"),
+            (1, "far", "back"),
+            (2, "middle", "middle"),
+            (3, "middle", "middle"),
+            (4, "near", "front"),
+            (5, "near", "front"),
+        )
+    ]
+    contours = {
+        "records": contour_records,
+        "issues": [],
+        "passed": True,
+    }
+    assert move_planter_contour_issue_codes(contours) == ()
+    contours["records"][4]["fallback_used"] = True
+    assert "move-contour:slot-4:fallback" in (
+        move_planter_contour_issue_codes(contours)
+    )
+
 
 def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
     records = {
@@ -201,22 +261,20 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "balance": 500,
             "balance_copy": "500",
             "item_id": "premium",
-            "price_copy": "300 coins",
-            "action": "Buy and apply",
+            "price_copy": "300 Garden Coins",
+            "action": "Use",
             "action_disposition": "apply",
             "action_enabled": True,
             "painted": True,
         },
         "stored-multiple": {
             "item_id": "fertilizer_basic",
-            "item_name": "Rich Compost",
-            "owned_copy": "3 owned",
-            "action": "Apply",
+            "item_name": "Basic Fertilizer",
+            "inventory_copy": "3 available · 0 queued",
+            "action": "Use",
             "action_disposition": "apply",
-            "meta_copy": (
-                "+1 Growth per eligible card answer · Lasts 1 hour"
-            ),
-            "artwork_ref": "rich_compost",
+            "meta_copy": "+1 Growth per card · Lasts for 100 cards",
+            "artwork_ref": "fertilizer_basic",
             "artwork_source_matches": True,
             "artwork_fallback": False,
             "booster_item_id": "booster_potion",
@@ -228,44 +286,42 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
         "active": {
             "engine_tier": "basic",
             "item_id": "fertilizer_basic",
-            "owned_copy": "2 owned",
-            "action": "Extend",
-            "action_disposition": "extend",
+            "inventory_copy": "2 available · 0 queued",
+            "action": "Queue",
+            "action_disposition": "queue",
             "status_phase": "active",
-            "status_copy": (
-                "Basic Fertilizer · +1 Growth per eligible card answer · "
-                "1 hour left"
-            ),
+            "status_copy": "+1 Growth per card · 100 cards remaining",
+            "artwork_ref": "fertilizer_basic",
+            "artwork_source_matches": True,
+            "artwork_fallback": False,
+            "artwork_painted": True,
             "painted": True,
         },
         "queued": {
             "engine_tiers": ["quality"],
             "item_id": "fertilizer_quality",
-            "owned_copy": "1 owned",
-            "queued_copy": "Queued",
-            "action": "Extend",
-            "action_disposition": "extend",
+            "inventory_copy": "1 available · 1 queued",
+            "action": "Queue another",
+            "action_disposition": "queue",
             "final_basic_action": "Queue",
             "final_basic_action_disposition": "queue",
             "final_basic_painted": True,
-            "final_quality_action": "Extend",
-            "final_quality_action_disposition": "extend",
+            "final_quality_action": "Queue another",
+            "final_quality_action_disposition": "queue",
             "final_quality_painted": True,
-            "meta_copy": (
-                "+2 Growth per eligible card answer · Lasts 2 hours"
-            ),
+            "meta_copy": "+2 Growth per card · Lasts for 200 cards",
             "painted": True,
         },
     }
     evidence = {"records": records, "passed": True}
 
     assert nursery_supplement_state_matrix_issue_codes(evidence) == ()
-    records["queued"]["queued_copy"] = ""
+    records["queued"]["inventory_copy"] = "1 available"
     assert nursery_supplement_state_matrix_issue_codes(evidence) == (
-        "nursery-supplement-queued:queued_copy",
+        "nursery-supplement-queued:inventory_copy",
     )
 
-    records["queued"]["queued_copy"] = "Queued"
+    records["queued"]["inventory_copy"] = "1 available · 1 queued"
     records["queued"]["final_basic_action_disposition"] = "extend"
     assert nursery_supplement_state_matrix_issue_codes(evidence) == (
         "nursery-supplement-queued:final_basic_action_disposition",
@@ -370,7 +426,7 @@ def test_visible_action_geometry_recomputes_containment_and_overlap() -> None:
 
 def _streak_fold() -> dict[str, object]:
     return {
-        "scroll_name": "Anki Streak details",
+        "scroll_name": "Anki streak details",
         "at_initial_fold": True,
         "viewport_size": [892, 420],
         "configured_bottom_padding": 24,
@@ -431,24 +487,53 @@ def test_streak_fold_rejects_partial_card_and_short_bottom_padding() -> None:
 
 
 def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
-    ready = {
+    common = {
         "applicable": True,
-        "variant": "ready",
+        "summary_semantic_id": "growth-charge.summary",
+        "shared_component": True,
+        "shared_markup_tree": True,
+        "before_label": "Before · Seed",
+        "after_label": "After · Sprout",
+        "impact_name": "Small Growth Charge",
+        "impact_value": "+100 Growth",
         "growth_label": "Total Growth",
-        "growth_value": "450 → 550",
+        "growth_value": "350 → 450",
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
-        "stage_badge": "Result: Sprout",
-        "stage_badge_accessible": "New stage: Sprout",
-        "stage_progress": "50 / 2,000 toward Young",
-        "primary_action": "Use 1 charge",
-        "current_growth": 450,
-        "projected_growth": 550,
+        "progress_label": "Next-stage progress",
+        "stage_progress": "50 / 1,600 Growth to Young",
+        "progress_minimum": 0,
+        "progress_maximum": 1_600,
+        "progress_value": 50,
+        "reward_label": "Stage reward",
+        "reward_value": "+2 Garden Coins",
+        "reward_visible": True,
+        "charge_artwork_fallback": False,
+        "coin_artwork_fallback": False,
+        "before_artwork_fallback": False,
+        "after_artwork_fallback": False,
+        "current_growth": 350,
+        "projected_growth": 450,
         "inventory_before": 2,
         "inventory_after": 1,
         "stage_carryover": 50,
-        "next_stage_goal": 2_000,
+        "next_stage_goal": 1_600,
+        "comparison_labels": "before-after",
+        "before_art_role": "before",
+        "after_art_role": "after",
+        "transition_arrow_visible": True,
+        "transition_arrow_role": True,
         "passed": True,
+    }
+    ready = {
+        **common,
+        "variant": "ready",
+        "component_variant": "confirmation",
+        "data_source": "engine-preview",
+        "dialog_title": "Use Small Growth Charge?",
+        "transition_statement": "Bonsai Plant will reach Sprout",
+        "primary_action": "Use charge",
+        "secondary_action": "Cancel",
     }
     assert growth_charge_rendered_value_issue_codes(
         "growth-charge-use-ready",
@@ -464,23 +549,19 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
     )
 
     success = {
-        "applicable": True,
+        **common,
         "variant": "success",
-        "stage_transition": "Bonsai Plant reached Sprout",
-        "receipt_copy": (
-            "+100 Growth · 1 growth charge remaining\n"
-            "Next-stage progress · 50 / 2,000 toward Young"
-        ),
-        "stage_reward_heading": "Stage reward",
-        "reward_texts": ["Stage reward", "+2 Garden Coins"],
+        "component_variant": "success",
+        "data_source": "engine-confirmed",
+        "dialog_title": "Small Growth Charge applied",
+        "transition_statement": "Bonsai Plant reached Sprout",
         "primary_action": "View plant",
         "secondary_action": "Close",
-        "resulting_growth": 550,
-        "stage_carryover": 50,
-        "next_stage_goal": 2_000,
+        "resulting_growth": 450,
         "inventory_remaining": 1,
         "stage_reward_total": 2,
-        "passed": True,
+        "layout_stable": True,
+        "repeated_activation_safe": True,
     }
     assert growth_charge_rendered_value_issue_codes(
         "growth-charge-success-stage-reward",
@@ -502,7 +583,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "active_reveal_count": 1,
         "hero_count": 1,
         "eyebrow": "MILESTONE REACHED",
-        "hero_title": "Full Bloom achieved",
+        "hero_title": "Full Bloom reached",
         "projected_hero_subtitle": "Juniper of the Moonlit Library Garden",
         "hero_subtitle": "",
         "active_plant_identity_suppressed": True,
@@ -521,7 +602,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "bundle_id": "answer:committed:1",
         "rendered_bundle_id": "answer:committed:1",
         "hero_event_id": "reward:full-bloom",
-        "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
+        "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
         "visible_summary_reward_types": [
             "garden_find",
             "environment_discovery",
@@ -547,7 +628,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "overlaps_bottom_controls": False,
         "horizontal_scroll_maximum": 0,
         "reveal_height": 132,
-        "footer_height": 52,
+        "footer_height": 68,
         "single_outer_surface": True,
         "divider_visible": True,
         "divider_count": 1,
@@ -619,11 +700,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
     rows: dict[str, object] = {
         "18-cards-left": {
             "remaining_count": 18,
-            "copy": "18 cards left",
+            "copy": "18 cards remaining",
         },
         "1-card-left": {
             "remaining_count": 1,
-            "copy": "1 card left",
+            "copy": "1 card remaining",
             "near_complete_card": True,
             "near_complete_detail": True,
             "displayed_progress_percent": 98.5,
@@ -654,11 +735,12 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "transition_active": False,
                     "completion_status": "complete",
                     "heading": "All cards complete",
-                    "reward_copy": "+10 coins",
+                    "reward_copy": "+10 Garden Coins",
                     "displayed_progress_percent": 100,
                     "header_balance": 260,
                     "session_coins": 10,
-                    "session_metric_copy": ["+18 growth", "+10 coins"],
+                    "session_metric_copy": ["+18 Growth", "+10 Garden Coins"],
+                    "passed": True,
                 },
                 "passed": True,
             },
@@ -669,7 +751,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
         },
         "growth-only": {
             "metric_keys": ["growth"],
-            "metric_copy": ["+18 growth"],
+            "metric_copy": ["+18 Growth"],
             "divider_visible": False,
             "routine_committed_answer_sequence": {
                 "presented": True,
@@ -678,7 +760,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 "session_update_deferred": True,
                 "applied": {
                     "label": "Growth applied",
-                    "value": "+18 growth",
+                    "value": "+18 Growth",
                     "result_state": "applied",
                     "progress_percent": 10,
                     "art_pulse": True,
@@ -688,12 +770,12 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "progress_percent": 18,
                     "routine_feedback_active": False,
                     "session_growth_units": 1_800,
-                    "session_metric_copy": ["+18 growth"],
+                    "session_metric_copy": ["+18 Growth"],
                     "released_after_progress": True,
                 },
                 "restored": {
-                    "label": "Next answer",
-                    "value": "+18 growth",
+                "label": "Next card:",
+                    "value": "+18 Growth",
                     "result_state": "projection",
                     "art_pulse": False,
                     "reward_visible": False,
@@ -703,7 +785,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
         },
         "growth-and-coins": {
             "metric_keys": ["growth", "coins"],
-            "metric_copy": ["+18 growth", "+2 coins"],
+            "metric_copy": ["+18 Growth", "+2 Garden Coins"],
             "zero_categories_omitted": True,
         },
         "two-effects": {
@@ -803,7 +885,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "reward_visible": True,
                     "eyebrow": "CHECKPOINT REACHED",
                     "hero_title": "25% checkpoint",
-                    "coin_copy": "+2 coins",
+                    "coin_copy": "+2 Garden Coins",
                     "header_balance": 248,
                 },
                 "sequence": [
@@ -820,10 +902,10 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 ],
                 "eyebrow": "CHECKPOINT REACHED",
                 "hero_title": "25% checkpoint",
-                "coin_copy": "+2 coins",
+                "coin_copy": "+2 Garden Coins",
                 "final_progress_percent": 38,
                 "final_header_balance": 250,
-                "final_session_metric_copy": ["+18 growth", "+2 coins"],
+                "final_session_metric_copy": ["+18 Growth", "+2 Garden Coins"],
                 "marker_before_reveal": True,
                 "reward_before_excess_fill": True,
                 "header_increment_deferred": True,
@@ -892,7 +974,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "reward_footer_non_overlapping": True,
             "divider_between_reward_and_footer": True,
             "sticky_header_and_dock": True,
-            "session_metric_copy": ["+18 growth", "+2 coins"],
+            "session_metric_copy": ["+18 Growth", "+2 Garden Coins"],
             "baseline_short_viewport_passed": True,
         },
     }
@@ -1098,8 +1180,8 @@ def _reviewer_baseline_content() -> dict[str, object]:
 
 def _reviewer_reward_content() -> dict[str, object]:
     settled_copy = (
-        "Future Growth will go to other planted plants. "
-        "Any remainder will be stored."
+        "Future Growth will go to other unfinished plants. "
+        "Any remainder becomes Stored Growth."
     )
     expected_detail_rows = [
         {
@@ -1109,9 +1191,9 @@ def _reviewer_reward_content() -> dict[str, object]:
             "event_ids": [event_id],
         }
         for category, name, value, event_id in (
-            ("Milestone", "Full Bloom achieved", "+14 coins", "event:1"),
+            ("Milestone", "Full Bloom reached", "+14 Garden Coins", "event:1"),
             ("Growth applied", "Plant Growth", "+40 growth", "event:2"),
-            ("Garden Coins", "Garden Coins", "+14 coins", "event:3"),
+            ("Garden Coins", "Garden Coins", "+14 Garden Coins", "event:3"),
             ("Discovery", "Firefly Evening", "New", "event:4"),
             ("Discovery", "Morning Dew", "New", "event:5"),
             ("Standard Find", "Moonlit Seed", "Common", "event:6"),
@@ -1131,19 +1213,19 @@ def _reviewer_reward_content() -> dict[str, object]:
             "completion_status": "complete",
             "heading": "All cards complete",
             "displayed_progress_percent": 100,
-            "reward_copy": "+10 coins",
+            "reward_copy": "+10 Garden Coins",
         },
         "one-garden-find": {
             "find_count": 1,
             "footer_copy": "1 Standard Find",
         },
         "discovery-new-wording": {
-            "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
-            "discovery_summary": "Garden discoveries",
+            "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
+            "discovery_summary": "2 Garden discoveries",
         },
         "full-bloom": {
             "eyebrow": "MILESTONE REACHED",
-            "hero_title": "Full Bloom achieved",
+            "hero_title": "Full Bloom reached",
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "class_label": "Bonsai",
@@ -1152,7 +1234,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "temporary_gold_cleared": True,
             "settled_copy": settled_copy,
             "select_another_visible": True,
-            "select_another_copy": "Choose next plant ›",
+            "select_another_copy": "Choose next plant",
             "art_scale": 1.0,
             "particles_active": False,
         },
@@ -1168,9 +1250,18 @@ def _reviewer_reward_content() -> dict[str, object]:
         "full-bloom-settled": {
             "settled": True,
             "temporary_gold_cleared": True,
-            "settled_copy": settled_copy,
-            "select_another_visible": True,
-            "select_another_copy": "Choose next plant ›",
+            "all_plants_full_bloom": True,
+            "settled_copy": (
+                "All planted plants are at Full Bloom. "
+                "Future Growth will be stored."
+            ),
+            "select_another_visible": False,
+            "destination_visible": True,
+            "destination_kind": "stored_growth",
+            "destination_heading": "Stored Growth",
+            "destination_detail": "12.5 Growth in reserve",
+            "destination_stored_growth_units": 1_250,
+            "next_action": "growth_destination",
             "art_scale": 1.0,
             "particles_active": False,
         },
@@ -1192,7 +1283,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "visible_summary_count": 2,
-            "visible_summary_labels": ["1 Standard Find", "Garden discoveries"],
+            "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
             "visible_summary_rows": [
                 {
                     "label": "1 Standard Find",
@@ -1203,7 +1294,7 @@ def _reviewer_reward_content() -> dict[str, object]:
                     "icon_kind": "item-art",
                 },
                 {
-                    "label": "Garden discoveries",
+                    "label": "2 Garden discoveries",
                     "reward_type": "environment_discovery",
                     "artwork_ref": "firefly_lantern",
                     "uses_item_art": False,
@@ -1234,7 +1325,7 @@ def _reviewer_reward_content() -> dict[str, object]:
         "settled-height-or-safe-scroll": {
             "safe_area_passed": True,
             "horizontal_scroll_maximum": 0,
-            "height_at_most_660": True,
+            "height_at_most_680": True,
             "safe_scroll": False,
         },
         "full-bloom-short-height": {
@@ -1261,13 +1352,13 @@ def _reviewer_reward_content() -> dict[str, object]:
         "session-footer-reconciliation": {
             "bundle_id": "answer:committed:1",
             "history_bundle_ids": ["answer:committed:1"],
-            "footer_growth_units": 4_000,
-            "live_growth_units": 4_000,
+            "footer_growth_units": 6_000,
+            "live_growth_units": 6_000,
             "footer_coins": 14,
             "live_coins": 14,
             "footer_finds": 1,
             "live_finds": 1,
-            "footer_copy": ["+40 growth", "+14 coins", "1 Standard Find"],
+            "footer_copy": ["+60 Growth", "+14 Garden Coins", "1 Standard Find"],
         },
         "reward-reveal-lifecycle": {
             "celebrating": "celebrating",
@@ -1278,13 +1369,13 @@ def _reviewer_reward_content() -> dict[str, object]:
         },
         "session-history-named-growth": {
             "meaningful_names": [
-                "Full Bloom achieved",
+                "Full Bloom reached",
                 "Mature reached",
                 "75% checkpoint",
                 "Morning Dew",
                 "Firefly Lantern",
                 "Verdant Twilight",
-                "Booster extended",
+                "Booster Potion",
             ],
             "routine_row_count": 1,
             "routine_name": "Growth applied",
@@ -1426,6 +1517,30 @@ def _reviewer_hud_viewport_matrix() -> dict[str, object]:
         "expanded",
         "collapsed",
     ]
+    rows["1280x600-short-expanded"].update({
+        "body_compact_level": 2,
+        "optional_effects_collapsed": True,
+        "optional_artwork_compact": True,
+        "optional_checkpoint_copy_collapsed": True,
+        "body_uncompacted_height": 680,
+        "body_natural_height": 540,
+        "body_scroll_expected": True,
+        "compaction_passed": True,
+        "vertical_scroll_maximum": 120,
+    })
+    rows["1280x800-collapsed"].update({
+        "collapsed_today_visible": True,
+        "collapsed_today_copy": "18 remaining",
+        "collapsed_today_full_copy": "Today’s cards · 18 cards remaining",
+        "collapsed_today_expected_copy": "Today’s cards · 18 cards remaining",
+        "collapsed_today_expected_visible_copy": "18 remaining",
+        "collapsed_next_visible": True,
+        "collapsed_next_copy": "+18\nGrowth",
+        "collapsed_next_declared_copy": "+18\nGrowth",
+        "collapsed_next_full_copy": "Next card: +18 Growth",
+        "collapsed_next_expected_copy": "Next card: +18 Growth",
+        "collapsed_next_expected_visible_copy": "+18\nGrowth",
+    })
     rows["passed"] = True
     return rows
 
@@ -1868,7 +1983,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "checkpoint-crossing",
             ("post_commit_sequence", "reveal_snapshot", "coin_copy"),
-            "+1 coin",
+            "+1 Garden Coin",
         ),
         (
             "checkpoint-crossing",
@@ -1908,7 +2023,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "checkpoint-crossing",
             ("post_commit_sequence", "coin_copy"),
-            "+1 coin",
+            "+1 Garden Coin",
         ),
         (
             "checkpoint-crossing",
@@ -1966,7 +2081,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "growth-only",
             ("routine_committed_answer_sequence", "applied", "label"),
-            "Next answer",
+            "Next card",
         ),
         (
             "growth-only",
@@ -2164,7 +2279,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         (
             "1-card-left",
             ("daily_completion_transition", "final", "reward_copy"),
-            "+9 coins",
+            "+9 Garden Coins",
         ),
         (
             "1-card-left",

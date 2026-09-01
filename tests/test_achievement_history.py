@@ -30,23 +30,54 @@ def test_achievement_registry_is_the_exact_one_time_reward_contract() -> None:
         "reviews_100_day",
         "reviews_1000_total",
         "all_due_done",
+        "first_canopy",
+        "first_full_bloom",
+        "growing_garden",
+        "flourishing_garden",
+        "botanical_collection",
+        "ten_harvests",
+        "fifty_harvests",
+        "hundred_harvests",
+        "year_of_harvests",
+        "deep_canopy",
+        "established_roots",
+        "old_growth",
+        "ancient_garden",
     ]
     rewards = {
         key: (
             definition.reward.coins,
             definition.reward.small_growth_charges,
             definition.reward.standard_growth_charges,
+            definition.reward.grand_growth_charges,
+            definition.reward.bed_unlocks,
+            definition.reward.cosmetic_ids,
         )
         for key, definition in ACHIEVEMENTS_BY_ID.items()
     }
     assert rewards == {
-        "streak_7": (10, 0, 0),
-        "streak_30": (100, 1, 0),
-        "streak_100": (300, 0, 0),
-        "streak_365": (1_000, 0, 0),
-        "reviews_100_day": (25, 0, 0),
-        "reviews_1000_total": (0, 0, 1),
-        "all_due_done": (5, 0, 0),
+        "streak_7": (10, 0, 0, 0, (), ()),
+        "streak_30": (100, 1, 0, 0, (), ()),
+        "streak_100": (300, 0, 0, 0, (), ()),
+        "streak_365": (1_000, 0, 0, 0, (), ()),
+        "reviews_100_day": (25, 0, 0, 0, (), ()),
+        "reviews_1000_total": (0, 0, 1, 0, (), ()),
+        "all_due_done": (5, 0, 0, 0, (), ()),
+        "first_canopy": (0, 0, 0, 0, (3,), ()),
+        "first_full_bloom": (0, 0, 0, 0, (4,), ()),
+        "growing_garden": (0, 0, 0, 0, (5,), ()),
+        "flourishing_garden": (0, 0, 1, 0, (6,), ()),
+        "botanical_collection": (
+            0, 0, 0, 1, (), ("botanists_plaque",),
+        ),
+        "ten_harvests": (25, 0, 0, 0, (), ()),
+        "fifty_harvests": (50, 1, 0, 0, (), ()),
+        "hundred_harvests": (100, 0, 1, 0, (), ()),
+        "year_of_harvests": (300, 0, 0, 0, (), ("garden_journal",)),
+        "deep_canopy": (50, 0, 0, 0, (), ()),
+        "established_roots": (100, 0, 1, 0, (), ()),
+        "old_growth": (200, 0, 0, 1, (), ()),
+        "ancient_garden": (0, 0, 0, 0, (), ("golden_trowel",)),
     }
     assert {"retention_90", "retention_100", "no_lapse"}.isdisjoint(
         ACHIEVEMENTS_BY_ID
@@ -56,7 +87,7 @@ def test_achievement_registry_is_the_exact_one_time_reward_contract() -> None:
         is AchievementEvaluationMode.LIVE_ONLY
     )
     assert not ACHIEVEMENTS_BY_ID["all_due_done"].historical_backfill
-    assert ACHIEVEMENTS_BY_ID["all_due_done"].name == "Review Day Complete"
+    assert ACHIEVEMENTS_BY_ID["all_due_done"].name == "Review Day"
     assert ACHIEVEMENTS_BY_ID["all_due_done"].description == "Complete today's cards."
 
 

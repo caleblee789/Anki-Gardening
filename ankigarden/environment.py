@@ -3,6 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from .balance_catalog import (
+    ENVIRONMENT_DISCOVERIES as BALANCE_ENVIRONMENT_DISCOVERIES,
+    GARDEN_BONUSES as BALANCE_GARDEN_BONUSES,
+    SCENERIES as BALANCE_SCENERIES,
+    CONSUMABLES as BALANCE_CONSUMABLES,
+    AcquisitionKind as BalanceAcquisitionKind,
+    ConsumableKind as BalanceConsumableKind,
+    RewardKind as BalanceRewardKind,
+    TriggerKind as BalanceTriggerKind,
+)
 from .purchases import EffectDescriptor
 
 
@@ -175,7 +185,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Common",
         "purchase",
-        "Every 10 eligible card answers: +1 Growth.",
+        "Every 10 eligible cards: +1 Growth.",
         "Nursery: 100 Garden Coins.",
         100,
         effects=(EnvironmentEffect(
@@ -192,7 +202,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Common",
         "purchase",
-        "+5 Coins when today’s cards are complete.",
+        "+5 Garden Coins when today’s cards are complete.",
         "Nursery: 175 Garden Coins.",
         175,
         effects=(EnvironmentEffect(
@@ -208,14 +218,15 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Uncommon",
         "purchase",
-        "Every 5 eligible card answers: +1 Growth.",
+        "Every fifth eligible card among the first 100 each Anki day: +1 Growth.",
         "Nursery: 250 Garden Coins.",
         250,
         effects=(EnvironmentEffect(
-            "growth_every_5_plus_1",
+            "growth_every_5_first_100_plus_1",
             "eligible_card",
             "growth",
             amount=1,
+            first_cards=100,
             every_nth_card=5,
         ),),
     ),
@@ -225,15 +236,25 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Uncommon",
         "purchase",
-        "Booster Potions provide 25 percent more Booster cards.",
+        "Every 30 Today’s Cards completions while active, gain 1 Booster Potion; activated Potions affect 25 additional cards.",
         "Nursery: 350 Garden Coins.",
         350,
-        effects=(EnvironmentEffect(
-            "booster_cards_multiplier_1_25",
-            "booster_activation",
-            "booster_cards",
-            amount=25,
-        ),),
+        effects=(
+            EnvironmentEffect(
+                "hourglass_completion_booster",
+                "today_cards_complete",
+                "inventory_item",
+                amount=1,
+                every_nth_completion=30,
+                inventory_item_id="booster_potion",
+            ),
+            EnvironmentEffect(
+                "booster_cards_plus_25",
+                "booster_activation",
+                "booster_cards",
+                amount=25,
+            ),
+        ),
     ),
     "firefly_lantern": CatalogItem(
         "firefly_lantern",
@@ -241,15 +262,15 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Rare",
         "drop",
-        "Every 4 eligible card answers: +3 Growth.",
+        "Every fifth eligible card: +3 Instant Growth to the unfinished planted plant closest to its next checkpoint.",
         "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="rare_environment",
         effects=(EnvironmentEffect(
-            "growth_every_4_plus_3",
+            "instant_growth_every_5_plus_3_closest_checkpoint",
             "eligible_card",
-            "growth",
+            "instant_growth",
             amount=3,
-            every_nth_card=4,
+            every_nth_card=5,
         ),),
     ),
     "prism_trellis": CatalogItem(
@@ -258,14 +279,15 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Very Rare",
         "drop",
-        "Bank 1.5 Growth per eligible card; release it when Today’s Cards are complete.",
+        "Bank 1 Growth on each of the first 100 eligible cards per day, up to 300; release it on Today’s Cards completion while active.",
         "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="very_rare_environment",
         effects=(EnvironmentEffect(
-            "prism_bank_per_answer_1_5",
+            "prism_bank_per_answer_1",
             "eligible_card",
             "instant_growth",
-            amount_units=150,
+            amount_units=100,
+            first_cards=100,
         ),),
     ),
 }
@@ -287,15 +309,15 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Common",
         "purchase",
-        "+1 Growth on your first 25 cards each Anki day.",
+        "+2 Growth on your first 20 cards each Anki day.",
         "Nursery: 400 Garden Coins.",
         400,
         effects=(EnvironmentEffect(
             "spring_bloom_growth",
             "eligible_card",
             "growth",
-            amount=1,
-            first_cards=25,
+            amount=2,
+            first_cards=20,
         ),),
     ),
     "summer": CatalogItem(
@@ -304,7 +326,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Uncommon",
         "purchase",
-        "+1 Growth on every second card among your first 100 each Anki day.",
+        "+1 Growth on every second card among your first 120 each Anki day.",
         "Nursery: 600 Garden Coins.",
         600,
         effects=(EnvironmentEffect(
@@ -312,7 +334,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
             "eligible_card",
             "growth",
             amount=1,
-            first_cards=100,
+            first_cards=120,
             every_nth_card=2,
         ),),
     ),
@@ -322,15 +344,23 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Uncommon",
         "purchase",
-        "+50% Coins from plant checkpoints and stage completion.",
+        "+4 Garden Coins when Today’s Cards is complete, plus +50% Garden Coins from plant checkpoints and first-time stage completion.",
         "Nursery: 500 Garden Coins.",
         500,
-        effects=(EnvironmentEffect(
-            "autumn_hearth_milestone_coins",
-            "plant_milestone",
-            "milestone_coin_percent",
-            amount=50,
-        ),),
+        effects=(
+            EnvironmentEffect(
+                "autumn_hearth_completion_coins",
+                "today_cards_complete",
+                "coins",
+                amount=4,
+            ),
+            EnvironmentEffect(
+                "autumn_hearth_milestone_coins",
+                "plant_milestone",
+                "milestone_coin_percent",
+                amount=50,
+            ),
+        ),
     ),
     "snowy": CatalogItem(
         "snowy",
@@ -338,7 +368,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Rare",
         "purchase",
-        "Gain 1 Small Growth Charge when today’s cards are complete.",
+        "Every second Today’s Cards completion while active grants 1 Small Growth Charge.",
         "Nursery: 1,200 Garden Coins.",
         1_200,
         effects=(EnvironmentEffect(
@@ -346,6 +376,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
             "today_cards_complete",
             "inventory_item",
             amount=1,
+            every_nth_completion=2,
             inventory_item_id="growth_charge_small",
         ),),
     ),
@@ -355,7 +386,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Rare",
         "drop",
-        "+1 Growth on your first 100 cards each Anki day.",
+        "+1 Growth on your first 75 cards each Anki day.",
         "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="rare_environment",
         effects=(EnvironmentEffect(
@@ -363,7 +394,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
             "eligible_card",
             "growth",
             amount=1,
-            first_cards=100,
+            first_cards=75,
         ),),
     ),
     "halloween": CatalogItem(
@@ -372,7 +403,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Very Rare",
         "drop",
-        "When today’s cards are complete: Small Charge 85%, Standard Charge 10%, or Booster Potion 5%.",
+        "When today’s cards are complete: Small Charge 95%, Standard Charge 4%, or Booster Potion 1%.",
         "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="very_rare_environment",
         effects=(EnvironmentEffect(
@@ -381,9 +412,9 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
             "inventory_item",
             amount=1,
             weighted_rewards=(
-                WeightedEnvironmentReward("growth_charge_small", 85),
-                WeightedEnvironmentReward("growth_charge_standard", 10),
-                WeightedEnvironmentReward("booster_potion", 5),
+                WeightedEnvironmentReward("growth_charge_small", 95),
+                WeightedEnvironmentReward("growth_charge_standard", 4),
+                WeightedEnvironmentReward("booster_potion", 1),
             ),
         ),),
     ),
@@ -393,25 +424,17 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Ultra Rare",
         "drop",
-        "Every fourth day you complete today’s cards, gain 1 Booster Potion; Potions apply to 25 additional cards.",
+        "Every sixth Today’s Cards completion while active grants 1 Booster Potion.",
         "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="ultra_environment",
-        effects=(
-            EnvironmentEffect(
-                "full_moon_completion_booster",
-                "today_cards_complete",
-                "inventory_item",
-                amount=1,
-                every_nth_completion=4,
-                inventory_item_id="booster_potion",
-            ),
-            EnvironmentEffect(
-                "full_moon_booster_cards",
-                "booster_activation",
-                "booster_cards",
-                amount=25,
-            ),
-        ),
+        effects=(EnvironmentEffect(
+            "full_moon_completion_booster",
+            "today_cards_complete",
+            "inventory_item",
+            amount=1,
+            every_nth_completion=6,
+            inventory_item_id="booster_potion",
+        ),),
     ),
     "eclipse": CatalogItem(
         "eclipse",
@@ -419,17 +442,146 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Ultra Rare",
         "drop",
-        "+2 Growth on your first 100 cards each Anki day.",
+        "+1 Growth on your first 125 cards each Anki day.",
         "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="ultra_environment",
         effects=(EnvironmentEffect(
             "celestial_eclipse_growth",
             "eligible_card",
             "growth",
-            amount=2,
-            first_cards=100,
+            amount=1,
+            first_cards=125,
         ),),
     ),
+}
+
+
+_TRIGGER_PROJECTION = {
+    BalanceTriggerKind.ELIGIBLE_CARD: "eligible_card",
+    BalanceTriggerKind.VALID_COMPLETION: "today_cards_complete",
+    BalanceTriggerKind.BOOSTER_ACTIVATION: "booster_activation",
+    BalanceTriggerKind.PLANT_MILESTONE: "plant_milestone",
+}
+_VALUE_KIND_PROJECTION = {
+    BalanceRewardKind.GROWTH: "growth",
+    BalanceRewardKind.COINS: "coins",
+    BalanceRewardKind.INSTANT_GROWTH: "instant_growth",
+    BalanceRewardKind.CONSUMABLE: "inventory_item",
+    BalanceRewardKind.BOOSTER_CARD_LIMIT: "booster_cards",
+    BalanceRewardKind.MILESTONE_COIN_PERCENT: "milestone_coin_percent",
+    BalanceRewardKind.BANKED_GROWTH: "instant_growth",
+}
+
+
+def _runtime_environment_effect(effect: object) -> EnvironmentEffect:
+    """Project canonical mechanics into the renderer-facing catalog shape."""
+
+    grant = effect.grant
+    weighted = tuple(
+        WeightedEnvironmentReward(
+            str(weighted_grant.grant.item_id or ""),
+            int(weighted_grant.weight_percent),
+        )
+        for weighted_grant in effect.weighted_grants
+    )
+    reward_kind = (
+        grant.kind
+        if grant is not None
+        else BalanceRewardKind.CONSUMABLE
+    )
+    amount = max(0, int(grant.amount)) if grant is not None else 1
+    amount_units = (
+        amount * 100
+        if reward_kind is BalanceRewardKind.BANKED_GROWTH
+        else 0
+    )
+    return EnvironmentEffect(
+        effect_id=str(effect.effect_id),
+        trigger=_TRIGGER_PROJECTION[effect.trigger],
+        value_kind=_VALUE_KIND_PROJECTION[reward_kind],
+        amount=0 if amount_units else amount,
+        amount_units=amount_units,
+        first_cards=effect.cadence.first_n_per_day,
+        every_nth_card=(
+            effect.cadence.every_n
+            if effect.trigger is BalanceTriggerKind.ELIGIBLE_CARD
+            and effect.cadence.every_n > 1
+            else None
+        ),
+        every_nth_completion=(
+            effect.cadence.every_n
+            if effect.trigger is BalanceTriggerKind.VALID_COMPLETION
+            and effect.cadence.every_n > 1
+            else None
+        ),
+        inventory_item_id=(
+            str(grant.item_id or "") or None
+            if grant is not None
+            and reward_kind is BalanceRewardKind.CONSUMABLE
+            else None
+        ),
+        weighted_rewards=weighted,
+    )
+
+
+def _runtime_acquisition(acquisition: BalanceAcquisitionKind) -> AcquisitionKind:
+    if acquisition is BalanceAcquisitionKind.INCLUDED:
+        return "free"
+    if acquisition is BalanceAcquisitionKind.PURCHASE:
+        return "purchase"
+    return "drop"
+
+
+_DISCOVERY_TIER_BY_ITEM = {
+    str(item.item_id): str(item.tier_id)
+    for item in BALANCE_ENVIRONMENT_DISCOVERIES
+}
+
+
+def _project_catalog_item(
+    definition: object,
+    *,
+    kind: EnvironmentKind,
+    presentation: CatalogItem,
+) -> CatalogItem:
+    item_id = str(
+        definition.bonus_id if kind == "garden_feature" else definition.scenery_id
+    )
+    return CatalogItem(
+        item_id=item_id,
+        name=str(definition.display_name),
+        kind=kind,
+        rarity=str(definition.rarity),
+        acquisition=_runtime_acquisition(definition.acquisition),
+        effect=presentation.effect,
+        how_to_earn=str(definition.how_to_acquire),
+        price=definition.price_coins,
+        drop_tier=_DISCOVERY_TIER_BY_ITEM.get(item_id),
+        effects=tuple(
+            _runtime_environment_effect(effect)
+            for effect in definition.effects
+        ),
+    )
+
+
+# Runtime mechanics, names, prices, and acquisition routes are projections of
+# the canonical 2.2.0 catalog. The local entries above retain only carefully
+# edited player-facing explanatory prose.
+GARDEN_FEATURE_CATALOG = {
+    str(definition.bonus_id): _project_catalog_item(
+        definition,
+        kind="garden_feature",
+        presentation=GARDEN_FEATURE_CATALOG[str(definition.bonus_id)],
+    )
+    for definition in BALANCE_GARDEN_BONUSES
+}
+SCENERY_CATALOG = {
+    str(definition.scenery_id): _project_catalog_item(
+        definition,
+        kind="scenery",
+        presentation=SCENERY_CATALOG[str(definition.scenery_id)],
+    )
+    for definition in BALANCE_SCENERIES
 }
 
 
@@ -462,8 +614,21 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         2_000,
         None,
         "Very Rare",
-        "Temporarily unavailable",
+        "Botanical Collection, Old Growth, and future major event rewards.",
     ),
+}
+
+GROWTH_CHARGES = {
+    str(item.consumable_id): GrowthChargeSpec(
+        charge_id=str(item.consumable_id),
+        name=str(item.display_name),
+        growth=max(0, int(item.instant_growth)),
+        price=item.price_coins,
+        rarity=str(item.rarity),
+        how_to_earn=str(item.how_to_acquire),
+    )
+    for item in BALANCE_CONSUMABLES
+    if item.kind is BalanceConsumableKind.GROWTH_CHARGE
 }
 
 

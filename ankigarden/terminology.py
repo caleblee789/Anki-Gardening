@@ -53,7 +53,7 @@ GARDEN_CURRENCY_EXPLANATION = (
 )
 
 FERTILIZER_EXPLANATION = (
-    "Fertilizer adds Growth per eligible card answer for a limited time."
+    "Fertilizer adds Growth per card for a limited number of cards."
 )
 
 PROGRESSION_SUMMARY = (

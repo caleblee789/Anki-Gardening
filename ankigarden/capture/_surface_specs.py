@@ -1534,7 +1534,10 @@ _V25_SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser
                             'nonblank-pixels',
                             'scroll:GardenSettingsDialog:display'),
   'owned_dependency_groups': ('settings',),
-  'owned_module_dependencies': ('ui/garden_studio.py',),
+  'owned_module_dependencies': ('ui/garden_studio.py',
+                                'ui/garden_asset_thumbnail.py',
+                                'ui/environment_art.py',
+                                'ui/plant_art.py'),
   'retired_reason': '',
   'state_contract': {'kind': 'settings',
                      'profile': {'profile_id': 'settings-display-advanced-open',
@@ -5415,6 +5418,7 @@ _V26_REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
     ),
     "move-mode": (
         "move_occupied_hover",
+        "move_planter_contours",
     ),
     "selected-plant-nurtured": (
         "zero_inventory_growth_charge_route",
@@ -5517,6 +5521,27 @@ def _with_v26_first_run_topology(row: dict[str, object]) -> dict[str, object]:
     return row
 
 
+def _with_v26_landmark_display_dependency_closure(
+    row: dict[str, object],
+) -> dict[str, object]:
+    """Own the shared Landmark renderer imported by Home and Garden scenes."""
+
+    dependencies = tuple(row.get("owned_module_dependencies", ()))
+    stable_id = str(row["id"])
+    home_widget_mapped = (
+        str(row.get("renderer_family", "")) == "AnkiQt"
+        and not stable_id.startswith("reviewer-")
+    )
+    scene_owned = "ui/scene.py" in dependencies
+    if not (home_widget_mapped or scene_owned):
+        return row
+    row["owned_module_dependencies"] = tuple(dict.fromkeys((
+        *dependencies,
+        "ui/landmark_display.py",
+    )))
+    return row
+
+
 def _with_v26_shared_flow_topology(row: dict[str, object]) -> dict[str, object]:
     """Bind every step in a sequential flow to its seeded checkpoint lineage."""
 
@@ -5528,6 +5553,192 @@ def _with_v26_shared_flow_topology(row: dict[str, object]) -> dict[str, object]:
         "internal_setups": ("nurtured-active", "transaction-snapshot"),
     })
     return row
+
+
+def _v26_economy_transaction_rows() -> tuple[dict[str, object], ...]:
+    """Return the four release-economy transaction surfaces added in v26.
+
+    These rows intentionally live outside the frozen v25 table.  Each one is
+    a singleton scenario with an exact-ledger transaction fixture, so the
+    final pixels and semantic audit can prove a committed 2.2 economy outcome
+    without changing any historical capture identity.
+    """
+
+    bases = {
+        str(row["id"]): row
+        for row in _V25_SURFACE_ROWS
+    }
+    definitions = (
+        (
+            "landmark-contribution-completion",
+            "_capture_landmark_contribution_completion",
+            "progress-collection",
+            "GardenProgressDialog",
+            "progress",
+            {"page": "collection"},
+            "landmark_transaction_state",
+            (
+                "fixture-identity",
+                "geometry",
+                "semantic-state",
+                "nonblank-pixels",
+                "rendered-pixels:landmark-completed-row",
+                "scroll:GardenProgressDialog:collection",
+            ),
+            ("progress", "collection"),
+            (
+                "ui/scene.py",
+                "ui/landmarks.py",
+                "ui/landmark_display.py",
+                "economy_progression.py",
+            ),
+        ),
+        (
+            "mastery-rank-completion",
+            "_capture_mastery_rank_completion",
+            "progress-collection",
+            "GardenProgressDialog",
+            "progress",
+            {"page": "collection"},
+            "mastery_transaction_state",
+            (
+                "fixture-identity",
+                "geometry",
+                "semantic-state",
+                "nonblank-pixels",
+                "rendered-pixels:mastery-rank-card",
+                "scroll:GardenProgressDialog:collection",
+            ),
+            ("progress", "collection"),
+            ("economy_progression.py", "ui/economy_presenters.py"),
+        ),
+        (
+            "cosmetic-purchase-display-independent",
+            "_capture_cosmetic_purchase_display_independent",
+            "collection-loadout-detail",
+            "CollectibleDetailDialog",
+            "collectible-detail",
+            {},
+            "cosmetic_purchase_display_independence",
+            (
+                "fixture-identity",
+                "geometry",
+                "semantic-state",
+                "nonblank-pixels",
+                "rendered-pixels:cosmetic-display-preview",
+                "scroll:CollectibleDetailDialog:loadout",
+            ),
+            ("collection",),
+            ("ui/economy_presenters.py",),
+        ),
+        (
+            "earned-bed-unlock-celebration",
+            "_capture_earned_bed_unlock_celebration",
+            "nursery-garden-spaces",
+            "NurseryDialog",
+            "nursery",
+            {"tab": 2, "starter_mode": False},
+            "earned_bed_unlock_celebration",
+            (
+                "fixture-identity",
+                "geometry",
+                "semantic-state",
+                "nonblank-pixels",
+                "rendered-pixels:earned-bed-unlock-card",
+            ),
+            ("nursery-spaces", "progress-achievements"),
+            (
+                "economy_progression.py",
+                "garden_finds.py",
+                "reward_presentation.py",
+                "ui/session_summary.py",
+            ),
+        ),
+    )
+    rows: list[dict[str, object]] = []
+    for within_group_order, definition in enumerate(definitions):
+        (
+            stable_id,
+            executor,
+            base_id,
+            renderer_family,
+            kind,
+            profile_additions,
+            transaction_fact,
+            evidence_requirements,
+            dependency_groups,
+            module_dependencies,
+        ) = definition
+        row = deepcopy(bases[base_id])
+        row.update({
+            "id": stable_id,
+            "active": True,
+            "placements": ((
+                "full",
+                "Economy progression transactions",
+                6,
+                34 + within_group_order,
+                within_group_order,
+            ),),
+            "executor": executor,
+            "arguments": (),
+            "renderer_family": renderer_family,
+            "checkpoint_cohort": "development-stress",
+            "checkpoint": "development-stress",
+            "prerequisites": (),
+            "internal_setups": (
+                "development-stress",
+                "transaction-snapshot",
+            ),
+            "evidence_requirements": evidence_requirements,
+            "owned_dependency_groups": dependency_groups,
+            "owned_module_dependencies": module_dependencies,
+            "retired_reason": "",
+        })
+        state_contract = {
+            "kind": kind,
+            "profile": {
+                "profile_id": stable_id,
+                "window_family": renderer_family,
+                "kind": kind,
+                "state": stable_id,
+                **profile_additions,
+            },
+            "required_facts": (
+                "ordered_fixture_label",
+                "state_profile_declared",
+                "window_family",
+                *(
+                    ("garden_scene_present",)
+                    if kind == "dashboard" else
+                    ("progress_page",)
+                    if kind == "progress" else
+                    ("nursery_tab", "starter_mode")
+                    if kind == "nursery" else
+                    ()
+                ),
+                transaction_fact,
+            ),
+            "expected_fact_values": {
+                "ordered_fixture_label": stable_id,
+                "state_profile_declared": stable_id,
+                "window_family": renderer_family,
+                **(
+                    {"progress_page": profile_additions["page"]}
+                    if "page" in profile_additions else
+                    {
+                        "nursery_tab": profile_additions["tab"],
+                        "starter_mode": profile_additions["starter_mode"],
+                    }
+                    if "tab" in profile_additions else
+                    {}
+                ),
+            },
+            "fact_constraints": {},
+        }
+        row["state_contract"] = state_contract
+        rows.append(_with_v26_scenario_identity(row))
+    return tuple(rows)
 
 
 def _v26_surface_rows() -> tuple[dict[str, object], ...]:

@@ -122,6 +122,11 @@ def _catalog_name(catalog: Mapping[str, Any], item_id: str) -> str:
     )
 
 
+def _catalog_effect(catalog: Mapping[str, Any], item_id: str) -> str:
+    item = catalog.get(item_id)
+    return str(getattr(item, "effect", "") or "").strip().rstrip(".")
+
+
 @dataclass(frozen=True)
 class GardenAppearanceProjection:
     """The four independent facts shown in Garden appearance summaries."""
@@ -133,17 +138,28 @@ class GardenAppearanceProjection:
     active_bonus_decoration_id: str
     active_bonus_name: str
     visual_effects_enabled: bool
+    active_bonus_effect: str = ""
 
     @property
     def visual_effects_text(self) -> str:
-        return "On" if self.visual_effects_enabled else "Off"
+        return "Enabled" if self.visual_effects_enabled else "Disabled"
 
     @property
     def summary_rows(self) -> tuple[tuple[str, str], ...]:
         return (
             ("Scenery", self.scenery_name),
             ("Displayed decoration", self.displayed_decoration_name),
-            ("Active garden bonus", self.active_bonus_name),
+            (
+                "Active garden bonus",
+                " · ".join(
+                    part
+                    for part in (
+                        self.active_bonus_name,
+                        self.active_bonus_effect,
+                    )
+                    if part
+                ),
+            ),
             ("Visual effects", self.visual_effects_text),
         )
 
@@ -152,6 +168,7 @@ class GardenAppearanceProjection:
             "scenery_id": self.scenery_id,
             "displayed_decoration_id": self.displayed_decoration_id,
             "active_bonus_decoration_id": self.active_bonus_decoration_id,
+            "active_bonus_effect": self.active_bonus_effect,
             "visual_effects_enabled": self.visual_effects_enabled,
         }
 
@@ -162,6 +179,10 @@ def project_garden_appearance(
     visual_effects_enabled: bool | None = None,
 ) -> GardenAppearanceProjection:
     """Resolve displayed, active, and day-locked appearance state separately."""
+
+    # Keep engine/catalog effect language stable while projecting the exact
+    # learner-facing card cadence shared by every Garden surface.
+    from .ui.copy import garden_bonus_effect_copy
 
     loadout = _read(state, "loadout")
     schedule = _read(state, "daily_loadout")
@@ -223,6 +244,10 @@ def project_garden_appearance(
         active_bonus_decoration_id=active_bonus_id,
         active_bonus_name=_catalog_name(GARDEN_FEATURE_CATALOG, active_bonus_id),
         visual_effects_enabled=bool(visual_effects_enabled),
+        active_bonus_effect=garden_bonus_effect_copy(
+            active_bonus_id,
+            _catalog_effect(GARDEN_FEATURE_CATALOG, active_bonus_id),
+        ),
     )
 
 

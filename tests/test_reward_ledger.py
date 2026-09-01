@@ -8,6 +8,7 @@ import pytest
 from ankigarden.reward_ledger import (
     AnswerConsumptionRecord,
     AnswerLineageRecord,
+    EconomyEventRecord,
     FinalizedDayRecord,
     FindOutcomeRecord,
     RevlogAliasRecord,
@@ -376,3 +377,50 @@ def test_open_fails_closed_when_exact_identity_schema_is_incomplete(tmp_path) ->
 
     with pytest.raises(RewardLedgerSchemaError, match="indexes are incomplete"):
         RewardLedger(database)
+
+
+def test_schema3_growth_flows_reconcile_generated_and_manual_units(tmp_path) -> None:
+    ledger = RewardLedger(tmp_path / "growth-ledger.sqlite3")
+    ledger.stage_economy_event(EconomyEventRecord(
+        event_key="answer:one",
+        event_kind="answer_growth",
+        source_id="base_answer",
+        growth_earned_units=1_000,
+        growth_flow_kind="generated",
+        growth_generated_units=1_000,
+        growth_applied_to_plants_units=700,
+        growth_routed_to_storage_units_lifetime=200,
+        stored_growth_balance_delta_units=200,
+        growth_contributed_to_landmarks_units=100,
+        metric_deltas={
+            "project_allocations": {"landmark:garden_landmark": 100}
+        },
+    ))
+    ledger.stage_economy_event(EconomyEventRecord(
+        event_key="project:one",
+        event_kind="project_contribution",
+        sink_id="landmark:garden_landmark",
+        growth_flow_kind="manual_contribution",
+        stored_growth_balance_delta_units=-150,
+        growth_contributed_to_landmarks_units=150,
+        metric_deltas={
+            "project_allocations": {"landmark:garden_landmark": 150}
+        },
+    ))
+    aggregates = ledger.lifetime_economy_aggregates()
+    assert aggregates["growth_generated_units"] == 1_000
+    assert aggregates["growth_applied_to_plants_units"] == 700
+    assert aggregates["growth_routed_to_storage_units_lifetime"] == 200
+    assert aggregates["growth_contributed_to_landmarks_units"] == 250
+
+    with pytest.raises(ValueError, match="conserve"):
+        ledger.stage_economy_event(EconomyEventRecord(
+            event_key="broken",
+            event_kind="answer_growth",
+            source_id="base_answer",
+            growth_flow_kind="generated",
+            growth_generated_units=10,
+            growth_applied_to_plants_units=9,
+        ))
+    ledger.rollback_all()
+    ledger.close()
