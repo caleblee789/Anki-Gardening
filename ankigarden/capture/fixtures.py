@@ -68,12 +68,12 @@ def validate_achievement_completion_schedule(
 
 
 def representative_collection_inventory_plan() -> RepresentativeCollectionInventoryPlan:
-    """Return the real owned-item seed for the canonical 30-of-39 face.
+    """Return the real owned-item seed for the canonical 30-of-93 face.
 
-    The nine undiscovered entries are the six drop-only environment rewards
-    and the three Fertilizer tiers. Booster Potion and all three Growth Charge
-    definitions remain genuinely owned, so Collection derives the count from
-    state instead of receiving capture-only display copy.
+    The release catalog adds cosmetic, Landmark, and Cultivation Mastery
+    entries to the earlier environment and consumable collection. This seed
+    still derives the visible owned count from real state instead of receiving
+    capture-only display copy.
     """
 
     from ..environment import (

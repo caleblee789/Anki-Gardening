@@ -73,7 +73,7 @@ def test_growth_display_reports_next_stage(points, stage, next_stage, remaining)
 
 
 def test_growth_display_handles_fully_grown_without_parallel_rare_override():
-    grown = growth_display(50_000)
+    grown = growth_display(35_000)
     assert grown.fully_grown is True
     assert grown.next_stage is None
     assert grown.progress == 1.0

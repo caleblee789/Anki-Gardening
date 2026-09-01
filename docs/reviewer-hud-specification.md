@@ -71,8 +71,8 @@ crossfades to the completed layout, applies the engine-confirmed reward, and
 settles after about 1.5 seconds.
 
 ```text
-check icon  All cards complete
-176 reviewed today                    +10 coins
+check icon  Today’s Cards Complete
+176 cards complete                    +10 coins
 ```
 
 The completed state does not primarily show `0 cards left` or `176 / 176`.
@@ -268,15 +268,15 @@ or strand focus in the Reviewer.
 
 The reviewer-specific states are covered by capture contract v26 (contract
 schema 2, scenario schema 3) within the 18-surface representative and
-34-surface full topology. Representative output is two contact-sheet pages;
-full output is five. The separate Sync Rewards receipt remains its own
+38-surface full topology. Representative output is two contact-sheet pages;
+full output is six. The separate Sync Rewards receipt remains its own
 registered surface. Every capture record carries `scenario_id`, `fixture_id`,
 and one-based `scenario_step`; v25 evidence is ineligible for reuse. Native
 macOS review at 100 percent scaling exercises these transient states:
 
 1. 18 cards left.
 2. 1 card left.
-3. All cards complete.
+3. Today’s Cards Complete.
 4. No session rewards yet.
 5. Growth only.
 6. Growth and Coins.

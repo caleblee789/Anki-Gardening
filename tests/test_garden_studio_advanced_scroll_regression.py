@@ -520,6 +520,115 @@ def _live_replacement_quote(engine: Any, storage: Any) -> Any:
     )
 
 
+def test_collection_landmark_bottom_anchor_contains_intersecting_controls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 950x570 Collection endgame fold must not expose clipped actions."""
+
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv(
+        "QT_QPA_PLATFORM",
+        os.environ.get("QT_QPA_PLATFORM", "offscreen"),
+    )
+    try:
+        from aqt.qt import (
+            QAbstractButton,
+            QApplication,
+            QCoreApplication,
+            QEvent,
+            QFrame,
+            QWidget,
+        )
+        from ankigarden.growth import GROWTH_THRESHOLDS, GROWTH_UNITS_PER_POINT
+        from ankigarden.models.state import GardenProjectState
+        from ankigarden.ui.dashboard import GardenDashboard
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    config, storage, engine = _live_engine_fixture()
+    plant = storage.state.plants[0]
+    plant.growth_units = GROWTH_THRESHOLDS[-1] * GROWTH_UNITS_PER_POINT
+    plant.slot_index = 0
+    storage.state.starter_selection_complete = True
+    storage.state.garden_project = GardenProjectState(
+        completed_project_ids=["mossy_stone_path"],
+        displayed_project_id="mossy_stone_path",
+    )
+
+    owner = QWidget()
+    owner.resize(1400, 900)
+    owner.show()
+    dashboard = GardenDashboard(owner, engine, storage, config)
+    dashboard._refresh_collection_list()
+    progress = dashboard.progress_dialog
+    progress.navigation.set_current("collection")
+    progress.resize(950, 570)
+    progress.show()
+    for _iteration in range(3):
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
+        application.processEvents()
+
+    collection = dashboard.collection_list
+    assert collection.grid.contentsMargins().bottom() == 28
+    scroll = collection.scroll
+    viewport = scroll.viewport()
+    bar = scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
+    application.processEvents()
+
+    completed_row = next(
+        candidate
+        for candidate in collection.findChildren(QFrame)
+        if bool(candidate.property("completedLandmark"))
+        and str(candidate.property("landmarkId") or "") == "mossy_stone_path"
+    )
+
+    def viewport_bounds(widget: QWidget) -> tuple[int, int, int, int]:
+        origin = widget.mapTo(viewport, widget.rect().topLeft())
+        return (
+            int(origin.x()),
+            int(origin.y()),
+            int(widget.width()),
+            int(widget.height()),
+        )
+
+    def intersects_viewport(bounds: tuple[int, int, int, int]) -> bool:
+        x, y, width, height = bounds
+        return bool(
+            x < int(viewport.width())
+            and x + width > 0
+            and y < int(viewport.height())
+            and y + height > 0
+        )
+
+    landmark_bounds = viewport_bounds(completed_row)
+    assert intersects_viewport(landmark_bounds)
+    landmark_x, landmark_y, landmark_width, landmark_height = landmark_bounds
+    assert landmark_x >= 0
+    assert landmark_y >= 0
+    assert landmark_x + landmark_width <= int(viewport.width())
+    assert landmark_y + landmark_height <= int(viewport.height())
+
+    intersecting_buttons = [
+        (button, viewport_bounds(button))
+        for button in collection.findChildren(QAbstractButton)
+        if button.isVisibleTo(viewport)
+        and intersects_viewport(viewport_bounds(button))
+    ]
+    assert intersecting_buttons
+    for button, (x, y, width, height) in intersecting_buttons:
+        assert x >= 0, button.text()
+        assert y >= 0, button.text()
+        assert x + width <= int(viewport.width()), button.text()
+        assert y + height <= int(viewport.height()), button.text()
+
+    progress.close()
+    owner.close()
+    application.processEvents()
+
+
 def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -913,7 +1022,6 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             >= dashboard.customize_btn.sizeHint().width()
         )
 
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()
@@ -990,7 +1098,6 @@ def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
     assert_owner_does_not_adopt(customize)
 
     customize.hide()
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()
@@ -1038,7 +1145,6 @@ def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
         dashboard.scene.minimumHeight()
     )
 
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()
@@ -1685,7 +1791,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         "ankigarden.ui.dashboard.project_collection",
         lambda _state: SimpleNamespace(
             species_text="10 of 10 species discovered",
-            collection_entries_text="30 of 39 collection entries discovered",
+            collection_entries_text="30 of 93 collection entries discovered",
             collection_complete=True,
         ),
     )
@@ -1707,7 +1813,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         if button.isVisibleTo(final_nursery)
     ]
     assert "10 of 10 species discovered" in final_labels
-    assert "30 of 39 collection entries discovered" in final_labels
+    assert "30 of 93 collection entries discovered" in final_labels
     assert final_actions.count("View collection") == 1
     final_nursery.hide()
     assert_surface(fertilizer_selection, "Fertilizer selection")
@@ -1749,7 +1855,6 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
 
     for timer in fertilizer_selection.findChildren(QTimer):
         timer.stop()
-    dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
     application.processEvents()

@@ -240,7 +240,7 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "plants": (925, 940, 950, 300, 360, 520),
             "owned": (925, 940, 950, 470, 500, 530),
             "fertilizer": (925, 940, 950, 500, 506, 541),
-            "spaces": (925, 940, 950, 300, 325, 330),
+            "spaces": (925, 940, 950, 300, 480, 580),
             "garden_features": (925, 940, 950, 488, 575, 580),
             "collection-complete": (925, 940, 950, 308, 323, 338),
             "collection-complete-receipt": (925, 940, 950, 390, 400, 410),
@@ -256,7 +256,7 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "collection-empty": (940, 950, 960, 360, 400, 460),
         },
         DialogSizeClass.LOADOUT: {
-            "default": (980, 1000, 1020, 680, 680, 680),
+            "default": (980, 1000, 1020, 704, 704, 704),
         },
         DialogSizeClass.PLANT_STORY: {
             "default": (740, 760, 780, 480, 500, 520),
@@ -402,6 +402,29 @@ def test_workspace_content_fit_replaces_the_allocated_viewport_with_content() ->
         viewport_height=181,
         scroll_content_height=218,
     ) == 340
+
+
+def test_nursery_spaces_profile_fits_endgame_and_committed_banner() -> None:
+    profile = dialog_height_profile(DialogSizeClass.NURSERY, "spaces")
+    ordinary_height = workspace_content_fit_natural_height(
+        330,
+        window_mode=DialogWindowMode.WORKSPACE,
+        window_height=330,
+        viewport_height=178,
+        scroll_content_height=328,
+    )
+    banner_height = workspace_content_fit_natural_height(
+        330,
+        window_mode=DialogWindowMode.WORKSPACE,
+        window_height=330,
+        viewport_height=98,
+        scroll_content_height=346,
+    )
+
+    assert ordinary_height == 480
+    assert banner_height == 578
+    assert profile.preferred_height >= ordinary_height
+    assert profile.max_height >= banner_height
 
 
 def test_tabbed_empty_views_keep_the_workspace_window_mode() -> None:

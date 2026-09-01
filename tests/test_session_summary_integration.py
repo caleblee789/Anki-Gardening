@@ -230,6 +230,90 @@ def test_engine_committed_result_contains_causal_receipts_and_due_rewards(monkey
     )
 
 
+def test_typed_committed_result_carries_exact_landmark_progress(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(state=SimpleNamespace()),
+    )
+    result = CommittedAnswerResult(
+        event_id="answer:landmark",
+        correlation_id="answer:landmark",
+        scheduler_day=DAY,
+        occurred_at_ms=1_788_000_010_000,
+        origin="local",
+        award=ReviewAward(
+            None,
+            10,
+            0,
+            0,
+            0,
+            correlation_id="answer:landmark",
+        ),
+        landmark_growth_before_units=125,
+        landmark_growth_after_units=425,
+    )
+
+    event = handler._session_event_from_result(result)
+
+    assert event is not None
+    assert event.landmark_growth_delta_units == 300
+
+
+def test_typed_committed_result_carries_generic_project_allocations(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(state=SimpleNamespace()),
+    )
+    result = CommittedAnswerResult(
+        event_id="answer:projects",
+        correlation_id="answer:projects",
+        scheduler_day=DAY,
+        occurred_at_ms=1_788_000_010_000,
+        origin="local",
+        award=ReviewAward(
+            None,
+            10,
+            0,
+            0,
+            0,
+            correlation_id="answer:projects",
+        ),
+        project_allocations=(
+            ProjectGrowthAllocation(
+                GrowthTargetType.LANDMARK,
+                "garden_landmark",
+                250,
+            ),
+            ProjectGrowthAllocation(
+                GrowthTargetType.MASTERY,
+                "bonsai",
+                100,
+            ),
+            ProjectGrowthAllocation(
+                GrowthTargetType.LEGACY,
+                "garden_legacy",
+                25,
+            ),
+            ProjectGrowthAllocation(
+                GrowthTargetType.MASTERY,
+                "bonsai",
+                0,
+            ),
+        ),
+    )
+
+    event = handler._session_event_from_result(result)
+
+    assert event is not None
+    assert [(row.target_type, row.target_id, row.units) for row in event.project_allocations] == [
+        ("landmark", "garden_landmark", 250),
+        ("mastery", "bonsai", 100),
+        ("legacy", "garden_legacy", 25),
+    ]
+
+
 def test_engine_committed_result_owns_standard_find_count():
     engine, storage = _engine()
     baseline = engine._committed_answer_baseline()
@@ -1173,6 +1257,7 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
     assert event.landmark_growth_delta_units == 300
     assert event.project_allocations == ()
     assert event.stored_growth_delta_units == 75
+    assert event.landmark_growth_delta_units == 300
     assert [(item.event_id, item.amount) for item in event.coin_awards] == [
         ("coin:daily", 2),
         ("coin:checkpoint", 1),

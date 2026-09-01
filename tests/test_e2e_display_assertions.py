@@ -115,7 +115,7 @@ def _seed_state(_unused: int = 50) -> GardenState:
         currency_balance=35,
         plants=[
             Plant(plant_id="p-1", species="bonsai", name="Aster", slot_index=0, growth_points=250),
-            Plant(plant_id="p-2", species="wisteria", name="Wisp", slot_index=1, growth_points=50_000),
+            Plant(plant_id="p-2", species="wisteria", name="Wisp", slot_index=1, growth_points=35_000),
         ],
     )
 

@@ -29,7 +29,10 @@ def test_production_asset_catalog_passes_retina_density_gate() -> None:
         "landmarks": 6,
         "mastery": 4,
         "backgrounds": 9,
+        "cosmetics": 8,
         "garden_features": 8,
+        "landmarks": 6,
+        "mastery": 4,
         "plants": 60,
         "ui": 19,
     }
