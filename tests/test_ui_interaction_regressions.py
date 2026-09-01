@@ -1920,6 +1920,7 @@ def test_selected_card_docks_only_when_practical_card_cannot_fit() -> None:
 
     scene = SimpleNamespace(
         _interaction=SimpleNamespace(placing=False),
+        selected_plant_id=lambda: "plant-a",
         width=lambda: 900,
         height=lambda: 480,
         card_geometry=lambda _width, _height, **_kwargs: None,
@@ -2009,6 +2010,10 @@ def test_selected_card_docks_only_when_practical_card_cannot_fit() -> None:
     dock = Dock()
     side_dock = Dock()
     workspace = Workspace()
+    settled_layout = SimpleNamespace(
+        invalidate=lambda: None,
+        activate=lambda: None,
+    )
     dashboard = SimpleNamespace(
         plant_card=Card(),
         plant_card_dock=dock,
@@ -2021,7 +2026,14 @@ def test_selected_card_docks_only_when_practical_card_cannot_fit() -> None:
         INSPECTOR_GAP=12,
         INSPECTOR_SCENE_MIN_WIDTH=720,
         _dashboard_content_width=lambda: workspace.width_value,
+        _sync_garden_content_shell_width=lambda: (
+            workspace.width_value,
+            600,
+        ),
         _update_scene_height=lambda: None,
+        _sync_scene_child_overlays=lambda: None,
+        workspace_layout=settled_layout,
+        scene_slot_layout=settled_layout,
         _compact_layout=False,
     )
     dashboard._show_docked_plant_card = lambda *, full_width: show_docked(

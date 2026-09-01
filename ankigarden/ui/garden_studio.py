@@ -483,7 +483,10 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        self.theme_card.setMinimumHeight(112)
+        # The canonical Settings viewport needs the Advanced accordion without
+        # a routine outer scroll. Its content remains naturally measured; this
+        # smaller floor removes the obsolete preview-era vertical reserve.
+        self.theme_card.setMinimumHeight(104)
         theme_layout = QHBoxLayout(self.theme_card)
         theme_layout.setContentsMargins(8, 8, 8, 8)
         theme_layout.setSpacing(10)

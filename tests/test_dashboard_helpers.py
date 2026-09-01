@@ -50,6 +50,37 @@ def test_preview_bounds_expand_valid_art_and_reject_invalid_metadata() -> None:
     assert crop((float("nan"), 0.2, 0.4, 0.4)) == (0.0, 0.0, 1.0, 1.0)
 
 
+def test_fertilizer_countdown_control_truth_table_never_has_an_empty_reason() -> None:
+    state = _compiled_function("_fertilizer_countdown_control_state")
+
+    assert state(
+        owned_count=0,
+        owned_will_queue_same=False,
+        purchase_will_queue_same=True,
+        purchase_can_commit=True,
+    ) == (True, "")
+    assert state(
+        owned_count=0,
+        owned_will_queue_same=False,
+        purchase_will_queue_same=True,
+        purchase_can_commit=False,
+        blocking_reason="The purchase is already queued.",
+    ) == (False, "The purchase is already queued.")
+    assert state(
+        owned_count=1,
+        owned_will_queue_same=True,
+        purchase_will_queue_same=False,
+        purchase_can_commit=False,
+    ) == (True, "")
+    assert state(
+        owned_count=0,
+        owned_will_queue_same=False,
+        purchase_will_queue_same=False,
+        purchase_can_commit=False,
+        blocking_reason="",
+    ) == (False, "Another fertilizer dose can’t be queued right now.")
+
+
 def test_nursery_catalog_helpers_cover_shortfalls_receipts_empty_states_and_folds() -> None:
     compact_shortfall = _compiled_function("_compact_catalog_shortfall")
     receipt_actions = _compiled_function("_nursery_collection_receipt_actions")

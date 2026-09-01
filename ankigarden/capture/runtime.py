@@ -4474,6 +4474,11 @@ def diagnostics_state_matrix_issue_codes(
         "Last checked "
     ):
         issues.append("diagnostics-success:checked_timestamp")
+    copy_confirmation = dict(records.get("copy-confirmation", {}) or {})
+    if copy_confirmation.get("status_lane_visible") is not True:
+        issues.append("diagnostics-copy-confirmation:status-lane")
+    if copy_confirmation.get("toast_overlaps_warning_card") is not False:
+        issues.append("diagnostics-copy-confirmation:toast-overlap")
     topology = dict(evidence.get("topology", {}) or {})
     if topology.get("visible_central_scroll_owners") != 1:
         issues.append("diagnostics-central-scroll-owner")
@@ -20996,7 +21001,7 @@ class _UiFaceCaptureRunner:
                 == f"Unlocks at {GROWTH_THRESHOLDS[-1]:,} total Growth."
                 and len(stage_heights) == len(GROWTH_STAGES)
                 and len(set(stage_heights)) == 1
-                and stage_heights[0] == 108
+                and stage_heights[0] == 116
                 and stage_name_texts
                 == [
                     "Full Bloom" if stage == "rare" else stage.title()
@@ -21192,6 +21197,66 @@ class _UiFaceCaptureRunner:
                         if placement_action is not None else
                         ""
                     ),
+                )
+                header_geometry: dict[str, Any] = {}
+                if dashboard is not None:
+                    page = getattr(dashboard, "dashboard_page", None)
+                    shell = getattr(dashboard, "garden_content_shell", None)
+                    header = getattr(dashboard, "top_bar", None)
+                    toolbar = getattr(
+                        dashboard,
+                        "starter_placement_toolbar",
+                        None,
+                    )
+                    scene = getattr(dashboard, "scene", None)
+
+                    def relative_bounds(
+                        child: Any,
+                        parent: Any,
+                    ) -> list[int]:
+                        if not isinstance(child, QWidget) or not isinstance(
+                            parent,
+                            QWidget,
+                        ):
+                            return []
+                        origin = child.mapTo(parent, QPoint(0, 0))
+                        return [
+                            int(origin.x()),
+                            int(origin.y()),
+                            int(child.width()),
+                            int(child.height()),
+                        ]
+
+                    page_scene = relative_bounds(scene, page)
+                    shell_header = relative_bounds(header, shell)
+                    shell_toolbar = relative_bounds(toolbar, shell)
+                    shell_scene = relative_bounds(scene, shell)
+                    header_geometry = {
+                        "page_scene": page_scene,
+                        "shell_header": shell_header,
+                        "shell_toolbar": shell_toolbar,
+                        "shell_scene": shell_scene,
+                        "shell_width": (
+                            int(shell.width())
+                            if isinstance(shell, QWidget) else
+                            -1
+                        ),
+                    }
+                    header_geometry["passed"] = bool(
+                        len(page_scene) == 4
+                        and 190 <= page_scene[1] <= 200
+                        and shell_header == [0, 0, header_geometry["shell_width"], 114]
+                        and shell_toolbar
+                        == [0, 122, header_geometry["shell_width"], 54]
+                        and len(shell_scene) == 4
+                        and shell_scene[0] == 0
+                        and shell_scene[1] == 184
+                        and shell_scene[2] == header_geometry["shell_width"]
+                    )
+                require(
+                    "compact_shared_garden_header",
+                    bool(header_geometry.get("passed", False)),
+                    header_geometry,
                 )
                 first_run_sequence = dict(
                     annotation.get("first_run_sequence", {}) or {}
@@ -22155,6 +22220,98 @@ class _UiFaceCaptureRunner:
                 if getattr(plant, "slot_index", None) is not None
             )
             require("garden_scene_present", scene is not None, bool(scene))
+            interaction_mode = str(
+                widget.property("gardenInteractionMode") or ""
+            )
+            transient_widgets = {
+                "starter-placement": getattr(
+                    widget,
+                    "starter_placement_toolbar",
+                    None,
+                ),
+                "move": getattr(widget, "rearrange_bar", None),
+                "selected-plant": plant_card,
+            }
+            visible_transients = [
+                name
+                for name, candidate in transient_widgets.items()
+                if isinstance(candidate, QWidget)
+                and candidate.isVisibleTo(widget)
+            ]
+            expected_interaction_mode = (
+                visible_transients[0]
+                if visible_transients else
+                "normal"
+            )
+            require(
+                "exclusive_dashboard_interaction_mode",
+                len(visible_transients) <= 1
+                and interaction_mode == expected_interaction_mode,
+                {
+                    "mode": interaction_mode,
+                    "expected_mode": expected_interaction_mode,
+                    "visible_transients": visible_transients,
+                },
+            )
+            shield = getattr(widget, "onboarding_shield", None)
+            if (
+                isinstance(scene, QWidget)
+                and isinstance(shield, QWidget)
+                and shield.isVisibleTo(widget)
+            ):
+                require(
+                    "onboarding_shield_matches_scene",
+                    shield.geometry() == scene.rect(),
+                    {
+                        "shield": [
+                            int(shield.x()),
+                            int(shield.y()),
+                            int(shield.width()),
+                            int(shield.height()),
+                        ],
+                        "scene": [
+                            0,
+                            0,
+                            int(scene.width()),
+                            int(scene.height()),
+                        ],
+                    },
+                )
+            side_dock = getattr(widget, "plant_card_side_dock", None)
+            workspace = getattr(widget, "workspace_host", None)
+            if (
+                isinstance(scene, QWidget)
+                and isinstance(side_dock, QWidget)
+                and isinstance(workspace, QWidget)
+                and side_dock.isVisibleTo(widget)
+            ):
+                scene_geometry = self._widget_bounds_evidence(scene, workspace)
+                inspector_geometry = self._widget_bounds_evidence(
+                    side_dock,
+                    workspace,
+                )
+                scene_bounds = list(scene_geometry.get("bounds", ()) or ())
+                inspector_bounds = list(
+                    inspector_geometry.get("bounds", ()) or ()
+                )
+                separated = bool(
+                    len(scene_bounds) == 4
+                    and len(inspector_bounds) == 4
+                    and scene_bounds[0] + scene_bounds[2]
+                    <= inspector_bounds[0]
+                )
+                require(
+                    "inspector_scene_separation",
+                    bool(
+                        separated
+                        and scene_geometry.get("contained", False)
+                        and inspector_geometry.get("contained", False)
+                    ),
+                    {
+                        "scene": scene_geometry,
+                        "inspector": inspector_geometry,
+                    },
+                )
             if state_name == "starter-garden-onboarding":
                 panel = getattr(widget, "onboarding_panel", None)
                 onboarding = getattr(garden_state, "onboarding", None)
@@ -29359,10 +29516,143 @@ class _UiFaceCaptureRunner:
             progress = state.onboarding
             state.unlocked_slots = 2
             cleanup_complete = False
+            selected_destination: int | None = None
+            selected_species = ""
 
             def cleanup() -> None:
+                """Commit the photographed placement after its raw grab.
+
+                Surface 4 must remain a pre-commit selection, while every
+                later surface must inherit the real durable starter
+                transaction.  The reversible transaction exercised by
+                ``stabilize_placement`` proves Undo in isolation; this second
+                commit deliberately has no matching Undo.
+                """
+
                 nonlocal cleanup_complete
-                cleanup_complete = True
+                try:
+                    if selected_destination is None:
+                        raise RuntimeError(
+                            "starter placement capture did not select a destination"
+                        )
+                    placed, message, plant, _change = (
+                        self.app.engine.place_starter_with_change(
+                            int(selected_destination)
+                        )
+                    )
+                    durable_state = self.app.storage.state
+                    ledger = getattr(self.app.storage, "_reward_ledger", None)
+                    if ledger is not None:
+                        snapshot = ledger.load_state_snapshot()
+                        if snapshot is None:
+                            raise RuntimeError(
+                                "starter placement commit was not readable from storage"
+                            )
+                        durable_state = type(durable_state).from_dict(
+                            dict(snapshot.payload)
+                        )
+                    elif self.app.storage.data_path.exists():
+                        durable_state = type(durable_state).from_dict(
+                            json.loads(
+                                self.app.storage.data_path.read_text("utf-8")
+                            )
+                        )
+
+                    durable_plant = next(
+                        (
+                            candidate
+                            for candidate in tuple(durable_state.plants or ())
+                            if str(getattr(candidate, "plant_id", "") or "")
+                            == str(getattr(plant, "plant_id", "") or "")
+                        ),
+                        None,
+                    )
+                    durable_step = getattr(
+                        durable_state.onboarding,
+                        "step",
+                        "",
+                    )
+                    durable_step_value = str(
+                        getattr(durable_step, "value", durable_step)
+                    )
+                    first_nurture_persisted = bool(
+                        durable_plant is not None
+                        and any(
+                            str(getattr(memory, "memory_id", "") or "")
+                            == "nurture:first"
+                            or str(getattr(memory, "kind", "") or "")
+                            == "first_nurture"
+                            for memory in tuple(
+                                getattr(durable_plant, "memories", ()) or ()
+                            )
+                        )
+                    )
+                    persistent_commit = {
+                        "placed": bool(placed),
+                        "message": str(message),
+                        "species": str(
+                            getattr(durable_plant, "species", "") or ""
+                        ).casefold(),
+                        "onboarding_step": durable_step_value,
+                        "active_plant_id": str(
+                            getattr(durable_state, "active_plant_id", "") or ""
+                        ),
+                        "starter_plant_id": str(
+                            getattr(
+                                durable_state.onboarding,
+                                "starter_plant_id",
+                                "",
+                            )
+                            or ""
+                        ),
+                        "garden_setup_version": int(
+                            getattr(durable_state, "garden_setup_version", 0)
+                            or 0
+                        ),
+                        "first_nurture_persisted": first_nurture_persisted,
+                    }
+                    persistent_commit["passed"] = bool(
+                        placed
+                        and durable_plant is not None
+                        and persistent_commit["species"] == selected_species
+                        and durable_step_value == "done"
+                        and bool(durable_state.starter_selection_complete)
+                        and persistent_commit["active_plant_id"]
+                        == persistent_commit["starter_plant_id"]
+                        == str(getattr(durable_plant, "plant_id", "") or "")
+                        and persistent_commit["garden_setup_version"] == 1
+                        and first_nurture_persisted
+                    )
+                    self._first_run_sequence_evidence[
+                        "persistent_commit"
+                    ] = persistent_commit
+                    starter_annotation = self._capture_annotations.setdefault(
+                        "starter-placement",
+                        {},
+                    )
+                    starter_annotation["persistent_commit"] = persistent_commit
+                    if not persistent_commit["passed"]:
+                        self._failures.append({
+                            "label": "starter-placement",
+                            "reason": (
+                                "Starter placement did not persist its DONE, "
+                                "active assignment, setup version, and first-Nurture state"
+                            ),
+                        })
+                    dashboard.refresh_all(acknowledge=False)
+                except Exception as exc:
+                    self._failures.append({
+                        "label": "starter-placement",
+                        "reason": (
+                            "Persistent starter placement commit failed: "
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                    })
+                    logger.exception(
+                        "Anki Garden capture: persistent starter placement failed"
+                    )
+                finally:
+                    cleanup_complete = True
 
             dashboard._starter_placement_active = False
             dashboard._starter_save_pending = False
@@ -29375,6 +29665,7 @@ class _UiFaceCaptureRunner:
             dashboard._begin_starter_placement()
 
             def stabilize_placement() -> None:
+                nonlocal selected_destination, selected_species
                 # A queued dashboard refresh may reconcile the transient
                 # ``__starter__`` interaction before the grab. Reassert the
                 # manifest-owned placement state at the capture boundary.
@@ -29403,6 +29694,10 @@ class _UiFaceCaptureRunner:
                 pending_species = str(
                     self.app.storage.state.onboarding.pending_species or ""
                 ).casefold()
+                selected_species = pending_species
+                selected_destination = (
+                    int(destination) if destination is not None else None
+                )
                 generated_name = getattr(self.app.engine, "_generated_name", None)
                 display_species = (
                     str(generated_name(pending_species))
@@ -32718,7 +33013,7 @@ class _UiFaceCaptureRunner:
             cards
             and all(
                 record["fully_contained"]
-                and int(record["bounds"][3]) == 108
+                and 144 <= int(record["bounds"][3]) <= 210
                 for record in cards
             )
         )
@@ -36710,6 +37005,34 @@ class _UiFaceCaptureRunner:
         )
         conditions.append(normal_content_fit_no_scroll)
         passed = all(conditions)
+        failed_invariants: list[str] = []
+        if actual_status != expected_status:
+            failed_invariants.append(
+                f"status:{actual_status!r}!={expected_status!r}"
+            )
+        if not result_matches_quote and variant in {
+            "ready",
+            "loading",
+            "stale",
+            "success",
+        }:
+            failed_invariants.append("engine-result-carryover")
+        if not bool(rendered_values.get("passed", False)):
+            failed_invariants.append("rendered-value-contract")
+        if (
+            variant == "success"
+            and rendered_values.get("layout_stable") is not True
+        ):
+            failed_invariants.append("layout-stability")
+        if (
+            variant == "success"
+            and rendered_values.get("repeated_activation_safe") is not True
+        ):
+            failed_invariants.append("repeated-activation-safety")
+        if not normal_content_fit_no_scroll:
+            failed_invariants.append("unexpected-vertical-overflow")
+        if not passed and not failed_invariants:
+            failed_invariants.append("variant-state-contract")
         self._capture_annotations[label].update({
             "variant": variant,
             "expected_status": expected_status,
@@ -36752,14 +37075,15 @@ class _UiFaceCaptureRunner:
             "growth_charge_rendered_values": rendered_values,
             "active_scroll_count": len(active_scrolls),
             "normal_content_fit_no_scroll": normal_content_fit_no_scroll,
+            "failed_invariants": failed_invariants,
             "passed": passed,
         })
         if not passed:
             self._failures.append({
                 "label": label,
                 "reason": (
-                    "Growth Charge fixture did not match its declared state "
-                    f"({actual_status!r} != {expected_status!r})"
+                    "Growth Charge fixture failed: "
+                    + ", ".join(failed_invariants)
                 ),
             })
 
@@ -36867,7 +37191,7 @@ class _UiFaceCaptureRunner:
                 QApplication.processEvents()
                 dialog.fit_content_to_family(
                     breathing_room=8,
-                    preserve_transition=False,
+                    preserve_transition=True,
                 )
                 QApplication.processEvents()
                 dialog._capture_success_layout_signature = (
@@ -41050,6 +41374,25 @@ class _UiFaceCaptureRunner:
                 "toast_copy": str(
                     dialog.diagnostics_toast.message.text()
                 ).strip(),
+                "status_lane_visible": bool(
+                    dialog.diagnostics_status_lane.isVisibleTo(dialog)
+                ),
+                "toast_overlaps_warning_card": bool(
+                    dialog.diagnostics_toast.isVisibleTo(dialog)
+                    and dialog.diagnostics_toast.geometry().translated(
+                        dialog.diagnostics_toast.parentWidget().mapTo(
+                            dialog,
+                            QPoint(0, 0),
+                        )
+                    ).intersects(
+                        dialog.diagnostics_card.geometry().translated(
+                            dialog.diagnostics_card.parentWidget().mapTo(
+                                dialog,
+                                QPoint(0, 0),
+                            )
+                        )
+                    )
+                ),
                 "checked_timestamp": str(
                     dialog.diagnostics_checked.text()
                 ).strip(),

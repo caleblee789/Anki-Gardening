@@ -463,8 +463,8 @@ def test_species_overview_uses_compact_shared_rows_and_tokens() -> None:
         'dialog.species_plant_responsive.append(row.responsive)',
     ):
         assert required in builder_source
-    assert "self.setFixedHeight(108)" in stage_tile_source
-    assert "metadata.setFixedHeight(24)" in stage_tile_source
+    assert "self.setFixedHeight(116)" in stage_tile_source
+    assert 'metadata.setFixedHeight(32 if has_requirement else 24)' in stage_tile_source
     for removed in (
         'f"{species_name} collection"',
         "size=60",
