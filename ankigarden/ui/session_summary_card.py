@@ -45,9 +45,9 @@ from .session_summary import (
 from .theme import GARDEN_THEME, apply_tabular_numerals
 
 
-SESSION_SUMMARY_DEFAULT_WIDTH = 380
+SESSION_SUMMARY_DEFAULT_WIDTH = 416
 SESSION_SUMMARY_MIN_WIDTH = 340
-SESSION_SUMMARY_MAX_WIDTH = 380
+SESSION_SUMMARY_MAX_WIDTH = 416
 SESSION_SUMMARY_EDGE_MARGIN = 20
 SESSION_SUMMARY_VIEWPORT_VERTICAL_MARGIN = 32
 SESSION_SUMMARY_PREFERRED_TOP_MARGIN = 48
@@ -166,7 +166,7 @@ def session_summary_geometry(
 ) -> tuple[int, int, int, int]:
     """Return a top-right, viewport-bounded ``(x, y, width, height)``.
 
-    The preferred width and hard cap are both 380 px. On narrow windows the
+    The preferred width and hard cap are both 416 px. On narrow windows the
     card contracts to preserve 20 px side margins. Prefer the approved 48 px
     top offset when the natural card also preserves the 16 px bottom safety
     margin. When the content is taller, fall back to 16 px at both edges and
@@ -1283,7 +1283,11 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         hero.setObjectName("ankiGardenSessionHero")
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(0, 0, 0, 0)
-        hero_layout.setSpacing(2)
+        # Keep the value and caption visually connected without letting the
+        # two glyph boxes touch.  The capture contract measures the rendered
+        # gap rather than the layout spacing, so five pixels produces the
+        # intended 4-6 px optical separation across supported Qt builds.
+        hero_layout.setSpacing(5)
         # The host can give this frame a few surplus pixels in tall Retina
         # viewports.  Keep that space below the two-line hero instead of
         # letting Qt spread it between the value and its label.

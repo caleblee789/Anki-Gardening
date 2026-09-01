@@ -488,8 +488,8 @@ class GardenStudioWidget(QWidget):
         # smaller floor removes the obsolete preview-era vertical reserve.
         self.theme_card.setMinimumHeight(104)
         theme_layout = QHBoxLayout(self.theme_card)
-        theme_layout.setContentsMargins(8, 8, 8, 8)
-        theme_layout.setSpacing(10)
+        theme_layout.setContentsMargins(6, 4, 6, 4)
+        theme_layout.setSpacing(8)
         self.theme_thumbnail_host = QWidget(self.theme_card)
         self.theme_thumbnail_host.setFixedSize(64, 56)
         thumbnail_layout = QHBoxLayout(self.theme_thumbnail_host)
@@ -521,7 +521,7 @@ class GardenStudioWidget(QWidget):
         self.appearance_grid = QGridLayout()
         self.appearance_grid.setContentsMargins(0, 0, 0, 0)
         self.appearance_grid.setHorizontalSpacing(8)
-        self.appearance_grid.setVerticalSpacing(2)
+        self.appearance_grid.setVerticalSpacing(0)
         self.appearance_grid.setColumnStretch(0, 0)
         self.appearance_grid.setColumnStretch(1, 0)
         self.appearance_grid.setColumnStretch(2, 1)
@@ -552,7 +552,7 @@ class GardenStudioWidget(QWidget):
             self.appearance_values[key] = value
         theme_copy = QVBoxLayout()
         theme_copy.setContentsMargins(0, 0, 0, 0)
-        theme_copy.setSpacing(3)
+        theme_copy.setSpacing(1)
         theme_copy.addWidget(self.theme_title)
         theme_copy.addLayout(self.appearance_grid)
         self.bonus_description = QLabel("")

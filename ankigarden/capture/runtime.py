@@ -5412,6 +5412,7 @@ class _UiFaceCaptureRunner:
         }
         self._development_stress_ready = False
         self._development_stress_checkpoint: Any | None = None
+        self._active_scenario_snapshot: Any | None = None
         self._finished = False
         self._fatal_fixture_restore_failure = False
         self._active_fixture_source = "capture-runner-initialization"
@@ -6367,6 +6368,14 @@ class _UiFaceCaptureRunner:
         return False
 
     def _next_step(self) -> None:
+        scenario_snapshot = self._active_scenario_snapshot
+        self._active_scenario_snapshot = None
+        if scenario_snapshot is not None:
+            try:
+                self._restore_capture_fixture_state(scenario_snapshot)
+            except Exception:
+                self._finish()
+                return
         if self._fatal_fixture_restore_failure:
             self._finish()
             return
@@ -6403,16 +6412,38 @@ class _UiFaceCaptureRunner:
                 self._active_fixture_source,
                 self._capture_face_labels.index(expected_label) + 1,
             )
-        if "development-stress" in capture_scenario_internal_setups(
-            expected_label
-        ) and not self._ensure_development_stress_state():
-            self._failures.append({
-                "label": expected_label,
-                "reason": "Scenario development-stress checkpoint was unavailable",
-            })
-            self._write_progress_manifest()
-            self._next_after(160)
-            return
+        development_setup = "development-stress" in (
+            capture_scenario_internal_setups(expected_label)
+        )
+        if development_setup:
+            try:
+                self._active_scenario_snapshot = (
+                    self._capture_fixture_state_snapshot(
+                        f"{expected_label}:scenario-boundary",
+                        exact_ledger_restore=True,
+                    )
+                )
+                development_ready = self._ensure_development_stress_state()
+            except Exception:
+                development_ready = False
+            if not development_ready:
+                snapshot = self._active_scenario_snapshot
+                self._active_scenario_snapshot = None
+                if snapshot is not None:
+                    try:
+                        self._restore_capture_fixture_state(snapshot)
+                    except Exception:
+                        self._finish()
+                        return
+                self._failures.append({
+                    "label": expected_label,
+                    "reason": (
+                        "Scenario development-stress checkpoint was unavailable"
+                    ),
+                })
+                self._write_progress_manifest()
+                self._next_after(160)
+                return
         try:
             current()
         except Exception as exc:
@@ -9548,6 +9579,16 @@ class _UiFaceCaptureRunner:
                         and actual_height == 40
                         and 18 <= icon_size[0] <= 20
                         and 18 <= icon_size[1] <= 20
+                    )
+                elif bool(button.property("progressHeaderControl")):
+                    # Garden Progress intentionally uses a denser pair of
+                    # local 32 px Help/Close controls. This exception is
+                    # explicit so it cannot reduce the global icon-button
+                    # contract used by every other dialog.
+                    size_passed = bool(
+                        actual_width == 32
+                        and actual_height == 32
+                        and icon_size == [16, 16]
                     )
                 else:
                     expected_icon_visual_size = 36
@@ -18045,6 +18086,21 @@ class _UiFaceCaptureRunner:
             ),
         }
 
+        # The short-window contract exercises the readable reward bundle,
+        # not the later durable plant-card consolidation. Restore the compact
+        # reveal before resizing so the one bounded reward scroll and sticky
+        # session footer are measured together.
+        hud._show_reward(
+            bundle,
+            expanded=False,
+            presentation="restored",
+            minimum_hold_elapsed=True,
+            reveal_state="settled",
+        )
+        hud._apply_full_bloom_override(bundle, settled=False)
+        if app is not None:
+            app.processEvents()
+
         original_size = (int(mw.width()), int(mw.height()))
         original_maximized = bool(mw.isMaximized())
         mw.showNormal()
@@ -19541,6 +19597,15 @@ class _UiFaceCaptureRunner:
                             row for row in tuple(audit.get("art", ()) or ())
                             if str(row.get("kind", "")) == "garden_item"
                         ))
+                    )
+                if "accounting-passed" in tuple(audit.get("issues", ()) or ()):
+                    copy_context += (
+                        "; metric-values="
+                        + repr(dict(audit.get("metric_values", {}) or {}))
+                        + "; find-rows="
+                        + repr(tuple(audit.get("find_row_values", ()) or ()))
+                        + "; earned-items="
+                        + repr(tuple(audit.get("earned_item_records", ()) or ()))
                     )
                 fail(
                     (

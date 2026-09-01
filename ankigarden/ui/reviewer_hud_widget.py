@@ -2471,6 +2471,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_dock = QFrame(self._expanded)
         self._reward_dock.setObjectName("reviewerHudRewardDock")
         self._reward_dock.setProperty("semanticId", "reviewer.hud.reward-dock")
+        self._reward_dock.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         dock = QVBoxLayout(self._reward_dock)
         dock.setContentsMargins(10, 0, 10, 6)
         dock.setSpacing(0)
@@ -2478,6 +2482,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_surface = QFrame(self._reward_dock)
         self._reward_surface.setObjectName("reviewerHudRewardDockSurface")
         self._reward_surface.setProperty("semanticId", "reviewer.hud.reward-surface")
+        self._reward_surface.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         surface = QVBoxLayout(self._reward_surface)
         surface.setContentsMargins(0, 0, 0, 0)
         surface.setSpacing(0)
@@ -2494,6 +2502,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self._reward_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._reward_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         self._reward_scroll.setMaximumHeight(_REWARD_SCROLL_MAX_HEIGHT)
         self._reward_scroll_contents = QWidget(self._reward_scroll)
         self._reward_scroll_contents.setObjectName("reviewerHudRewardScrollContents")
@@ -4702,7 +4714,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._species.set_full_text(plant_class)
         self._plant_card.setProperty("plantClassLabel", plant_class)
         self._plant_card.setProperty("fullBloomSettled", bool(settled))
-        self._plant_card.setProperty("fullBloomConsolidated", True)
+        # During the live reveal the reward bundle remains a distinct,
+        # readable region. Consolidate it into the durable plant card only
+        # after the milestone has settled.
+        self._plant_card.setProperty(
+            "fullBloomConsolidated",
+            bool(settled),
+        )
         self._plant_card.setProperty(
             "fullBloomBundleId",
             str(getattr(bundle, "bundle_id", "") or ""),
@@ -4761,6 +4779,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 self._sync_art_grounding(full_bloom_pixmap, "rare")
         except Exception:
             pass
+        self._sync_reward_dock_visibility()
 
     def _sync_full_bloom_reward_summary(self, bundle: Any) -> None:
         """Render the committed bundle once inside the Full Bloom plant card."""
@@ -5201,6 +5220,22 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_scroll.setMaximumHeight(target)
         self._reward_scroll.set_preferred_height(target)
         self._reward_scroll.setProperty("naturalContentHeight", natural)
+        # Visibility and disclosure changes arrive after the parent layouts
+        # have already cached their hints. Refresh the entire fixed dock so a
+        # 150 px compact reveal—or a bounded expanded reveal—takes real space
+        # instead of painting through the sticky session footer.
+        for widget in (
+            self._reward_scroll_contents,
+            self._reward_scroll,
+            self._reward_surface,
+            self._reward_dock,
+        ):
+            widget.updateGeometry()
+        for host in (self._reward_surface, self._reward_dock, self._expanded):
+            host_layout = host.layout()
+            if host_layout is not None:
+                host_layout.invalidate()
+                host_layout.activate()
 
     def update_session(self, snapshot: Any) -> None:
         self.update_session_totals(snapshot)

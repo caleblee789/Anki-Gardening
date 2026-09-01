@@ -1483,6 +1483,15 @@ class _CompleteCatalogViewportGuard(QObject):
                 window_height=int(owner.height()),
                 minimum_window_height=int(owner.minimumHeight()),
                 maximum_window_height=int(owner.maximumHeight()),
+                maximum_clearance=max(
+                    12,
+                    int(
+                        self.scroll.property(
+                            "completeRowMaximumClearance"
+                        )
+                        or 12
+                    ),
+                ),
             )
             if target_height is not None and int(owner.height()) != target_height:
                 # Align the initial fold without replacing the dialog family's
@@ -10067,6 +10076,7 @@ class DisclosureRow(QWidget):
         self.button.setCheckable(True)
         self.button.setChecked(expanded)
         self.button.setProperty("disclosureRow", True)
+        self.button.setProperty("horizontalPadding", 8)
         self.button.setProperty("compactDisclosure", bool(compact))
         if compact:
             self.button.setSizePolicy(
@@ -15301,6 +15311,14 @@ class NurseryDialog(DialogShell):
         )
         self.supplements_scroll.setAccessibleName(
             "Fertilizers and boosts catalog"
+        )
+        # Inventory and Shop rows share this one scroll owner. At the
+        # canonical viewport a following 88 px product can otherwise expose
+        # only its lower action edge. Permit a measured, card-sized fold
+        # gutter so the initial viewport ends after a complete row.
+        self.supplements_scroll.setProperty(
+            "completeRowMaximumClearance",
+            96,
         )
         self.supplements_catalog = QWidget()
         self.supplements_catalog.setProperty("nurseryCatalog", True)
@@ -24063,14 +24081,11 @@ class CollectibleDetailDialog(GardenDialog):
                     row, _column, row_span, _column_span = (
                         host_layout.getItemPosition(item_index)
                     )
-                    target_height = (
-                        120
-                        if bool(widget.property("environmentTile"))
-                        else max(
-                            int(widget.minimumHeight()),
-                            int(widget.minimumSizeHint().height()),
-                            int(widget.sizeHint().height()),
-                        )
+                    target_height = max(
+                        120 if bool(widget.property("environmentTile")) else 0,
+                        int(widget.minimumHeight()),
+                        int(widget.minimumSizeHint().height()),
+                        int(widget.sizeHint().height()),
                     )
                     per_row_height = max(
                         0,
