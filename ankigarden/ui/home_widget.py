@@ -675,7 +675,7 @@ HOME_WIDGET_STYLE = """
   bottom:auto;
   width:100%;
   height:4px;
-  margin:2px 0 0;
+  margin:4px 0 0;
   overflow:hidden;
   border-radius:999px;
   background:rgba(188,216,201,.18);

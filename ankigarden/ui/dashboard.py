@@ -11359,7 +11359,9 @@ class CollectionFilterControls(QWidget):
             "Search the plant collection. Press Tab to continue through the filters."
         )
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedHeight(40)
+        # Qt stylesheet dimensions describe the content box. Account for the
+        # one-pixel border so the painted control is exactly 40 px tall.
+        self.search.setFixedHeight(38)
         self.search.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -11414,8 +11416,10 @@ class CollectionFilterControls(QWidget):
         )
 
         self.clear = QPushButton("Clear filters")
+        self.clear.setProperty("collectionClearAction", True)
         _set_button_variant(self.clear, BUTTON_VARIANT_TERTIARY)
         set_button_size(self.clear, ButtonSize.SECONDARY)
+        self.clear.setFixedHeight(34)
         self.clear.setAccessibleDescription(
             "Clear the search and restore every plant filter to its default."
         )
@@ -11434,6 +11438,11 @@ class CollectionFilterControls(QWidget):
         )
 
         self.setStyleSheet(f"""
+            QLineEdit {{
+                min-height:38px;
+                max-height:38px;
+                border-width:1px;
+            }}
             QComboBox {{
                 min-height:36px;
                 max-height:36px;
@@ -11452,6 +11461,10 @@ class CollectionFilterControls(QWidget):
                 background:#10241f;
                 selection-background-color:{GARDEN_THEME['action_accent']};
                 border:1px solid {GARDEN_THEME['subtle_border']};
+            }}
+            QPushButton[collectionClearAction='true'] {{
+                min-height:34px;
+                max-height:34px;
             }}
         """)
 
@@ -19234,7 +19247,10 @@ class PlantInfoCard(QFrame):
     PREFERRED_WIDTH = 296
     MINIMUM_WIDTH = 296
     MAXIMUM_WIDTH = 296
-    MINIMUM_HEIGHT = 300
+    # The compact inspector's natural active-state height is about 262 px at
+    # canonical scale. Keep a small semantic floor while allowing the layout
+    # to own the final height instead of preserving the retired 300 px shell.
+    MINIMUM_HEIGHT = 252
     MAXIMUM_HEIGHT = 325
     OPEN_DURATION_MS = 120
 
@@ -23371,12 +23387,14 @@ class GardenProgressDialog(GardenDetailsDialog):
         self.top_close.setToolTip("Close")
         for control in (self.help_button, self.top_close):
             control.setProperty("progressHeaderControl", True)
-            control.setFixedSize(32, 32)
+            # QSS width/height describe the content box. A 30 px box plus the
+            # canonical one-pixel border paints as the requested 32 px square.
+            control.setFixedSize(30, 30)
         self.setStyleSheet(self.styleSheet() + """
             QPushButton { font-size:13px; }
             QPushButton[progressHeaderControl='true'] {
-                min-width:32px; max-width:32px;
-                min-height:32px; max-height:32px;
+                min-width:30px; max-width:30px;
+                min-height:30px; max-height:30px;
                 padding:0;
             }
             QPushButton[detailDisclosure='true'] {
@@ -23414,6 +23432,9 @@ class GardenProgressDialog(GardenDetailsDialog):
             self._last_valid_page = str(key)
         self.ensure_page(str(key))
         self.set_dialog_title("Garden Progress")
+        self.top_close.setAccessibleName("Close")
+        self.top_close.setAccessibleDescription("Close")
+        self.top_close.setToolTip("Close")
         self.footer.hide()
         QTimer.singleShot(0, self._sync_footer_clearance)
         button = self.navigation.buttons.get(str(key))
@@ -29389,12 +29410,12 @@ class GardenDashboard(DialogShell):
         plant_summary_accessible = (
             f"{species_owned} of {species_total} species discovered; "
             f"{collection_projection.collection_entries_discovered} of "
-            f"{collection_projection.collection_entries_total} collection items discovered."
+            f"{collection_projection.collection_entries_total} collection entries discovered."
         )
         self.collection_section.set_plant_summary(
             f"{species_owned} of {species_total} species discovered · "
             f"{collected} of {collection_projection.collection_entries_total} "
-            "collection items discovered",
+            "collection entries discovered",
             plant_summary_accessible,
         )
         self.collection_section.subtabs.plants_summary.setProperty(

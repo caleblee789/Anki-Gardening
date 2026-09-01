@@ -622,7 +622,7 @@ def test_contact_sheet_three_uses_shared_release_components_and_copy() -> None:
     assert "min-height:8px; max-height:8px" in source
     assert '"No plants match these filters."' in source
     assert '"No Garden Landmarks match these filters."' in source
-    assert "collection items discovered" in source
+    assert "collection entries discovered" in source
     assert 'f"Nursery: {cost_label(species_price)}"' in source
     assert '[("Nurture", "nurture"), ("More", "more")]' in source
     assert 'view_action = menu.addAction("View plant")' in source

@@ -23624,7 +23624,7 @@ class _UiFaceCaptureRunner:
                 )
                 expected_painted_copy = (
                     "10 of 10 species discovered · "
-                    "30 of 39 collection items discovered"
+                    "30 of 39 collection entries discovered"
                 )
                 require(
                     "representative_collection_summary",
@@ -30808,13 +30808,18 @@ class _UiFaceCaptureRunner:
                             (expected_side and actual_side)
                             or (not expected_side and actual_bottom)
                         )
+                        content_minimum_height = max(
+                            1,
+                            int(card.minimumSizeHint().height()),
+                        )
                         card_size_passed = bool(
                             (
                                 card_local_bounds[2] == 296
                                 if actual_side else
                                 288 <= card_local_bounds[2] <= 720
                             )
-                            and 300 <= card_local_bounds[3] <= 420
+                            and content_minimum_height
+                            <= card_local_bounds[3] <= 420
                         )
                         case_passed = bool(
                             [int(dashboard.width()), int(dashboard.height())]
@@ -30843,6 +30848,7 @@ class _UiFaceCaptureRunner:
                             "remaining_scene_width": remaining_scene_width,
                             "presentation_mode": presentation_mode,
                             "card_bounds": card_bounds,
+                            "card_content_minimum_height": content_minimum_height,
                             "scene_bounds": scene_bounds,
                             "inspector_gap": inspector_gap,
                             "inspector_separated": inspector_separated,
@@ -39309,7 +39315,10 @@ class _UiFaceCaptureRunner:
     ) -> Callable[[], None]:
         """Install the same exact, reversible appearance state in both profiles."""
 
-        snapshot = self._capture_fixture_state_snapshot(label)
+        snapshot = self._capture_fixture_state_snapshot(
+            label,
+            exact_ledger_restore=True,
+        )
         restored = False
 
         def restore() -> None:
@@ -41450,21 +41459,35 @@ class _UiFaceCaptureRunner:
         reveal_plant_card: bool = False,
     ) -> None:
         def ready() -> None:
-            if mutate is not None:
-                mutate()
-            self._refresh_capture_dashboard()
-            if reveal_plant_card:
-                self._reveal_capture_plant_card(label)
-            toast = getattr(self.app.dashboard, "toast_region", None)
-            clear_toast = getattr(toast, "clear", None)
-            if callable(clear_toast):
-                clear_toast()
-            self._capture_and_advance(
+            snapshot = self._capture_fixture_state_snapshot(
                 label,
-                self.app.dashboard,
-                capture_delay_ms=delay_ms,
-                next_ms=980,
+                exact_ledger_restore=True,
             )
+            try:
+                if mutate is not None:
+                    mutate()
+                self._refresh_capture_dashboard()
+                if reveal_plant_card:
+                    self._reveal_capture_plant_card(label)
+                toast = getattr(self.app.dashboard, "toast_region", None)
+                clear_toast = getattr(toast, "clear", None)
+                if callable(clear_toast):
+                    clear_toast()
+                self._capture_and_advance(
+                    label,
+                    self.app.dashboard,
+                    capture_delay_ms=delay_ms,
+                    close_callback=lambda: self._restore_capture_fixture_state(
+                        snapshot
+                    ),
+                    cleanup_predicate=lambda: bool(
+                        getattr(snapshot, "capture_restore_complete", False)
+                    ),
+                    next_ms=980,
+                )
+            except Exception:
+                self._restore_capture_fixture_state(snapshot)
+                raise
 
         self._with_dashboard(ready)
 
