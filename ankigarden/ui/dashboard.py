@@ -1446,13 +1446,18 @@ class _CompleteCatalogViewportGuard(QObject):
     def _sync(self) -> None:
         self._sync_pending = False
         try:
-            self.scroll.setViewportMargins(0, 0, 0, 0)
+            current_margins = self.scroll.viewportMargins()
+            current_gutter = max(0, int(current_margins.bottom()))
             owner = self.scroll.window()
             if not self.scroll.isVisibleTo(owner):
+                if current_gutter:
+                    self.scroll.setViewportMargins(0, 0, 0, 0)
                 self.scroll.setProperty("completeRowViewport", False)
                 self.scroll.setProperty("completeRowLargeCorrectionNeeded", False)
                 return
             if int(self.scroll.verticalScrollBar().value()) != 0:
+                if current_gutter:
+                    self.scroll.setViewportMargins(0, 0, 0, 0)
                 self.scroll.setProperty("completeRowViewport", False)
                 self.scroll.setProperty("completeRowLargeCorrectionNeeded", False)
                 return
@@ -1460,7 +1465,14 @@ class _CompleteCatalogViewportGuard(QObject):
             if content_layout is not None:
                 content_layout.invalidate()
                 content_layout.activate()
-            viewport_height = max(0, int(self.scroll.viewport().height()))
+            # Measure against the unguttered viewport. Reapplying the guard
+            # after its own resize must not clear and recreate the same bottom
+            # margin forever, otherwise capture can land on the transient
+            # frame where the next Shop card is partially exposed.
+            viewport_height = max(
+                0,
+                int(self.scroll.viewport().height()) + current_gutter,
+            )
             boundaries: list[int] = []
             row_spans: list[tuple[int, int]] = []
             for card in self.content.findChildren(QWidget):
@@ -1496,13 +1508,15 @@ class _CompleteCatalogViewportGuard(QObject):
             if target_height is not None and int(owner.height()) != target_height:
                 # Align the initial fold without replacing the dialog family's
                 # resizable minimum/maximum policy with one frozen height.
+                if current_gutter:
+                    self.scroll.setViewportMargins(0, 0, 0, 0)
                 owner.resize(owner.width(), target_height)
                 owner.setProperty("catalogRowAlignedHeight", target_height)
                 self.scroll.setProperty("completeRowHeightAdjusted", True)
                 self.scroll.setProperty("completeRowLargeCorrectionNeeded", False)
                 QTimer.singleShot(0, self.schedule_sync)
                 return
-            if gutter:
+            if gutter != current_gutter:
                 self.scroll.setViewportMargins(0, 0, 0, gutter)
             self.scroll.setProperty("completeRowViewport", bool(gutter))
             self.scroll.setProperty("completeRowBottomGutter", gutter)
@@ -3643,7 +3657,7 @@ def _garden_dialog_stylesheet() -> str:
         QFrame[storyStage='true'][stageStripVariant='species-artwork-gallery'][stageStripState='selected-preview'] {{ background:{t['selected_surface']}; border:2px solid {t['growth_accent']}; }}
         QFrame[storyStage='true'][stageStripVariant='species-artwork-gallery'][stageStripState='hidden-rare-stage'] {{ background:{t['dialog_surface']}; border:1px solid {t['subtle_border']}; }}
         QLabel[storyStageName='true'] {{ color:{t['text_secondary']}; font-size:13px; font-weight:600; }}
-        QLabel[stageStatus='true'] {{ min-height:24px; max-height:24px; padding:0 4px; color:{t['text_secondary']}; background:{t['dialog_surface']}; border:1px solid {t['subtle_border']}; border-radius:7px; font-size:10px; font-weight:600; }}
+        QLabel[stageStatus='true'] {{ min-height:30px; max-height:30px; padding:0 6px; color:{t['text_secondary']}; background:{t['dialog_surface']}; border:1px solid {t['subtle_border']}; border-radius:7px; font-size:11px; font-weight:600; }}
         QLabel[stageRequirement='true'] {{ min-height:32px; max-height:32px; padding:0 2px; color:{t['text_muted']}; background:transparent; border:0; font-size:11px; font-weight:500; }}
         QFrame[storyStage='true'][stageStripState='current'] QLabel[stageStatus='true'] {{ color:{t['text_primary']}; background:{t['selected_surface']}; border-color:{t['growth_accent']}; }}
         QFrame[storyStage='true'][stageStripState='reached'] QLabel[stageStatus='true'] {{ color:{t['text_primary']}; background:{t['raised_surface']}; }}
@@ -15215,6 +15229,8 @@ class NurseryDialog(DialogShell):
         self.coin_resource.setMaximumSize(112, 36)
         self.hero_layout.addWidget(self.coin_resource, 0, Qt.AlignmentFlag.AlignVCenter)
         self.top_close = self.create_inline_close_button(hero)
+        self.top_close.setProperty("compactHeaderIcon", True)
+        self.top_close.setProperty("visualControlSize", 32)
         self.hero_layout.addWidget(
             self.top_close,
             0,
@@ -19461,7 +19477,7 @@ class PlantInfoCard(QFrame):
         self.fertilize = QPushButton("Apply fertilizer", self)
         self.growth_charge = QPushButton("Use growth charge", self)
         self.move = QPushButton("Move", self)
-        self.story = PlantStoryNavigationButton("Plant Story", self)
+        self.story = PlantStoryNavigationButton("Plant story", self)
         self.choose_another = QPushButton(FULLY_GROWN_ACTION, self)
         self.nurture.setProperty("plantActionRole", "primary")
         self.fertilize.setProperty("plantActionRole", "boost")
@@ -21934,6 +21950,7 @@ class GardenDetailsDialog(GardenDialog):
             disclosure.button,
             BUTTON_VARIANT_TERTIARY,
         )
+        disclosure.button.setProperty("horizontalPadding", 8)
         disclosure.setProperty("disclosureTitle", str(title))
         layout.addWidget(disclosure)
         return disclosure
@@ -22580,6 +22597,7 @@ class GardenDetailsDialog(GardenDialog):
             other_plants.button,
             BUTTON_VARIANT_TERTIARY,
         )
+        other_plants.button.setProperty("horizontalPadding", 8)
         other_panel_layout = other_plants.panel.layout()
         for plant in listed_plants:
             row = QFrame()
@@ -23405,6 +23423,8 @@ class GardenProgressDialog(GardenDetailsDialog):
         self.top_close.setToolTip("Close")
         for control in (self.help_button, self.top_close):
             control.setProperty("progressHeaderControl", True)
+            control.setProperty("compactHeaderIcon", True)
+            control.setProperty("visualControlSize", 32)
             # QSS width/height describe the content box. A 30 px box plus the
             # canonical one-pixel border paints as the requested 32 px square.
             control.setFixedSize(30, 30)
@@ -23637,6 +23657,8 @@ class CollectibleDetailDialog(GardenDialog):
             title_layout.insertWidget(0, self.collection_overline)
         self.top_close.setFixedSize(32, 32)
         self.top_close.setIconSize(QSize(16, 16))
+        self.top_close.setProperty("compactHeaderIcon", True)
+        self.top_close.setProperty("visualControlSize", 32)
         self.header_layout.setAlignment(
             self.top_close,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -25211,7 +25233,7 @@ class GardenDashboard(DialogShell):
             QFrame[plantCard='true'] QPushButton[plantDangerAction='true']:enabled:pressed {{ background:{GARDEN_THEME['plant_popover_danger_pressed']}; }}
             QFrame[plantCard='true'] QPushButton[plantPopoverAction='true']:disabled {{ color:{GARDEN_THEME['disabled_text']}; background:{GARDEN_THEME['disabled_surface']}; border-color:{GARDEN_THEME['disabled_border']}; }}
             QFrame[plantCard='true'] QPushButton[plantPopoverAction='true'][busy='true'] {{ color:{GARDEN_THEME['text_secondary']}; }}
-            QFrame[plantCard='true'] QPushButton[plantPopoverClose='true'] {{ background:transparent; border:0; color:{GARDEN_THEME['text_secondary']}; border-radius:7px; }}
+            QFrame[plantCard='true'] QPushButton[plantPopoverClose='true'] {{ min-width:36px; max-width:36px; min-height:36px; max-height:36px; background:transparent; border:0; color:{GARDEN_THEME['text_secondary']}; border-radius:7px; }}
             QFrame[plantCard='true'] QPushButton[plantPopoverClose='true']:enabled:hover {{ background:{GARDEN_THEME['plant_popover_progress_track']}; }}
             QFrame[plantCard='true'] QPushButton[plantPopoverClose='true']:enabled:pressed {{ background:{GARDEN_THEME['plant_popover_raised']}; }}
             QFrame[movePanel='true'] {{ background:{GARDEN_THEME['raised_surface']}; border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:10px; }}

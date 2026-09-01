@@ -6776,11 +6776,11 @@ class _UiFaceCaptureRunner:
             return
         web = getattr(mw, "web", None)
         overview_root_script = ""
-        if state == "overview" and tries in {100, 75, 50, 25}:
-            # Anki keeps its external Congratulations document alive while
-            # repeated Overview fixtures change underneath it.  That means
-            # ``webview_did_inject_style_into_page`` is not guaranteed to fire
-            # again even though the source-backed Garden HTML has advanced.
+        if state in {"overview", "deckBrowser"} and tries in {100, 75, 50, 25}:
+            # Anki can keep either Home document alive while ordered fixtures
+            # change underneath it. The normal injection hook is therefore
+            # not guaranteed to fire again even though source-backed Garden
+            # HTML has advanced.
             # Prefix the DOM audit with the production replacement script so
             # both operations run in one current-frame WebEngine transaction.
             # A navigation can discard a separate asynchronous eval between
@@ -9077,7 +9077,14 @@ class _UiFaceCaptureRunner:
                 # absent token as a failed token created warnings for valid UI.
                 if not size_name:
                     continue
-                expected_height = CAPTURE_BUTTON_HEIGHTS.get(size_name)
+                compact_header_icon = bool(
+                    button.property("compactHeaderIcon")
+                )
+                expected_height = (
+                    32
+                    if compact_header_icon else
+                    CAPTURE_BUTTON_HEIGHTS.get(size_name)
+                )
                 height = int(button.height())
                 text = _displayed_button_text(button).strip()
                 measured_text_size = button.property("renderedTextSizePx")
@@ -9148,6 +9155,7 @@ class _UiFaceCaptureRunner:
                     "visualControlSize": visual_size,
                     "outerBorderAllowance": height - visual_size,
                     "renderedTextSize": text_size,
+                    "compactHeaderIcon": compact_header_icon,
                     "passed": passed,
                 })
                 if not passed:
@@ -9580,11 +9588,11 @@ class _UiFaceCaptureRunner:
                         and 18 <= icon_size[0] <= 20
                         and 18 <= icon_size[1] <= 20
                     )
-                elif bool(button.property("progressHeaderControl")):
-                    # Garden Progress intentionally uses a denser pair of
-                    # local 32 px Help/Close controls. This exception is
-                    # explicit so it cannot reduce the global icon-button
-                    # contract used by every other dialog.
+                elif bool(button.property("compactHeaderIcon")):
+                    # Garden Progress, Nursery, and the appearance inspector
+                    # intentionally use local 32 px header controls. This
+                    # exception is explicit so it cannot reduce the global
+                    # icon-button contract used by every other dialog.
                     size_passed = bool(
                         actual_width == 32
                         and actual_height == 32
@@ -10203,7 +10211,7 @@ class _UiFaceCaptureRunner:
                 and status[0] >= stage[0] + stage[2] + 6
                 and progress[0] == content_left
                 and progress[2] == content_width
-                and progress[3] == 8
+                and progress[3] in {5, 6}
             )
             actions_aligned = bool(
                 all(
@@ -13366,7 +13374,13 @@ class _UiFaceCaptureRunner:
                 metric_values.get("garden_coins", "").split()
             ) == "Garden Coins +97"
             and "+3" in metric_values.get("standard_finds", "")
-            and "+50 garden coins bonus included" in normalized
+            and (
+                "+50 garden coins bonus included" in normalized
+                or (
+                    "+50 garden coins" in normalized
+                    and "included in session total" in normalized
+                )
+            )
             and any(
                 "Garden Pouch" in row and "×1" in row
                 for row in find_row_values

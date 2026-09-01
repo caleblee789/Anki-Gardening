@@ -5746,15 +5746,18 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 else _value(bundle, "remaining_count", default=0)
             ),
         )
-        self._reward_reveal.setMaximumHeight(
-            16_777_215
-            if self._reward_details_expanded
-            else _COMPACT_REWARD_MAX_HEIGHT
-        )
+        # Lower the minimum before lowering the maximum. Qt otherwise clamps
+        # a compact restore to the previous 240 px expanded minimum, leaving
+        # the reveal painted through the sticky session footer.
         self._reward_reveal.setMinimumHeight(
             240
             if self._reward_details_expanded
             else _COMPACT_REWARD_MIN_HEIGHT
+        )
+        self._reward_reveal.setMaximumHeight(
+            16_777_215
+            if self._reward_details_expanded
+            else _COMPACT_REWARD_MAX_HEIGHT
         )
         self._sync_reward_dock_visibility()
 
