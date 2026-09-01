@@ -7,18 +7,27 @@ from types import SimpleNamespace
 
 import pytest
 
+from ankigarden.economy_progression import (
+    GrowthTargetRef,
+    GrowthTargetType,
+    build_growth_projects_snapshot,
+)
 from ankigarden.models.state import STATE_VERSION, GardenState
 from ankigarden.models.sync_reward import (
     MAX_SYNC_SUMMARY_DAYS,
     MAX_SYNC_SUMMARY_ROWS,
     MAX_SYNC_SUMMARY_TEXT,
     SYNC_REWARD_MODEL_VERSION,
+    SyncProjectGrowthAllocation,
     SyncRewardSummary,
 )
 from ankigarden.ui.sync_reward_summary import (
     SyncRewardSummaryCard,
+    _checkpoint_display_text,
     _effect_lines,
+    _plant_progress_copy,
     sync_reward_metric_plan,
+    sync_reward_subtitle,
     sync_reward_summary_geometry,
     sync_reward_visibility_plan,
 )
@@ -51,6 +60,19 @@ def _summary(**changes) -> SyncRewardSummary:
     return SyncRewardSummary(**payload)
 
 
+def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> None:
+    assert _plant_progress_copy({
+        "stage_after": "flowering",
+        "stage_progress_after": 1,
+        "next_stage": "rare",
+    }) == "200 / 20,000 Growth to Full Bloom"
+    assert _checkpoint_display_text({
+        "percent": 75,
+        "stage_name": "flowering",
+        "display_text": "75% toward Flowering reached",
+    }) == "Reached the 75% checkpoint toward Flowering"
+
+
 def test_geometry_is_upper_right_and_viewport_bounded() -> None:
     assert sync_reward_summary_geometry(900, 700, 300) == (420, 24, 456, 300)
     assert sync_reward_summary_geometry(900, 700, 900) == (420, 24, 456, 640)
@@ -63,11 +85,15 @@ def test_geometry_is_upper_right_and_viewport_bounded() -> None:
 
 def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     assert sync_reward_metric_plan(_summary()) == (
-        ("42", "Card answers", "sync_review_cards"),
+        ("42", "cards", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
     )
     assert len(sync_reward_metric_plan(_summary(garden_coin_delta=0))) == 2
+    assert sync_reward_metric_plan(_summary(growth_total_units=0)) == (
+        ("42", "cards", "sync_review_cards"),
+        ("+12", "Garden Coins", "garden_coin"),
+    )
     find_rows = ({
         "reward_id": "small_charge",
         "event_id": "standard-find:event-1",
@@ -93,12 +119,15 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     )
 
     assert sync_reward_metric_plan(reward_summary) == (
-        ("42", "Card answers", "sync_review_cards"),
+        ("42", "cards", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
         ("+3", "Standard Finds", "standard_find"),
-        ("+2", "Garden discoveries", "garden_discovery"),
+        ("+2", "garden discoveries", "garden_discovery"),
     )
+    assert sync_reward_metric_plan(
+        _summary(environment_discoveries=discovery_rows[:1])
+    )[-1] == ("+1", "garden discovery", "garden_discovery")
     restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
 
     assert restored is not None
@@ -159,11 +188,17 @@ def test_exact_generalized_subtitle_copy() -> None:
     assert _summary().subtitle == (
         "Rewards from 42 card answers on another device."
     )
+    assert sync_reward_subtitle(_summary(eligible_answer_count=1)) == (
+        "1 card completed on another device"
+    )
+    assert sync_reward_subtitle(_summary()) == (
+        "42 cards completed on another device"
+    )
 
 
 def test_current_boost_projection_keeps_names_and_art_references_aligned() -> None:
     summary = _summary(
-        fertilizer_remaining_seconds=1_080,
+        fertilizer_cards_remaining=38,
         fertilizer_state_changed=True,
         fertilizer_item_id="fertilizer_quality",
         fertilizer_art_asset="/art/fertilizer_quality.webp",
@@ -177,7 +212,7 @@ def test_current_boost_projection_keeps_names_and_art_references_aligned() -> No
         (
             "fertilizer",
             "fertilizer_quality",
-            "Quality Fertilizer active · 18 min remaining",
+            "Quality Fertilizer active · 38 cards remaining",
             "/art/fertilizer_quality.webp",
         ),
         (
@@ -204,11 +239,28 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
 
     dismissed: list[str] = []
     opened: list[str] = []
+    snapshot = build_growth_projects_snapshot(
+        state_revision=1,
+        stored_balance_units=0,
+        wallet_balance_coins=0,
+        full_bloom_species=("rose",),
+        active_target=GrowthTargetRef(GrowthTargetType.MASTERY, "rose"),
+    )
     card = SyncRewardSummaryCard(
         parent,
-        _summary(),
+        _summary(
+            landmark_growth_delta_units=300,
+            project_allocations=(
+                SyncProjectGrowthAllocation("landmark", "garden_landmark", 250),
+                SyncProjectGrowthAllocation("mastery", "rose", 100),
+            ),
+        ),
         on_dismiss=lambda: dismissed.append("dismissed"),
         on_open_garden=lambda: opened.append("opened"),
+        engine=SimpleNamespace(
+            growth_projects_snapshot=lambda: snapshot,
+            resolve_item_asset=lambda _key: None,
+        ),
         animations_enabled=False,
     )
     card.show()
@@ -236,10 +288,30 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "SYNC REWARDS" in texts
     assert "Your garden caught up" in texts
-    assert "Rewards from 42 card answers on another device." in texts
+    assert "42 cards completed on another device" in texts
     assert "Rewards already applied." in texts
+    assert {
+        "Stored Growth added to Garden Landmark",
+        "Stored Growth added to Rose Cultivation Mastery",
+    } <= texts
+    project_rows = [
+        widget
+        for widget in card.findChildren(QWidget)
+        if widget.property("syncProjectTargetType")
+    ]
+    assert [
+        (
+            row.property("syncProjectTargetType"),
+            row.property("syncProjectTargetId"),
+            row.property("syncProjectGrowthUnits"),
+        )
+        for row in project_rows
+    ] == [
+        ("landmark", "garden_landmark", 300),
+        ("mastery", "rose", 100),
+    ]
     buttons = {button.text(): button for button in card.findChildren(QPushButton)}
-    assert {"Close", "Open Garden"} <= set(buttons)
+    assert {"Close", "Open garden"} <= set(buttons)
 
     buttons["Close"].click()
     application.processEvents()
@@ -462,7 +534,7 @@ def test_current_boost_rows_use_named_item_art_when_qt_is_available(
     card = SyncRewardSummaryCard(
         parent,
         _summary(
-            fertilizer_remaining_seconds=1_080,
+            fertilizer_cards_remaining=38,
             fertilizer_state_changed=True,
             fertilizer_item_id="fertilizer_quality",
             booster_cards_remaining=12,
@@ -480,7 +552,7 @@ def test_current_boost_rows_use_named_item_art_when_qt_is_available(
         label for label in card.findChildren(QLabel)
         if label.property("syncBoostArtwork") is True
     ]
-    assert "Quality Fertilizer active · 18 min remaining" in copy
+    assert "Quality Fertilizer active · 38 cards remaining" in copy
     assert "Booster Potion active · 12 cards remaining" in copy
     assert {label.property("syncBoostArtworkReference") for label in art} == {
         "fertilizer_quality",
@@ -500,7 +572,7 @@ def test_schema24_round_trips_pending_summary_and_fails_closed_when_malformed() 
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 25
+    assert restored.version == STATE_VERSION == 27
     assert SyncRewardSummary.from_dict(restored.pending_sync_reward_summary) == summary
 
     malformed = state.to_dict()

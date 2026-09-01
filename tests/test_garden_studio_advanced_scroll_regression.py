@@ -609,8 +609,8 @@ def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     no_bed.show()
     application.processEvents()
     assert no_bed.nursery_toast.message.text() == "Sunflower added."
-    assert no_bed.nursery_toast.action.text() == "Open Garden"
-    assert no_bed.nursery_toast.property("receiptPrimaryRoute") == "Open Garden"
+    assert no_bed.nursery_toast.action.text() == "Open garden"
+    assert no_bed.nursery_toast.property("receiptPrimaryRoute") == "Open garden"
 
     no_bed.hide()
     no_bed.deleteLater()
@@ -701,7 +701,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         )
     ) == (
         "Plants catalog",
-        "Fertilizers and boosts catalog",
+        "Magical Fertilizer and boosts catalog",
         "Garden Spaces catalog",
         "Garden Decorations and Scenery catalog",
     )
@@ -1344,8 +1344,8 @@ def test_live_qt_growth_identity_preserves_short_name_and_numeric_value(
     application.processEvents()
 
     assert strip.growth_name.text() == "Peony Plant"
-    assert strip.growth_value.text() == "0 / 2,000"
-    assert strip.growth_value.accessibleName() == "0 / 2,000 Growth"
+    assert strip.growth_value.text() == "0 / 2,000 Growth to Young"
+    assert strip.growth_value.accessibleName() == "0 / 2,000 Growth to Young"
     assert strip.cells["growth"].property("growthIdentityMode") == "compact"
     growth_cell = strip.cells["growth"]
     for label in (strip.growth_name, strip.growth_value):
@@ -1440,16 +1440,17 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         replacement.minimumHeight(),
         min(660, replacement.property("contentNaturalHeight") + 10),
     )
-    assert 540 <= species.minimumHeight() <= species.maximumHeight() <= 590
-    assert species.maximumHeight() == species.property(
-        "contentBoundedMaximumHeight"
-    )
+    assert species.minimumHeight() == 260
+    assert 260 <= species.maximumHeight() <= 900
     species.show()
     application.processEvents()
     application.processEvents()
+    assert 400 <= species.height() <= 470
     species_scrolls = species.active_vertical_scroll_regions()
     assert len(species_scrolls) == 1
     species_scroll = species_scrolls[0]
+    assert species_scroll.verticalScrollBar().maximum() == 0
+    assert not species_scroll.verticalScrollBar().isVisible()
     species_section = next(
         frame
         for frame in species.findChildren(QFrame)

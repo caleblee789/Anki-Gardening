@@ -1,5 +1,5 @@
 {
-  "contract_digest": "17d3b81df9351a4aec6e0ffc9ecc2fe5233c0211c9ef103f2819e707f6a1bf07",
+  "contract_digest": "bfe80c845b4f18619de748603f2d4eb8e3133c75019303623fc7d01d466856ce",
   "contract_version": 26,
   "profiles": {
     "full": {
@@ -1361,7 +1361,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "b862242effbb94aa406ab36b739dacd10c91a435f251da62c8d753d595f56a1c",
+      "dependency_digest": "6d53061354f26547df47df998b7792e3301d6ea510968f8eedac3befeb29e0a6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1424,7 +1424,8 @@
           "move_mode_active",
           "move_bonsai_title",
           "move_swap_copy",
-          "move_occupied_hover"
+          "move_occupied_hover",
+          "move_planter_contours"
         ]
       }
     },
@@ -3285,7 +3286,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "dea33cb87190cefc3d1cc228e0ee566b0eb58572f24c65fe48e7ad221ec8b3d2",
+      "dependency_digest": "9d13ed6f20daff089247f21b5a161cf88ff696696d62821a8dce908955793b85",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3304,7 +3305,10 @@
         "settings"
       ],
       "owned_module_dependencies": [
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/garden_asset_thumbnail.py",
+        "ui/environment_art.py",
+        "ui/plant_art.py"
       ],
       "placements": [
         {

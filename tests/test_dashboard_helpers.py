@@ -7,31 +7,12 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from ankigarden.game import GROWTH_THRESHOLDS
-from ankigarden.purchases import PurchaseDisposition, fertilizer_action_label
 from ankigarden.ui.plant_presenters import fertilizer_status
 
 
 DASHBOARD = (
     Path(__file__).resolve().parents[1] / "ankigarden" / "ui" / "dashboard.py"
 )
-
-
-def test_fertilizer_action_vocabulary_uses_the_authoritative_disposition() -> None:
-    assert fertilizer_action_label(PurchaseDisposition.APPLIED, owned=True) == "Apply"
-    assert fertilizer_action_label(PurchaseDisposition.QUEUED, owned=True) == "Queue"
-    assert fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=True) == "Extend"
-    assert (
-        fertilizer_action_label(PurchaseDisposition.APPLIED, owned=False)
-        == "Buy and apply"
-    )
-    assert (
-        fertilizer_action_label(PurchaseDisposition.QUEUED, owned=False)
-        == "Buy and queue"
-    )
-    assert (
-        fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=False)
-        == "Extend"
-    )
 
 
 def _compiled_function(
@@ -69,8 +50,7 @@ def test_preview_bounds_expand_valid_art_and_reject_invalid_metadata() -> None:
     assert crop((float("nan"), 0.2, 0.4, 0.4)) == (0.0, 0.0, 1.0, 1.0)
 
 
-def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -> None:
-    compact_cost = _compiled_function("_compact_catalog_cost")
+def test_nursery_catalog_helpers_cover_shortfalls_receipts_empty_states_and_folds() -> None:
     compact_shortfall = _compiled_function("_compact_catalog_shortfall")
     receipt_actions = _compiled_function("_nursery_collection_receipt_actions")
     empty_copy = _compiled_function("_nursery_empty_state_copy")
@@ -81,10 +61,8 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     )
     fold_plan = _compiled_function("_catalog_fold_alignment_plan")
 
-    assert compact_cost(1) == "1 coin"
-    assert compact_cost(100) == "100 coins"
-    assert compact_shortfall(1, 0) == "Need 1 more coin"
-    assert compact_shortfall(100, 0) == "Need 100 more coins"
+    assert compact_shortfall(1, 0) == "Need 1 more Garden Coin"
+    assert compact_shortfall(100, 0) == "Need 100 more Garden Coins"
     assert compact_shortfall(100, 100) == ""
     assert receipt_actions(False) == ("Place in garden", "View collection")
     assert receipt_actions(True) == ("Place in garden",)
@@ -155,26 +133,6 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     ) == (None, 0, True)
 
 
-def test_nursery_bed_actions_include_the_exact_price() -> None:
-    source = DASHBOARD.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DASHBOARD))
-    owner = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "NurseryDialog"
-    )
-    methods = {
-        node.name: ast.get_source_segment(source, node) or ""
-        for node in owner.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name in {"_space_card", "_space_progression"}
-    }
-
-    assert methods.keys() == {"_space_card", "_space_progression"}
-    for method_source in methods.values():
-        assert 'f"Unlock for {_garden_coin_count(price)}"' in method_source
-
-
 def test_recent_find_rows_render_canonical_artwork_refs() -> None:
     source = DASHBOARD.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(DASHBOARD))
@@ -235,6 +193,193 @@ def test_collection_growth_items_render_their_canonical_artwork() -> None:
     assert '"growth_items": "growth"' not in method_source
 
 
+def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
+    source = DASHBOARD.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    classes = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+
+    for class_name in (
+        "CollectionSubtabs",
+        "PlantCollectionPane",
+        "GardenLandmarksPane",
+        "CollectionSection",
+        "LandmarkProjectOverview",
+        "LandmarkTierList",
+        "LandmarkTierRow",
+    ):
+        assert class_name in classes
+    assert "_growth_projects_panel" not in source
+    assert 'setPlaceholderText("Search plants")' in source
+
+    dashboard = classes["GardenDashboard"]
+    refresh = next(
+        node
+        for node in dashboard.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_refresh_collection_list_content"
+    )
+    refresh_source = ast.get_source_segment(source, refresh) or ""
+    assert "CollectionFilterControls(" in refresh_source
+    assert "collection_list.add_full_width(\n            self.collection_growth_projects_panel" not in refresh_source
+    assert "self.collection_section.set_plant_summary(" in refresh_source
+    assert "self._refresh_garden_landmarks_content()" in refresh_source
+    assert "if refresh_landmarks:" in refresh_source
+
+    filter_methods = "\n".join(
+        ast.get_source_segment(source, node) or ""
+        for node in dashboard.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {
+            "_set_collection_filter",
+            "_set_collection_category",
+            "_set_collection_query",
+            "_set_collection_sort",
+            "_clear_collection_filters",
+        }
+    )
+    assert filter_methods.count(
+        "_refresh_collection_list(refresh_landmarks=False)"
+    ) == 5
+
+    subtabs_source = ast.get_source_segment(
+        source, classes["CollectionSubtabs"]
+    ) or ""
+    assert 'CollectionTab.PLANTS, "Plants"' in subtabs_source
+    assert 'CollectionTab.GARDEN_LANDMARKS, "Garden Landmarks"' in subtabs_source
+    assert 'asset_id="ui_stored_growth"' in subtabs_source
+    assert 'asset_id="ui_garden_coin"' in subtabs_source
+
+    landmarks_source = ast.get_source_segment(
+        source, classes["GardenLandmarksPane"]
+    ) or ""
+    overview_source = ast.get_source_segment(
+        source, classes["LandmarkProjectOverview"]
+    ) or ""
+    tier_row_source = ast.get_source_segment(
+        source, classes["LandmarkTierRow"]
+    ) or ""
+    assert landmarks_source.count("QScrollArea(") == 1
+    assert "ScrollBarAlwaysOff" in landmarks_source
+    assert "QScrollArea(" not in overview_source
+    assert "QScrollArea(" not in tier_row_source
+    assert "size=88" in overview_source
+    assert "setFixedHeight(40)" in overview_source
+    assert "setMaximumWidth(145)" in overview_source
+    assert "size=58" in tier_row_source
+    assert "setMinimumHeight(86)" in tier_row_source
+    assert "setFixedHeight(38)" in tier_row_source
+    assert "setMaximumWidth(140)" in tier_row_source
+    assert "tier.artwork_id" in tier_row_source
+    assert 'asset_id="ui_garden_coin"' in tier_row_source
+
+    collection_set_current = next(
+        node
+        for node in classes["CollectionSection"].body
+        if isinstance(node, ast.FunctionDef) and node.name == "set_current"
+    )
+    collection_set_current_source = ast.get_source_segment(
+        source, collection_set_current
+    ) or ""
+    assert "QTimer.singleShot" not in collection_set_current_source
+    progress_open = next(
+        node
+        for node in classes["GardenProgressDialog"].body
+        if isinstance(node, ast.FunctionDef) and node.name == "open_collection"
+    )
+    progress_open_source = ast.get_source_segment(source, progress_open) or ""
+    assert progress_open_source.index('self.open_page("collection")') < (
+        progress_open_source.index("QTimer.singleShot(0, focuser)")
+    )
+
+
+def test_landmark_tier_ui_state_keeps_progress_claims_and_selection_independent() -> None:
+    state = _compiled_function("_landmark_tier_ui_state")
+    common = {
+        "project_unlocked": True,
+        "tier_id": "birdbath_terrace",
+        "funded": False,
+        "claimed": False,
+        "claimable": False,
+        "displayed_tier_id": "",
+        "project_active": False,
+        "project_funded_units": 0,
+        "previous_threshold_units": 2_500_000,
+        "cumulative_threshold_units": 10_000_000,
+        "next_unfunded_id": "birdbath_terrace",
+    }
+
+    assert state(**{**common, "project_unlocked": False}) == (
+        "locked",
+        "Locked",
+    )
+    assert state(**{**common, "project_active": True}) == (
+        "in-progress",
+        "In progress",
+    )
+    assert state(
+        **{
+            **common,
+            "project_funded_units": 5_000_000,
+        }
+    ) == ("in-progress", "In progress")
+    assert state(**{**common, "funded": True}) == ("funded", "Funded")
+    assert state(
+        **{**common, "funded": True, "claimable": True}
+    ) == ("ready-to-claim", "Ready to claim")
+    assert state(
+        **{**common, "funded": True, "claimed": True}
+    ) == ("claimed", "Claimed")
+    assert state(
+        **{
+            **common,
+            "funded": True,
+            "claimed": True,
+            "displayed_tier_id": "birdbath_terrace",
+        }
+    ) == ("in-use", "In use")
+
+    project_status = _compiled_function("_landmark_project_ui_status")
+    assert project_status(
+        project_unlocked=False,
+        project_active=False,
+        funded_growth_units=0,
+        claimed_tier_count=0,
+        tier_count=6,
+    ) == "Locked"
+    assert project_status(
+        project_unlocked=True,
+        project_active=False,
+        funded_growth_units=0,
+        claimed_tier_count=0,
+        tier_count=6,
+    ) == "Not started"
+    assert project_status(
+        project_unlocked=True,
+        project_active=True,
+        funded_growth_units=2_500_000,
+        claimed_tier_count=0,
+        tier_count=6,
+    ) == "Active project"
+    assert project_status(
+        project_unlocked=True,
+        project_active=False,
+        funded_growth_units=2_500_000,
+        claimed_tier_count=0,
+        tier_count=6,
+    ) == "In progress"
+    assert project_status(
+        project_unlocked=True,
+        project_active=False,
+        funded_growth_units=247_500_000,
+        claimed_tier_count=6,
+        tier_count=6,
+    ) == "Complete"
+
+
 def test_named_fertilizer_receipts_reuse_the_item_artwork() -> None:
     source = DASHBOARD.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(DASHBOARD))
@@ -279,14 +424,23 @@ def test_rare_stage_visibility_uses_species_specific_progress() -> None:
     engine = SimpleNamespace(state={"plants": []})
 
     assert not rare_stage_unlocked(engine, "rose")
+    rare_threshold = GROWTH_THRESHOLDS[-1]
     engine.state = {
         "plants": [
-            {"species": "rose", "stage": "flowering", "growth_points": 49_999},
-            {"species": "bonsai", "stage": "rare", "growth_points": 50_000},
+            {
+                "species": "rose",
+                "stage": "flowering",
+                "growth_points": rare_threshold - 1,
+            },
+            {
+                "species": "bonsai",
+                "stage": "rare",
+                "growth_points": rare_threshold,
+            },
         ]
     }
     assert not rare_stage_unlocked(engine, "rose")
-    engine.state["plants"][0]["growth_points"] = 50_000
+    engine.state["plants"][0]["growth_points"] = rare_threshold
     assert rare_stage_unlocked(engine, "rose")
 
 
@@ -360,28 +514,40 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     engine = SimpleNamespace(
         FERTILIZERS={"basic": SimpleNamespace(name="Basic Fertilizer")}
     )
+    active_batch = SimpleNamespace(
+        effect_id="fertilizer_basic",
+        growth_per_card_units=100,
+        total_cards=100,
+        remaining_cards=37,
+    )
     plant = SimpleNamespace(
         plant_id="plant-1",
         growth_stage="seed",
         growth_points=0,
         fully_grown=False,
+        fertilizer_card_batches=[active_batch],
+        fertilizer_card_queue=[],
         fertilizer=SimpleNamespace(
             tier="basic",
             growth_per_answer=1,
-            expires_at=7_900.0,
+            expires_at_ms=7_900_000,
         ),
     )
 
     active = fertilizer_status(engine, plant, now=1_000.0)
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
-        "+1 Growth per eligible card answer",
-        "1h 55m left",
+        "+1 Growth per card",
+        "37 cards remaining",
     )
-    plant.fertilizer.expires_at = 1_030.0
+    assert active.cards_remaining == 37
+    assert active.expires_at_ms is None
+
+    plant.fertilizer_card_batches = []
+    plant.fertilizer.expires_at_ms = 1_030_000
     assert (
         fertilizer_status(engine, plant, now=1_000.0).duration
         == "30 seconds left"
     )
-    plant.fertilizer.expires_at = 999.0
+    plant.fertilizer.expires_at_ms = 999_000
     assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"

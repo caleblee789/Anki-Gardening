@@ -1534,7 +1534,10 @@ _V25_SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser
                             'nonblank-pixels',
                             'scroll:GardenSettingsDialog:display'),
   'owned_dependency_groups': ('settings',),
-  'owned_module_dependencies': ('ui/garden_studio.py',),
+  'owned_module_dependencies': ('ui/garden_studio.py',
+                                'ui/garden_asset_thumbnail.py',
+                                'ui/environment_art.py',
+                                'ui/plant_art.py'),
   'retired_reason': '',
   'state_contract': {'kind': 'settings',
                      'profile': {'profile_id': 'settings-display-advanced-open',
@@ -5415,6 +5418,7 @@ _V26_REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
     ),
     "move-mode": (
         "move_occupied_hover",
+        "move_planter_contours",
     ),
     "selected-plant-nurtured": (
         "zero_inventory_growth_charge_route",

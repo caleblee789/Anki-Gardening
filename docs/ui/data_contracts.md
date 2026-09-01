@@ -1,7 +1,7 @@
 # Progression state and presentation contract
 
-The authoritative persisted boundary is the schema-25 reward database under
-`user_files/`. Supported schema-10–24 state migrates fail-closed; schema-21 JSON
+The authoritative persisted boundary is the schema-27 reward database under
+`user_files/`. Supported schema-10–26 state migrates fail-closed; schema-21 JSON
 and SQLite authorities are backed up at their historical migration boundary.
 Mutable state and caches never enter the distributable archive.
 
@@ -333,12 +333,15 @@ Schema 22 upgrades both legacy JSON and authoritative SQLite schema-21 state:
 Schemas 23–25 then replace persisted Weather identities with Garden
 Decorations, split displayed artwork from the active Garden Bonus, add
 independent Anki-day Bonus locking, and add the durable pending sync receipt.
-All supported schema-10–24 JSON/SQLite paths converge on schema 25. Unsupported
-or unreadable state is preserved before recovery.
+All supported schema-10–26 JSON/SQLite paths converge on schema 27. The
+schema-26 migration preserves every plant, wallet balance, Stored Growth unit,
+and prior claim while adding the current cumulative economy authorities without
+retroactive rewards. Unsupported or unreadable state is preserved before
+recovery.
 
 ## v26 evidence boundary
 
-Capture contract v26 is independent from persisted schema 25. It uses contract
+Capture contract v26 is independent from persisted schema 27. It uses contract
 schema 2 and scenario schema 3 with 18 representative/34 full surfaces and
 two/five contact-sheet pages. All evidence layers require `scenario_id`,
 `fixture_id`, and one-based `scenario_step`; shared fixture IDs preserve
@@ -348,7 +351,9 @@ Hard gates cover deprecated visible copy, root/DOM overflow, progress
 fractions, asset mappings, Reviewer exclusion rectangles, four-state scroll
 coverage, and lineage. Current run paths, archive and capture hashes, artifact
 sizes, and validation totals are recorded only in the
-[final 2.1.0 UI audit](final-ui-audit-2.1.0.md). Automated evidence retains
+[final 2.2.0 UI audit](final-ui-audit-2.2.0.md) and the
+[five-page contact-sheet index](../../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
+Automated evidence retains
 `quality_status: review-required` and `release_ready: false`; manual macOS,
 Windows/Linux, mixed-DPI, forced-colors, screen-reader, broader-keyboard, and
 human approval remain open.

@@ -87,7 +87,7 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
     def allocation_type(plant: Any) -> str:
         plant_id = str(getattr(plant, "plant_id", "") or "")
         if bool(getattr(plant, "fully_grown", False)):
-            return "Fully grown"
+            return "Full Bloom"
         nurtured = max(0, int(nurtured_map.get(plant_id, 0) or 0))
         passive = max(0, int(passive_fifths_map.get(plant_id, 0) or 0))
         direct = max(0, int(charge_map.get(plant_id, 0) or 0)) + max(
@@ -247,7 +247,7 @@ class GardenHomePreview:
     growth_goal: int = 0
     growth_text: str = ""
     metrics: tuple[GardenPreviewMetric, ...] = ()
-    action_label: str = "Open Garden"
+    action_label: str = "Open garden"
     action_command: str = "home-open"
     status_tone: str = "neutral"
     scene_opacity: float = 1.0
@@ -403,10 +403,7 @@ def garden_preview_from_values(
             GardenPreviewMetric(
                 "coins",
                 "Garden Coins",
-                (
-                    f"{format_garden_coins(max(0, int(garden_currency or 0)), include_unit=False)} "
-                    f"{'coin' if max(0, int(garden_currency or 0)) == 1 else 'coins'}"
-                ),
+                format_garden_coins(max(0, int(garden_currency or 0))),
             ),
         )
     )

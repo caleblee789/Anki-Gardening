@@ -11,7 +11,7 @@ control the normal profile.
    nurtured plant, relative Growth, and **Open Garden**. Today’s Cards, Anki
    streak, Garden Coins, and achievements must remain in the full Garden and
    Garden Progress. Plant and Nursery clicks must do nothing there.
-3. With fresh schema-25 state, choose **Open Garden**, verify the introduction,
+3. With fresh schema-27 state, choose **Open Garden**, verify the introduction,
    and proceed to the Starter Nursery. It must offer every release-ready species
    as a free starter and show no hard-coded collection denominator. Complete
    confirmation, placement, nurture, and completion; the other unlocked
@@ -185,7 +185,7 @@ control the normal profile.
 20. Repeat the Garden, Nursery, Story, movement, and Settings journeys with
     keyboard only, visible focus, reduced motion, minimum supported window size,
     Home, and native 3:2 compositions.
-21. Restart only the disposable Anki process and re-verify the schema-25 SQLite
+21. Restart only the disposable Anki process and re-verify the schema-27 SQLite
     reward authority, `starter_selection_complete`, nurtured plant, exact
     hundredth-Growth units, Stored Growth, checkpoint/Full Bloom metadata,
     streak, Garden Coin
@@ -217,7 +217,8 @@ coverage, and lineage mismatches fail closed.
 
 Current run paths, archive and capture hashes, artifact sizes, and validation
 totals are recorded only in the
-[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md).
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and the
+[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
 `quality_status: review-required` and `release_ready: false` remain unchanged;
 manual macOS interaction, Windows/Linux, mixed-DPI, forced-colors,
 screen-reader, broader-keyboard, and human release approval remain open.

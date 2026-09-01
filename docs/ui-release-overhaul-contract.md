@@ -1,6 +1,6 @@
 # Anki Garden UI release contract
 
-Status: implemented contract for Anki Garden 2.1.0, state schema 25, and UI
+Status: implemented contract for Anki Garden 2.2.0, state schema 27, and UI
 capture contract v26, contract schema 2 and scenario schema 3. Source code and
 persisted behavior are authoritative.
 
@@ -157,13 +157,15 @@ queues without changing the source plant or discarding remaining time.
 
 ## Persistence and failure behavior
 
-- Schema 25 persists resumable `OnboardingProgress`, exact hundredth-Growth
+- Schema 27 persists resumable `OnboardingProgress`, exact hundredth-Growth
   units, Stored Growth, checkpoint and Full Bloom metadata, Today’s Cards
   projection state, independent displayed Decoration and locked/queued Garden
-  Bonus/Scenery loadouts, independent environment guarantees, timed Fertilizer
-  periods/queues, card-counted Booster batches,
-  inventory, bounded purchase/Growth-Charge replay records, and the durable
-  pending Sync Rewards receipt.
+  Bonus/Scenery loadouts, independent environment guarantees, card-counted
+  Fertilizer and Booster queues, Garden Rhythm and daily economy snapshots,
+  earned beds, Garden Cycle, active Growth targets, cumulative Landmark and
+  Mastery funding and claims, Garden Legacy, inventory, bounded
+  purchase/Growth-Charge replay records, and the durable pending Sync Rewards
+  receipt.
 - Schema-21 JSON and authoritative SQLite profiles are backed up before the
   migration; established reward authorities and historical identities remain
   intact.
@@ -260,7 +262,9 @@ Raw manifest-owned PNGs are the runtime geometry authority. Contact sheets are
 review aids: their screenshots are top-aligned on a visibly distinct light
 frame and carry an explicit outline so unused sheet space cannot be mistaken
 for an application modal or gutter. The final immutable evidence paths and
-hashes belong in `docs/ui/final-ui-audit-2.1.0.md` after the accepted run.
+hashes are recorded in the
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and the
+[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
 
 Automated/macOS Qt evidence does not close native Windows/Linux, 125%/150% or
 true OS scale and mixed-DPI transitions, forced colors, screen-reader,

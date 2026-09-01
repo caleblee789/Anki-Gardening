@@ -1,15 +1,15 @@
 # Anki Garden UI interface inventory
 
-Status: current Release 2.1.0 capture contract v26, contract schema 2 and
+Status: current Release 2.2.0 capture contract v26, contract schema 2 and
 scenario schema 3. The exact ordered source is the Qt-free `SurfaceSpec`
 registry compiled into
 `ankigarden/capture/capture-contract-v26.json`. Inspect it without mutation via
 `python scripts/capture_sequence.py --list-surfaces` or explain one ID with
 `--explain-surface ID`. The current immutable
-[full manifest](../build/ui-face-captures/full/capture-sequence-20260830-103800/assembled/manifest.json)
-and [five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260830-103800/contact-sheet-set.json)
+[full manifest](../build/ui-face-captures/full/capture-sequence-20260831-155312/assembled/manifest.json)
+and [five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json)
 are bound to the exact package and contract digest in the
-[canonical UI audit](ui/final-ui-audit-2.1.0.md).
+[canonical UI audit](ui/final-ui-audit-2.2.0.md).
 
 The current v26 registry contains 18 representative and 34 full surfaces,
 rendered as two and five sheets. Those values are generated observations, not
@@ -31,7 +31,7 @@ geometry authority; the sheets are review aids.
 
 | Profile | Surface and entry point | Authoritative data | Primary behavior |
 |---|---|---|---|
-| First run | Garden onboarding, starter Nursery, and placement | Schema-25 onboarding, catalog, plants, slots, request revision | Choose starter, place, Nurture, resume, retry |
+| First run | Garden onboarding, starter Nursery, and placement | Schema-27 onboarding, catalog, plants, slots, request revision | Choose starter, place, Nurture, resume, retry |
 | Home | Deck Browser preview | One renderer-neutral Home-card projection and shared preview snapshot | Render starter, empty, active, zero, partial, and complete states in one shell; Open Garden or retry without scene mutation |
 | Garden | Dashboard, scene, plant card, Move, and Story | Plants, slots, active plant, Growth, effects, scene geometry | Select, Nurture, Move, Story, Progress, Collection, Nursery, Settings |
 | Fertilizer | Application dialog | Engine quote, immutable source `plant_id`, target status, interval history, balance, and replay record | Keep one source through selection, quote, confirmation, and queued period; use Apply/Queue, Buy-and-apply/Buy-and-queue, and Extend only for the same-tier extension disposition |

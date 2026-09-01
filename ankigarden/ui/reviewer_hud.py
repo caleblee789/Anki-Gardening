@@ -17,7 +17,7 @@ from ..growth import GROWTH_UNITS_PER_POINT, stage_presentation, stage_progress
 from ..presentation import PlantIdentity
 from ..environment import GARDEN_FEATURE_CATALOG
 from ..garden_features import FEATURE_EFFECT_KEYS
-from .formatters import format_approximate_cards, format_quantity
+from .formatters import format_approximate_cards, format_garden_coins, format_quantity
 
 
 # The reviewer brief uses one fixed safe-area width. A fixed value also keeps
@@ -43,7 +43,8 @@ HUD_HEADER_ACTIONS_PREFERRED_WIDTH = 170
 # Keep one renderer-neutral learner-facing contract so the projection and the
 # native HUD cannot drift.
 FULL_BLOOM_GROWTH_ROUTE_COPY = (
-    "Future Growth will go to other planted plants. Any remainder will be stored."
+    "Future Growth will go to other unfinished plants. "
+    "Any remainder becomes Stored Growth."
 )
 
 
@@ -95,6 +96,21 @@ class TodayCardsProjection:
 
 
 @dataclass(frozen=True)
+class GrowthDestinationProjection:
+    """Committed destination shown when no planted plant can receive Growth."""
+
+    kind: str
+    heading: str
+    detail: str
+    route_copy: str
+    project_id: str = ""
+    stored_growth_units: int = 0
+    target_type: str = ""
+    artwork_id: str = ""
+    status: str = ""
+
+
+@dataclass(frozen=True)
 class NurtureProjection:
     """One visually focused active-plant projection.
 
@@ -134,12 +150,14 @@ class NurtureProjection:
     art_placement: Any = None
     environment_tone: str = ""
     fully_grown: bool = False
+    all_plants_full_bloom: bool = False
+    growth_destination: GrowthDestinationProjection | None = None
 
     @property
     def next_answer_value(self) -> str:
         if self.next_answer_growth_units <= 0:
             return ""
-        return f"{format_growth_units(self.next_answer_growth_units, signed=True)} growth"
+        return f"{format_growth_units(self.next_answer_growth_units, signed=True)} Growth"
 
     @property
     def visible_effect_chips(self) -> tuple[str, ...]:
@@ -267,8 +285,8 @@ def project_today_cards(
         return TodayCardsProjection(
             status="complete",
             heading="All cards complete",
-            primary=f"+{format_quantity(reward_coins, 'coin')}",
-            secondary=(f"{reviewed:,} reviewed today",),
+            primary=format_garden_coins(reward_coins, signed=True),
+            secondary=(f"{format_quantity(reviewed, 'card')} completed today",),
             progress_value=max(maximum, cleared),
             progress_maximum=max(maximum, cleared),
             reviewed_count=reviewed,
@@ -294,9 +312,11 @@ def project_today_cards(
     primary = (
         f"{cleared:,} / {maximum:,}"
         if maximum > 0
-        else plural_cards(remaining, suffix=" left")
+        else plural_cards(remaining, suffix=" remaining")
     )
-    secondary: tuple[str, ...] = (plural_cards(remaining, suffix=" left"),)
+    secondary: tuple[str, ...] = (
+        plural_cards(remaining, suffix=" remaining"),
+    )
     if status == "waiting_for_learning":
         current_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
         secondary = (
@@ -371,18 +391,14 @@ def _next_checkpoint(
     return None
 
 
-def _remaining_time_label(seconds: Any) -> str:
-    try:
-        remaining = max(0, int(math.ceil(float(seconds))))
-    except (TypeError, ValueError):
-        remaining = 0
-    if remaining < 60:
-        return "<1m"
-    minutes = math.ceil(remaining / 60)
-    if minutes < 60:
-        return f"{minutes}m"
-    hours, extra_minutes = divmod(minutes, 60)
-    return f"{hours}h" if extra_minutes == 0 else f"{hours}h {extra_minutes}m"
+def _fertilizer_display_name(tier: Any) -> str:
+    """Return the canonical player-facing name for one committed tier ID."""
+
+    return {
+        "basic": "Basic Fertilizer",
+        "quality": "Quality Fertilizer",
+        "premium": "Magical Fertilizer",
+    }.get(str(tier or "").casefold(), "Fertilizer")
 
 
 def _active_effect_rows(
@@ -414,18 +430,33 @@ def _active_effect_rows(
         "growth_every_5_plus_1": (
             f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 5 cards to next +1 Growth"
         ),
+        "growth_every_5_first_100_plus_1": (
+            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 5 cards to next +1 Growth"
+        ),
         "growth_every_4_plus_3": (
             f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 4 cards to next +3 Growth"
         ),
-        "completion_coins_plus_5": "+5 Coins when Today’s Cards are complete",
+        "instant_growth_every_5_plus_3_closest_checkpoint": (
+            f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 5 cards to next +3 Growth"
+        ),
+        "completion_coins_plus_5": (
+            f"{format_garden_coins(5, signed=True)} when Today’s Cards are complete"
+        ),
         "booster_cards_multiplier_1_25": "Booster Potions add 25% more cards",
+        "hourglass_completion_booster": (
+            f"{max(0, int(getattr(state, 'hourglass_completion_progress', 0) or 0))} / 30 completions to a Booster Potion"
+        ),
         "none": "No mechanical bonus",
     }.get(effect, "")
-    if effect == "prism_bank_per_answer_1_5":
+    if effect in {"prism_bank_per_answer_1_5", "prism_bank_per_answer_1"}:
         day = str(getattr(getattr(state, "daily_stats", None), "day", "") or "")
         released = str(getattr(state, "prism_released_anki_day_id", "") or "") == day
         progress_copy = (
-            "+1.5 direct Growth per eligible card · Today’s Prism Harvest released"
+            (
+                "+1.5 direct Growth per card · Today’s Prism Harvest released"
+                if effect == "prism_bank_per_answer_1_5"
+                else "+1 Growth banked per card · Today’s Prism bank released"
+            )
             if released else
             f"{format_growth_units(getattr(state, 'prism_pending_growth_units', 0))} Growth banked"
         )
@@ -437,39 +468,23 @@ def _active_effect_rows(
         if active_item is not None and progress_copy
         else None
     )
-    current_seconds = (
-        float(time.time())
-        if now_ms is None
-        else max(0, int(now_ms)) / 1_000
+    fertilizer_batches = tuple(
+        batch
+        for batch in tuple(getattr(plant, "fertilizer_card_batches", ()) or ())
+        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
     )
-    fertilizer = None
-    queued_fertilizer: tuple[Any, ...] = ()
-    scheduler = getattr(engine, "fertilizer_schedule", None)
-    if callable(scheduler):
-        try:
-            fertilizer, queued_fertilizer = scheduler(plant, now=current_seconds)
-        except Exception:
-            fertilizer, queued_fertilizer = None, ()
-    else:
-        candidate = getattr(plant, "fertilizer", None)
-        if candidate is not None and float(getattr(candidate, "expires_at", 0) or 0) > current_seconds:
-            fertilizer = candidate
-    if fertilizer is not None:
-        tier = str(getattr(fertilizer, "tier", "") or "")
-        effective_end = float(getattr(fertilizer, "expires_at", 0) or 0)
-        for period in queued_fertilizer:
-            if (
-                str(getattr(period, "tier", "") or "") == tier
-                and float(getattr(period, "started_at", 0) or 0) <= effective_end
-            ):
-                effective_end = max(
-                    effective_end,
-                    float(getattr(period, "expires_at", 0) or 0),
-                )
-            else:
-                break
+    if fertilizer_batches:
+        fertilizer = fertilizer_batches[0]
+        effect_id = str(getattr(fertilizer, "effect_id", "") or "")
+        tier = effect_id.removeprefix("fertilizer_")
+        remaining_cards = sum(
+            max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+            for batch in fertilizer_batches
+            if str(getattr(batch, "effect_id", "") or "") == effect_id
+        )
         rows.append((
-            f"Fertilizer · {_remaining_time_label(effective_end - current_seconds)}",
+            f"{_fertilizer_display_name(tier)} · "
+            f"{plural_cards(remaining_cards, suffix=' remaining')}",
             f"fertilizer_{tier}" if tier in {"basic", "quality", "premium"} else "",
         ))
 
@@ -480,13 +495,13 @@ def _active_effect_rows(
             for batch in booster_batches
         )
         rows.append((
-            f"Booster · {plural_cards(booster_cards)}",
+            f"Booster Potion · {plural_cards(booster_cards, suffix=' remaining')}",
             "booster_potion",
         ))
 
     # Garden Decoration and Scenery contributions are active per-card modifiers,
-    # so they precede the derived streak bonus while remaining behind timed
-    # Fertilizer and card-limited Booster effects.
+    # so they precede the derived streak bonus while remaining behind
+    # card-counted Fertilizer and Booster effects.
     for label, units in (
         ("Garden decoration", getattr(award, "weather_growth_units", 0)),
         ("Scenery", getattr(award, "scenery_growth_units", 0)),
@@ -494,7 +509,7 @@ def _active_effect_rows(
         normalized_units = max(0, int(units or 0))
         if normalized_units:
             rows.append((
-                f"{label} · {format_growth_units(normalized_units, signed=True)} growth",
+                f"{label} · {format_growth_units(normalized_units, signed=True)} Growth",
                 "",
             ))
 
@@ -510,7 +525,7 @@ def _active_effect_rows(
     streak_units = max(0, int(getattr(award, "streak_growth_units", 0) or 0))
     if streak_units:
         rows.append((
-            f"Streak bonus · {format_growth_units(streak_units, signed=True)} growth",
+            f"Streak bonus · {format_growth_units(streak_units, signed=True)} Growth",
             "",
         ))
     if feature_row is not None and effect == "none":
@@ -574,6 +589,151 @@ def _resolved_plant_art(engine: Any, species: str, stage: str) -> tuple[str, Any
     return (str(path) if path else "", placement)
 
 
+def _planted_plants(state: Any) -> tuple[Any, ...]:
+    return tuple(
+        plant
+        for plant in tuple(getattr(state, "plants", ()) or ())
+        if bool(
+            getattr(
+                plant,
+                "planted",
+                getattr(plant, "slot_index", None) is not None,
+            )
+        )
+    )
+
+
+def _plant_is_full_bloom(plant: Any) -> bool:
+    if bool(getattr(plant, "fully_grown", False)):
+        return True
+    stage = str(getattr(plant, "growth_stage", "") or "").casefold()
+    if stage in {"rare", "full_bloom", "full bloom"}:
+        return True
+    try:
+        return bool(stage_progress(int(getattr(plant, "growth_points", 0) or 0)).fully_grown)
+    except (TypeError, ValueError):
+        return False
+
+
+def _growth_destination_projection(
+    engine: Any,
+    *,
+    stored_growth_units: int,
+) -> GrowthDestinationProjection:
+    """Project the acknowledged target or a Stored Growth fallback."""
+
+    snapshot = None
+    resolver = getattr(engine, "growth_projects_snapshot", None)
+    if callable(resolver):
+        try:
+            snapshot = resolver()
+        except Exception:
+            snapshot = None
+    stored = max(
+        0,
+        int(
+            getattr(snapshot, "stored_balance_units", stored_growth_units)
+            or 0
+        ),
+    )
+    target = getattr(snapshot, "active_target", None)
+    if target is not None:
+        raw_type = getattr(target, "target_type", "")
+        target_type = str(getattr(raw_type, "value", raw_type) or "")
+        target_id = str(getattr(target, "target_id", "") or "")
+        track = None
+        if target_type == "landmark":
+            track = getattr(snapshot, "landmark_track", None)
+        elif target_type == "mastery":
+            mastery_track = getattr(snapshot, "mastery_track", None)
+            if callable(mastery_track):
+                try:
+                    track = mastery_track(target_id)
+                except (TypeError, ValueError):
+                    track = None
+        elif target_type == "legacy":
+            track = getattr(snapshot, "legacy_track", None)
+        if track is not None and getattr(track, "target", None) == target:
+            heading = str(
+                getattr(track, "display_name", "") or "Growth project"
+            )
+            funded = max(
+                0,
+                int(getattr(track, "growth_units_funded", 0) or 0),
+            )
+            maximum = getattr(track, "maximum_growth_units", None)
+            progress = (
+                f"{format_growth_units(funded)} / "
+                f"{format_growth_units(max(0, int(maximum or 0)))} Growth"
+                if maximum is not None else
+                " · ".join((
+                    f"Level {max(0, int(getattr(track, 'level', 0) or 0)):,}",
+                    (
+                        f"{format_growth_units(getattr(track, 'level_progress_units', 0))} "
+                        "Growth toward next level"
+                    ),
+                ))
+            )
+            tiers = tuple(getattr(track, "tiers", ()) or ())
+            can_claim = any(
+                bool(getattr(tier, "can_claim_now", False)) for tier in tiers
+            )
+            goal_reached = any(
+                bool(getattr(tier, "claimable", False)) for tier in tiers
+            )
+            status = (
+                "Reward ready"
+                if can_claim or goal_reached else
+                "In progress"
+            )
+            return GrowthDestinationProjection(
+                kind="active_project",
+                heading=heading,
+                detail=" · ".join(
+                    value for value in (status, progress) if value
+                ),
+                route_copy=(
+                    "All planted plants are at Full Bloom. "
+                    f"Future Growth advances {heading}."
+                ),
+                project_id=target_id,
+                stored_growth_units=stored,
+                target_type=target_type,
+                artwork_id=str(getattr(track, "artwork_id", "") or ""),
+                status=status,
+            )
+
+    if bool(getattr(snapshot, "prompt_required", False)):
+        return GrowthDestinationProjection(
+            kind="choose_project",
+            heading="Choose a Growth project",
+            detail=(
+                f"{format_growth_units(stored)} Stored Growth in reserve"
+                if stored else "Future Growth will be stored until you choose."
+            ),
+            route_copy=(
+                "All planted plants are at Full Bloom. Future Growth will be "
+                "stored until you choose a Growth project."
+            ),
+            stored_growth_units=stored,
+            status="Choose in Collection",
+        )
+
+    return GrowthDestinationProjection(
+        kind="stored_growth",
+        heading="Stored Growth",
+        detail=(
+            f"{format_growth_units(stored)} Growth in reserve"
+            if stored
+            else "Future Growth will be stored here."
+        ),
+        route_copy=(
+            "All planted plants are at Full Bloom. Future Growth will be stored."
+        ),
+        stored_growth_units=stored,
+    )
+
+
 def project_plant_choices(
     engine: Any,
     state: Any,
@@ -602,7 +762,7 @@ def project_plant_choices(
                 getattr(plant, "slot_index", None) is not None,
             )
         )
-        if not planted or bool(getattr(plant, "fully_grown", False)):
+        if not planted or _plant_is_full_bloom(plant):
             continue
         species_key = str(getattr(plant, "species", "") or "")
         species_name = species_key.replace("_", " ").title()
@@ -645,18 +805,40 @@ def project_nurture(
     now_ms: int | None = None,
 ) -> NurtureProjection:
     stored_units = max(0, int(getattr(state, "stored_growth_units", 0) or 0))
+    planted_plants = _planted_plants(state)
+    all_plants_full_bloom = bool(
+        planted_plants and all(_plant_is_full_bloom(plant) for plant in planted_plants)
+    )
+    full_bloom_destination = (
+        _growth_destination_projection(
+            engine,
+            stored_growth_units=stored_units,
+        )
+        if all_plants_full_bloom
+        else None
+    )
     target = _active_target(engine, state)
     if target is None:
         stored_line = (
-            f"{format_growth_units(stored_units)} growth stored until a plant is selected"
-            if stored_units
+            f"{format_growth_units(stored_units)} Stored Growth in reserve"
+            if stored_units and not all_plants_full_bloom
             else ""
         )
         return NurtureProjection(
             False,
             stored_growth_line=stored_line,
-            empty_heading="No plant selected",
-            empty_message="Growth earned during review will be stored.",
+            empty_heading=(
+                "All plants are at Full Bloom"
+                if all_plants_full_bloom
+                else "No plant selected"
+            ),
+            empty_message=(
+                full_bloom_destination.route_copy
+                if full_bloom_destination is not None
+                else "Growth earned during review will be stored."
+            ),
+            all_plants_full_bloom=all_plants_full_bloom,
+            growth_destination=full_bloom_destination,
         )
 
     total_growth = max(0, int(getattr(target, "growth_points", 0) or 0))
@@ -706,8 +888,12 @@ def project_nurture(
             if total_units > 0
             else 0
         )
-        estimate_line = format_approximate_cards(estimated_cards) if estimated_cards else ""
-        checkpoint_line = f"{growth_remaining:,} growth to next checkpoint"
+        estimate_line = (
+            f"{format_approximate_cards(estimated_cards)} to the next checkpoint"
+            if estimated_cards else
+            ""
+        )
+        checkpoint_line = f"{growth_remaining:,} Growth to next checkpoint"
         checkpoint_reward = _checkpoint_reward(engine, next_stage, checkpoint_percent)
 
     canonical_stage = stage_presentation(stage_key)
@@ -739,7 +925,7 @@ def project_nurture(
         or getattr(state, "selected_background", "")
     )
     next_answer_line = (
-        f"Next answer · {format_growth_units(total_units, signed=True)} growth"
+        f"Next card: {format_growth_units(total_units, signed=True)} Growth"
         if total_units
         else ""
     )
@@ -757,7 +943,7 @@ def project_nurture(
         progress_percent=100 if fully_grown else max(0, min(100, round(progress.progress * 100))),
         checkpoint_line=checkpoint_line,
         next_stage_line=(
-            f"Checkpoint reward · +{format_quantity(checkpoint_reward, 'coin')}"
+            f"Checkpoint reward · {format_garden_coins(checkpoint_reward, signed=True)}"
             if checkpoint_reward
             else ""
         ),
@@ -767,7 +953,9 @@ def project_nurture(
         effect_art_refs=tuple(artwork_ref for _copy, artwork_ref in effect_rows),
         stored_growth_line="",
         empty_message=(
-            FULL_BLOOM_GROWTH_ROUTE_COPY
+            full_bloom_destination.route_copy
+            if fully_grown and full_bloom_destination is not None
+            else FULL_BLOOM_GROWTH_ROUTE_COPY
             if fully_grown
             else ""
         ),
@@ -783,6 +971,12 @@ def project_nurture(
         art_placement=art_placement,
         environment_tone=" ".join(value for value in (weather_id, scenery_id) if value),
         fully_grown=fully_grown,
+        all_plants_full_bloom=all_plants_full_bloom,
+        growth_destination=(
+            full_bloom_destination
+            if fully_grown and all_plants_full_bloom
+            else None
+        ),
     )
 
 
@@ -932,6 +1126,7 @@ __all__ = [
     "HUD_MIN_WIDTH",
     "HUD_NARROW_VIEWPORT",
     "HUD_TOP_MARGIN",
+    "GrowthDestinationProjection",
     "NurtureProjection",
     "PlantChoiceProjection",
     "ReviewerHudProjection",

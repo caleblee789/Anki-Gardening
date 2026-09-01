@@ -126,9 +126,11 @@ normalized assets, hidden-bonus behavior, and Anki-day locking. Retired
 Weather-compositor tests were deleted instead of being treated as active product
 requirements. Deterministic decoration-matrix raw frames remain available, but
 their superseded review sheets were removed. The current retained full UI
-contact-sheet set and its remaining acceptance gates are recorded in the
-[2.1.0 UI evidence record](ui/final-ui-audit-2.1.0.md). It remains review
-evidence rather than release approval.
+contact-sheet set is indexed by the
+[2.2.0 five-page contact-sheet record](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json),
+and its remaining acceptance gates are recorded in the
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md). It remains review evidence
+rather than release approval.
 
 Capture contract v26 uses contract schema 2 and scenario schema 3. Its
 18-surface representative and 34-surface full profiles render two and five
@@ -139,7 +141,7 @@ rectangles, four-state scroll coverage, and lineage are hard gates.
 
 Current run paths, archive and capture hashes, artifact sizes, and validation
 totals are recorded only in the
-[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). The record remains
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md). The record remains
 `quality_status: review-required` and `release_ready: false`; manual macOS
 interaction, Windows/Linux, mixed-DPI, forced-colors, screen-reader,
 broader-keyboard, and human approval remain open.

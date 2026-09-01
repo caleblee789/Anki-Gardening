@@ -1597,7 +1597,7 @@ def semantic_component_stylesheet(
             max-height: 30px;
             padding: 0;
             color: {t['coin_accent']};
-            background: {t['warning_surface']};
+            background: {t['selected_surface']};
             border: 1px solid {t['coin_accent']};
             border-radius: 8px;
         }}
@@ -1607,6 +1607,27 @@ def semantic_component_stylesheet(
             border: 0;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_size_px}px;
             font-weight: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_weight};
+        }}
+        QFrame[stageRewardChip='true'] QLabel[stageRewardValue='true'] {{
+            color: {t['coin_accent']};
+        }}
+        QFrame[achievementRewardChip='true'] {{
+            min-height: 24px;
+            max-height: 24px;
+            padding: 0;
+            background: {t['selected_surface']};
+            border: 1px solid {t['subtle_border']};
+            border-radius: 7px;
+        }}
+        QFrame[achievementRewardChip='true'] QLabel {{
+            color: {t['text_primary']};
+            background: transparent;
+            border: 0;
+            font-size: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_size_px}px;
+            font-weight: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_weight};
+        }}
+        QFrame[achievementRewardChip='true'] QLabel[achievementRewardValue='true'] {{
+            color: {t['coin_accent']};
         }}
         QProgressBar[gardenRole='progress'],
         QProgressBar[gardenRole='progress-meter'] {{

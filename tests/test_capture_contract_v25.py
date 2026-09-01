@@ -160,6 +160,105 @@ def _runtime_method_source(class_name: str, method_name: str) -> str:
     return segment
 
 
+def test_growth_charge_transient_contract_keeps_same_stage_comparison_visible() -> None:
+    check = _compiled_runtime_function(
+        "growth_charge_transient_variant_issue_codes"
+    )
+    records = {
+        "ready-no-transition": {
+            "transition_statement": "Bonsai Plant will gain 100 Growth",
+            "before_label": "Before · Sprout",
+            "after_label": "After · Sprout",
+            "impact_value": "+100 Growth",
+            "growth_value": "600 → 700",
+            "inventory_value": "2 → 1",
+            "stage_progress": "300 / 1,600 Growth to Young",
+            "current_growth": 600,
+            "projected_growth": 700,
+            "inventory_before": 2,
+            "inventory_after": 1,
+            "progress_minimum": 0,
+            "progress_maximum": 1_600,
+            "progress_value": 300,
+            "stage_row_visible": True,
+            "reward_banner_visible": False,
+            "painted": True,
+        },
+        "success-no-stage-reward": {
+            "transition_statement": "Bonsai Plant gained 100 Growth",
+            "before_label": "Before · Sprout",
+            "after_label": "After · Sprout",
+            "impact_value": "+100 Growth",
+            "growth_value": "600 → 700",
+            "inventory_value": "2 → 1",
+            "stage_progress": "300 / 1,600 Growth to Young",
+            "completed_stage_count": 0,
+            "reward_total": 0,
+            "stage_row_visible": True,
+            "reward_banner_visible": False,
+            "resulting_growth": 700,
+            "inventory_remaining": 1,
+            "progress_minimum": 0,
+            "progress_maximum": 1_600,
+            "progress_value": 300,
+            "painted": True,
+        },
+    }
+
+    assert check(records) == ()
+    records["success-no-stage-reward"]["stage_row_visible"] = False
+    assert check(records) == (
+        "growth-charge-success-no-stage-reward:stage_row_visible",
+    )
+
+
+def test_species_overview_roundtrip_uses_title_case_collection_title() -> None:
+    check = _compiled_runtime_function("collection_filter_roundtrip_issue_codes")
+    filtered = {
+        "query": "Bonsai",
+        "filter": "collected",
+        "category": "plants",
+        "sort": "name",
+    }
+    result = {
+        "species_ids": ["bonsai"],
+        "species_names": ["Bonsai"],
+        "target_visible": True,
+        "painted": True,
+    }
+    restored = {
+        "query": "",
+        "filter": "all",
+        "category": "all",
+        "sort": "catalog",
+    }
+    evidence = {
+        "before_open": filtered,
+        "before_open_controls": filtered,
+        "before_open_result": result,
+        "after_close": filtered,
+        "after_close_controls": filtered,
+        "after_close_result": result,
+        "species_overview": {
+            "opened": True,
+            "window_family": "SpeciesOverviewDialog",
+            "species_id": "bonsai",
+            "title": "Bonsai Collection",
+            "parent_window_family": "GardenProgressDialog",
+            "painted": True,
+        },
+        "production_route": "collection-card-click",
+        "dialog_closed": True,
+        "restored": restored,
+        "restored_controls": restored,
+        "restored_painted": True,
+    }
+
+    assert check(evidence) == ()
+    evidence["species_overview"]["title"] = "Bonsai collection"
+    assert check(evidence) == ("collection-filter-roundtrip-dialog:title",)
+
+
 def _compiled_runtime_method(
     class_name: str,
     method_name: str,
@@ -706,6 +805,19 @@ def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
         "open_garden_capitalization_passed": True,
         "bounds": [1274, 20, 416, 780],
         "expected_bounds": [1274, 20, 416, 780],
+        "container_size": [1710, 1041],
+        "summary_home_clearance_measured": True,
+        "summary_home_clearance_horizontal_overlap": False,
+        "summary_home_clearance_bottom": None,
+        "summary_home_clearance_source": "none",
+        "summary_home_clearance_applied": False,
+        "summary_home_clearance_telemetry": {
+            "schema_version": 1,
+            "source": "home-garden-dom",
+            "measured": True,
+            "rect": {"left": 80, "right": 620, "bottom": 240},
+            "viewport": {"width": 1710, "height": 1041},
+        },
         "right_margin": 20,
         "top_margin": 20,
         "bottom_margin": 20,
@@ -720,6 +832,15 @@ def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
             "rewards",
             "active_boosts",
         ],
+        "reward_metric_order": [
+            "growth_applied",
+            "garden_coins",
+            "standard_finds",
+        ],
+        "project_progress_placement": "breakdown",
+        "landmark_growth_units": 0,
+        "project_growth_units": 12_500,
+        "project_allocation_count": 1,
         "growth_breakdown_expanded": False,
         "expanded_accounting_copy_passed": False,
         "device_pixel_ratio": 2.0,
@@ -971,14 +1092,18 @@ def test_sync_reward_capture_fixture_is_rich_multiday_and_nonmodal() -> None:
         / "runtime.py"
     ).read_text("utf-8")
 
-    assert subtitle == "Rewards from 42 card answers on another device."
+    assert subtitle == "42 cards completed on another device"
     assert facts == {
         "anki_days": ("2026-08-28", "2026-08-29"),
         "eligible_answer_count": 42,
         "growth_total_units": 52_000,
         "plant_growth_units": 42_000,
         "shared_growth_delta_units": 8_000,
-        "stored_growth_delta_units": 2_000,
+        "stored_growth_delta_units": 0,
+        "landmark_growth_delta_units": 2_000,
+        "mastery_growth_delta_units": 0,
+        "legacy_growth_delta_units": 0,
+        "project_allocations": (("landmark", "garden_landmark", 2_000),),
         "garden_coin_delta": 12,
         "find_quantity": 0,
         "environment_count": 1,

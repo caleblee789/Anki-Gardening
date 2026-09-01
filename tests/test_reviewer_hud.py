@@ -8,6 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
+from ankigarden.economy_progression import (
+    GrowthTargetRef,
+    GrowthTargetType,
+    build_growth_projects_snapshot,
+)
 from ankigarden.reward_presentation import (
     RewardBundleProjection,
     RewardHero,
@@ -36,6 +41,7 @@ from ankigarden.ui.reviewer_hud_widget import (
     _bundle_growth_units,
     _checkpoint_marker_states,
     _checkpoint_sequence_is_chronological,
+    _compact_summary_label,
     _effect_display_text,
     _effect_overflow_label,
     _format_coin_balance,
@@ -101,7 +107,7 @@ def test_today_cards_is_global_compact_and_has_no_find_cap_copy() -> None:
     in_progress = project_today_cards(state_for("in_progress"))
     assert in_progress.heading == "Today’s cards"
     assert in_progress.primary == "176 / 194"
-    assert in_progress.secondary == ("18 cards left",)
+    assert in_progress.secondary == ("18 cards remaining",)
     assert (in_progress.progress_value, in_progress.progress_maximum) == (176, 194)
     assert in_progress.remaining_count == 18
     assert in_progress.finds_line == ""
@@ -109,8 +115,8 @@ def test_today_cards_is_global_compact_and_has_no_find_cap_copy() -> None:
 
     complete = project_today_cards(state_for("complete"))
     assert complete.heading == "All cards complete"
-    assert complete.primary == "+10 coins"
-    assert complete.secondary == ("176 reviewed today",)
+    assert complete.primary == "+10 Garden Coins"
+    assert complete.secondary == ("176 cards completed today",)
     assert complete.progress_percent == 100
 
     visible = " ".join((
@@ -138,7 +144,7 @@ def test_today_cards_counts_new_only_obligations_once() -> None:
     ))
 
     assert projection.primary == "0 / 20"
-    assert projection.secondary == ("20 cards left",)
+    assert projection.secondary == ("20 cards remaining",)
     assert (projection.progress_value, projection.progress_maximum) == (0, 20)
     assert projection.remaining_count == 20
 
@@ -153,7 +159,7 @@ def test_today_cards_reconciles_mixed_new_review_and_learning_obligations() -> N
     ))
 
     assert projection.primary == "176 / 194"
-    assert projection.secondary == ("18 cards left",)
+    assert projection.secondary == ("18 cards remaining",)
     assert (projection.progress_value, projection.progress_maximum) == (176, 194)
     assert projection.remaining_count == 18
 
@@ -168,13 +174,13 @@ def test_complete_today_card_uses_engine_confirmed_coin_reward() -> None:
         state_for("complete"),
     )
 
-    assert projection.today.primary == "+15 coins"
+    assert projection.today.primary == "+15 Garden Coins"
     assert projection.today.completion_reward_coins == 15
     singular = project_today_cards(
         state_for("complete"),
         completion_reward_coins=1,
     )
-    assert singular.primary == "+1 coin"
+    assert singular.primary == "+1 Garden Coin"
 
 
 def test_incomplete_today_progress_retains_an_end_gap_at_175_of_176() -> None:
@@ -188,7 +194,7 @@ def test_incomplete_today_progress_retains_an_end_gap_at_175_of_176() -> None:
     ))
 
     assert projection.primary == "175 / 176"
-    assert projection.secondary == ("1 card left",)
+    assert projection.secondary == ("1 card remaining",)
     assert projection.progress_percent == 99
     assert (_TODAY_PROGRESS_SCALE, _TODAY_INCOMPLETE_VISUAL_MAX) == (1_000, 985)
 
@@ -239,7 +245,10 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
         growth_remainder_units=0,
         planted=True,
         fully_grown=False,
-        fertilizer=SimpleNamespace(tier="quality", expires_at=4_600),
+        fertilizer_card_batches=(SimpleNamespace(
+            effect_id="fertilizer_quality",
+            remaining_cards=42,
+        ),),
         booster_card_batches=(SimpleNamespace(remaining_cards=38),),
     )
     state = state_for("in_progress")
@@ -267,30 +276,30 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     nurture = project_reviewer_hud(engine, state, now_ms=1_000_000).nurture
 
     assert nurture.plant_name == "Juniper of the Moonlit Terrace"
-    assert nurture.stage_label == "Young · 3 of 6 stages"
+    assert nurture.stage_label == "Mature · 4 of 6 stages"
     assert nurture.species_name == "Bonsai"
-    assert nurture.next_answer_value == "+13.5 growth"
-    assert nurture.next_card_line == "Next answer · +13.5 growth"
-    assert nurture.checkpoint_line == "605 growth to next checkpoint"
-    assert nurture.estimate_line == "~45 cards"
-    assert nurture.checkpoint_growth_remaining == 605
-    assert nurture.estimated_cards_to_checkpoint == 45
-    assert nurture.next_checkpoint_percent == 75
-    assert nurture.next_checkpoint_reward_coins == 4
+    assert nurture.next_answer_value == "+13.5 Growth"
+    assert nurture.next_card_line == "Next card: +13.5 Growth"
+    assert nurture.checkpoint_line == "2,230 Growth to next checkpoint"
+    assert nurture.estimate_line == "~166 cards to the next checkpoint"
+    assert nurture.checkpoint_growth_remaining == 2_230
+    assert nurture.estimated_cards_to_checkpoint == 166
+    assert nurture.next_checkpoint_percent == 25
+    assert nurture.next_checkpoint_reward_coins == 0
     assert nurture.checkpoint_percents == (25, 50, 75, 100)
-    assert nurture.next_stage_line == "Checkpoint reward · +4 coins"
-    assert nurture.art_path == "/art/bonsai-young.webp"
+    assert nurture.next_stage_line == ""
+    assert nurture.art_path == "/art/bonsai-mature.webp"
     assert nurture.art_placement is placement
     assert nurture.visible_effect_chips == (
-        "Fertilizer · 1h",
-        "Booster · 38 cards",
+        "Quality Fertilizer · 42 cards remaining",
+        "Booster Potion · 38 cards remaining",
     )
     assert nurture.effect_chips == (
-        "Fertilizer · 1h",
-        "Booster · 38 cards",
-        "Garden decoration · +0.5 growth",
-        "Scenery · +0.25 growth",
-        "Streak bonus · +1 growth",
+        "Quality Fertilizer · 42 cards remaining",
+        "Booster Potion · 38 cards remaining",
+        "Garden decoration · +0.5 Growth",
+        "Scenery · +0.25 Growth",
+        "Streak bonus · +1 Growth",
     )
     assert nurture.visible_effect_art_refs == (
         "fertilizer_quality",
@@ -399,9 +408,7 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
     empty = project_reviewer_hud(SimpleNamespace(active_plant=lambda: None), no_target).nurture
     assert empty.empty_heading == "No plant selected"
     assert empty.empty_message == "Growth earned during review will be stored."
-    assert empty.stored_growth_line == (
-        "12.5 growth stored until a plant is selected"
-    )
+    assert empty.stored_growth_line == "12.5 Stored Growth in reserve"
 
     full = SimpleNamespace(
         plant_id="plant-1",
@@ -425,9 +432,54 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
     assert projection.next_answer_value == ""
     assert projection.species_name == "Rose"
     assert projection.empty_message == (
-        "Future Growth will go to other planted plants. "
-        "Any remainder will be stored."
+        "All planted plants are at Full Bloom. Future Growth will be stored."
     )
+    assert projection.all_plants_full_bloom is True
+    assert projection.growth_destination is not None
+    assert projection.growth_destination.kind == "stored_growth"
+
+    mastery_target = GrowthTargetRef(GrowthTargetType.MASTERY, "rose")
+    active_snapshot = build_growth_projects_snapshot(
+        state_revision=1,
+        stored_balance_units=1_250,
+        wallet_balance_coins=0,
+        full_bloom_species=("rose",),
+        active_target=mastery_target,
+    )
+    projection = project_reviewer_hud(
+        SimpleNamespace(
+            active_plant=lambda: full,
+            growth_projects_snapshot=lambda: active_snapshot,
+        ),
+        full_state,
+    ).nurture
+    destination = projection.growth_destination
+    assert destination is not None
+    assert (
+        destination.kind,
+        destination.target_type,
+        destination.project_id,
+    ) == ("active_project", "mastery", "rose")
+    assert destination.heading == "Rose Cultivation Mastery"
+    assert destination.artwork_id
+    assert destination.status == "Active project"
+
+    choose_snapshot = build_growth_projects_snapshot(
+        state_revision=2,
+        stored_balance_units=1_250,
+        wallet_balance_coins=0,
+        full_bloom_species=("rose",),
+    )
+    projection = project_reviewer_hud(
+        SimpleNamespace(
+            active_plant=lambda: full,
+            growth_projects_snapshot=lambda: choose_snapshot,
+        ),
+        full_state,
+    ).nurture
+    assert projection.growth_destination is not None
+    assert projection.growth_destination.kind == "choose_project"
+    assert projection.growth_destination.stored_growth_units == 1_250
 
 
 def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
@@ -550,6 +602,8 @@ def test_plant_art_bounds_remove_empty_canvas_without_mutating_source() -> None:
 
 
 def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_session() -> None:
+    assert _compact_summary_label(SimpleNamespace(label="+13.5 growth")) == "+13.5 Growth"
+    assert _compact_summary_label(SimpleNamespace(label="Booster +2")) == "Booster Potion +2"
     for value in (248, 9_999, 10_013, 999_999, 1_000_000):
         assert _format_coin_balance(value, exact_fits=False) == f"{value:,}"
     assert _format_coin_balance(1_200_000, exact_fits=False) == "1.2M"
@@ -567,15 +621,17 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
         "future",
     )
     assert _effect_display_text("Fertilizer 1h 24m") == "Fertilizer · 1h 24m"
-    assert _effect_display_text("Booster · 38 cards") == "Booster · 38 cards"
+    assert _effect_display_text("Booster · 38 cards") == (
+        "Booster Potion · 38 cards"
+    )
     assert _effect_display_text("Unrelated effect") == "Unrelated effect"
     assert _effect_overflow_label(1) == "1 more effect ›"
     assert _effect_overflow_label(3) == "3 more effects ›"
     assert _session_metric_labels(0, 0, 0) == ()
-    assert _session_metric_labels(1_800, 0, 0) == ("+18 growth",)
+    assert _session_metric_labels(1_800, 0, 0) == ("+18 Growth",)
     assert _session_metric_labels(1_800, 2, 1) == (
-        "+18 growth",
-        "+2 coins",
+        "+18 Growth",
+        "+2 Garden Coins",
         "1 Standard Find",
     )
     # A rapid answer may arrive while the prior Coin count-up is still showing
@@ -868,7 +924,7 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     assert bundle.compact.hero_subtitle == "Rose"
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
         "1 Standard Find",
-        "Garden discoveries",
+        "2 Garden discoveries",
     )
     assert bundle.more_label == "Details ›"
     compact_event_ids = {
@@ -1435,10 +1491,12 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
     ):
         assert object_name in WIDGET_SOURCE
     assert "ankiGardenRewardToast" not in WIDGET_SOURCE
+    assert "HUD_TOP_MARGIN," in WIDGET_SOURCE.split(
+        "from .reviewer_hud import (", 1
+    )[1].split(")", 1)[0]
     assert "reward close" not in WIDGET_SOURCE.casefold()
     assert "body.addStretch" not in WIDGET_SOURCE
     assert "deque(maxlen=_REWARD_QUEUE_LIMIT)" not in WIDGET_SOURCE
-    assert '"Choose a plant" if not nurture.has_target' in WIDGET_SOURCE
     art_update = WIDGET_SOURCE.split("def _update_plant_art", 1)[1].split(
         "def _fade_art_in",
         1,
@@ -1543,12 +1601,6 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
         1,
     )[1].split("def _session_metric_labels", 1)[0]
     assert "format_quantity(normalized, 'more effect', 'more effects')" in effect_overflow
-    plant_update = WIDGET_SOURCE.split("def _update_plant", 1)[1].split(
-        "def _update_plant_art",
-        1,
-    )[0]
-    assert "format_quantity(nurture.next_checkpoint_reward_coins, 'coin')" in plant_update
-
     footer_builder = WIDGET_SOURCE.split("def _build_reward_dock", 1)[1].split(
         "def _build_collapsed",
         1,
@@ -1565,20 +1617,13 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
         "def _apply_full_bloom_override",
         1,
     )[1].split("def _apply_projected_full_bloom_settled", 1)[0]
-    assert "self._select_plant.setVisible(bool(settled))" in full_bloom_override
     assert "self._select_plant.show()" not in full_bloom_override
     projected_full_bloom = WIDGET_SOURCE.split(
         "def _apply_projected_full_bloom_settled",
         1,
     )[1].split("def _apply_stage_change_override", 1)[0]
-    assert (
-        "self._plant_message.setText(FULL_BLOOM_GROWTH_ROUTE_COPY)"
-        in projected_full_bloom
-    )
-    assert "self._select_plant.show()" in projected_full_bloom
     assert "self._effects.hide()" in projected_full_bloom
     assert "elif nurture.fully_grown:" in WIDGET_SOURCE
-    assert 'self._select_plant.setText("Choose next plant ›")' in WIDGET_SOURCE
     assert "self._select_plant.clicked.connect(self._select_another_plant)" in WIDGET_SOURCE
     select_action = WIDGET_SOURCE.split(
         "def _select_another_plant",

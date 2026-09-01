@@ -651,30 +651,31 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.SPECIES_DETAIL: DialogSizePolicy(
-        800,
-        520,
+        480,
+        260,
         820,
-        550,
-        840,
-        570,
+        440,
+        820,
+        900,
         1.0,
         1.0,
         False,
         True,
+        screen_margin=16,
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.GROWTH_CHARGE: DialogSizePolicy(
         480,
-        220,
+        400,
         500,
-        300,
-        510,
         460,
+        500,
+        500,
         1.0,
         1.0,
         False,
         True,
-        24,
+        16,
         True,
     ),
     DialogSizeClass.GARDEN_WORKSPACE: DialogSizePolicy(
@@ -784,11 +785,12 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "owned": DialogHeightProfile(470, 500, 530),
         # The Fertilizer catalogue deliberately opens on three complete 88 px
         # cards: both stored items and Basic Fertilizer's full price/action
-        # row. 541 px is the largest verified client height that keeps the
-        # following Quality card wholly below the initial fold. Content-fit
-        # still owns heights below this semantic ceiling, and the same central
-        # scroll owner keeps every later product reachable.
-        "fertilizer": DialogHeightProfile(500, 506, 541, 925, 940, 950),
+        # row. 557 px keeps that third 88 px card complete after the artwork-led
+        # active strip, while leaving the following Quality card below the
+        # initial fold. Content-fit still owns heights below this semantic
+        # ceiling, and the same central scroll owner keeps every later product
+        # reachable.
+        "fertilizer": DialogHeightProfile(500, 506, 557, 925, 940, 950),
         "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
         # Garden Decoration cards keep one complete product row in view. The
         # active-bonus summary consumes 147 px above the 276 px product row,
@@ -826,21 +828,24 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "default": DialogHeightProfile(480, 500, 520, 740, 760, 780),
     },
     DialogSizeClass.SPECIES_DETAIL: {
-        "default": DialogHeightProfile(520, 550, 570, 800, 820, 840),
-        "collected": DialogHeightProfile(520, 550, 570, 800, 820, 840),
-        "uncollected": DialogHeightProfile(520, 550, 570, 800, 820, 840),
+        "default": DialogHeightProfile(260, 440, 900, 480, 820, 820),
+        "collected": DialogHeightProfile(260, 440, 900, 480, 820, 820),
+        "uncollected": DialogHeightProfile(260, 360, 900, 480, 820, 820),
     },
     DialogSizeClass.GROWTH_CHARGE: {
-        "ready": DialogHeightProfile(350, 375, 400, 480, 500, 510),
-        "loading": DialogHeightProfile(350, 375, 400, 480, 500, 510),
+        # Preview, commit, and result all use one markup tree and one geometry
+        # envelope. Content-fit may settle anywhere inside these bounds, but
+        # changing tense or footer callbacks must not resize the window.
+        "ready": DialogHeightProfile(400, 460, 500, 480, 500, 500),
+        "loading": DialogHeightProfile(400, 460, 500, 480, 500, 500),
         # An availability refresh adds one compact status banner. Let the
         # settled content determine the height instead of manufacturing a
         # transaction-body scrollbar.
-        "stale": DialogHeightProfile(380, 410, 450, 500, 510, 540),
-        "empty": DialogHeightProfile(190, 210, 230, 520, 540, 560),
-        "warning": DialogHeightProfile(180, 210, 240, 520, 540, 560),
-        "error": DialogHeightProfile(180, 210, 240, 520, 540, 560),
-        "success": DialogHeightProfile(300, 320, 340, 480, 500, 510),
+        "stale": DialogHeightProfile(400, 460, 500, 480, 500, 500),
+        "empty": DialogHeightProfile(190, 210, 230, 480, 500, 500),
+        "warning": DialogHeightProfile(180, 210, 240, 480, 500, 500),
+        "error": DialogHeightProfile(180, 210, 240, 480, 500, 500),
+        "success": DialogHeightProfile(400, 460, 500, 480, 500, 500),
     },
 }
 

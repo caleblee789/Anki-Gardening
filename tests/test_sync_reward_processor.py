@@ -3,13 +3,21 @@ from __future__ import annotations
 from dataclasses import replace
 from types import SimpleNamespace
 
+from ankigarden.economy_progression import (
+    GrowthTargetType,
+    ProjectGrowthAllocation,
+)
 from ankigarden.game import (
     CommittedAnswerResult,
     CommittedPlantSnapshot,
     ReviewAward,
+    StageTransition,
 )
 from ankigarden.models.state import GardenFindOutcome, RewardReceipt
-from ankigarden.models.sync_reward import SyncRewardSummary
+from ankigarden.models.sync_reward import (
+    SYNC_REWARD_MODEL_VERSION,
+    SyncRewardSummary,
+)
 from ankigarden.sync_review_detector import SyncAttemptSnapshot
 from ankigarden.sync_reward_processor import (
     SyncRewardProcessor,
@@ -137,17 +145,41 @@ def _snapshot(**changes):
 
 def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id() -> None:
     results = (
-        _result(
+        replace(_result(
             event_id="answer:200",
             scheduler_day="2026-08-27",
             before_units=0,
             after_units=1_000,
         ),
-        _result(
+            mastery_growth_before_units=0,
+            mastery_growth_after_units=100,
+            project_allocations=(
+                ProjectGrowthAllocation(GrowthTargetType.MASTERY, "rose", 100),
+                ProjectGrowthAllocation(GrowthTargetType.MASTERY, "rose", 0),
+            ),
+            stage_transitions=(StageTransition(
+                "bluebell",
+                "hydrangea",
+                "young",
+                "mature",
+                "Bluebell",
+                "shared_growth",
+            ),),
+        ),
+        replace(_result(
             event_id="answer:100",
             scheduler_day=CURRENT_DAY,
             before_units=1_000,
             after_units=2_000,
+        ),
+            mastery_growth_before_units=100,
+            mastery_growth_after_units=150,
+            legacy_growth_before_units=0,
+            legacy_growth_after_units=25,
+            project_allocations=(
+                ProjectGrowthAllocation(GrowthTargetType.MASTERY, "rose", 50),
+                ProjectGrowthAllocation(GrowthTargetType.LEGACY, "garden_legacy", 25),
+            ),
         ),
     )
 
@@ -161,11 +193,16 @@ def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id(
     assert summary is not None
     assert summary.eligible_answer_count == 2
     assert summary.anki_days == ("2026-08-27", CURRENT_DAY)
-    assert summary.growth_total_units == 2_000
+    assert summary.growth_total_units == 2_175
     assert summary.plant_growth[0]["growth_delta_units"] == 2_000
     assert summary.plant_results[0].plant_id == "bluebell"
     assert summary.plant_results[0].growth_delta_units == 2_000
-    assert summary.to_dict()["model_version"] == 2
+    assert summary.plant_results[0].transition_source == "shared_growth"
+    assert tuple(
+        (row.target_type, row.target_id, row.units)
+        for row in summary.project_allocations
+    ) == (("mastery", "rose", 150), ("legacy", "garden_legacy", 25))
+    assert summary.to_dict()["model_version"] == SYNC_REWARD_MODEL_VERSION
 
 
 def test_sync_named_find_replaces_legacy_category_icon_with_canonical_art() -> None:

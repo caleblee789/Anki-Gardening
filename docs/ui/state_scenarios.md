@@ -2,7 +2,7 @@
 
 ## Fresh garden and starter
 
-- Schema 25 begins with two unlocked direct-soil spaces, no plants, Seedling Sign
+- Schema 27 begins with two unlocked direct-soil spaces, no plants, Seedling Sign
   plus Verdant Twilight entitlements, visible environment layers,
   `starter_selection_complete=false`, and onboarding at `introduction`.
 - Anki Home is the unnumbered entry/resume surface. The Garden counts six saved
@@ -77,7 +77,7 @@
   redirects or enters Stored Growth instead of losing value.
 - Choosing **Nurture** changes only future routing. Previously earned Growth
   never moves.
-- Reviewer HUD, full Garden, selected-plant card, and the persisted schema-25
+- Reviewer HUD, full Garden, selected-plant card, and the persisted schema-27
   state snapshot agree after refresh.
 - The expanded HUD reserves 296 px at top 44/right 16, measures its lower edge
   from Anki's answer controls with a 72 px fallback, and collapses rather than
@@ -300,13 +300,16 @@ Exact presentation states:
   finite discovery counters. Schemas 23–25 replace Weather identities with
   Garden Decorations, split displayed artwork from the active Garden Bonus,
   add independent Anki-day Bonus locking, and add the durable pending sync
-  receipt. All supported schema-10–24 paths converge on schema 25.
+  receipt. All supported schema-10–26 paths converge on schema 27; the
+  schema-26 migration preserves plants, wallet balance, Stored Growth, and
+  prior claims while adding the current cumulative economy authorities without
+  retroactive rewards.
   Cutoff, database, backup, and state-write failures preserve the original data
   and retry without advancing review state.
 - The first transition to scene geometry 6 refreshes incompatible visual
   placement only; it does not change plant progression. The migration notice
   explains any plant returned to Collection.
-- Schema 25 repairs bounded numeric values, duplicate IDs/species/slots, invalid
+- Schema 27 repairs bounded numeric values, duplicate IDs/species/slots, invalid
   `active_plant_id`, and malformed story/economy/reward records.
 - Unreadable state is copied to `garden_state.invalid.json`; other unsupported
   schemas are backed up before recovery.
@@ -330,7 +333,8 @@ Hard gates cover deprecated visible copy, root/DOM overflow, progress
 fractions, asset mappings, Reviewer exclusion rectangles, four-state scrolling,
 and lineage. Current run paths, archive and capture hashes, artifact sizes, and
 validation totals are recorded only in the
-[final 2.1.0 UI audit](final-ui-audit-2.1.0.md).
+[final 2.2.0 UI audit](final-ui-audit-2.2.0.md) and the
+[five-page contact-sheet index](../../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
 `quality_status: review-required` and `release_ready: false` remain unchanged;
 manual macOS interaction, Windows/Linux, mixed-DPI, forced-colors,
 screen-reader, broader-keyboard, and human release approval remain open.

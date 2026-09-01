@@ -193,7 +193,7 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
 
 def test_fertilizer_explanation_uses_concise_card_copy() -> None:
     assert FERTILIZER_EXPLANATION == (
-        "Fertilizer adds Growth per eligible card answer for a limited time."
+        "Fertilizer adds Growth per card for a limited number of cards."
     )
 
 

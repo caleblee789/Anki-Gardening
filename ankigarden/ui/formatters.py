@@ -180,7 +180,7 @@ def format_stage_progress(value: Any, maximum: Any, destination: str) -> str:
     """Format the one visible progress expression used by Garden surfaces."""
 
     return (
-        f"{format_growth(value, maximum, include_unit=False)} toward "
+        f"{format_growth(value, maximum, include_unit=False)} Growth to "
         f"{format_status_label(destination)}"
     )
 

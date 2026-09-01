@@ -241,7 +241,31 @@ def test_hidden_or_noncontent_home_states_omit_garden_feature_markup() -> None:
 
 def test_success_state_uses_resolved_background_as_compact_scene() -> None:
     base = _sample_data()
-    data = HomeWidgetData(**{**base.__dict__, "background_url": "/_addons/123/assets/garden.webp"})
+    landmark_asset = {
+        "category": "landmarks",
+        "asset_id": "landmark_mossy_stone_path",
+        "metadata": {"slot": {"key": "mossy_stone_path"}},
+    }
+    mastery_asset = {
+        "category": "mastery",
+        "asset_id": "mastery_gold",
+        "metadata": {"slot": {"key": "gold"}},
+    }
+    scene_items = ({
+        **base.scene_items[0],
+        "plant_id": "plant-bonsai",
+        "mastery_rank_id": "gold",
+        "mastery_asset": mastery_asset,
+        "mastery_url": "/_addons/123/assets/mastery_gold.webp",
+    },)
+    data = HomeWidgetData(**{
+        **base.__dict__,
+        "background_url": "/_addons/123/assets/garden.webp",
+        "landmark_id": "mossy_stone_path",
+        "landmark_asset": landmark_asset,
+        "landmark_url": "/_addons/123/assets/landmark_mossy_stone_path.webp",
+        "scene_items": scene_items,
+    })
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
 
@@ -252,6 +276,20 @@ def test_success_state_uses_resolved_background_as_compact_scene() -> None:
     assert "background-size:100% 100%" in html
     assert 'data-preview-crop="0.000,0.080,1.000,0.840"' in html
     assert "aspect-ratio:var(--ag-source-aspect, 2.4)" in html
+    assert 'data-landmark="mossy_stone_path"' in html
+    assert 'data-landmark-anchor="0.360,0.180,0.280,0.520"' in html
+    assert 'data-plant-id="plant-bonsai" data-slot-index="0" data-mastery-rank="gold"' in html
+
+    mismatched = HomeWidgetData(**{
+        **data.__dict__,
+        "landmark_id": "birdbath_terrace",
+        "scene_items": ({**scene_items[0], "mastery_rank_id": "silver"},),
+    })
+    fail_closed = render_home_widget(
+        HomeWidgetSnapshot(request_id=6, phase="success", data=mismatched)
+    )
+    assert 'class="ag-home__landmark"' not in fail_closed
+    assert 'class="ag-home__mastery"' not in fail_closed
 
 
 def test_home_scene_layers_theme_terrace_and_readable_seedling_cue() -> None:
@@ -364,7 +402,7 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
 
     assert f'title="{name} · Flowering · 30 / 500 Growth"' in html
     assert f'>{name} · Flowering</span>' in html
-    assert '>30 / 500 Growth</span>' in html
+    assert '>30 / 500 Growth to Full Bloom</span>' in html
     assert "white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 400px)" in html
@@ -685,10 +723,10 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=9, phase="success", data=data))
 
     assert data.active_plant_name == "Briar"
-    assert data.active_stage_points == 100
-    assert data.active_stage_goal == 2_000
+    assert data.active_stage_points == 200
+    assert data.active_stage_goal == 1_600
     assert data.active_next_stage == "young"
-    assert 'data-testid="home-support" title="Briar · Sprout · 100 / 2,000 Growth"' in html
+    assert 'data-testid="home-support" title="Briar · Sprout · 200 / 1,600 Growth"' in html
     assert 'data-testid="home-growth-progress"' in html
     assert 'data-testid="home-progress-copy"' in html
     assert ".ag-home__growth-track {\n  position:absolute;" in html
@@ -748,7 +786,7 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
     assert data.planted_starter_stage == "seed"
     assert (
         'data-testid="home-support" '
-        'title="Briar · Seed · 0 / 500 Growth"'
+        'title="Briar · Seed · 0 / 400 Growth"'
     ) in html
     assert "Planted starter" not in html
     assert 'data-testid="home-growth-progress"' in html
@@ -1083,7 +1121,7 @@ def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
     assert tuple(metric.metric_id for metric in preview.metrics) == (
         "today", "streak", "coins"
     )
-    assert preview.action_label == "Open Garden"
+    assert preview.action_label == "Open garden"
     assert preview.action_command == "home-open"
     assert preview.status_tone == {
         "loading": "info",
@@ -1105,10 +1143,10 @@ def test_shared_preview_coin_metric_pluralizes_the_unit() -> None:
 
     assert next(
         metric for metric in one_coin.metrics if metric.metric_id == "coins"
-    ).value == "1 coin"
+    ).value == "1 Garden Coin"
     assert next(
         metric for metric in two_coins.metrics if metric.metric_id == "coins"
-    ).value == "2 coins"
+    ).value == "2 Garden Coins"
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:

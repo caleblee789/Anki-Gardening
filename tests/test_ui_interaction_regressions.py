@@ -17,6 +17,10 @@ from ankigarden.models.state import GardenState, OnboardingStep, Plant, PlantMem
 from ankigarden.presentation import PlantIdentity
 from ankigarden.purchases import PurchaseKind
 from ankigarden.ui.home_widget import HomeWidgetData, HomeWidgetSnapshot, render_home_widget
+from ankigarden.ui.landmark_display import (
+    landmark_asset_identity_matches,
+    mastery_asset_identity_matches,
+)
 from ankigarden.ui.plant_display import (
     PlantInteractionState,
     Rect,
@@ -95,6 +99,8 @@ def test_scene_sanitization_keeps_exactly_one_nurtured_plant() -> None:
         "_sanitize_scene_payload",
         {
             "repair_unique_slot_items": repair_unique_slot_items,
+            "landmark_asset_identity_matches": landmark_asset_identity_matches,
+            "mastery_asset_identity_matches": mastery_asset_identity_matches,
             "CAPTURE_HARNESS_ENABLED": False,
             "os": os,
         },
@@ -104,9 +110,37 @@ def test_scene_sanitization_keeps_exactly_one_nurtured_plant() -> None:
         _clamp=lambda value, low, high: max(low, min(high, value)),
     )
     payload = {
+        "landmark_id": "mossy_stone_path",
+        "asset_paths": {
+            "landmark": {
+                "category": "landmarks",
+                "asset_id": "landmark_mossy_stone_path",
+                "metadata": {"slot": {"key": "mossy_stone_path"}},
+            },
+        },
         "plants": [
-            {"plant_id": "plant-a", "slot_index": 0, "is_active": True},
-            {"plant_id": "plant-b", "slot_index": 1, "is_active": True},
+            {
+                "plant_id": "plant-a",
+                "slot_index": 0,
+                "is_active": True,
+                "mastery_rank_id": "gold",
+                "mastery_asset": {
+                    "category": "mastery",
+                    "asset_id": "mastery_gold",
+                    "metadata": {"slot": {"key": "gold"}},
+                },
+            },
+            {
+                "plant_id": "plant-b",
+                "slot_index": 1,
+                "is_active": True,
+                "mastery_rank_id": "silver",
+                "mastery_asset": {
+                    "category": "mastery",
+                    "asset_id": "mastery_gold",
+                    "metadata": {"slot": {"key": "gold"}},
+                },
+            },
         ]
     }
 
@@ -117,6 +151,14 @@ def test_scene_sanitization_keeps_exactly_one_nurtured_plant() -> None:
         for plant in repaired["plants"]
         if plant["is_active"]
     ] == ["plant-a"]
+    assert repaired["landmark_id"] == "mossy_stone_path"
+    assert repaired["plants"][0]["mastery_rank_id"] == "gold"
+    assert repaired["plants"][1]["mastery_rank_id"] == ""
+
+    payload["landmark_id"] = "birdbath_terrace"
+    mismatched = sanitize(scene, payload)
+    assert mismatched["landmark_id"] == ""
+    assert "landmark" not in mismatched["asset_paths"]
 
 
 def _method_source(path: Path, class_name: str, method_name: str) -> str:
@@ -745,6 +787,15 @@ def test_story_escape_cancels_rename_and_restores_focus_to_edit_button() -> None
 
 
 def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slots() -> None:
+    appearance_rows = (
+        ("Scenery", "Verdant Twilight"),
+        ("Displayed decoration", "Seedling Sign"),
+        (
+            "Active garden bonus",
+            "Watering Station · Every 5 eligible cards: +1 Growth",
+        ),
+        ("Visual effects", "Enabled"),
+    )
     snapshot = _compiled_method(
         DASHBOARD_PATH,
         "GardenDashboard",
@@ -760,12 +811,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
                     "active_bonus_decoration_id": "watering_station",
                     "visual_effects_enabled": True,
                 },
-                summary_rows=(
-                    ("Scenery", "Verdant Twilight"),
-                    ("Displayed decoration", "Seedling Sign"),
-                    ("Active garden bonus", "Watering Station"),
-                    ("Visual effects", "On"),
-                ),
+                summary_rows=appearance_rows,
             ),
         },
     )
@@ -800,12 +846,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
 
     payload = snapshot(dashboard)
 
-    assert payload["appearance_rows"] == [
-        ("Scenery", "Verdant Twilight"),
-        ("Displayed decoration", "Seedling Sign"),
-        ("Active garden bonus", "Watering Station"),
-        ("Visual effects", "On"),
-    ]
+    assert payload["appearance_rows"] == list(appearance_rows)
 
     assert payload["garden_feature"] == "gentle_rain"
     assert payload["active_bonus_garden_feature"] == "watering_station"
@@ -877,6 +918,8 @@ def test_settings_appearance_does_not_build_a_scene_preview() -> None:
             "CAPTURE_HARNESS_ENABLED": False,
             "os": SimpleNamespace(environ={}),
             "repair_unique_slot_items": lambda plants: plants,
+            "landmark_asset_identity_matches": landmark_asset_identity_matches,
+            "mastery_asset_identity_matches": mastery_asset_identity_matches,
         },
     )
     scene = SimpleNamespace(
@@ -1841,6 +1884,13 @@ def test_scene_slot_update_reuses_existing_asset_payloads() -> None:
     assert scene.scene["plants"][0]["slot_index"] == 2
     assert scene.scene["plants"][0]["asset"] == {"path": "a.png"}
     assert updates == ["update", "landmarks", "geometry"]
+    move_preview_source = _method_source(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "_draw_move_preview",
+    )
+    assert "_plant_for_id(plant_id)" in move_preview_source
+    assert "_draw_mastery_overlay(painter, origin, plant)" in move_preview_source
 
 
 def test_successful_post_commit_event_clears_only_prior_display_notice() -> None:

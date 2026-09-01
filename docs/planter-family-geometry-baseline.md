@@ -93,7 +93,9 @@ Capture contract v26 (contract schema 2, scenario schema 3) is the current
 visual-evidence boundary. It rejects v25 reuse and requires scenario/fixture/
 one-based-step lineage plus hard gates for asset mapping and clipping. Current
 run paths, archive and capture hashes, artifact sizes, and validation totals
-are recorded only in the
-[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). These artifacts remain
+are recorded in the
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and its
+[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
+These artifacts remain
 review evidence, not release approval: `quality_status: review-required`,
 `release_ready: false`, with manual and platform gates open.

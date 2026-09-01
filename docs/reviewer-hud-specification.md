@@ -20,7 +20,7 @@ The expanded HUD presents:
 4. One integrated reward dock after the first nonzero result.
 5. A compact `This session` total after it has a positive category.
 
-Persistent copy uses `card/cards` for quantities and estimates. `Next answer`
+Persistent copy uses `card/cards` for quantities and estimates. `Next card`
 remains the action label. Shared quantity formatting owns singular/plural forms
 for cards, effects, Finds, rewards, and Coins.
 
@@ -116,7 +116,7 @@ Distance, future reward, and immediate result form three parallel rows:
 ```text
 250 growth to next checkpoint              ~14 cards
 Checkpoint reward                            +2 coins
-Next answer                              +18 growth
+Next card                                +18 growth
 ```
 
 Only the icon and `+2 coins` are gold. No learner-facing quantity uses
@@ -240,8 +240,8 @@ events remain in session history and never replay on remount, sync, or resize.
 ## Visual hierarchy and data integrity
 
 Use a neutral shell, dark plant surface, restrained Today's Cards surface,
-tonal Next-answer inset, and raised reward dock. Border strength is shell,
-standard plant/dock, then subtle Today. Passive chips and Next answer have no
+tonal `Next card` inset, and raised reward dock. Border strength is shell,
+standard plant/dock, then subtle Today. Passive chips and `Next card` have no
 outline. Gold is reserved for Coins, next checkpoint, and temporary Full Bloom;
 mint is reserved for Growth.
 
@@ -304,8 +304,9 @@ mismatch among reveal, footer, history, and exit Session Summary.
 ## v26 evidence record
 
 Current run paths, archive and capture hashes, artifact sizes, and validation
-totals are recorded only in the
-[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md).
+totals are recorded in the
+[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and its
+[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
 
 The v26 gates fail closed on deprecated visible copy, root/DOM overflow,
 progress-fraction mismatches, asset mappings, Reviewer exclusion rectangles,

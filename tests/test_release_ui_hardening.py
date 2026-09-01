@@ -155,6 +155,132 @@ def test_every_garden_window_route_uses_the_shared_dialog_contract() -> None:
         assert derives_from_dialog_shell(class_name), class_name
 
 
+def test_growth_charge_preview_and_success_share_one_markup_tree() -> None:
+    source = _dashboard_source()
+    owner = next(
+        node
+        for node in _dashboard_tree().body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "GrowthChargeConfirmationDialog"
+    )
+    owner_source = ast.get_source_segment(source, owner) or ""
+    refresh_source = ast.get_source_segment(
+        source,
+        _method_node("GrowthChargeConfirmationDialog", "_refresh_quote"),
+    ) or ""
+    success_source = ast.get_source_segment(
+        source,
+        _method_node("GrowthChargeConfirmationDialog", "_show_receipt"),
+    ) or ""
+    confirmed_data_source = ast.get_source_segment(
+        source,
+        _method_node("GrowthChargeConfirmationDialog", "_data_from_outcome"),
+    ) or ""
+
+    assert "self.summary_panel = QFrame" in owner_source
+    assert owner_source.count("self.summary_panel = QFrame") == 1
+    assert "self._render_shared_summary(self._data_from_quote(quote))" not in refresh_source
+    assert "self._render_shared_summary(data)" in refresh_source
+    assert "data = self._data_from_quote(quote)" in refresh_source
+    assert "data = self._data_from_outcome(outcome)" in success_source
+    assert "self._render_shared_summary(data)" in success_source
+    assert "QFrame(" not in success_source
+    assert "self.setMinimumHeight(stable_height)" in success_source
+    assert "self.setMaximumHeight(stable_height)" in success_source
+    assert 'self.setProperty("growthChargeTransitionHeight", stable_height)' in (
+        success_source
+    )
+    assert "self.quote" not in confirmed_data_source
+    for confirmed_field in (
+        "outcome.previous_growth",
+        "outcome.resulting_growth",
+        "outcome.previous_stage",
+        "outcome.resulting_stage",
+        "outcome.growth_granted",
+        "outcome.inventory_remaining",
+        "outcome.rewards",
+        "request.expected_inventory",
+    ):
+        assert confirmed_field in confirmed_data_source
+    assert "GrowthChargeDialog = GrowthChargeConfirmationDialog" in source
+    assert "GrowthChargeProgressBar(self.summary_panel)" in owner_source
+    progress_owner = next(
+        node
+        for node in _dashboard_tree().body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "GrowthChargeProgressBar"
+    )
+    progress_source = ast.get_source_segment(source, progress_owner) or ""
+    assert "_MINIMUM_NONZERO_FILL = 2.0" in progress_source
+    assert "max(self._MINIMUM_NONZERO_FILL, exact_width)" in progress_source
+
+    for required_copy in (
+        '"Use charge"',
+        '"View plant"',
+        '"Charges remaining"',
+        '"Next-stage progress"',
+        'f"Before · {format_status_label(data.before_stage_name)}"',
+        'f"After · {format_status_label(data.after_stage_name)}"',
+    ):
+        assert required_copy in owner_source
+    for obsolete_copy in (
+        '"Reaches Sprout"',
+        '"Use Small Growth Charge"',
+        '"Small Growth Charges remaining"',
+    ):
+        assert obsolete_copy not in owner_source
+
+
+def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -> None:
+    transition_copy = _compiled_method(
+        "GrowthChargeConfirmationDialog",
+        "_transition_copy",
+        {
+            "GrowthChargeDialogData": object,
+            "format_status_label": lambda value: str(value).title(),
+        },
+    )
+    stage_change = SimpleNamespace(
+        plant_name="Bonsai Plant",
+        stage_changed=True,
+        after_stage_name="sprout",
+        growth_amount=100,
+    )
+    same_stage = SimpleNamespace(
+        plant_name="Bonsai Plant",
+        stage_changed=False,
+        after_stage_name="sprout",
+        growth_amount=100,
+    )
+
+    stage_change.variant = "confirmation"
+    assert transition_copy(stage_change) == "Bonsai Plant will reach Sprout"
+    stage_change.variant = "success"
+    assert transition_copy(stage_change) == "Bonsai Plant reached Sprout"
+    same_stage.variant = "confirmation"
+    assert transition_copy(same_stage) == "Bonsai Plant will gain 100 Growth"
+    same_stage.variant = "success"
+    assert transition_copy(same_stage) == "Bonsai Plant gained 100 Growth"
+
+
+def test_growth_charge_view_plant_returns_to_the_committed_target() -> None:
+    source = _dashboard_source()
+    activate_source = ast.get_source_segment(
+        source,
+        _method_node("GrowthChargeConfirmationDialog", "_activate_primary"),
+    ) or ""
+    owner_source = ast.get_source_segment(
+        source,
+        _method_node("GardenDashboard", "_open_growth_charges_for_plant"),
+    ) or ""
+
+    assert "self.view_plant_requested = True" in activate_source
+    assert "self.accept()" in activate_source
+    assert "view_plant_requested = bool(dialog.view_plant_requested)" in owner_source
+    assert "self.scene.keep_card_open(target_id)" in owner_source
+    assert "self._refresh_selected_plant_card()" in owner_source
+
+
 def test_visibility_sensitive_children_have_parents_at_construction() -> None:
     expected_parent_args = (
         ("GardenDialog", "__init__", "self.dialog_subtitle", 1, "self.header"),
@@ -166,7 +292,6 @@ def test_visibility_sensitive_children_have_parents_at_construction() -> None:
             "self.cells['growth']",
         ),
         ("NurseryDialog", "_available_card", "affordability_label", 1, "card"),
-        ("NurseryDialog", "_space_card", "self.bed_affordability", 1, "card"),
         ("CollectibleDetailDialog", "_option_tile", "state", 1, "tile"),
         (
             "GardenDashboard",
@@ -195,6 +320,13 @@ def test_visibility_sensitive_children_have_parents_at_construction() -> None:
             "options_heading",
             1,
             "dialog",
+        ),
+        (
+            "GardenDashboard",
+            "_build_species_overview_dialog",
+            "stage_metadata",
+            1,
+            "stage_card",
         ),
         ("NurseryDialog", "__init__", "self._status_hide_timer", 0, "self"),
         ("PlantInfoCard", "__init__", "self.nurture", 1, "self"),
@@ -296,6 +428,54 @@ def test_view_profile_and_disposal_never_move_or_detach_dialogs() -> None:
     )
     dispose_source = ast.get_source_segment(source, dispose) or ""
     assert "setParent(" not in dispose_source
+
+
+def test_species_overview_uses_compact_shared_rows_and_tokens() -> None:
+    source = _dashboard_source()
+    builder = _method_node(
+        "GardenDashboard",
+        "_build_species_overview_dialog",
+    )
+    builder_source = ast.get_source_segment(source, builder) or ""
+    plant_row = next(
+        node
+        for node in _dashboard_tree().body
+        if isinstance(node, ast.ClassDef) and node.name == "SpeciesPlantRow"
+    )
+    plant_row_source = ast.get_source_segment(source, plant_row) or ""
+
+    for required in (
+        'f"{species_name} Collection"',
+        "dialog._shell_layout.setContentsMargins(24, 18, 24, 20)",
+        "apply_text_role(dialog.dialog_title, TextRole.SCREEN_TITLE)",
+        "size=44",
+        'stage_card.setFixedHeight(104)',
+        'f"{GROWTH_THRESHOLDS[-1]:,} Growth required"',
+        'property_name="speciesPlantThumbnail"',
+        'growth.bar.setFixedHeight(PROGRESS_BAR_HEIGHT)',
+        'set_button_size(action, ButtonSize.SECONDARY)',
+        'GardenIconButton(\n                            "overflow"',
+        'if instance_index:',
+        'divider.setProperty("speciesPlantDivider", True)',
+        'dialog.species_plant_responsive.append(row.responsive)',
+    ):
+        assert required in builder_source
+    for removed in (
+        'f"{species_name} collection"',
+        "size=60",
+        'stage_card.setFixedHeight(116)',
+        'f"Unlocks at {GROWTH_THRESHOLDS[-1]:,} total Growth"\n                if mystery_stage',
+        'row.setMinimumHeight(128)',
+        'row.setMaximumHeight(148)',
+    ):
+        assert removed not in builder_source
+
+    assert "AdaptiveRegion.measured" in plant_row_source
+    assert "floor=190" in plant_row_source
+    assert "floor=240" in plant_row_source
+    assert "self.grid.addWidget(self.progress, 1, 0, 1, 2)" in plant_row_source
+    assert "self.setMaximumHeight(88)" in plant_row_source
+    assert "self.setMaximumHeight(132)" in plant_row_source
 
 
 def test_settings_name_failure_reports_split_commit_when_rollback_fails() -> None:
