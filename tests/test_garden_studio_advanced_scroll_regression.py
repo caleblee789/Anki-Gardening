@@ -231,7 +231,7 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
 
     for name in (
         "Plants catalog",
-        "Fertilizers and boosts catalog",
+        "Magical Fertilizer and boosts catalog",
         "Garden beds catalog",
         "Garden Decorations and Scenery catalog",
     ):

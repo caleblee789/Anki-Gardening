@@ -3940,6 +3940,70 @@ def _collect_cohort_worker(
     return _collect_cohort(facts, config, cohort_scenarios, range(start, stop))
 
 
+CollectedCohort = Tuple[
+    Mapping[Tuple[str, int, str], Sequence[float]],
+    Counter,
+    Counter,
+]
+
+
+def collect_balance_seed_range(
+    config: SimulationConfig,
+    *,
+    seed_start: int,
+    seed_stop: int,
+    facts: Optional[CatalogFacts] = None,
+    workers: int = 1,
+) -> Mapping[str, CollectedCohort]:
+    """Collect the canonical matrix for one half-open paired-seed range.
+
+    The returned values are deliberately unsummarized. A distributed runner
+    can persist the exact per-seed observations, concatenate contiguous ranges
+    in seed order, and then use :func:`simulate_balance` for the same summary
+    and report path as a monolithic run.
+    """
+
+    start = int(seed_start)
+    stop = int(seed_stop)
+    if start < 0 or stop <= start or stop > config.seeds:
+        raise ValueError(
+            "seed range must be nonempty and contained in "
+            f"[0, {config.seeds}): [{start}, {stop})"
+        )
+    worker_count = max(1, int(workers))
+    if worker_count > 1 and facts is not None:
+        raise ValueError(
+            "parallel shard collection requires the canonical catalog"
+        )
+
+    if worker_count > 1:
+        batches = [
+            (config, cohort.cohort_id, start, stop)
+            for cohort in APPROVED_COHORTS
+        ]
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            rows = tuple(executor.map(_collect_cohort_worker, batches))
+        return {
+            cohort.cohort_id: row
+            for cohort, row in zip(APPROVED_COHORTS, rows)
+        }
+
+    catalog = facts or load_catalog_facts()
+    scenarios = approved_scenarios()
+    return {
+        cohort.cohort_id: _collect_cohort(
+            catalog,
+            config,
+            tuple(
+                scenario for scenario in scenarios
+                if scenario.cohort.cohort_id == cohort.cohort_id
+            ),
+            range(start, stop),
+        )
+        for cohort in APPROVED_COHORTS
+    }
+
+
 def _coin_concentration_rows(
     statistics: Sequence[Mapping[str, object]],
 ) -> List[Mapping[str, object]]:
@@ -4050,6 +4114,7 @@ def simulate_balance(
     facts: Optional[CatalogFacts] = None,
     scenarios: Optional[Sequence[ScenarioSpec]] = None,
     workers: int = 1,
+    precollected_by_cohort: Optional[Mapping[str, CollectedCohort]] = None,
     parity_evidence: Optional[Mapping[str, object]] = None,
     release_validation_evidence: Optional[Mapping[str, object]] = None,
 ) -> Mapping[str, object]:
@@ -4084,7 +4149,25 @@ def simulate_balance(
         )
         exact_integer_totals: Counter = Counter()
         worker_count = max(1, int(workers))
-        if worker_count > 1:
+        if precollected_by_cohort is not None:
+            precollected = precollected_by_cohort.get(cohort.cohort_id)
+            if precollected is None:
+                raise ValueError(
+                    "precollected balance data is missing cohort "
+                    f"{cohort.cohort_id}"
+                )
+            (
+                batch_collectors,
+                batch_assertions,
+                batch_exact_integer_totals,
+            ) = precollected
+            # The shard provider already concatenated this cohort in canonical
+            # seed order. Reuse its arrays rather than briefly doubling the
+            # merge job's largest in-memory object.
+            collectors = batch_collectors
+            assertion_counts.update(batch_assertions)
+            exact_integer_totals.update(batch_exact_integer_totals)
+        elif worker_count > 1:
             if facts is not None or scenarios is not None:
                 raise ValueError("parallel simulation requires the canonical catalog and scenarios")
             chunk_size = max(1, math.ceil(config.seeds / worker_count))
@@ -4160,6 +4243,12 @@ def simulate_balance(
                     (scenario_id, checkpoint_day, metric_id)
                 ]
             statistics.append(statistic)
+        if precollected_by_cohort is not None:
+            # Release the completed cohort before the lazy provider inflates
+            # the next one from its compressed shard payloads.
+            collectors = {}
+            batch_collectors = {}
+            precollected = None
 
     assertions = [
         {
