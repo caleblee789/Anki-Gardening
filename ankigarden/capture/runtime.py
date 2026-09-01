@@ -90,7 +90,10 @@ def _displayed_button_text(button: QAbstractButton) -> str:
     return str(button.text()).replace("&&", "&")
 
 
-HOME_CAPTURE_BRAND_RGB = (92, 197, 139)
+# Keep capture telemetry tied to the production Home CTA color.  The previous
+# value described the retired palette, so otherwise-correct Home and Session
+# Summary frames could never satisfy the semantic-pixel readiness gate.
+HOME_CAPTURE_BRAND_RGB = (99, 217, 159)
 HOME_CAPTURE_DARK_RGB = (
     (7, 26, 21),
     (12, 38, 31),
@@ -18125,6 +18128,23 @@ class _UiFaceCaptureRunner:
         short_measurement_ready = (
             self._wait_for_current_reviewer_answer_controls(handler)
         )
+        # The answer-controls wait processes queued reviewer updates.  One of
+        # those updates can replace the restored compact reward with its later
+        # durable summary while the host is being resized.  Reapply the exact
+        # short-window fixture after the wait so this audit measures the
+        # requested reveal and the fixed footer in the same settled layout.
+        hud._show_reward(
+            bundle,
+            expanded=False,
+            presentation="restored",
+            minimum_hold_elapsed=True,
+            reveal_state="settled",
+        )
+        hud._apply_full_bloom_override(bundle, settled=False)
+        hud._sync_reward_dock_visibility()
+        hud.reposition()
+        if app is not None:
+            app.processEvents()
         short_hud_geometry = self._reviewer_hud_geometry_audit(
             "reviewer-reward-dock-bundle",
             hud,

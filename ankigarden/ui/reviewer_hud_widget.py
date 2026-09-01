@@ -5201,22 +5201,25 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         history_visible = not self._reward_history_panel.isHidden()
         if history_visible:
             natural += max(1, self._reward_history_panel.sizeHint().height())
-        if (
+        compact_reveal_only = bool(
             reveal_visible
             and not history_visible
             and not self._reward_details_expanded
-        ):
+        )
+        if compact_reveal_only:
             # The compact reveal is intentionally a 130-150px surface.  Give
             # its viewport the full compact envelope so Qt's post-layout
             # contents adjustment cannot create a tiny, meaningless scrollbar
             # for the Details control or semantic summary chips.
             natural = max(natural, _COMPACT_REWARD_MAX_HEIGHT)
         target = max(1, min(_REWARD_SCROLL_MAX_HEIGHT, natural))
-        # The dock's size hint must include the compact disclosure control so
-        # the sticky footer cannot cover it. The viewport keeps a one-pixel
-        # minimum, allowing expanded details and history to shrink and scroll
-        # on short windows while the main review body yields first.
-        self._reward_scroll.setMinimumHeight(1)
+        # The compact reveal is a fixed middle region: reserve its complete
+        # envelope so it cannot paint through the sticky session footer.  The
+        # expanded/history variants keep the one-pixel minimum and own their
+        # overflow through this same scroll area on short windows.
+        self._reward_scroll.setMinimumHeight(
+            target if compact_reveal_only else 1
+        )
         self._reward_scroll.setMaximumHeight(target)
         self._reward_scroll.set_preferred_height(target)
         self._reward_scroll.setProperty("naturalContentHeight", natural)

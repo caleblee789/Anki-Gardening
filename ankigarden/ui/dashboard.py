@@ -1272,15 +1272,18 @@ def _catalog_fold_alignment_plan(
     shrink = max(0, viewport - row_top)
     candidates: list[tuple[int, int, int | None, int]] = []
     if grow <= maximum - current:
-        candidates.append((grow, 0, current + grow, 0))
+        candidates.append((grow, 2, current + grow, 0))
     shrink_capacity = current - minimum
     if shrink <= shrink_capacity:
-        candidates.append((shrink, 1, current - shrink, 0))
+        candidates.append((shrink, 0, current - shrink, 0))
     else:
         residual = shrink - shrink_capacity
         if residual <= clearance_cap:
             target = minimum if shrink_capacity else None
-            candidates.append((shrink, 2, target, residual))
+            # On an equal-cost choice, prefer a stable viewport gutter over
+            # growing the window.  Canonical capture hosts restore their
+            # declared size, so growth would reintroduce the same partial row.
+            candidates.append((shrink, 1, target, residual))
     if not candidates:
         return None, 0, True
     _cost, _preference, target_height, gutter = min(candidates)
@@ -15179,6 +15182,11 @@ class NurseryDialog(DialogShell):
                 padding:0;
             }}
             QPushButton[nurseryCarouselNav='true'] {{ padding:2px 4px; font-size:13px; font-weight:600; }}
+            QPushButton[compactHeaderIcon='true'] {{
+                min-width:30px; max-width:30px;
+                min-height:30px; max-height:30px;
+                padding:0;
+            }}
             QScrollBar:vertical {{ width:6px; margin:1px 2px 1px 1px; background:transparent; }}
             QScrollBar::handle:vertical {{ min-height:30px; border-radius:3px; background:{GARDEN_THEME['strong_border']}; }}
             QScrollBar::handle:vertical:hover {{ background:{GARDEN_THEME['action_accent']}; }}
@@ -15229,6 +15237,8 @@ class NurseryDialog(DialogShell):
         self.coin_resource.setMaximumSize(112, 36)
         self.hero_layout.addWidget(self.coin_resource, 0, Qt.AlignmentFlag.AlignVCenter)
         self.top_close = self.create_inline_close_button(hero)
+        self.top_close.setFixedSize(30, 30)
+        self.top_close.setIconSize(QSize(16, 16))
         self.top_close.setProperty("compactHeaderIcon", True)
         self.top_close.setProperty("visualControlSize", 32)
         self.hero_layout.addWidget(
@@ -19330,7 +19340,9 @@ class PlantInfoCard(QFrame):
         header.setColumnMinimumWidth(2, 32)
 
         self.artwork = QLabel("", self.header_region)
-        self.artwork.setFixedSize(44, 44)
+        # QSS dimensions describe the content box.  The one-pixel frame turns
+        # this into the 44 px visual thumbnail required by the inspector.
+        self.artwork.setFixedSize(42, 42)
         self.artwork.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.artwork.setProperty("plantPopoverArtwork", True)
         self.artwork.setAccessibleName("Selected plant artwork")
@@ -19760,6 +19772,13 @@ class PlantInfoCard(QFrame):
         else:
             self.artwork.setText("")
             self.artwork.setPixmap(pixmap)
+            if (
+                str(self.artwork.property("gardenRole") or "")
+                == SemanticRole.MISSING_ART.value
+            ):
+                self.artwork.setProperty("gardenRole", "")
+                self.artwork.style().unpolish(self.artwork)
+                self.artwork.style().polish(self.artwork)
             self.artwork.setAccessibleDescription(f"Artwork for {name}.")
 
         fully_grown = bool(plant.get("fully_grown"))
@@ -23655,7 +23674,7 @@ class CollectibleDetailDialog(GardenDialog):
         title_layout = self.header_layout.itemAt(0).layout()
         if isinstance(title_layout, QVBoxLayout):
             title_layout.insertWidget(0, self.collection_overline)
-        self.top_close.setFixedSize(32, 32)
+        self.top_close.setFixedSize(30, 30)
         self.top_close.setIconSize(QSize(16, 16))
         self.top_close.setProperty("compactHeaderIcon", True)
         self.top_close.setProperty("visualControlSize", 32)
@@ -23664,6 +23683,7 @@ class CollectibleDetailDialog(GardenDialog):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.setStyleSheet(_garden_dialog_stylesheet() + f"""
+            QPushButton[compactHeaderIcon='true'] {{ min-width:30px; max-width:30px; min-height:30px; max-height:30px; padding:0; }}
             QLabel[collectionEyebrow='true'] {{ color:{GARDEN_THEME['text_muted']}; font-size:11px; font-weight:650; letter-spacing:.88px; }}
             QLabel[collectionSectionTitle='true'] {{ color:{GARDEN_THEME['text_primary']}; font-size:16px; font-weight:650; }}
             QFrame[collectionLibrary='true'] {{ background:{GARDEN_THEME['raised_surface']}; border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:10px; }}
@@ -25295,6 +25315,14 @@ class GardenDashboard(DialogShell):
             QTabBar::tab:selected {{ color:{GARDEN_THEME['text_primary']}; background:{GARDEN_THEME['surface_3']}; border-bottom:2px solid {GARDEN_THEME['growth_accent']}; }}
             QScrollArea {{ background:transparent; border:0; }}
             {foundation_stylesheet()}
+            QLabel[plantPopoverArtwork='true'] {{
+                min-width:42px; max-width:42px;
+                min-height:42px; max-height:42px;
+                padding:0;
+                background:{GARDEN_THEME['plant_popover_raised']};
+                border:1px solid {GARDEN_THEME['plant_popover_divider']};
+                border-radius:10px;
+            }}
             QPushButton[catalogCard='true'] {{ min-height:100px; padding:10px; text-align:left; background:#0C261F; border:1px solid #20483C; border-radius:12px; }}
             QPushButton[catalogCard='true']:enabled:hover {{ background:#173B30; border-color:#4F806E; }}
             QPushButton[catalogCard='true'][keyboardFocusVisible='true']:focus {{ border:2px solid #82E2AC; padding:9px; }}
@@ -26672,6 +26700,14 @@ class GardenDashboard(DialogShell):
 
     def _on_scene_selection(self, plant_id: str) -> None:
         plant = next((row for row in self.scene.scene.get("plants", []) if str(row.get("plant_id")) == plant_id), None)
+        if plant is not None and not plant.get("asset"):
+            # Scene fixtures and restoration turns may briefly carry a lean
+            # renderer row.  Rehydrate the selected inspector from the engine
+            # so it always receives the same canonical artwork payload used by
+            # status, placement, and move surfaces.
+            story = self.engine.plant_story(str(plant_id))
+            if story is not None and bool(getattr(story, "planted", False)):
+                plant = self._plant_scene_payload(story)
         self.scene.set_keyboard_hint_suppressed(plant is not None)
         self.overlay_manager.plant_selection_changed(plant is not None)
         self.plant_card.set_selected(plant)
