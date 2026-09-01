@@ -6,13 +6,17 @@ from .formatters import format_garden_coins
 
 FALLBACK_GARDEN_NAME = "My Garden"
 
-HOME_NO_STARTER_TITLE = "Start your garden"
+HOME_NO_STARTER_TITLE = "Choose your starter"
 HOME_NO_STARTER_BODY = "Your first plant is free."
-HOME_NO_STARTER_ACCESSIBLE = "Start your garden. Your first plant is free. Choose starter."
+HOME_NO_STARTER_ACCESSIBLE = (
+    "Choose your starter. Your first plant is free. Choose starter."
+)
 CHOOSE_STARTER_ACTION = "Choose starter"
 
 GARDEN_SETUP_TITLE = "Choose your starter"
-GARDEN_SETUP_BODY = "Pick one free plant for your garden."
+GARDEN_SETUP_BODY = (
+    "Your first plant is free. All starter plants grow at the same rate."
+)
 GARDEN_SETUP_SECONDARY_ACTION = "Skip for now"
 GARDEN_NURTURE_TITLE = "Nurture your first plant"
 GARDEN_NURTURE_BODY = (
@@ -21,10 +25,10 @@ GARDEN_NURTURE_BODY = (
 GARDEN_NURTURE_ACTION = "Open plant"
 
 NURSERY_STARTER_TITLE = "Choose your starter"
-NURSERY_STARTER_RATIONALE = (
-    "Your first plant is free and will be added to your collection. "
-    "Appearance only. Every plant grows at the same rate."
-)
+# The preceding first-run step already explains that every starter is free and
+# grows at the same rate. Keep this compatibility token empty so the Nursery
+# header does not repeat that guidance.
+NURSERY_STARTER_RATIONALE = ""
 NURSERY_STARTER_COUNT = ""
 DISABLED_STARTER_TABS = "More Nursery sections are available after choosing a starter."
 COST_FREE = "Free"

@@ -3042,7 +3042,7 @@ def _v26_surface_acceptance_issues(
             counts.get("passed") is True
             and counts.get("fixture_state_passed") is True
             and counts.get("species_copy")
-            == "10 of 10 species discovered"
+            == "All 10 plant species discovered"
             and counts.get("collection_entries_copy")
             == "30 of 39 collection entries discovered"
             and counts.get("species_copy_visible") is True

@@ -22,6 +22,12 @@ from ..environment import (
 from ..reward_presentation import project_growth_allocations
 from .accessibility import read_system_reduced_motion
 from .environment_art import environment_preview_pixmap
+from .event_presentation import (
+    EventPresentationKind,
+    EventPresentationUnit,
+    EventRowPresentation,
+    SourceQuantityContribution,
+)
 from .formatters import format_garden_coins, format_quantity
 from .icons import garden_icon
 from .plant_art import normalized_plant_pixmap
@@ -39,9 +45,9 @@ from .session_summary import (
 from .theme import GARDEN_THEME, apply_tabular_numerals
 
 
-SESSION_SUMMARY_DEFAULT_WIDTH = 416
-SESSION_SUMMARY_MIN_WIDTH = 336
-SESSION_SUMMARY_MAX_WIDTH = 416
+SESSION_SUMMARY_DEFAULT_WIDTH = 380
+SESSION_SUMMARY_MIN_WIDTH = 340
+SESSION_SUMMARY_MAX_WIDTH = 380
 SESSION_SUMMARY_EDGE_MARGIN = 20
 SESSION_SUMMARY_VIEWPORT_VERTICAL_MARGIN = 32
 SESSION_SUMMARY_PREFERRED_TOP_MARGIN = 48
@@ -99,7 +105,8 @@ def session_summary_palette(background_lightness: int | None = None) -> dict[str
         "receipt_text_muted": "#91A59B",
         "receipt_primary_mint": "#62DCAA",
         "receipt_coin": "#E2C05D",
-        "receipt_milestone": "#D9BC68",
+        "receipt_milestone": GARDEN_THEME["session_summary_milestone"],
+        "receipt_discovery": GARDEN_THEME["session_summary_find"],
         "receipt_border": "rgba(128, 211, 177, 51)",
         "receipt_border_strong": "rgba(128, 211, 177, 82)",
     }
@@ -141,7 +148,8 @@ def session_summary_palette(background_lightness: int | None = None) -> dict[str
         "receipt_text_muted": "#7D8C84",
         "receipt_primary_mint": "#477D58",
         "receipt_coin": "#8A6823",
-        "receipt_milestone": "#80651F",
+        "receipt_milestone": "#7668AE",
+        "receipt_discovery": "#247C88",
         "receipt_border": "#D7D4C8",
         "receipt_border_strong": "#B8B9AE",
     }
@@ -158,7 +166,7 @@ def session_summary_geometry(
 ) -> tuple[int, int, int, int]:
     """Return a top-right, viewport-bounded ``(x, y, width, height)``.
 
-    The preferred width and hard cap are both 416 px. On narrow windows the
+    The preferred width and hard cap are both 380 px. On narrow windows the
     card contracts to preserve 20 px side margins. Prefer the approved 48 px
     top offset when the natural card also preserves the 16 px bottom safety
     margin. When the content is taller, fall back to 16 px at both edges and
@@ -325,6 +333,7 @@ class SessionEarnedItem:
     art_reference: str
     quantity: int
     source_labels: tuple[str, ...]
+    source_contributions: tuple[SourceQuantityContribution, ...] = ()
     source_find_ids: tuple[str, ...] = ()
     event_ids: tuple[str, ...] = ()
 
@@ -380,21 +389,36 @@ def session_earned_item_plan(summary: Any) -> tuple[SessionEarnedItem, ...]:
                 "art_reference": str(art_reference or "").strip() or normalized_id,
                 "quantity": 0,
                 "source_labels": [],
+                "source_contributions": {},
                 "source_find_ids": [],
                 "event_ids": [],
             }
         row = grouped[normalized_id]
         row["quantity"] += normalized_quantity
+        normalized_source = str(source_label or "").strip()
+        normalized_event_ids = tuple(dict.fromkeys(
+            str(event_id or "").strip()
+            for event_id in event_ids
+            if str(event_id or "").strip()
+        ))
+        if normalized_source:
+            source_row = row["source_contributions"].setdefault(
+                normalized_source,
+                {"quantity": 0, "event_ids": []},
+            )
+            source_row["quantity"] += normalized_quantity
+            for event_id in normalized_event_ids:
+                if event_id not in source_row["event_ids"]:
+                    source_row["event_ids"].append(event_id)
         for key, value in (
-            ("source_labels", str(source_label or "").strip()),
+            ("source_labels", normalized_source),
             ("source_find_ids", str(source_find_id or "").strip()),
         ):
             if value and value not in row[key]:
                 row[key].append(value)
-        for event_id in event_ids:
-            normalized_event = str(event_id or "").strip()
-            if normalized_event and normalized_event not in row["event_ids"]:
-                row["event_ids"].append(normalized_event)
+        for event_id in normalized_event_ids:
+            if event_id not in row["event_ids"]:
+                row["event_ids"].append(event_id)
 
     find_event_ids: set[str] = set()
     represented_find_item_ids: set[str] = set()
@@ -475,6 +499,16 @@ def session_earned_item_plan(summary: Any) -> tuple[SessionEarnedItem, ...]:
             art_reference=str(grouped[item_id]["art_reference"]),
             quantity=max(0, int(grouped[item_id]["quantity"])),
             source_labels=tuple(grouped[item_id]["source_labels"]),
+            source_contributions=tuple(
+                SourceQuantityContribution(
+                    label=label,
+                    quantity=int(contribution["quantity"]),
+                    event_ids=tuple(contribution["event_ids"]),
+                )
+                for label, contribution in grouped[item_id][
+                    "source_contributions"
+                ].items()
+            ),
             source_find_ids=tuple(grouped[item_id]["source_find_ids"]),
             event_ids=tuple(grouped[item_id]["event_ids"]),
         )
@@ -903,7 +937,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             "font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', "
             "'Helvetica Neue', sans-serif;}"
             "QLabel[summaryTitle='true'] {font-size:18px;font-weight:650;}"
-            "QLabel[summaryHero='true'] {font-size:40px;font-weight:700;}"
+            "QLabel[summaryHero='true'] {font-size:34px;font-weight:700;}"
             "QLabel[summaryHeroLabel='true'] {"
             f"color:{t['text_secondary']};font-size:14px;font-weight:520;}}"
             "QLabel[summarySection='true'] {"
@@ -1249,7 +1283,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         hero.setObjectName("ankiGardenSessionHero")
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(0, 0, 0, 0)
-        hero_layout.setSpacing(5)
+        hero_layout.setSpacing(2)
         # The host can give this frame a few surplus pixels in tall Retina
         # viewports.  Keep that space below the two-line hero instead of
         # letting Qt spread it between the value and its label.
@@ -1257,7 +1291,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         number = QLabel(value, hero)
         number.setObjectName("ankiGardenSessionHeroValue")
         number.setProperty("summaryHero", True)
-        number.setFixedHeight(40)
+        number.setFixedHeight(34)
         apply_tabular_numerals(number)
         noun = "card" if count == 1 else "cards"
         number.setAccessibleName(f"{value} {noun} completed this session")
@@ -1265,7 +1299,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         label = QLabel(f"{noun} completed this session", hero)
         label.setObjectName("ankiGardenSessionHeroLabel")
         label.setProperty("summaryHeroLabel", True)
-        label.setFixedHeight(19)
+        label.setFixedHeight(18)
         hero_layout.addWidget(label)
         layout.addWidget(hero)
 
@@ -1535,6 +1569,103 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             return "environment"
         return "rare_reward"
 
+    def _highlight_event_presentation(
+        self,
+        highlight: Any,
+        source: Any,
+    ) -> EventRowPresentation | None:
+        """Carry explicit event semantics into the shared event-card renderer."""
+
+        raw_kind = self._highlight_kind(highlight)
+        event_id = str(
+            getattr(source, "event_id", "")
+            or getattr(highlight, "event_id", "")
+            or ""
+        )
+        artwork = str(
+            getattr(source, "art_asset", "")
+            or getattr(source, "artwork_ref", "")
+            or getattr(source, "plant_art_asset", "")
+            or ""
+        )
+        title = str(
+            getattr(highlight, "title", "")
+            or getattr(source, "plant_name", "")
+            or getattr(source, "environment_name", "")
+            or getattr(source, "find_name", "")
+            or "Garden event"
+        )
+        if raw_kind == "full_bloom":
+            component = getattr(source, "reward", None)
+            amount = max(0, int(
+                getattr(component, "amount", 0)
+                if str(getattr(component, "reward_type", "") or "") == "coins"
+                else getattr(source, "coin_reward", 0)
+                or 0
+            ))
+            included = bool(
+                getattr(
+                    component,
+                    "included_in_session_total",
+                    getattr(highlight, "coin_included_in_total", True),
+                )
+            )
+            return EventRowPresentation(
+                EventPresentationKind.FULL_BLOOM,
+                title,
+                amount,
+                EventPresentationUnit.GARDEN_COINS,
+                "Full Bloom",
+                artwork,
+                included,
+                (event_id,),
+            )
+        if isinstance(source, EnvironmentDiscovery) or raw_kind == "environment":
+            return EventRowPresentation(
+                EventPresentationKind.DISCOVERY,
+                title,
+                1,
+                EventPresentationUnit.DISCOVERIES,
+                "Discovery",
+                artwork,
+                None,
+                (event_id,),
+            )
+        if isinstance(source, StandardFind):
+            return EventRowPresentation(
+                EventPresentationKind.STANDARD_FIND,
+                title,
+                max(1, int(getattr(source, "quantity", 1) or 1)),
+                EventPresentationUnit.STANDARD_FINDS,
+                "Standard Find",
+                artwork,
+                None,
+                (event_id,),
+            )
+        if raw_kind == "stage_change":
+            return EventRowPresentation(
+                EventPresentationKind.STAGE_CHANGE,
+                title,
+                None,
+                EventPresentationUnit.NONE,
+                "Stage change",
+                artwork,
+                None,
+                (event_id,),
+            )
+        return None
+
+    @staticmethod
+    def _apply_event_presentation(widget: Any, event: EventRowPresentation) -> None:
+        widget.setProperty("semanticEventKind", event.kind.value)
+        widget.setProperty("semanticEventTone", event.tone)
+        widget.setProperty("semanticEventAmount", event.amount)
+        widget.setProperty("semanticEventUnit", event.unit.value)
+        widget.setProperty("semanticEventSource", event.source_label)
+        widget.setProperty("semanticEventArtwork", event.artwork_reference)
+        widget.setProperty("semanticEventIncludedInTotal", event.included_in_total)
+        widget.setProperty("semanticEventIds", event.event_ids)
+
     def _highlight_copy(
         self,
         highlight: Any,
@@ -1571,7 +1702,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 else getattr(source, "coin_reward", 0)
                 or 0
             )
-            if coin_reward and not reward:
+            if coin_reward:
                 included = bool(
                     getattr(
                         component,
@@ -1579,14 +1710,17 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                         getattr(highlight, "coin_included_in_total", True),
                     )
                 )
-                reward = (
-                    f"{format_garden_coins(coin_reward, signed=True)} bonus included"
+                reward = format_garden_coins(coin_reward, signed=True)
+                inclusion_copy = (
+                    "Included in session total"
                     if included
                     else (
-                        f"{format_garden_coins(coin_reward, signed=True)} bonus"
-                        f" · included in "
+                        "Included in "
                         f"{format_garden_coins(displayed_coin_total, signed=True)} total"
                     )
+                )
+                supporting = " · ".join(
+                    part for part in (supporting, inclusion_copy) if part
                 )
         elif isinstance(source, EnvironmentDiscovery):
             unlock_eyebrow, unlock_supporting = unlock_category_copy(
@@ -1663,6 +1797,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         row_widget.setProperty("summaryHighlightCompact", True)
         row_widget.setProperty("summaryStatic", True)
         row_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        event = self._highlight_event_presentation(highlight, source)
+        if event is not None:
+            self._apply_event_presentation(row_widget, event)
         row_widget.setAccessibleName(
             ". ".join(
                 part for part in (title_text, supporting_text, reward_text) if part
@@ -1720,6 +1857,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         card.setProperty("summaryHighlightKind", kind)
         card.setProperty("summaryStatic", True)
         card.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        event = self._highlight_event_presentation(highlight, source)
+        if event is not None:
+            self._apply_event_presentation(card, event)
         card.setAccessibleName(
             ". ".join(part for part in (eyebrow_text, title_text, supporting_text, reward_text) if part)
         )
@@ -1833,9 +1973,17 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         )
         metrics: list[tuple[str, str, str, str]] = []
         if applied:
+            routed_growth = bool(
+                int(getattr(summary, "shared_growth_total_units", 0) or 0)
+                or int(getattr(summary.stored_growth, "added_units", 0) or 0)
+                or tuple(getattr(summary, "project_allocations", ()) or ())
+                or int(
+                    getattr(summary, "landmark_growth_total_units", 0) or 0
+                )
+            )
             metrics.append((
-                "growth_applied",
-                "Growth applied",
+                "total_growth" if routed_growth else "plant_growth",
+                "Total Growth" if routed_growth else "Plant Growth",
                 format_growth_units(applied, signed=True),
                 "growth",
             ))
@@ -1994,7 +2142,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(12, 8, 12, 8)
         container_layout.setSpacing(7)
-        container_layout.addWidget(self._section_heading("Earned items"))
+        container_layout.addWidget(self._section_heading("Items added"))
         for index, item in enumerate(rewards):
             row_widget = QFrame(container)
             row_widget.setProperty(
@@ -2002,6 +2150,13 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             )
             row_widget.setProperty("summaryItemRewardEventIds", item.event_ids)
             row_widget.setProperty("summaryItemRewardSources", item.source_labels)
+            row_widget.setProperty(
+                "summaryItemRewardSourceQuantities",
+                tuple(
+                    (contribution.label, contribution.quantity)
+                    for contribution in item.source_contributions
+                ),
+            )
             row = QHBoxLayout(row_widget)
             row.setContentsMargins(0, 1, 0, 1)
             row.setSpacing(8)
@@ -2011,16 +2166,25 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             copy.setSpacing(3)
             name = self._name_label(item.name or "Earned item")
             copy.addWidget(name)
-            if item.source_labels:
-                badges = QHBoxLayout()
+            contributions = item.source_contributions or tuple(
+                SourceQuantityContribution(source_label, item.quantity)
+                for source_label in item.source_labels
+            )
+            if contributions:
+                badges = QVBoxLayout()
                 badges.setContentsMargins(0, 0, 0, 0)
-                badges.setSpacing(4)
-                for source_label in item.source_labels:
-                    source = QLabel(source_label, row_widget)
+                badges.setSpacing(2)
+                for contribution in contributions:
+                    source_text = (
+                        f"{contribution.label} ×{contribution.quantity:,}"
+                    )
+                    source = QLabel(source_text, row_widget)
                     source.setProperty("summarySourceBadge", True)
-                    source.setAccessibleName(f"Reward source: {source_label}")
-                    badges.addWidget(source)
-                badges.addStretch(1)
+                    source.setAccessibleName(
+                        "Reward source: "
+                        f"{contribution.label}, quantity {contribution.quantity:,}"
+                    )
+                    badges.addWidget(source, 0, Qt.AlignmentFlag.AlignLeft)
                 copy.addLayout(badges)
             row.addLayout(copy, 1)
             quantity = QLabel(f"×{item.quantity:,}", row_widget)

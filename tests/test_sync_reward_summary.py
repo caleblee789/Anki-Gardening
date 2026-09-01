@@ -65,7 +65,7 @@ def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> N
         "stage_after": "flowering",
         "stage_progress_after": 1,
         "next_stage": "rare",
-    }) == "200 / 20,000 Growth to Full Bloom"
+    }) == "200 / 20,000 Growth toward Full Bloom"
     assert _checkpoint_display_text({
         "percent": 75,
         "stage_name": "flowering",
@@ -83,16 +83,21 @@ def test_geometry_is_upper_right_and_viewport_bounded() -> None:
     assert y + height <= 260
 
 
-def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
+def test_metric_plan_uses_exactly_growth_coins_and_discoveries() -> None:
     assert sync_reward_metric_plan(_summary()) == (
-        ("42", "cards", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
+        ("0", "Discoveries", "garden_discovery"),
     )
-    assert len(sync_reward_metric_plan(_summary(garden_coin_delta=0))) == 2
+    assert sync_reward_metric_plan(_summary(garden_coin_delta=0))[1] == (
+        "0",
+        "Garden Coins",
+        "garden_coin",
+    )
     assert sync_reward_metric_plan(_summary(growth_total_units=0)) == (
-        ("42", "cards", "sync_review_cards"),
+        ("0", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
+        ("0", "Discoveries", "garden_discovery"),
     )
     find_rows = ({
         "reward_id": "small_charge",
@@ -119,15 +124,13 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     )
 
     assert sync_reward_metric_plan(reward_summary) == (
-        ("42", "cards", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
-        ("+3", "Standard Finds", "standard_find"),
-        ("+2", "garden discoveries", "garden_discovery"),
+        ("+2", "Discoveries", "garden_discovery"),
     )
     assert sync_reward_metric_plan(
         _summary(environment_discoveries=discovery_rows[:1])
-    )[-1] == ("+1", "garden discovery", "garden_discovery")
+    )[-1] == ("+1", "Discoveries", "garden_discovery")
     restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
 
     assert restored is not None
@@ -289,7 +292,7 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     assert "SYNC REWARDS" in texts
     assert "Your garden caught up" in texts
     assert "42 cards completed on another device" in texts
-    assert "Rewards already applied." in texts
+    assert "Rewards were applied automatically." in texts
     assert {
         "Stored Growth added to Garden Landmark",
         "Stored Growth added to Rose Cultivation Mastery",

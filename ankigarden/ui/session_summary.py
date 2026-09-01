@@ -1396,12 +1396,25 @@ class LiveSessionSnapshot:
         return sum(segment.garden_coins_total for segment in self.segments)
 
     @property
+    def footer_discovery_count(self) -> int:
+        """Expose committed Garden discoveries for the four-metric HUD."""
+
+        return sum(
+            len(tuple(segment.environment_discoveries or ()))
+            for segment in self.segments
+        )
+
+    @property
     def combined_growth_units(self) -> int:
         return self.footer_growth_units
 
     @property
     def find_count(self) -> int:
         return self.footer_find_count
+
+    @property
+    def discovery_count(self) -> int:
+        return self.footer_discovery_count
 
     @property
     def ended_at(self) -> str:

@@ -113,19 +113,14 @@ def test_garden_appearance_keeps_display_bonus_scenery_and_effects_distinct() ->
         "displayed_decoration_id": "seedling_sign",
         "active_bonus_decoration_id": "watering_station",
         "active_bonus_effect": (
-            "Earn +1 bonus Growth every 5 cards during your first 100 cards "
-            "each day."
+            "Every fifth card among the first 100 each Anki day: +1 Growth"
         ),
         "visual_effects_enabled": True,
     }
     assert projection.summary_rows == (
         ("Scenery", "Verdant Twilight"),
-        ("Displayed decoration", "Seedling Sign"),
-        (
-            "Active garden bonus",
-            "Watering Station · Earn +1 bonus Growth every 5 cards during "
-            "your first 100 cards each day.",
-        ),
+        ("Decoration", "Seedling Sign"),
+        ("Garden bonus", "Watering Station"),
         ("Visual effects", "Enabled"),
     )
 

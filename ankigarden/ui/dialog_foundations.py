@@ -599,29 +599,31 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.NURSERY: DialogSizePolicy(
-        925,
+        640,
         300,
         940,
         420,
         950,
-        580,
+        680,
         1.0,
         1.0,
         False,
         True,
+        screen_margin=16,
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.PROGRESS: DialogSizePolicy(
-        940,
-        560,
+        950,
+        340,
         950,
         570,
-        960,
-        580,
+        950,
+        570,
         1.0,
         1.0,
         False,
         True,
+        screen_margin=16,
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.LOADOUT: DialogSizePolicy(
@@ -643,7 +645,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         760,
         500,
         780,
-        520,
+        680,
         1.0,
         1.0,
         False,
@@ -749,6 +751,9 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # artwork row, one cost row, and its actions.  Keep that proposal a
         # true content-fit window instead of inheriting taller catalog states.
         "growth-charge": DialogHeightProfile(270, 280, 300, 500, 500, 500),
+        "fertilizer-purchase": DialogHeightProfile(
+            300, 330, 340, 520, 540, 560
+        ),
         "replacement": DialogHeightProfile(230, 300, 340, 500, 520, 540),
         "complex": DialogHeightProfile(250, 295, 340, 540, 570, 600),
         "loading": DialogHeightProfile(210, 230, 250, 480, 500, 520),
@@ -781,7 +786,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # semantic bounds wide enough for that natural height instead of
         # forcing the second row through the central scroll viewport.
         "starter": DialogHeightProfile(370, 380, 410, 925, 940, 950),
-        "plants": DialogHeightProfile(300, 360, 520, 925, 940, 950),
+        "plants": DialogHeightProfile(300, 320, 380, 640, 940, 950),
         "owned": DialogHeightProfile(470, 500, 530),
         # The Fertilizer catalogue deliberately opens on three complete 88 px
         # cards: both stored items and Basic Fertilizer's full price/action
@@ -790,33 +795,29 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # initial fold. Content-fit still owns heights below this semantic
         # ceiling, and the same central scroll owner keeps every later product
         # reachable.
-        "fertilizer": DialogHeightProfile(500, 506, 557, 925, 940, 950),
-        "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
+        "fertilizer": DialogHeightProfile(560, 640, 680, 640, 940, 950),
+        "spaces": DialogHeightProfile(330, 360, 410, 640, 940, 950),
         # Garden Decoration cards keep one complete product row in view. The
         # active-bonus summary consumes 147 px above the 276 px product row,
         # so the content-fit ceiling must leave the catalogue a complete fold
         # instead of clipping all three first-row cards.
-        "garden_features": DialogHeightProfile(488, 575, 580, 925, 940, 950),
+        "garden_features": DialogHeightProfile(560, 640, 680, 640, 940, 950),
         # The compact completion body has a 156 px native minimum on macOS.
         # Eight more client pixels remove the otherwise spurious scrollbar.
-        "collection-complete": DialogHeightProfile(308, 323, 338, 925, 940, 950),
-        "collection-complete-receipt": DialogHeightProfile(390, 400, 410, 925, 940, 950),
+        "collection-complete": DialogHeightProfile(290, 320, 360, 640, 940, 950),
+        "collection-complete-receipt": DialogHeightProfile(390, 420, 460, 640, 940, 950),
         "empty": DialogHeightProfile(300, 335, 370),
     },
     DialogSizeClass.PROGRESS: {
-        # The native six-stage strip is three logical pixels taller than the
-        # root layout hint on macOS. Keep the complete strip in the viewport
-        # instead of exposing a three-pixel emergency scrollbar.
-        "growth": DialogHeightProfile(501, 501, 510, 940, 940, 960),
-        # The final Today setup card extends four logical pixels beyond the
-        # generic Progress minimum. Give this real content state its own
-        # profile so the card is painted as a complete surface.
-        "today": DialogHeightProfile(564, 570, 580),
-        "streak": DialogHeightProfile(440, 460, 480, 940, 940, 960),
-        "currency": DialogHeightProfile(340, 380, 440, 940, 950, 960),
+        # Every Garden Progress page owns one canonical family width. Heights
+        # remain content-fit so compact pages do not manufacture empty space.
+        "growth": DialogHeightProfile(480, 510, 570, 950, 950, 950),
+        "today": DialogHeightProfile(500, 540, 570, 950, 950, 950),
+        "streak": DialogHeightProfile(420, 450, 500, 950, 950, 950),
+        "currency": DialogHeightProfile(340, 400, 470, 950, 950, 950),
         "achievements": DialogHeightProfile(570, 570, 570, 950, 950, 950),
         "collection": DialogHeightProfile(570, 570, 570, 950, 950, 950),
-        "collection-empty": DialogHeightProfile(360, 400, 460, 940, 950, 960),
+        "collection-empty": DialogHeightProfile(360, 400, 460, 950, 950, 950),
     },
     DialogSizeClass.LOADOUT: {
         # The wide preview is a complete 16:9 garden scene beside two native
@@ -825,7 +826,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "default": DialogHeightProfile(680, 680, 680, 980, 1000, 1020),
     },
     DialogSizeClass.PLANT_STORY: {
-        "default": DialogHeightProfile(480, 500, 520, 740, 760, 780),
+        "default": DialogHeightProfile(480, 500, 680, 740, 760, 780),
     },
     DialogSizeClass.SPECIES_DETAIL: {
         "default": DialogHeightProfile(260, 440, 900, 480, 820, 820),

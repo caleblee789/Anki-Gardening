@@ -3066,13 +3066,56 @@ def v26_capture_semantic_gate_issue_codes(
             counts.get("passed") is True
             and counts.get("fixture_state_passed") is True
             and counts.get("species_copy")
-            == "10 of 10 species discovered"
+            == "All 10 plant species discovered"
             and counts.get("collection_entries_copy")
             == "30 of 39 collection entries discovered"
             and counts.get("species_copy_visible") is True
             and counts.get("collection_entries_copy_visible") is True
         ):
             issues.append("nursery-collection-counts-not-canonical")
+    nursery_shell_expectations = {
+        "nursery-plants": (0, "Plants"),
+        "nursery-fertilizer-booster": (1, "Boost plant growth"),
+        "nursery-garden-spaces": (2, "Garden beds"),
+        "nursery-garden-decorations-scenery": (3, "Customize your garden"),
+    }
+    label = str(record.get("label", ""))
+    if label in nursery_shell_expectations:
+        expected_index, expected_title = nursery_shell_expectations[label]
+        shell = (
+            audit.get("nursery_shell_contract")
+            if isinstance(audit, dict) else None
+        )
+        tab_widths = (
+            shell.get("tab_widths") if isinstance(shell, dict) else None
+        )
+        if not (
+            isinstance(shell, dict)
+            and shell.get("passed") is True
+            and shell.get("tab_labels") == [
+                "Plants",
+                "Fertilizers & boosts",
+                "Garden beds",
+                "Decorations & scenery",
+            ]
+            and shell.get("tab_rows") == 1
+            and isinstance(tab_widths, list)
+            and len(tab_widths) == 4
+            and all(type(width) is int and width > 0 for width in tab_widths)
+            and max(tab_widths) - min(tab_widths) <= 1
+            and shell.get("equal_width_tabs") is True
+            and shell.get("active_tab_index") == expected_index
+            and shell.get("active_segment_count") == 1
+            and shell.get("page_title") == expected_title
+            and shell.get("tab_bar_clear_of_scroll") is True
+            and shell.get("tab_bar_contained") is True
+            and shell.get("scroll_contained") is True
+            and 88 <= int(shell.get("coin_width", 0) or 0) <= 104
+            and shell.get("coin_visible") is True
+            and shell.get("close_size") == [32, 32]
+            and shell.get("status_chips_noninteractive") is True
+        ):
+            issues.append("nursery-shared-shell-contract-not-passed")
 
     native_layout = record.get("native_layout_telemetry")
     if (
@@ -3950,7 +3993,7 @@ def streak_fold_geometry_issue_codes(evidence: Any) -> tuple[str, ...]:
         issues.append("invalid-streak-viewport")
     for field in ("configured_bottom_padding", "measured_bottom_padding"):
         value = evidence.get(field)
-        if type(value) is not int or value < 24:
+        if type(value) is not int or value < 16:
             issues.append(f"insufficient-streak-{field.replace('_', '-')}")
     cards = evidence.get("detail_cards")
     partial_indexes: list[int] = []
@@ -4028,26 +4071,31 @@ def growth_charge_rendered_value_issue_codes(
         "summary_semantic_id": "growth-charge.summary",
         "shared_component": True,
         "shared_markup_tree": True,
-        "before_label": "Before · Seed",
+        "plant_name": "Bonsai Plant",
+        "plant_species": "Bonsai",
         "after_label": "After · Sprout",
+        "before_heading": "Before",
+        "before_value": "Seed\n350 Growth",
+        "after_value": "Sprout\n450 Growth",
         "impact_name": "Small Growth Charge",
-        "impact_value": "+100 Growth",
-        "growth_label": "Total Growth",
+        "impact_value": "2 → 1 owned",
+        "growth_label": "Growth",
         "growth_value": "350 → 450",
-        "inventory_label": "Charges remaining",
+        "inventory_label": "Owned",
         "inventory_value": "2 → 1",
-        "progress_label": "Next-stage progress",
-        "stage_progress": "50 / 1,600 Growth to Young",
+        "inventory_row_visible": False,
+        "stage_progress": "50 / 1,600 Growth",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Stage reward",
         "reward_value": "+2 Garden Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
         "coin_artwork_fallback": False,
         "before_artwork_fallback": False,
-        "after_artwork_fallback": False,
+        "visible_plant_thumbnail_count": 1,
+        "plant_thumbnail_role": "growth-charge-plant",
+        "stage_event_kind": "stage_change",
         "current_growth": 350,
         "projected_growth": 450,
         "inventory_before": 2,
@@ -4066,7 +4114,12 @@ def growth_charge_rendered_value_issue_codes(
             "component_variant": "confirmation",
             "data_source": "engine-preview",
             "dialog_title": "Use Small Growth Charge?",
-            "transition_statement": "Bonsai Plant will reach Sprout",
+            "transition_statement": "Stage change on use",
+            "before_label": "Seed",
+            "after_heading": "After use",
+            "progress_label": "After use toward Young",
+            "reward_label": "Stage reward on use",
+            "success_check_visible": False,
             "primary_action": "Use charge",
             "secondary_action": "Cancel",
         }
@@ -4076,7 +4129,12 @@ def growth_charge_rendered_value_issue_codes(
             "component_variant": "success",
             "data_source": "engine-confirmed",
             "dialog_title": "Small Growth Charge applied",
-            "transition_statement": "Bonsai Plant reached Sprout",
+            "transition_statement": "Stage changed",
+            "before_label": "Sprout",
+            "after_heading": "Applied",
+            "progress_label": "Result toward Young",
+            "reward_label": "Stage reward earned",
+            "success_check_visible": True,
             "primary_action": "View plant",
             "secondary_action": "Close",
             "resulting_growth": 450,
@@ -4107,9 +4165,13 @@ def diagnostics_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
             "title": "All artwork is available",
             "summary": "",
             "check_enabled": True,
-            "check_label": "Check again",
+            "check_label": "Check now",
+            "copy_enabled": True,
+            "details_enabled": True,
             "copy_confirmation_visible": False,
             "copy_confirmation": "",
+            "toast_visible": False,
+            "toast_copy": "",
             "painted": True,
         },
         "warning": {
@@ -4118,9 +4180,13 @@ def diagnostics_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
             "title": "3 artwork files are missing",
             "summary": "Some plants, decorations, or scenery may not appear.",
             "check_enabled": True,
-            "check_label": "Check again",
+            "check_label": "Check now",
+            "copy_enabled": True,
+            "details_enabled": True,
             "copy_confirmation_visible": False,
             "copy_confirmation": "",
+            "toast_visible": False,
+            "toast_copy": "",
             "painted": True,
         },
         "failure": {
@@ -4131,9 +4197,13 @@ def diagnostics_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
                 "Check again. Copy the current report if the issue continues."
             ),
             "check_enabled": True,
-            "check_label": "Check again",
+            "check_label": "Check now",
+            "copy_enabled": True,
+            "details_enabled": True,
             "copy_confirmation_visible": False,
             "copy_confirmation": "",
+            "toast_visible": False,
+            "toast_copy": "",
             "painted": True,
         },
         "checking": {
@@ -4142,9 +4212,13 @@ def diagnostics_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
             "title": "Checking display diagnostics",
             "summary": "Scanning artwork and display telemetry.",
             "check_enabled": False,
-            "check_label": "Checking…",
+            "check_label": "Checking artwork…",
+            "copy_enabled": False,
+            "details_enabled": False,
             "copy_confirmation_visible": False,
             "copy_confirmation": "",
+            "toast_visible": False,
+            "toast_copy": "",
             "painted": True,
         },
         "copy-confirmation": {
@@ -4153,9 +4227,13 @@ def diagnostics_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
             "title": "3 artwork files are missing",
             "summary": "Some plants, decorations, or scenery may not appear.",
             "check_enabled": True,
-            "check_label": "Check again",
-            "copy_confirmation_visible": True,
-            "copy_confirmation": "Report copied to clipboard",
+            "check_label": "Check now",
+            "copy_enabled": True,
+            "details_enabled": True,
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "toast_visible": True,
+            "toast_copy": "Report copied",
             "painted": True,
         },
     }
@@ -4172,6 +4250,11 @@ def diagnostics_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
         for key, expected_value in expected_values.items():
             if actual.get(key) != expected_value:
                 issues.append(f"diagnostics-{state}:{key}")
+    success = records.get("success", {})
+    if not isinstance(success, dict) or not str(
+        success.get("checked_timestamp", "")
+    ).startswith("Last checked "):
+        issues.append("diagnostics-success:checked_timestamp")
     topology = evidence.get("topology")
     if not isinstance(topology, dict):
         issues.append("diagnostics-topology")
@@ -4195,9 +4278,9 @@ def sync_reward_discovery_state_matrix_issue_codes(
     if not isinstance(evidence, dict):
         return ("missing-sync-reward-discovery-state-matrix",)
     base_metrics = {
-        "sync_review_cards": {"label": "cards", "value": "42"},
         "growth_resource": {"label": "Growth", "value": "+520"},
         "garden_coin": {"label": "Garden Coins", "value": "+12"},
+        "garden_discovery": {"label": "Discoveries", "value": "0"},
     }
     expected: dict[str, dict[str, Any]] = {
         "no-discovery": {
@@ -4232,15 +4315,11 @@ def sync_reward_discovery_state_matrix_issue_codes(
             "visible_standard_find_event_ids": [
                 "capture-sync-standard-find:growth_charge_small",
             ],
-            "metric_tile_count": 5,
+            "metric_tile_count": 3,
             "metric_projection": {
                 **base_metrics,
-                "standard_find": {
-                    "label": "Standard Finds",
-                    "value": "+3",
-                },
                 "garden_discovery": {
-                    "label": "garden discoveries",
+                    "label": "Discoveries",
                     "value": "+5",
                 },
             },
@@ -4281,11 +4360,11 @@ def sync_reward_discovery_state_matrix_issue_codes(
             ],
             "visible_standard_find_ids": [],
             "visible_standard_find_event_ids": [],
-            "metric_tile_count": 4,
+            "metric_tile_count": 3,
             "metric_projection": {
                 **base_metrics,
                 "garden_discovery": {
-                    "label": "garden discovery",
+                    "label": "Discoveries",
                     "value": "+1",
                 },
             },
@@ -4469,17 +4548,46 @@ def collection_loadout_state_matrix_issue_codes(
         return ("missing-collection-loadout-state-matrix",)
     issues: list[str] = []
     values = evidence.get("structured_values")
-    expected_keys = {
-        "scenery",
-        "displayed_decoration",
-        "active_bonus",
-        "visual_effects",
+    expected_values = {
+        "scenery": "Verdant Twilight",
+        "displayed_decoration": "Seedling Sign",
+        "active_bonus": "Watering Station",
+        "visual_effects": "Enabled",
     }
-    if not isinstance(values, dict) or set(values) != expected_keys:
+    if not isinstance(values, dict) or set(values) != set(expected_values):
         issues.append("collection-loadout-structured-value-keys")
         values = values if isinstance(values, dict) else {}
-    if any(not str(values.get(key, "")).strip() for key in expected_keys):
-        issues.append("collection-loadout-structured-value-copy")
+    for key, expected_value in expected_values.items():
+        if values.get(key) != expected_value:
+            issues.append(f"collection-loadout-structured-value-copy:{key}")
+    if evidence.get("summary_labels") != [
+        "Scenery",
+        "Displayed decoration",
+        "Today's garden bonus",
+        "Visual effects",
+    ]:
+        issues.append("collection-loadout-summary-label-copy")
+    if evidence.get("active_bonus_effect") != (
+        "Earn +1 bonus Growth every 5 cards during your first "
+        "100 cards each day"
+    ):
+        issues.append("collection-loadout-active-bonus-effect")
+    if evidence.get("tab_labels") != [
+        "Scenery",
+        "Garden decorations",
+        "Visual effects",
+    ]:
+        issues.append("collection-loadout-tab-copy")
+    if evidence.get("header_overline") != "COLLECTION":
+        issues.append("collection-loadout-header-overline")
+    if evidence.get("header_title") != "Garden appearance":
+        issues.append("collection-loadout-header-title")
+    if evidence.get("summary_values_left_aligned") is not True:
+        issues.append("collection-loadout-summary-value-alignment")
+    if evidence.get("summary_label_column_width") != 160:
+        issues.append("collection-loadout-summary-label-column")
+    if evidence.get("panels_share_bottom_boundary") is not True:
+        issues.append("collection-loadout-panel-bottom-boundary")
     for key, expected_value in {
         "structured_values_visible": True,
         "initial_apply_enabled": False,
@@ -4518,8 +4626,16 @@ def nursery_bed_incomplete_state_issue_codes(
     expected = {
         "unlocked_beds": 2,
         "summary": "2 of 6 beds unlocked",
+        "bed_states": [
+            {"bed_number": 1, "state": "unlocked", "chips": ["Unlocked"]},
+            {"bed_number": 2, "state": "unlocked", "chips": ["Unlocked"]},
+            {"bed_number": 3, "state": "next", "chips": ["Locked", "Next"]},
+            {"bed_number": 4, "state": "locked", "chips": ["Locked"]},
+            {"bed_number": 5, "state": "locked", "chips": ["Locked"]},
+            {"bed_number": 6, "state": "locked", "chips": ["Locked"]},
+        ],
         "bed_number": 3,
-        "bed_title": "Next: Bed 3",
+        "bed_title": "Bed 3",
         "requirement": "First plant reaches Mature",
         "unlock_policy": "automatic_achievement",
         "resulting_capacity": 3,
@@ -4532,9 +4648,7 @@ def nursery_bed_incomplete_state_issue_codes(
     for key, expected_value in expected.items():
         if evidence.get(key) != expected_value:
             issues.append(f"nursery-bed-incomplete:{key}")
-    if evidence.get("capacity_copy") != (
-        "Automatically unlocked when one plant reaches the Mature stage."
-    ):
+    if evidence.get("capacity_copy") != "Reach the Mature stage with any plant.":
         issues.append("nursery-bed-incomplete:capacity_copy")
     if evidence.get("passed") is not True:
         issues.append("nursery-bed-incomplete-state-not-passed")
@@ -4544,7 +4658,7 @@ def nursery_bed_incomplete_state_issue_codes(
 def starter_nursery_geometry_issue_codes(
     evidence: Any,
 ) -> tuple[str, ...]:
-    """Reject a starter catalog whose complete two-row choice grid is clipped."""
+    """Reject a starter catalog whose complete Full Bloom choice grid is clipped."""
 
     if not isinstance(evidence, dict):
         return ("starter-nursery:missing",)
@@ -4561,6 +4675,9 @@ def starter_nursery_geometry_issue_codes(
         issues.append("starter-nursery:not-applicable")
     if evidence.get("passed") is not True:
         issues.append("starter-nursery:not-passed")
+    width = evidence.get("dialog_width")
+    if type(width) is not int or not 920 <= width <= 960:
+        issues.append("starter-nursery:dialog-width")
     height = evidence.get("dialog_height")
     if type(height) is not int or not 370 <= height <= 410:
         issues.append("starter-nursery:dialog-height")
@@ -4576,6 +4693,14 @@ def starter_nursery_geometry_issue_codes(
         issues.append("starter-nursery:catalog-scroll")
     if evidence.get("partial_card_ids") != []:
         issues.append("starter-nursery:partial-cards")
+    if evidence.get("grid_columns") != 2 or evidence.get("grid_rows") != 2:
+        issues.append("starter-nursery:grid-shape")
+    if evidence.get("header") != {
+        "eyebrow": "NURSERY · STEP 1 OF 2",
+        "title": "Choose your starter",
+        "rationale": "",
+    }:
+        issues.append("starter-nursery:header-copy")
     records = evidence.get("records")
     if not isinstance(records, list) or len(records) != 4:
         issues.append("starter-nursery:card-count")
@@ -4599,12 +4724,19 @@ def starter_nursery_geometry_issue_codes(
             isinstance(card_size, list)
             and len(card_size) == 2
             and all(type(value) is int for value in card_size)
-            and 88 <= card_size[1] <= 92
+            and 84 <= card_size[1] <= 96
         ):
             issues.append(f"{prefix}:card-size")
+        if record.get("seed_chip_count") != 0:
+            issues.append(f"{prefix}:seed-chip-count")
+        if record.get("thumbnail_stage") != "rare":
+            issues.append(f"{prefix}:thumbnail-stage")
+        if record.get("thumbnail_resolved") is not True:
+            issues.append(f"{prefix}:thumbnail-resolved")
         for key, width_bounds, height_bounds in (
-            ("seed_badge_bounds", (44, 64), (22, 26)),
-            ("choose_bounds", (64, 100), (34, 36)),
+            ("thumbnail_bounds", (52, 60), (52, 60)),
+            ("choose_bounds", (72, 100), (30, 34)),
+            ("preview_bounds", (96, 150), (30, 34)),
         ):
             bounds = record.get(key)
             if not (
@@ -4613,14 +4745,13 @@ def starter_nursery_geometry_issue_codes(
                 and height_bounds[0] <= bounds[3] <= height_bounds[1]
             ):
                 issues.append(f"{prefix}:{key.replace('_', '-')}")
-        details = record.get("details_bounds")
-        if not valid_bounds(details):
-            issues.append(f"{prefix}:details-bounds")
     footer = evidence.get("footer")
     if not isinstance(footer, dict):
         issues.append("starter-nursery:footer")
     elif not (
         footer.get("contained") is True
+        and footer.get("helper_text")
+        == "You can choose a starter later in My Garden."
         and footer.get("action_text") == "Skip for now"
         and footer.get("action_contained") is True
         and valid_bounds(footer.get("bounds"))
@@ -4729,9 +4860,9 @@ def growth_stage_strip_issue_codes(records: Any) -> tuple[str, ...]:
         ("Seed", "reached", "Reached", False),
         ("Sprout", "current", "Current", False),
         ("Young", "next", "Next", True),
-        ("Mature", "locked", "Locked", True),
-        ("Flowering", "locked", "Locked", True),
-        ("Full Bloom", "locked", "Locked", True),
+        ("Mature", "locked", "6,000 Growth required", True),
+        ("Flowering", "locked", "15,000 Growth required", True),
+        ("Full Bloom", "locked", "35,000 Growth required", True),
     )
     if not isinstance(records, list) or len(records) != len(expected):
         return ("growth-stage-strip-count",)
@@ -4777,7 +4908,7 @@ def nursery_supplement_state_matrix_issue_codes(
             "balance_copy": "500",
             "item_id": "premium",
             "price_copy": "300 Garden Coins",
-            "action": "Use",
+            "action": "Buy",
             "action_disposition": "apply",
             "action_enabled": True,
             "painted": True,
@@ -4785,27 +4916,35 @@ def nursery_supplement_state_matrix_issue_codes(
         "stored-multiple": {
             "item_id": "fertilizer_basic",
             "item_name": "Basic Fertilizer",
-            "inventory_copy": "3 available · 0 queued",
-            "action": "Use",
+            "owned_copy": "Owned 3",
+            "queued_copy": "Queued 0",
+            "action": "Add to queue",
             "action_disposition": "apply",
             "meta_copy": "+1 Growth per card · Lasts for 100 cards",
             "artwork_ref": "fertilizer_basic",
             "artwork_source_matches": True,
             "artwork_fallback": False,
             "booster_item_id": "booster_potion",
-            "booster_owned_copy": "2 owned",
-            "booster_action": "Use",
+            "booster_owned_copy": "Owned 2",
+            "booster_action": "Use now",
             "booster_painted": True,
             "painted": True,
         },
         "active": {
             "engine_tier": "basic",
             "item_id": "fertilizer_basic",
-            "inventory_copy": "2 available · 0 queued",
-            "action": "Queue",
+            "section_heading": "Active boost",
+            "item_name": "Basic Fertilizer",
+            "inventory_heading": "Inventory",
+            "shop_heading": "Shop",
+            "shop_heading_contained": True,
+            "owned_copy": "Owned 2",
+            "queued_copy": "Queued 0",
+            "action": "Add to queue",
             "action_disposition": "queue",
             "status_phase": "active",
-            "status_copy": "+1 Growth per card · 100 cards remaining",
+            "status_copy": "+1 Growth per card",
+            "remaining_copy": "100 of 100 cards remaining",
             "artwork_ref": "fertilizer_basic",
             "artwork_source_matches": True,
             "artwork_fallback": False,
@@ -4815,13 +4954,14 @@ def nursery_supplement_state_matrix_issue_codes(
         "queued": {
             "engine_tiers": ["quality"],
             "item_id": "fertilizer_quality",
-            "inventory_copy": "1 available · 1 queued",
-            "action": "Queue another",
+            "owned_copy": "Owned 1",
+            "queued_copy": "Queued 1",
+            "action": "Add to queue",
             "action_disposition": "queue",
-            "final_basic_action": "Queue",
+            "final_basic_action": "Add to queue",
             "final_basic_action_disposition": "queue",
             "final_basic_painted": True,
-            "final_quality_action": "Queue another",
+            "final_quality_action": "Add to queue",
             "final_quality_action_disposition": "queue",
             "final_quality_painted": True,
             "meta_copy": "+2 Growth per card · Lasts for 200 cards",
@@ -4857,14 +4997,18 @@ def nursery_environment_fixture_issue_codes(evidence: Any) -> tuple[str, ...]:
             "ownership_state": "owned",
             "display_state": "displayed",
             "display_action": "Displayed",
-            "bonus_action": "Select today’s bonus",
+            "bonus_action": "",
             "painted": True,
         },
         "active_bonus": {
             "item_id": "watering_station",
             "ownership_state": "owned",
             "bonus_state": "active",
-            "section_heading": "Today’s garden bonus",
+            "section_heading": "Today's garden bonus",
+            "effect_copy": (
+                "Earn +1 bonus Growth every 5 cards during your first "
+                "100 cards each day"
+            ),
             "action": "Active today",
             "painted": True,
         },
@@ -4880,7 +5024,7 @@ def nursery_environment_fixture_issue_codes(evidence: Any) -> tuple[str, ...]:
             "item_id": "firefly_lantern",
             "ownership_state": "locked",
             "price": 0,
-            "acquisition_copy": "How to discover ›",
+            "acquisition_copy": "How to discover",
             "interactive_action_present": True,
             "artwork_id": "firefly_lantern",
             "artwork_locked": True,
@@ -4918,15 +5062,12 @@ def appearance_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
         return ("missing-appearance-state-matrix",)
     expected_rows = [
         ["Scenery", "Verdant Twilight"],
-        ["Displayed decoration", "Seedling Sign"],
-        [
-            "Active garden bonus",
-            (
-                "Watering Station · Earn +1 bonus Growth every 5 cards during "
-                "your first 100 cards each day."
-            ),
-        ],
+        ["Decoration", "Seedling Sign"],
+        ["Garden bonus", "Watering Station"],
     ]
+    expected_effect = (
+        "Every fifth card among the first 100 each Anki day: +1 Growth"
+    )
     records = evidence.get("records")
     issues: list[str] = []
     if not isinstance(records, dict) or set(records) != {"on", "off"}:
@@ -4945,6 +5086,10 @@ def appearance_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
             issues.append(f"appearance-{state}:projection-rows")
         if actual.get("painted_rows") != expected:
             issues.append(f"appearance-{state}:painted-rows")
+        if actual.get("projection_bonus_effect") != expected_effect:
+            issues.append(f"appearance-{state}:projection-bonus-effect")
+        if actual.get("painted_bonus_effect") != expected_effect:
+            issues.append(f"appearance-{state}:painted-bonus-effect")
         if actual.get("painted") is not True:
             issues.append(f"appearance-{state}:painted")
     if evidence.get("final_state") != "on":
@@ -5000,19 +5145,17 @@ def reviewer_reward_dock_issue_codes(
     issues: list[str] = []
     expected = {
         "event_count": 7,
-        "active_reveal_count": 1,
+        "active_reveal_count": 0,
+        "consolidated_card_count": 1,
         "hero_count": 1,
-        "eyebrow": "MILESTONE REACHED",
-        "hero_title": "Full Bloom reached",
-        "secondary_summary_count": 2,
-        "details_action_copy": "Details ›",
-        "details_action_heading_row": True,
+        "reward_summary_count": 3,
+        "details_action_visible": False,
         "obsolete_bottom_details_absent": True,
         "milestone_chevron_absent": True,
         "individual_close_button_count": 0,
         "detached_toast_count": 0,
         "session_footer_visible": True,
-        "integrated_divider_visible": True,
+        "integrated_divider_visible": False,
         "same_commit_bundle": True,
         "presented_once": True,
         "stable_event_ids": True,
@@ -5050,6 +5193,25 @@ def reviewer_reward_dock_issue_codes(
             for group in bundle["visible_summary_event_ids"]
             for event_id in group
         }) == 3
+        and bundle.get("reward_values") == [
+            "+14 Garden Coins",
+            "1 Standard Find",
+            "2 discoveries",
+        ]
+        and bundle.get("routing_copy") == (
+            "Future Growth goes to unfinished plants. "
+            "Any remainder becomes Stored Growth."
+        )
+        and bundle.get("choose_next_plant_copy") == "Choose next plant"
+        and bundle.get("choose_next_plant_full_width") is True
+        and bundle.get("session_metric_copy") == [
+            "+60 Growth",
+            "+14 Garden Coins",
+            "1 Standard Find",
+            "2 discoveries",
+        ]
+        and bundle.get("session_inclusion_copy")
+        == "Includes the Full Bloom rewards above"
     ):
         issues.append("reviewer-reward-bundle-identity-mismatch")
     if not (
@@ -5058,27 +5220,30 @@ def reviewer_reward_dock_issue_codes(
         and geometry.get("dock_visible") is True
         and geometry.get("hud_reward_visible") is True
         and geometry.get("full_bloom_settled") is True
+        and geometry.get("consolidated_card_visible") is True
+        and geometry.get("separate_reveal_hidden") is True
         and geometry.get("reward_bundle_id") == bundle.get("bundle_id")
-        and geometry.get("contained_in_hud") is True
+        and geometry.get("footer_contained") is True
         and geometry.get("in_normal_flow") is True
         and geometry.get("overlaps_bottom_controls") is False
         and geometry.get("horizontal_scroll_maximum") == 0
-        and 130 <= int(geometry.get("reveal_height", 0) or 0) <= 150
-        and int(geometry.get("footer_height", 0) or 0) == 68
-        and geometry.get("single_outer_surface") is True
-        and geometry.get("divider_visible") is True
-        and int(geometry.get("divider_count", 0) or 0) == 1
-        and geometry.get("hero_components_contained") is True
-        and geometry.get("hero_components_non_overlapping") is True
-        and geometry.get("title_details_non_overlapping") is True
-        and geometry.get("details_heading_aligned") is True
-        and int(geometry.get("details_click_height", 0) or 0) >= 28
-        and geometry.get("details_visible_in_scroll_viewport") is True
-        and geometry.get("details_footer_non_overlapping") is True
-        and int(geometry.get("details_divider_clearance", -1)) >= 8
+        and geometry.get("plant_art_size") in ([128, 128], [132, 132], [140, 140], [144, 144])
+        and geometry.get("plant_name")
+        == "Juniper of the Moonlit Library Garden"
+        and geometry.get("plant_species") == "Bonsai"
+        and geometry.get("status_copy") == "Full Bloom"
+        and geometry.get("reward_values") == bundle.get("reward_values")
+        and geometry.get("choose_next_plant_visible") is True
+        and geometry.get("choose_next_plant_full_width") is True
+        and geometry.get("session_metric_copy")
+        == bundle.get("session_metric_copy")
+        and geometry.get("session_inclusion_visible") is True
+        and geometry.get("session_collapsed") is True
+        and geometry.get("divider_visible") is False
+        and int(geometry.get("divider_count", -1) or 0) == 0
         and geometry.get("obsolete_bottom_details_present") is False
         and geometry.get("obsolete_milestone_disclosure_present") is False
-        and int(geometry.get("compact_vertical_scroll_maximum", -1)) == 0
+        and int(geometry.get("compact_vertical_scroll_maximum", -1)) in {-1, 0}
     ):
         issues.append("reviewer-reward-dock-geometry-mismatch")
     return tuple(dict.fromkeys(issues))
@@ -5751,6 +5916,12 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("final_endpoint_inside_track") is True
                 and row.get("checkpoint_reward_context")
                 == "Checkpoint reward"
+                and row.get("checkpoint_context_full")
+                == "350 Growth to checkpoint"
+                and row.get("checkpoint_context_visible")
+                == "350 Growth to checkpoint"
+                and row.get("checkpoint_context_elided") is False
+                and row.get("checkpoint_estimate") == "About 21 cards"
             ),
             "early-stage-art": lambda row: stage_art_passed(
                 row,
@@ -5821,17 +5992,17 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             "estimate-1-card": lambda row: estimate_passed(
                 row,
                 count=1,
-                rendered="~1 card",
+                rendered="About 1 card",
             ),
             "estimate-14-cards": lambda row: estimate_passed(
                 row,
                 count=14,
-                rendered="~14 cards",
+                rendered="About 14 cards",
             ),
             "estimate-1240-cards": lambda row: estimate_passed(
                 row,
                 count=1_240,
-                rendered="~1,240 cards",
+                rendered="About 1,240 cards",
             ),
             "checkpoint-crossing": lambda row: (
                 row.get("crossed_checkpoints") == [25]
@@ -5958,7 +6129,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("temporary_gold_cleared") is True
                 and row.get("settled_copy")
                 == (
-                    "Future Growth will go to other unfinished plants. "
+                    "Future Growth goes to unfinished plants. "
                     "Any remainder becomes Stored Growth."
                 )
                 and row.get("select_another_visible") is True
@@ -6458,7 +6629,7 @@ def _visual_contract_record_issues(
         if label == "selected-plant-nurtured":
             plant_actions = visual.get("plant_action_geometry")
             expected_actions = [
-                "Get growth charges",
+                "Get Growth Charges",
                 "Apply fertilizer",
                 "Move",
                 "Plant story",
@@ -6493,36 +6664,37 @@ def _visual_contract_record_issues(
                     reject("selected plant actions overlap or leave the plant card")
             popover_geometry = visual.get("plant_popover_geometry")
             if not isinstance(popover_geometry, dict):
-                reject("selected plant popover geometry is missing")
+                reject("selected plant inspector geometry is missing")
             else:
                 card_size = popover_geometry.get("card_size")
-                connector_end = popover_geometry.get("connector_end")
                 if not (
                     popover_geometry.get("applicable") is True
                     and popover_geometry.get("passed") is True
                     and popover_geometry.get("content_inset") == 12
                     and isinstance(card_size, list)
                     and len(card_size) == 2
-                    and 288 <= card_size[0] <= 320
-                    and 300 <= card_size[1] <= 325
-                    and popover_geometry.get("chosen_side")
-                    in {"right", "left", "above", "below"}
-                    and isinstance(connector_end, list)
-                    and len(connector_end) == 2
+                    and (
+                        card_size[0] == 296
+                        if popover_geometry.get("presentation_mode") == "side"
+                        else 288 <= card_size[0] <= 720
+                    )
+                    and 300 <= card_size[1] <= 420
+                    and popover_geometry.get("presentation_mode")
+                    in {"side", "bottom-sheet"}
+                    and popover_geometry.get("external_to_scene") is True
+                    and popover_geometry.get("connector_hidden") is True
                     and popover_geometry.get("anatomy_passed") is True
                     and popover_geometry.get("actions_aligned") is True
-                    and popover_geometry.get("pointer_clear") is True
-                    and popover_geometry.get("selected_clear") is True
                     and popover_geometry.get("toast_clear") is True
-                    and popover_geometry.get("contained_in_scene") is True
+                    and popover_geometry.get("contained_in_dock") is True
                 ):
-                    reject("selected plant popover is not anchored or aligned")
+                    reject("selected plant inspector is not external or aligned")
         if label == "starter-nursery-plants":
             starter_geometry = visual.get("starter_card_geometry")
             if starter_nursery_geometry_issue_codes(starter_geometry):
                 reject(
-                    "starter Nursery must show all compact Seed cards "
-                    "inside its unscrolled content-fit viewport"
+                    "starter Nursery must show all four Full Bloom choices "
+                    "inside its unscrolled two-by-two viewport"
                 )
         if label == "fertilizer-active":
             fertilizer_status = visual.get("fertilizer_status_geometry")
@@ -6731,10 +6903,21 @@ def _visual_contract_record_issues(
 
     if label == "growth-nonzero":
         stage_records = audit.get("growth_stage_records")
-        if audit.get("reference_size") != [940, 501]:
-            reject("Growth reference size is not the content-fit 940×501 contract")
-        if audit.get("rendered_size") != [940, 501]:
-            reject("Growth did not render at the content-fit 940×501 contract")
+        rendered_size = audit.get("rendered_size")
+        if audit.get("reference_size") != [950, 570]:
+            reject("Growth reference size is not the 950 px, content-fit contract")
+        if not (
+            isinstance(rendered_size, list)
+            and len(rendered_size) == 2
+            and rendered_size[0] == 950
+            and isinstance(rendered_size[1], int)
+            and 0 < rendered_size[1] <= 570
+        ):
+            reject("Growth did not render at 950 px wide within the 570 px height cap")
+        if audit.get("width_contract_passed") is not True:
+            reject("Growth canonical width did not pass")
+        if audit.get("height_contract_passed") is not True:
+            reject("Growth content-fit height cap did not pass")
         if audit.get("reference_size_passed") is not True:
             reject("Growth content-fit reference size did not pass")
         if audit.get("no_vertical_scroll") is not True:
@@ -6767,6 +6950,7 @@ def _visual_contract_record_issues(
 
     if label == "progress-achievements":
         cards = audit.get("visible_achievement_cards")
+        filter_geometry = audit.get("achievement_filter_grid_geometry")
         visible_days = audit.get("visible_completion_days")
         visible_categories = audit.get("visible_completion_categories")
         date_texts = audit.get("visible_completion_date_texts")
@@ -6783,6 +6967,16 @@ def _visual_contract_record_issues(
             audit.get("valid_distinct_completion_dates") is True
             and audit.get("achievement_card_geometry_passed") is True
             and audit.get("rendered_chronological_dates_passed") is True
+            and isinstance(filter_geometry, dict)
+            and filter_geometry.get("passed") is True
+            and filter_geometry.get("labels")
+            == ["All", "In progress", "Completed", "Locked"]
+            and filter_geometry.get("heights") == [36, 36, 36, 36]
+            and filter_geometry.get("left_aligned") is True
+            and filter_geometry.get("cards_only_scroll") is True
+            and filter_geometry.get("horizontal_scroll_range") == 0
+            and isinstance(filter_geometry.get("right_gutter"), int)
+            and filter_geometry["right_gutter"] >= 8
             and isinstance(cards, list)
             and bool(cards)
             and all(
@@ -6791,7 +6985,7 @@ def _visual_contract_record_issues(
                 and isinstance(card.get("bounds"), list)
                 and len(card["bounds"]) == 4
                 and type(card["bounds"][3]) is int
-                and 108 <= card["bounds"][3] <= 120
+                and card["bounds"][3] == 108
                 for card in cards
             )
             and isinstance(visible_days, list)
@@ -6814,10 +7008,11 @@ def _visual_contract_record_issues(
                 isinstance(value, str) and bool(value.strip())
                 for value in date_texts
             )
+            and all(value.startswith("Completed ") for value in date_texts)
             and len(set(date_texts)) == len(date_texts)
         ):
             reject(
-                "Achievements must show complete 108-120 px cards with distinct chronological dates"
+                "Achievements must keep aligned 36 px filters above complete 108 px cards with distinct chronological completion dates"
             )
 
     if label == "progress-overview-redirect-growth":
@@ -6920,6 +7115,14 @@ def _visual_contract_record_issues(
         environment_fixture = audit_object(
             "garden_decoration_scenery_fixture"
         )
+        if not (
+            audit.get("first_product_row_count") == 3
+            and audit.get("first_product_row_contained") is True
+        ):
+            reject(
+                "Nursery appearance catalog does not paint one complete "
+                "three-column product row"
+            )
         for issue in nursery_environment_fixture_issue_codes(
             environment_fixture
         ):
@@ -7215,10 +7418,9 @@ def _visual_contract_record_issues(
         for issue in sync_reward_project_allocation_issue_codes(sync_geometry):
             reject(f"Sync reward project allocation: {issue}")
         if sync_geometry.get("metric_order") != [
-            "cards",
             "Growth",
             "Garden Coins",
-            "garden discovery",
+            "Discoveries",
         ]:
             reject("Sync reward metrics are not in canonical order")
         if sync_geometry.get("reward_group_order") != [

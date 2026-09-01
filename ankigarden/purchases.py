@@ -555,7 +555,7 @@ def purchase_presentation(
         next_actions = ("Use growth charge", "Keep browsing")
         facts.append(PurchaseFact(
             "inventory",
-            "Inventory",
+            "Owned",
             f"{max(0, int(quote.inventory_before)):,} → "
             f"{max(0, int(quote.inventory_after)):,}",
         ))

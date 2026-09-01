@@ -1,5 +1,5 @@
 {
-  "contract_digest": "bfe80c845b4f18619de748603f2d4eb8e3133c75019303623fc7d01d466856ce",
+  "contract_digest": "1bf435ccfbf4a7a68a633276e0bb0e2ec6e6ae2dc17d5d560bf5552b7d53c68b",
   "contract_version": 26,
   "profiles": {
     "full": {
@@ -403,7 +403,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c8b4a289b86e387ebd4ff77e24495e8732e377db8268ce0ea58b7faef43c20e2",
+      "dependency_digest": "ab2a794933f2e80be757b3fd1e5beaa64668514b509dc1ef6357eb518cf61fa6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -472,7 +472,8 @@
           "garden_scene_present",
           "starter_incomplete",
           "onboarding_visible",
-          "onboarding_step"
+          "onboarding_step",
+          "first_run_guidance"
         ]
       }
     },
@@ -1759,7 +1760,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "67a7c01960de732cbd19efdd80ec6180f517eebb78128d3dc1e5991e82a0888e",
+      "dependency_digest": "80adc458b3a0bd1ef48233ddee2525cfa9c52524aeac95953d77cab386e5869b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1826,6 +1827,7 @@
           "state_profile_declared",
           "window_family",
           "progress_page",
+          "progress_shell_geometry",
           "nonzero_growth"
         ]
       }
@@ -1842,7 +1844,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "43f6853f13a0a0ffbba460c624cff04236c52d79ea942c4ddb3bbdc0809ee404",
+      "dependency_digest": "fc82e1760e600d1a03ea3efdc678db1db7b240f71fe5b519f8b82a2d9ce36733",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1902,6 +1904,7 @@
           "state_profile_declared",
           "window_family",
           "progress_page",
+          "progress_shell_geometry",
           "today_cards_progress_surface"
         ]
       }
@@ -1989,7 +1992,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "e012746528507214e3b7d073c21487eca1a3e5bc61d948c9b550c1826043aa0e",
+      "dependency_digest": "591d5e0e0d1802923cf960d0c2d40737ea6f89b3433bcd2df1cb152f5b6319c3",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2053,6 +2056,7 @@
           "state_profile_declared",
           "window_family",
           "progress_page",
+          "progress_shell_geometry",
           "active_streak",
           "canonical_active_streak_achievement",
           "thirty_day_next_reward"
@@ -2143,7 +2147,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "fb3654754b82307a1bb1c7a1bd6a252172cb59432550c052f9143439a62f8982",
+      "dependency_digest": "a1f66cc38ab1b71f3e7d0151a7c529d6fed873104ad6b7d6670c68df15fae223",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2207,6 +2211,7 @@
           "state_profile_declared",
           "window_family",
           "progress_page",
+          "progress_shell_geometry",
           "canonical_reward_activity",
           "coin_activity_ledger_semantics",
           "coin_activity_state_matrix"
@@ -2297,7 +2302,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "26b4dca8bf0d094acefe4296d2a780450309a6f4c8b1a50579ff667e5b8272cf",
+      "dependency_digest": "b5190827441efb8189849533665282423e3e7d074699fe884ed67142baffbd4d",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2362,6 +2367,7 @@
           "state_profile_declared",
           "window_family",
           "progress_page",
+          "progress_shell_geometry",
           "achievement_filter_state_matrix",
           "thirty_day_completed_reward_cross_surface"
         ]
@@ -2379,7 +2385,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3c4439e9c98c831f03e5f73dc6f1cecc4e316d573daa6acd417b5128db39dc83",
+      "dependency_digest": "0b0f271e12cbf7e91614d100eab1d634d023433fb2ef3b3c3070f1b9799dcb58",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2448,8 +2454,10 @@
           "canonical_development_plant_ids",
           "canonical_development_generated_names",
           "progress_page",
+          "progress_shell_geometry",
           "representative_collection_summary",
-          "collection_filter_roundtrip"
+          "collection_filter_roundtrip",
+          "landmark_filter_state_matrix"
         ]
       }
     },

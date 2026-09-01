@@ -88,9 +88,9 @@ def test_shared_quantity_formatting_covers_cards_effects_and_finds() -> None:
     assert format_quantity(1_000, "effect") == "1,000 effects"
     assert format_quantity(1, "Garden Find") == "1 Garden Find"
     assert format_quantity(2, "discovery", "discoveries") == "2 discoveries"
-    assert format_approximate_cards(1) == "~1 card"
-    assert format_approximate_cards(14) == "~14 cards"
-    assert format_approximate_cards(-4) == "~0 cards"
+    assert format_approximate_cards(1) == "About 1 card"
+    assert format_approximate_cards(14) == "About 14 cards"
+    assert format_approximate_cards(-4) == "About 0 cards"
 
 
 def test_datetime_timezone_conversion_is_stable() -> None:

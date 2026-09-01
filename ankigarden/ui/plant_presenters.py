@@ -17,6 +17,23 @@ def _label(value: Any) -> str:
 
 
 @dataclass(frozen=True)
+class FertilizerQueueItem:
+    """One renderer-neutral queued dose group in FIFO display order."""
+
+    tier_id: str
+    name: str
+    effect: str
+    cards: int
+    total_cards: int
+    starts_after: str = ""
+
+    @property
+    def duration(self) -> str:
+        noun = "card" if self.cards == 1 else "cards"
+        return f"{self.cards:,} {noun} queued"
+
+
+@dataclass(frozen=True)
 class FertilizerStatus:
     phase: str
     name: str
@@ -31,10 +48,67 @@ class FertilizerStatus:
     total_cards: int = 0
     queued_cards: int = 0
     expires_at_ms: int | None = None
+    queued_items: tuple[FertilizerQueueItem, ...] = ()
 
     @property
     def active(self) -> bool:
         return self.phase == "active"
+
+    @property
+    def queued_next(self) -> FertilizerQueueItem | None:
+        return self.queued_items[0] if self.queued_items else None
+
+
+def _queued_fertilizer_items(
+    engine: Any,
+    queued_batches: tuple[Any, ...],
+    *,
+    starts_after: str = "",
+) -> tuple[FertilizerQueueItem, ...]:
+    """Group consecutive queue batches without changing their FIFO meaning."""
+
+    grouped: list[FertilizerQueueItem] = []
+    for batch in queued_batches:
+        effect_id = str(getattr(batch, "effect_id", "") or "")
+        tier = effect_id.removeprefix("fertilizer_")
+        spec = getattr(engine, "FERTILIZERS", {}).get(tier)
+        name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
+        growth_units = max(
+            0,
+            int(getattr(batch, "growth_per_card_units", 0) or 0),
+        )
+        item = FertilizerQueueItem(
+            tier_id=tier,
+            name=name,
+            effect=f"+{growth_units // 100:,} Growth per card",
+            cards=max(0, int(getattr(batch, "remaining_cards", 0) or 0)),
+            total_cards=max(0, int(getattr(batch, "total_cards", 0) or 0)),
+        )
+        if grouped and grouped[-1].tier_id == item.tier_id:
+            previous = grouped[-1]
+            grouped[-1] = FertilizerQueueItem(
+                tier_id=previous.tier_id,
+                name=previous.name,
+                effect=previous.effect,
+                cards=previous.cards + item.cards,
+                total_cards=previous.total_cards + item.total_cards,
+                starts_after=previous.starts_after,
+            )
+        else:
+            grouped.append(item)
+    ordered: list[FertilizerQueueItem] = []
+    predecessor = str(starts_after or "")
+    for item in grouped:
+        ordered.append(FertilizerQueueItem(
+            tier_id=item.tier_id,
+            name=item.name,
+            effect=item.effect,
+            cards=item.cards,
+            total_cards=item.total_cards,
+            starts_after=predecessor,
+        ))
+        predecessor = item.name
+    return tuple(ordered)
 
 
 def fertilizer_status(
@@ -64,6 +138,11 @@ def fertilizer_status(
         tier = effect_id.removeprefix("fertilizer_")
         spec = getattr(engine, "FERTILIZERS", {}).get(tier)
         name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
+        queued_items = _queued_fertilizer_items(
+            engine,
+            queued_batches,
+            starts_after=name,
+        )
         growth_units = max(
             0,
             int(getattr(first, "growth_per_card_units", 0) or 0),
@@ -107,9 +186,11 @@ def fertilizer_status(
             max(cards_remaining, total_cards),
             queued_cards,
             None,
+            queued_items,
         )
 
     if queued_batches:
+        queued_items = _queued_fertilizer_items(engine, queued_batches)
         first = queued_batches[0]
         effect_id = str(getattr(first, "effect_id", "") or "")
         tier = effect_id.removeprefix("fertilizer_")
@@ -141,6 +222,7 @@ def fertilizer_status(
             0,
             queued_cards,
             None,
+            queued_items,
         )
 
     scheduler = getattr(engine, "fertilizer_schedule", None)

@@ -72,9 +72,11 @@ def test_home_banner_preserves_cta_before_hiding_optional_metadata() -> None:
         in HOME_WIDGET_STYLE
     )
     assert "min-width:112px !important" in HOME_WIDGET_STYLE
-    assert "bottom:7px" in HOME_WIDGET_STYLE
-    assert "width:260px" in HOME_WIDGET_STYLE
-    assert "right:140px; bottom:7px; width:auto" in HOME_WIDGET_STYLE
+    assert ".ag-home__identity-copy { min-width:0; flex:1 1 auto; }" in HOME_WIDGET_STYLE
+    assert ".ag-home__plant-thumbnail" not in HOME_WIDGET_STYLE
+    assert "flex:0 0 36px" not in HOME_WIDGET_STYLE
+    assert "bottom:auto;\n  width:100%;\n  height:4px" in HOME_WIDGET_STYLE
+    assert "right:140px; bottom:7px; width:auto" not in HOME_WIDGET_STYLE
     assert (
         ".ag-home__support,.ag-home__progress-copy,.ag-home__growth-track { display:none; }"
         in HOME_WIDGET_STYLE

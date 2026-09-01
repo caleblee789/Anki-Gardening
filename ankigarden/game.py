@@ -9486,11 +9486,6 @@ class GardenGameEngine:
         ]))
         self.state.plants.append(plant)
         self.state.starter_selection_complete = True
-        self.state.active_plant_id = None
-        self.state.onboarding = OnboardingProgress(
-            step=OnboardingStep.NURTURE,
-            starter_plant_id=plant.plant_id,
-        )
         if not any(
             period.day == today
             and period.plant_id is None
@@ -9500,10 +9495,25 @@ class GardenGameEngine:
             # A day-start sentinel ensures a later same-day revlog sync routes
             # reviews answered before this choice to no plant.
             self.state.active_plant_periods.append(ActivePlantPeriod(today, None, 0))
+        # Setup completion and the first nurture choice are one transaction. The
+        # sentinel above must precede this timestamp so answers from earlier in
+        # the scheduler day still route to no plant.
+        activated_at = self._now_ms()
+        self.state.active_plant_id = plant.plant_id
+        self._record_active_period(plant.plant_id, event_ms=activated_at)
+        self._claim_completed_plant_effects(plant)
+        self._add_memory(plant, "nurture:first", "first_nurture")
+        self.state.garden_setup_version = 1
+        self.state.onboarding = OnboardingProgress(
+            step=OnboardingStep.DONE,
+            starter_plant_id=plant.plant_id,
+        )
+        species_name = species.replace("_", " ").title()
+        placement_message = f"{species_name} planted in Bed {destination + 1}"
         self._queue_feedback(
             f"starter:{species}",
             "unlock",
-            f"{plant.name} is growing in Bed {destination + 1}.",
+            placement_message,
             plant.plant_id,
         )
         try:
@@ -9521,7 +9531,7 @@ class GardenGameEngine:
         )
         return (
             True,
-            f"{plant.name} is growing in Bed {destination + 1}.",
+            placement_message,
             plant,
             change,
         )

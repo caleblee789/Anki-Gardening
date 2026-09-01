@@ -217,12 +217,14 @@ def test_growth_charge_preview_and_success_share_one_markup_tree() -> None:
     for required_copy in (
         '"Use charge"',
         '"View plant"',
-        '"Charges remaining"',
-        '"Next-stage progress"',
-        'f"Before · {format_status_label(data.before_stage_name)}"',
+        '"Stage reward on use"',
+        '"Stage reward earned"',
+        '"growth-charge-plant"',
         'f"After · {format_status_label(data.after_stage_name)}"',
     ):
         assert required_copy in owner_source
+    assert '"After use toward"' in source
+    assert '"Result toward"' in source
     for obsolete_copy in (
         '"Reaches Sprout"',
         '"Use Small Growth Charge"',
@@ -231,7 +233,7 @@ def test_growth_charge_preview_and_success_share_one_markup_tree() -> None:
         assert obsolete_copy not in owner_source
 
 
-def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -> None:
+def test_growth_charge_transition_copy_hides_the_same_stage_event_row() -> None:
     transition_copy = _compiled_method(
         "GrowthChargeConfirmationDialog",
         "_transition_copy",
@@ -254,13 +256,13 @@ def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -
     )
 
     stage_change.variant = "confirmation"
-    assert transition_copy(stage_change) == "Bonsai Plant will reach Sprout"
+    assert transition_copy(stage_change) == "Stage change on use"
     stage_change.variant = "success"
-    assert transition_copy(stage_change) == "Bonsai Plant reached Sprout"
+    assert transition_copy(stage_change) == "Stage changed"
     same_stage.variant = "confirmation"
-    assert transition_copy(same_stage) == "Bonsai Plant will gain 100 Growth"
+    assert transition_copy(same_stage) == ""
     same_stage.variant = "success"
-    assert transition_copy(same_stage) == "Bonsai Plant gained 100 Growth"
+    assert transition_copy(same_stage) == ""
 
 
 def test_growth_charge_view_plant_returns_to_the_committed_target() -> None:
@@ -321,13 +323,7 @@ def test_visibility_sensitive_children_have_parents_at_construction() -> None:
             1,
             "dialog",
         ),
-        (
-            "GardenDashboard",
-            "_build_species_overview_dialog",
-            "stage_metadata",
-            1,
-            "stage_card",
-        ),
+        ("StageTile", "__init__", "metadata", 1, "self"),
         ("NurseryDialog", "__init__", "self._status_hide_timer", 0, "self"),
         ("PlantInfoCard", "__init__", "self.nurture", 1, "self"),
         ("PlantInfoCard", "__init__", "self.fertilize", 1, "self"),
@@ -443,16 +439,23 @@ def test_species_overview_uses_compact_shared_rows_and_tokens() -> None:
         if isinstance(node, ast.ClassDef) and node.name == "SpeciesPlantRow"
     )
     plant_row_source = ast.get_source_segment(source, plant_row) or ""
+    stage_tile = next(
+        node
+        for node in _dashboard_tree().body
+        if isinstance(node, ast.ClassDef) and node.name == "StageTile"
+    )
+    stage_tile_source = ast.get_source_segment(source, stage_tile) or ""
 
     for required in (
         'f"{species_name} Collection"',
         "dialog._shell_layout.setContentsMargins(24, 18, 24, 20)",
         "apply_text_role(dialog.dialog_title, TextRole.SCREEN_TITLE)",
-        "size=44",
-        'stage_card.setFixedHeight(104)',
-        'f"{GROWTH_THRESHOLDS[-1]:,} Growth required"',
+        "size=56",
+        "stage_card = StageTile(",
+        "stages = PlantStageStrip(",
+        "Growth required",
         'property_name="speciesPlantThumbnail"',
-        'growth.bar.setFixedHeight(PROGRESS_BAR_HEIGHT)',
+        "growth.bar.setFixedHeight(8)",
         'set_button_size(action, ButtonSize.SECONDARY)',
         'GardenIconButton(\n                            "overflow"',
         'if instance_index:',
@@ -460,6 +463,8 @@ def test_species_overview_uses_compact_shared_rows_and_tokens() -> None:
         'dialog.species_plant_responsive.append(row.responsive)',
     ):
         assert required in builder_source
+    assert "self.setFixedHeight(108)" in stage_tile_source
+    assert "metadata.setFixedHeight(24)" in stage_tile_source
     for removed in (
         'f"{species_name} collection"',
         "size=60",
@@ -474,8 +479,10 @@ def test_species_overview_uses_compact_shared_rows_and_tokens() -> None:
     assert "floor=190" in plant_row_source
     assert "floor=240" in plant_row_source
     assert "self.grid.addWidget(self.progress, 1, 0, 1, 2)" in plant_row_source
+    assert "self.actions,\n                2," in plant_row_source
     assert "self.setMaximumHeight(88)" in plant_row_source
-    assert "self.setMaximumHeight(132)" in plant_row_source
+    assert "self.setMinimumHeight(148)" in plant_row_source
+    assert "self.setMaximumHeight(16777215)" in plant_row_source
 
 
 def test_settings_name_failure_reports_split_commit_when_rollback_fails() -> None:

@@ -6,6 +6,12 @@ from collections import deque
 import re
 from typing import Any, Callable, Literal, Mapping, Optional
 
+from .event_presentation import (
+    EventPresentationKind,
+    EventPresentationUnit,
+    committed_reward_event_rows,
+    event_amount_total,
+)
 from .formatters import format_garden_coins, format_quantity
 from .plant_art import normalized_plant_pixmap
 from .reviewer_hud import (
@@ -570,24 +576,26 @@ def _session_metric_labels(
     growth_units: Any,
     coins: Any,
     finds: Any,
+    discoveries: Any = 0,
 ) -> tuple[str, ...]:
     values = (
         _session_metric_text(0, growth_units),
         _session_metric_text(1, coins),
         _session_metric_text(2, finds),
+        _session_metric_text(3, discoveries),
     )
     return tuple(value for value in values if value)
 
 
 def _session_metric_increases(
-    previous: tuple[Any, Any, Any],
-    current: tuple[Any, Any, Any],
-) -> tuple[bool, bool, bool]:
+    previous: tuple[Any, Any, Any, Any],
+    current: tuple[Any, Any, Any, Any],
+) -> tuple[bool, bool, bool, bool]:
     """Identify changes from committed totals, not an in-flight count-up."""
 
     return tuple(
         _integer(current[index]) > _integer(previous[index])
-        for index in range(3)
+        for index in range(4)
     )  # type: ignore[return-value]
 
 
@@ -599,7 +607,9 @@ def _session_metric_text(index: int, value: Any) -> str:
         return f"{format_growth_units(normalized, signed=True)} Growth"
     if index == 1:
         return format_garden_coins(normalized, signed=True)
-    return format_quantity(normalized, "Standard Find")
+    if index == 2:
+        return format_quantity(normalized, "Standard Find")
+    return format_quantity(normalized, "discovery", "discoveries")
 
 
 def _session_coin_count(snapshot: Any) -> int:
@@ -621,6 +631,21 @@ def _session_find_count(snapshot: Any) -> int:
     if legacy_count is not None:
         return _integer(legacy_count)
     return len(tuple(_value(snapshot, "standard_finds", default=()) or ()))
+
+
+def _session_discovery_count(snapshot: Any) -> int:
+    """Prefer the canonical compact-footer discovery count when available."""
+
+    footer_count = _value(snapshot, "footer_discovery_count", default=None)
+    if footer_count is not None:
+        return _integer(footer_count)
+    explicit = _value(snapshot, "discovery_count", default=None)
+    if explicit is not None:
+        return _integer(explicit)
+    return len(tuple(
+        _value(snapshot, "environment_discoveries", "discoveries", default=())
+        or ()
+    ))
 
 
 def _hero_title(bundle: Any) -> str:
@@ -1546,8 +1571,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._seen_bundle_ids: set[str] = set()
         self._seen_commit_ids: set[str] = set()
         self._unseen_major = 0
-        self._session_totals = (0, 0, 0)
-        self._displayed_session_totals = (0, 0, 0)
+        self._session_totals = (0, 0, 0, 0)
+        self._displayed_session_totals = (0, 0, 0, 0)
         self._session_has_results = False
         self._deferred_coin_update: tuple[int, bool] | None = None
         self._deferred_session_snapshot: Any | None = None
@@ -1787,7 +1812,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 self._stop_session_count_animation()
                 self._set_session_metric_values(self._session_totals)
                 self._clear_session_highlight(self._session_feedback_revision)
-        self._header.set_callback(self._open_garden)
         self._plant_card.set_callback(self._open_plant)
 
     def _apply_style(self) -> None:
@@ -1806,15 +1830,15 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QFrame#reviewerHudTodayCard[completionSettling='true'] {border-color:" + t["reviewer_hud_growth_strong"] + ";}"
             "QFrame#reviewerHudPlantCard:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
             "QFrame#reviewerHudPlantCard[celebration='stage-change'] {border-color:" + t["reviewer_hud_growth_strong"] + ";}"
-            "QFrame#reviewerHudPlantCard[celebration='full-bloom'] {border-color:" + t["reviewer_hud_coin"] + ";}"
+            "QFrame#reviewerHudPlantCard[celebration='full-bloom'] {border-color:" + t["session_summary_milestone"] + ";}"
             "QFrame#reviewerHudArtRegion {background:qradialgradient(cx:0.5,cy:0.54,radius:0.52,"
             "fx:0.5,fy:0.54,stop:0 rgba(103,220,169,42),stop:1 rgba(13,48,39,0));border:0;}"
             "QFrame#reviewerHudArtRegion[artPulse='true'] {background:qradialgradient(cx:0.5,cy:0.54,radius:0.56,"
             "fx:0.5,fy:0.54,stop:0 rgba(132,237,189,78),stop:1 rgba(13,48,39,0));}"
             "QFrame#reviewerHudArtRegion[fullBloomSettled='true'] {background:qradialgradient(cx:0.5,cy:0.54,radius:0.58,"
-            "fx:0.5,fy:0.54,stop:0 rgba(240,194,79,42),stop:0.42 rgba(103,220,169,28),stop:1 rgba(13,48,39,0));}"
+            "fx:0.5,fy:0.54,stop:0 rgba(180,156,255,48),stop:0.42 rgba(103,220,169,22),stop:1 rgba(13,48,39,0));}"
             "QFrame#reviewerHudArtRegion[fullBloomLightRays='true'] {background:qradialgradient(cx:0.5,cy:0.52,radius:0.62,"
-            "fx:0.5,fy:0.52,stop:0 rgba(240,194,79,96),stop:0.45 rgba(103,220,169,52),stop:1 rgba(13,48,39,0));}"
+            "fx:0.5,fy:0.52,stop:0 rgba(180,156,255,102),stop:0.45 rgba(103,220,169,42),stop:1 rgba(13,48,39,0));}"
             "QFrame#reviewerHudNextAnswer {background:rgba(103,220,169,18);border:0;border-radius:9px;}"
             "QFrame#reviewerHudNextAnswer[resultState='applied'] {background:rgba(103,220,169,30);}"
             "QFrame#reviewerHudGrowthDestination {background:rgba(103,220,169,13);"
@@ -1852,9 +1876,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             + t["reviewer_hud_growth_strong"] + ";}"
             "QLabel[hudPlantName='true'] {font-size:18px;font-weight:650;}"
             "QLabel[hudStage='true'] {font-size:13px;font-weight:600;}"
-            "QLabel[hudStage='true'][fullBloomAccent='true'] {color:" + t["reviewer_hud_coin"] + ";}"
+            "QLabel[hudStage='true'][fullBloomAccent='true'] {color:" + t["session_summary_milestone"] + ";}"
             "QLabel[hudRewardTitle='true'] {font-size:16px;font-weight:650;}"
             "QLabel[hudGrowth='true'] {color:" + t["reviewer_hud_growth_strong"] + ";font-weight:700;}"
+            "QLabel[hudFind='true'], QLabel[hudDiscovery='true'] {color:" + t["session_summary_find"] + ";font-weight:650;}"
+            "QFrame[hudFullBloomRewardRow='true'] {background:transparent;border:0;"
+            "border-bottom:1px solid " + t["reviewer_hud_divider"] + ";}"
             "QLabel[hudEyebrow='true'] {color:" + t["text_secondary"] + ";font-size:11px;font-weight:700;}"
             "QLabel#reviewerHudRewardArt {background:rgba(103,220,169,18);border:0;border-radius:12px;}"
             "QLabel#reviewerHudRewardArt[milestoneMedallion='true'] {"
@@ -1937,7 +1964,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         expanded_layout.setContentsMargins(0, 0, 0, 0)
         expanded_layout.setSpacing(0)
 
-        self._header = _ClickableFrame(self._expanded, self._open_garden)
+        self._header = QFrame(self._expanded)
         self._header.setObjectName("reviewerHudHeader")
         self._header.setProperty("semanticId", "reviewer.hud.header")
         self._header.setFixedHeight(44)
@@ -2014,6 +2041,20 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _set_decoration(self._coin_delta)
         coin_layout.addWidget(self._coin_delta)
         actions_layout.addWidget(self._coin_cluster)
+        self._open_garden_button = QToolButton(self._header_actions)
+        self._open_garden_button.setObjectName("reviewerHudOpenGardenButton")
+        self._open_garden_button.setProperty(
+            "semanticId", "reviewer.hud.open-garden"
+        )
+        self._open_garden_button.setFixedSize(32, 32)
+        self._open_garden_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._open_garden_button.setAccessibleName("Open garden")
+        self._open_garden_button.setToolTip("Open garden")
+        self._open_garden_button.setIcon(
+            self._icon("open-garden", 17, GARDEN_THEME["text_primary"])
+        )
+        self._open_garden_button.clicked.connect(self._open_garden)
+        actions_layout.addWidget(self._open_garden_button)
         self._collapse_button = QToolButton(self._header_actions)
         self._collapse_button.setObjectName("reviewerHudCollapseButton")
         self._collapse_button.setProperty("semanticId", "reviewer.hud.collapse")
@@ -2139,11 +2180,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._art_region = _ArtRegion(self._plant_card)
         self._art_region.setObjectName("reviewerHudArtRegion")
         self._art_region.setProperty("groundShadowVisible", True)
-        self._art_region.setFixedHeight(146)
+        self._art_region.setFixedHeight(132)
         art_layout = QVBoxLayout(self._art_region)
         art_layout.setContentsMargins(0, 2, 0, 2)
         self._plant_art = QLabel(self._art_region)
-        self._plant_art.setFixedSize(136, 136)
+        self._plant_art.setFixedSize(124, 124)
         self._plant_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         _set_decoration(self._plant_art)
         art_layout.addWidget(self._plant_art, 0, Qt.AlignmentFlag.AlignCenter)
@@ -2239,6 +2280,52 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._plant_message.hide()
         layout.addWidget(self._plant_message)
 
+        self._full_bloom_rewards = QFrame(self._plant_card)
+        self._full_bloom_rewards.setObjectName("reviewerHudFullBloomRewards")
+        self._full_bloom_rewards.setProperty(
+            "semanticId", "reviewer.hud.full-bloom-rewards"
+        )
+        self._full_bloom_rewards.setProperty("semanticEventKind", "full_bloom")
+        self._full_bloom_rewards.setProperty("semanticEventTone", "violet")
+        full_bloom_rewards_layout = QVBoxLayout(self._full_bloom_rewards)
+        full_bloom_rewards_layout.setContentsMargins(0, 3, 0, 3)
+        full_bloom_rewards_layout.setSpacing(0)
+        self._full_bloom_reward_rows: list[Any] = []
+        self._full_bloom_reward_values: list[Any] = []
+        for semantic_kind, icon_name, value_property in (
+            ("garden_coins", "coin", "hudCoin"),
+            ("standard_finds", "find", "hudFind"),
+            ("discoveries", "environment-discovery", "hudDiscovery"),
+        ):
+            reward_row = QFrame(self._full_bloom_rewards)
+            reward_row.setProperty("hudFullBloomRewardRow", True)
+            reward_row.setProperty("semanticEventUnit", semantic_kind)
+            reward_row_layout = QHBoxLayout(reward_row)
+            reward_row_layout.setContentsMargins(2, 5, 2, 5)
+            reward_row_layout.setSpacing(7)
+            reward_icon = QLabel(reward_row)
+            reward_icon.setFixedSize(17, 17)
+            reward_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_color = (
+                GARDEN_THEME["reviewer_hud_coin"]
+                if semantic_kind == "garden_coins"
+                else GARDEN_THEME["session_summary_find"]
+            )
+            reward_icon.setPixmap(self._icon_pixmap(icon_name, 16, icon_color))
+            _set_decoration(reward_icon)
+            reward_row_layout.addWidget(reward_icon)
+            reward_value = QLabel("", reward_row)
+            reward_value.setProperty(value_property, True)
+            apply_tabular_numerals(reward_value)
+            _set_decoration(reward_value)
+            reward_row_layout.addWidget(reward_value, 1)
+            reward_row.hide()
+            full_bloom_rewards_layout.addWidget(reward_row)
+            self._full_bloom_reward_rows.append(reward_row)
+            self._full_bloom_reward_values.append(reward_value)
+        self._full_bloom_rewards.hide()
+        layout.addWidget(self._full_bloom_rewards)
+
         self._growth_destination = _ClickableFrame(self._plant_card)
         self._growth_destination.setObjectName("reviewerHudGrowthDestination")
         self._growth_destination.setProperty(
@@ -2295,9 +2382,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._select_plant.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._select_plant.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._select_plant.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         self._select_plant.clicked.connect(self._select_another_plant)
         self._select_plant.hide()
-        layout.addWidget(self._select_plant, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self._select_plant)
 
         self._effects = QFrame(self._plant_card)
         self._effects.setObjectName("reviewerHudEffects")
@@ -2654,7 +2745,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._session_footer.setProperty("historyAvailable", False)
         self._session_footer.setProperty("historyExpanded", False)
         self._session_footer.setCursor(Qt.CursorShape.ArrowCursor)
-        self._session_footer.setFixedHeight(54)
+        self._session_footer.setFixedHeight(76)
         footer = QVBoxLayout(self._session_footer)
         footer.setContentsMargins(12, 7, 12, 7)
         footer.setSpacing(2)
@@ -2691,30 +2782,47 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._session_growth_separator = QLabel("·", self._session_footer)
         self._session_growth_separator.setProperty("hudMuted", True)
         _set_decoration(self._session_growth_separator)
-        metrics.addWidget(self._session_growth_separator, 0, 1)
+        self._session_growth_separator.hide()
         self._session_coins = QLabel("", self._session_footer)
         self._session_coins.setProperty("hudCoin", True)
         apply_tabular_numerals(self._session_coins)
         _set_decoration(self._session_coins)
-        metrics.addWidget(self._session_coins, 0, 2)
+        metrics.addWidget(self._session_coins, 0, 1)
         self._session_find_separator = QLabel("·", self._session_footer)
         self._session_find_separator.setProperty("hudMuted", True)
         _set_decoration(self._session_find_separator)
-        metrics.addWidget(self._session_find_separator, 0, 3)
+        self._session_find_separator.hide()
         self._session_finds = QLabel("", self._session_footer)
+        self._session_finds.setProperty("hudFind", True)
         apply_tabular_numerals(self._session_finds)
         _set_decoration(self._session_finds)
-        metrics.addWidget(self._session_finds, 0, 4)
+        metrics.addWidget(self._session_finds, 1, 0)
+        self._session_discoveries = QLabel("", self._session_footer)
+        self._session_discoveries.setProperty("hudDiscovery", True)
+        apply_tabular_numerals(self._session_discoveries)
+        _set_decoration(self._session_discoveries)
+        metrics.addWidget(self._session_discoveries, 1, 1)
         for metric in (
             self._session_growth,
             self._session_growth_separator,
             self._session_coins,
             self._session_find_separator,
             self._session_finds,
+            self._session_discoveries,
         ):
             metric.setProperty("hudSessionMetric", True)
-        metrics.setColumnStretch(5, 1)
+        metrics.setColumnStretch(0, 1)
+        metrics.setColumnStretch(1, 1)
         footer.addLayout(metrics)
+        self._session_inclusion = QLabel(
+            "Includes the Full Bloom rewards above",
+            self._session_footer,
+        )
+        self._session_inclusion.setProperty("hudMuted", True)
+        self._session_inclusion.setWordWrap(True)
+        _set_decoration(self._session_inclusion)
+        self._session_inclusion.hide()
+        footer.addWidget(self._session_inclusion)
         self._session_footer.hide()
         surface.addWidget(self._session_footer)
         self._reward_dock.hide()
@@ -3654,9 +3762,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
     ) -> None:
         self._plant_layout.setContentsMargins(12, 11, 12, 11)
         self._plant_layout.setSpacing(6)
-        self._art_region.setFixedHeight(146)
+        self._art_region.setFixedHeight(132)
         self._art_region.setProperty("fullBloomSettled", False)
-        self._plant_art.setFixedSize(136, 136)
+        self._plant_art.setFixedSize(124, 124)
+        self._full_bloom_rewards.hide()
+        self._session_inclusion.hide()
+        self._plant_card.setProperty("fullBloomConsolidated", False)
         self._plant_card.setProperty("activePlantId", nurture.plant_id)
         self._plant_card.setProperty("environmentTone", nurture.environment_tone)
         self._plant_card.setProperty("fullyGrown", nurture.fully_grown)
@@ -4151,6 +4262,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             str(value or "")
             for value in getattr(nurture, "visible_effect_art_refs", ())
         )
+        presentations = tuple(
+            getattr(nurture, "visible_effect_presentations", ()) or ()
+        )
         for index, label in enumerate(self._effect_labels):
             text = visible[index] if index < len(visible) else ""
             label.set_full_text(text)
@@ -4179,6 +4293,26 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             self._effect_icons[index].setAccessibleName(
                 f"{identity.title()} artwork" if uses_item_art else f"{identity.title()} icon"
             )
+            presentation = (
+                presentations[index] if index < len(presentations) else None
+            )
+            chip = self._effect_chips[index]
+            if presentation is not None:
+                chip.setProperty("semanticEventKind", presentation.kind.value)
+                chip.setProperty("semanticEventTone", presentation.tone)
+                chip.setProperty("semanticEventAmount", presentation.amount)
+                chip.setProperty("semanticEventUnit", presentation.unit.value)
+                chip.setProperty(
+                    "semanticEventSource", presentation.source_label
+                )
+                chip.setProperty(
+                    "semanticEventArtwork", presentation.artwork_reference
+                )
+                chip.setProperty("semanticEventIds", presentation.event_ids)
+            else:
+                chip.setProperty("semanticEventKind", "")
+                chip.setProperty("semanticEventAmount", None)
+                chip.setProperty("semanticEventUnit", "")
             self._effect_chips[index].setVisible(bool(text))
         overflow = int(nurture.effect_overflow_count)
         overflow_text = _effect_overflow_label(overflow)
@@ -4568,6 +4702,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._species.set_full_text(plant_class)
         self._plant_card.setProperty("plantClassLabel", plant_class)
         self._plant_card.setProperty("fullBloomSettled", bool(settled))
+        self._plant_card.setProperty("fullBloomConsolidated", True)
+        self._plant_card.setProperty(
+            "fullBloomBundleId",
+            str(getattr(bundle, "bundle_id", "") or ""),
+        )
+        self._plant_card.setProperty("semanticEventKind", "full_bloom")
+        self._plant_card.setProperty("semanticEventTone", "violet")
         self._art_region.setProperty("fullBloomSettled", bool(settled))
         self._plant_layout.setContentsMargins(
             12,
@@ -4594,6 +4735,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             or FULL_BLOOM_GROWTH_ROUTE_COPY
         )
         self._plant_message.show()
+        self._sync_full_bloom_reward_summary(bundle)
         if settled:
             self._sync_full_bloom_destination(projected)
         else:
@@ -4620,12 +4762,77 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         except Exception:
             pass
 
+    def _sync_full_bloom_reward_summary(self, bundle: Any) -> None:
+        """Render the committed bundle once inside the Full Bloom plant card."""
+
+        events = committed_reward_event_rows(bundle)
+        coin_total = int(event_amount_total(
+            events,
+            kind=EventPresentationKind.FULL_BLOOM,
+            unit=EventPresentationUnit.GARDEN_COINS,
+        ))
+        find_total = int(event_amount_total(
+            events,
+            kind=EventPresentationKind.STANDARD_FIND,
+            unit=EventPresentationUnit.STANDARD_FINDS,
+        ))
+        discovery_total = int(event_amount_total(
+            events,
+            kind=EventPresentationKind.DISCOVERY,
+            unit=EventPresentationUnit.DISCOVERIES,
+        ))
+        values = (
+            format_garden_coins(coin_total, signed=True) if coin_total else "",
+            format_quantity(find_total, "Standard Find") if find_total else "",
+            (
+                format_quantity(discovery_total, "discovery", "discoveries")
+                if discovery_total
+                else ""
+            ),
+        )
+        for row, label, text in zip(
+            self._full_bloom_reward_rows,
+            self._full_bloom_reward_values,
+            values,
+        ):
+            label.setText(text)
+            row.setVisible(bool(text))
+        has_rewards = any(values)
+        self._full_bloom_rewards.setVisible(has_rewards)
+        self._full_bloom_rewards.setProperty("semanticEventAmount", coin_total)
+        self._full_bloom_rewards.setProperty(
+            "semanticEventUnit", EventPresentationUnit.GARDEN_COINS.value
+        )
+        self._full_bloom_rewards.setProperty(
+            "semanticEventIncludedInTotal",
+            next((
+                event.included_in_total
+                for event in events
+                if event.kind is EventPresentationKind.FULL_BLOOM
+            ), None),
+        )
+        self._full_bloom_rewards.setProperty(
+            "semanticEventIds",
+            tuple(
+                event_id
+                for event in events
+                for event_id in event.event_ids
+            ),
+        )
+        self._session_inclusion.setVisible(
+            has_rewards and bool(self._session_has_results)
+        )
+        self._sync_session_metric_wrap()
+
     def _apply_projected_full_bloom_settled(self, nurture: Any) -> None:
         """Render a durable Full Bloom card without relying on reward state."""
 
         self._plant_layout.setContentsMargins(12, 6, 12, 6)
         self._plant_layout.setSpacing(4)
         self._plant_card.setProperty("fullBloomSettled", True)
+        self._plant_card.setProperty("fullBloomConsolidated", False)
+        self._plant_card.setProperty("semanticEventKind", "full_bloom")
+        self._plant_card.setProperty("semanticEventTone", "violet")
         self._art_region.setProperty("fullBloomSettled", True)
         self._stage.set_full_text("Full Bloom")
         self._stage.setProperty("fullBloomAccent", True)
@@ -4688,8 +4895,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._plant_card.setProperty("celebration", "")
         self._art_region.setProperty("fullBloomLightRays", False)
         self._settle_plant_motion()
-        self._art_region.setFixedHeight(146)
-        self._plant_art.setFixedSize(136, 136)
+        self._art_region.setFixedHeight(132)
+        self._plant_art.setFixedSize(124, 124)
         self._art_region.setProperty("artPulse", False)
         self._art_region.setProperty("fullBloomSettled", False)
         _repolish(self._art_region)
@@ -4758,21 +4965,26 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             growth_units += _integer(_value(stored, "added_units", default=0))
         coins = _session_coin_count(snapshot)
         finds = _session_find_count(snapshot)
+        discoveries = _session_discovery_count(snapshot)
         previous = self._session_totals
-        current = (growth_units, coins, finds)
+        current = (growth_units, coins, finds, discoveries)
         self._session_totals = current
         self._session_growth.setVisible(growth_units > 0)
         self._session_coins.setVisible(coins > 0)
         self._session_finds.setVisible(finds > 0)
-        self._session_growth_separator.setVisible(growth_units > 0 and coins > 0)
-        self._session_find_separator.setVisible(
-            finds > 0 and (growth_units > 0 or coins > 0)
-        )
+        self._session_discoveries.setVisible(discoveries > 0)
+        self._session_growth_separator.hide()
+        self._session_find_separator.hide()
         self._session_has_results = any(current)
         self._session_footer.setVisible(self._session_has_results)
         self._session_footer.setProperty("sessionGrowthUnits", growth_units)
         self._session_footer.setProperty("sessionCoins", coins)
         self._session_footer.setProperty("sessionFinds", finds)
+        self._session_footer.setProperty("sessionDiscoveries", discoveries)
+        self._session_inclusion.setVisible(
+            bool(self._full_bloom_rewards.isVisible())
+            and self._session_has_results
+        )
         self.setProperty("hudSessionVisible", self._session_has_results)
         changed_metrics = _session_metric_increases(previous, current)
         if self._animations_enabled and any(changed_metrics):
@@ -4789,90 +5001,50 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._sync_reward_dock_visibility()
         self.reposition()
 
-    def _session_metric_widgets(self) -> tuple[Any, Any, Any]:
+    def _session_metric_widgets(self) -> tuple[Any, Any, Any, Any]:
         return (
             self._session_growth,
             self._session_coins,
             self._session_finds,
+            self._session_discoveries,
         )
 
     def _sync_session_metric_wrap(self) -> None:
-        """Wrap only between complete footer metrics when values grow long."""
+        """Lay out complete session metrics as a compact divided grid."""
 
         layout = getattr(self, "_session_metrics_layout", None)
         if layout is None:
             return
         was_wrapped = bool(self._session_footer.property("metricsWrapped"))
-        separators = (
-            self._session_growth_separator,
-            self._session_find_separator,
+        visible_metrics = tuple(
+            widget
+            for widget in self._session_metric_widgets()
+            if widget.isVisible()
         )
-        metric_groups: list[tuple[Any, Any | None]] = []
-        for widget, preferred_separator in (
-            (self._session_growth, None),
-            (self._session_coins, self._session_growth_separator),
-            (self._session_finds, self._session_find_separator),
-        ):
-            if not widget.isVisible():
-                continue
-            metric_groups.append((
-                widget,
-                preferred_separator if metric_groups else None,
-            ))
-        for widget in (*self._session_metric_widgets(), *separators):
+        for widget in self._session_metric_widgets():
             layout.removeWidget(widget)
-            if widget in separators:
-                widget.hide()
-        for column in range(7):
-            layout.setColumnStretch(column, 0)
-
-        available = int(self._session_footer.contentsRect().width()) - 24
-        if available < 100:
-            available = max(100, int(self.width()) - 46)
-        row = 0
-        column = 0
-        occupied = 0
-        separator_width = max(
-            separator.sizeHint().width() for separator in separators
-        )
-        metric_spacing = max(0, int(layout.horizontalSpacing()))
-        for widget, preferred_separator in metric_groups:
-            metric_width = max(
-                widget.sizeHint().width(),
-                widget.fontMetrics().horizontalAdvance(widget.text()),
-            )
-            candidate_width = session_footer_metric_row_width(
-                (occupied, metric_width) if occupied else (metric_width,),
-                separator_width=separator_width,
-                spacing=metric_spacing,
-            )
-            if occupied and candidate_width > available:
-                row += 1
-                column = 0
-                occupied = 0
-                candidate_width = metric_width
-            if occupied:
-                separator = preferred_separator or self._session_growth_separator
-                separator.show()
-                layout.addWidget(separator, row, column)
-                column += 1
-            layout.addWidget(widget, row, column)
-            column += 1
-            occupied = candidate_width
-        layout.setColumnStretch(column, 1)
-        wrapped = row > 0
-        self._session_footer.setFixedHeight(68 if wrapped else 54)
+        self._session_growth_separator.hide()
+        self._session_find_separator.hide()
+        for index, widget in enumerate(visible_metrics):
+            layout.addWidget(widget, index // 2, index % 2)
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 1)
+        row_count = (len(visible_metrics) + 1) // 2
+        wrapped = row_count > 1
+        inclusion_visible = bool(self._session_inclusion.isVisible())
+        footer_height = 54 if row_count <= 1 else 76
+        if inclusion_visible:
+            footer_height += 18
+        self._session_footer.setFixedHeight(footer_height)
         self._session_footer.setProperty("metricsWrapped", wrapped)
-        self._session_footer.setProperty(
-            "metricRowCount", row + 1 if metric_groups else 0
-        )
+        self._session_footer.setProperty("metricRowCount", row_count)
         _repolish(self._session_footer)
         if wrapped != was_wrapped:
             self._schedule_layout_reposition()
 
     def _set_session_metric_values(
         self,
-        values: tuple[int, int, int],
+        values: tuple[int, int, int, int],
     ) -> None:
         normalized = tuple(_integer(value) for value in values)
         for index, widget in enumerate(self._session_metric_widgets()):
@@ -4891,10 +5063,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def _highlight_session_changes(
         self,
-        displayed_previous: tuple[int, int, int],
-        current: tuple[int, int, int],
+        displayed_previous: tuple[int, int, int, int],
+        current: tuple[int, int, int, int],
         *,
-        changed_metrics: tuple[bool, bool, bool],
+        changed_metrics: tuple[bool, bool, bool, bool],
     ) -> None:
         self._session_feedback_revision += 1
         revision = self._session_feedback_revision
@@ -4928,7 +5100,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 )
                 if changed_metrics[index]
                 else current[index]
-                for index in range(3)
+                for index in range(4)
             )
             self._set_session_metric_values(displayed)
 
@@ -4952,8 +5124,17 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             _repolish(widget)
 
     def _sync_reward_dock_visibility(self) -> None:
+        consolidated_full_bloom = bool(
+            self._current_reward is not None
+            and _hero_kind(self._current_reward).replace("-", "_") == "full_bloom"
+            and bool(self._plant_card.property("fullBloomConsolidated"))
+        )
+        if consolidated_full_bloom:
+            self._reward_reveal.hide()
         reveal_visible = bool(
-            self._current_reward is not None and not self._reward_reveal.isHidden()
+            self._current_reward is not None
+            and not consolidated_full_bloom
+            and not self._reward_reveal.isHidden()
         )
         history_visible = bool(not self._reward_history_panel.isHidden())
         scroll_visible = reveal_visible or history_visible

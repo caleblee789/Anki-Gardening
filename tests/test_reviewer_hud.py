@@ -280,8 +280,8 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     assert nurture.species_name == "Bonsai"
     assert nurture.next_answer_value == "+13.5 Growth"
     assert nurture.next_card_line == "Next card: +13.5 Growth"
-    assert nurture.checkpoint_line == "2,230 Growth to next checkpoint"
-    assert nurture.estimate_line == "~166 cards to the next checkpoint"
+    assert nurture.checkpoint_line == "2,230 Growth to checkpoint"
+    assert nurture.estimate_line == "About 166 cards"
     assert nurture.checkpoint_growth_remaining == 2_230
     assert nurture.estimated_cards_to_checkpoint == 166
     assert nurture.next_checkpoint_percent == 25
@@ -634,13 +634,19 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
         "+2 Garden Coins",
         "1 Standard Find",
     )
+    assert _session_metric_labels(1_800, 2, 1, 2) == (
+        "+18 Growth",
+        "+2 Garden Coins",
+        "1 Standard Find",
+        "2 discoveries",
+    )
     # A rapid answer may arrive while the prior Coin count-up is still showing
     # an intermediate value. Change detection must use the last committed
     # totals so the unchanged Coin category settles without animating again.
     assert _session_metric_increases(
-        (1_800, 2, 0),
-        (2_000, 2, 0),
-    ) == (True, False, False)
+        (1_800, 2, 0, 1),
+        (2_000, 2, 0, 2),
+    ) == (True, False, False, True)
     assert _session_coin_count(SimpleNamespace(
         footer_coin_count=0,
         garden_coins_earned=23,
@@ -1593,6 +1599,7 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
         "self._session_growth",
         "self._session_coins",
         "self._session_finds",
+        "self._session_discoveries",
     ):
         assert f"apply_tabular_numerals({widget_name})" in WIDGET_SOURCE
 
@@ -1690,4 +1697,6 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
     assert "widget.setMinimumWidth" in session_feedback
     assert "changed = changed_metrics[index]" in session_feedback
     assert "changed_metrics=changed_metrics" in WIDGET_SOURCE
-    assert "self._session_footer.setFixedHeight(54)" in WIDGET_SOURCE
+    assert "self._session_footer.setFixedHeight(76)" in WIDGET_SOURCE
+    assert 'setProperty("sessionDiscoveries", discoveries)' in WIDGET_SOURCE
+    assert "self._session_growth_separator.hide()" in WIDGET_SOURCE

@@ -213,6 +213,13 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
         assert class_name in classes
     assert "_growth_projects_panel" not in source
     assert 'setPlaceholderText("Search plants")' in source
+    plant_pane_source = ast.get_source_segment(
+        source,
+        classes["PlantCollectionPane"],
+    ) or ""
+    assert "wide_columns=4" in plant_pane_source
+    assert "minimum_item_width=160" in plant_pane_source
+    assert "minimum_card_height=168" in plant_pane_source
 
     dashboard = classes["GardenDashboard"]
     refresh = next(
@@ -249,8 +256,9 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
     ) or ""
     assert 'CollectionTab.PLANTS, "Plants"' in subtabs_source
     assert 'CollectionTab.GARDEN_LANDMARKS, "Garden Landmarks"' in subtabs_source
-    assert 'asset_id="ui_stored_growth"' in subtabs_source
-    assert 'asset_id="ui_garden_coin"' in subtabs_source
+    assert "Garden Landmarks claimed" in subtabs_source
+    assert 'setPlaceholderText("Search landmarks")' in source
+    assert "class LandmarkFilterControls" in source
 
     landmarks_source = ast.get_source_segment(
         source, classes["GardenLandmarksPane"]
@@ -266,11 +274,11 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
     assert "QScrollArea(" not in overview_source
     assert "QScrollArea(" not in tier_row_source
     assert "size=88" in overview_source
-    assert "setFixedHeight(40)" in overview_source
+    assert "setFixedHeight(36)" in overview_source
     assert "setMaximumWidth(145)" in overview_source
     assert "size=58" in tier_row_source
-    assert "setMinimumHeight(86)" in tier_row_source
-    assert "setFixedHeight(38)" in tier_row_source
+    assert "setMinimumHeight(168)" in tier_row_source
+    assert "setFixedHeight(36)" in tier_row_source
     assert "setMaximumWidth(140)" in tier_row_source
     assert "tier.artwork_id" in tier_row_source
     assert 'asset_id="ui_garden_coin"' in tier_row_source
@@ -501,11 +509,23 @@ def test_progress_layout_helpers_use_real_row_and_transaction_geometry() -> None
         selected_filter="all",
         show_all=False,
     )
-    assert not compact(
+    assert compact(
         total_count=3,
         visible_count=2,
+        selected_filter="earned",
+        show_all=False,
+    )
+    assert compact(
+        total_count=8,
+        visible_count=4,
         selected_filter="all",
         show_all=False,
+    )
+    assert not compact(
+        total_count=8,
+        visible_count=8,
+        selected_filter="all",
+        show_all=True,
     )
 
 
@@ -550,3 +570,48 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     )
     plant.fertilizer.expires_at_ms = 999_000
     assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"
+
+
+def test_contact_sheet_three_uses_shared_release_components_and_copy() -> None:
+    source = DASHBOARD.read_text(encoding="utf-8")
+
+    assert "class StageTile" in source
+    assert "class RewardChip" in source
+    assert source.count("stage_card = StageTile(") == 2
+    assert "stages = PlantStageStrip(" in source
+    assert 'f"{safe_amount:,} {visible_name}"' in source
+    assert '("streak", "Anki Streak")' in source
+    assert 'content_title = QLabel("Garden Coin activity")' in source
+    assert '("Date", "Source", "Change", "Balance after")' in source
+    assert 'button.setFixedHeight(36)' in source
+    assert 'QPushButton { font-size:13px; }' in source
+    assert "min-height:32px; max-height:32px" in source
+    assert "min-height:36px; max-height:36px" in source
+    assert "min-height:24px; max-height:24px" in source
+    assert "min-height:8px; max-height:8px" in source
+    assert '"No plants match these filters."' in source
+    assert '"No Garden Landmarks match these filters."' in source
+    assert "collection items discovered" in source
+    assert 'f"Nursery: {cost_label(species_price)}"' in source
+    assert '[("Nurture", "nurture"), ("More", "more")]' in source
+    assert 'view_action = menu.addAction("View plant")' in source
+    assert "Entries" not in (
+        source[
+            source.index("def _refresh_collection_list_content"):
+            source.index("def _set_collection_filter")
+        ]
+    )
+
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    dashboard = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "GardenDashboard"
+    )
+    plant_action = next(
+        node for node in dashboard.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_collection_plant_action"
+    )
+    plant_action_source = ast.get_source_segment(source, plant_action) or ""
+    assert "self.engine.set_active_plant(plant_id)" in plant_action_source
+    assert "daily_care" not in plant_action_source.casefold()
