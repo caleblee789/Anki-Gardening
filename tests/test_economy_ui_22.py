@@ -1,9 +1,5 @@
-import ast
-from pathlib import Path
 from types import SimpleNamespace
 
-from ankigarden.balance_catalog import COSMETICS, COSMETIC_BY_ID
-from ankigarden.environment import CatalogItem
 from ankigarden.models.state import CardEffectBatch, GardenState
 from ankigarden.ui.economy_presenters import (
     bed_unlock_rows,
@@ -38,12 +34,12 @@ def test_fertilizer_status_is_card_counted_fifo_and_time_invariant() -> None:
     late = fertilizer_status(engine, plant, now=9_999_999_999)
 
     assert early == late
-    assert early.duration == "97 cards left"
+    assert early.duration == "97 cards remaining"
     assert early.cards_remaining == 97
     assert early.total_cards == 200
-    assert early.queued_doses == 1
+    assert early.queued_cards == 200
     assert early.seconds_remaining == 0
-    assert "queued dose" in early.accessible_text
+    assert "cards queued after this dose" in early.accessible_text
 
 
 def test_reviewer_effect_rows_use_cards_and_garden_rhythm() -> None:
@@ -63,8 +59,11 @@ def test_reviewer_effect_rows_use_cards_and_garden_rhythm() -> None:
 
     rows = _active_effect_rows(engine, plant, award, now_ms=1)
 
-    assert ("Fertilizer · 23 cards", "fertilizer_basic") in rows
-    assert ("Garden Rhythm · +0.2 growth", "") in rows
+    assert (
+        "Basic Fertilizer · 23 cards remaining",
+        "fertilizer_basic",
+    ) in rows
+    assert ("Streak bonus · +0.2 Growth", "") in rows
     assert not any(" h" in label or " min" in label for label, _asset in rows)
 
 
@@ -79,8 +78,8 @@ def test_session_effect_copy_never_uses_wall_clock() -> None:
         expires_at_epoch_seconds=99_999_999_999,
     )
 
-    assert session_effect_remaining_text(effect, now_epoch_seconds=0) == "1 card left"
-    assert session_effect_remaining_text(effect, now_epoch_seconds=99_999_999_999) == "1 card left"
+    assert session_effect_remaining_text(effect, now_epoch_seconds=0) == "1 card remaining"
+    assert session_effect_remaining_text(effect, now_epoch_seconds=99_999_999_999) == "1 card remaining"
 
 
 def test_beds_are_presented_as_earned_milestones() -> None:
@@ -109,181 +108,6 @@ def test_cosmetic_projection_keeps_display_separate_from_bonus() -> None:
     assert rows["garden_bench"].displayed
     assert rows["garden_bench"].price == 150
     assert state.loadout.active_garden_bonus_id == "watering_station"
-
-
-def _compiled_dashboard_method(
-    method_name: str,
-    globals_map: dict[str, object],
-):
-    source = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    function = next(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == method_name
-    )
-    function.decorator_list = []
-    module = ast.Module(body=[function], type_ignores=[])
-    ast.fix_missing_locations(module)
-    namespace = dict(globals_map)
-    exec(compile(module, "<dashboard-method>", "exec"), namespace)
-    return namespace[method_name]
-
-
-def test_collection_appearance_picker_projects_and_owns_cosmetics() -> None:
-    project = _compiled_dashboard_method(
-        "_cosmetic_appearance_items",
-        {"CatalogItem": CatalogItem, "COSMETICS": COSMETICS},
-    )
-    owns = _compiled_dashboard_method(
-        "_owns_appearance_item",
-        {"CatalogItem": CatalogItem, "COSMETIC_BY_ID": COSMETIC_BY_ID},
-    )
-    items = {item.item_id: item for item in project()}
-    state = GardenState()
-    state.inventory["cosmetics"] = ["garden_bench"]
-    dialog = SimpleNamespace(
-        storage=SimpleNamespace(state=state),
-        engine=SimpleNamespace(owns_environment=lambda _kind, _item_id: False),
-    )
-
-    assert set(items) == {str(item.cosmetic_id) for item in COSMETICS}
-    assert items["garden_bench"].name == "Garden Bench"
-    assert items["garden_bench"].kind == "garden_feature"
-    assert owns(dialog, items["garden_bench"]) is True
-    assert owns(dialog, items["birdhouse"]) is False
-
-
-def test_collection_appearance_rebuild_and_preview_use_cosmetic_authority() -> None:
-    source = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    methods = {
-        node.name: node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef)
-    }
-    rebuild_calls = {
-        node.func.attr
-        for node in ast.walk(methods["_rebuild_options"])
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-    }
-    preview_names = {
-        node.id
-        for node in ast.walk(methods["_refresh_preview"])
-        if isinstance(node, ast.Name)
-    }
-
-    assert "_cosmetic_appearance_items" in rebuild_calls
-    assert "_owns_appearance_item" in rebuild_calls
-    assert "COSMETIC_BY_ID" in preview_names
-
-
-def test_collection_appearance_apply_is_one_engine_transaction() -> None:
-    source = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    apply_method = next(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "_apply_draft"
-    )
-    engine_calls = [
-        node.func.attr
-        for node in ast.walk(apply_method)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Attribute)
-        and isinstance(node.func.value.value, ast.Name)
-        and node.func.value.value.id == "self"
-        and node.func.value.attr == "engine"
-    ]
-
-    assert engine_calls == ["apply_garden_appearance"]
-
-
-def _appearance_apply_test_dialog(engine: object) -> tuple[SimpleNamespace, list[str]]:
-    messages: list[str] = []
-    failure_copy = _compiled_dashboard_method(
-        "_appearance_apply_failure_copy",
-        {},
-    )
-
-    class PreviewFeedback:
-        def setFocus(self) -> None:
-            return None
-
-        def accessibleDescription(self) -> str:
-            return messages[-1]
-
-    dialog = SimpleNamespace(
-        _loadout_save_pending=False,
-        _loadout_failure=False,
-        _draft_weather="wind_chime",
-        _draft_scenery="verdant_twilight",
-        _draft_visibility={"garden_feature": True, "scenery": True},
-        engine=engine,
-        preview_feedback=PreviewFeedback(),
-        accessibility_announcer=SimpleNamespace(
-            announce=lambda *_args, **_kwargs: None,
-        ),
-        set_dialog_in_flight=lambda _enabled: None,
-        setProperty=lambda _name, _value: None,
-        _sync_dirty_state=lambda: None,
-        _show_preview_feedback=lambda message, **_kwargs: messages.append(message),
-        _appearance_apply_failure_copy=failure_copy,
-    )
-    return dialog, messages
-
-
-def test_collection_appearance_apply_shows_engine_reason_and_rollback_outcome() -> None:
-    apply_draft = _compiled_dashboard_method(
-        "_apply_draft",
-        {
-            "AnnouncementPriority": SimpleNamespace(ASSERTIVE="assertive"),
-            "FeedbackTone": SimpleNamespace(ERROR="error"),
-            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
-        },
-    )
-    reason = "That Display Decoration is not owned."
-    dialog, messages = _appearance_apply_test_dialog(
-        SimpleNamespace(
-            apply_garden_appearance=lambda *_args, **_kwargs: (False, reason),
-        )
-    )
-
-    apply_draft(dialog)
-
-    assert messages == [
-        f"{reason} Your current Garden appearance is unchanged."
-    ]
-    assert dialog._loadout_failure is True
-
-
-def test_collection_appearance_apply_exception_uses_safe_generic_error() -> None:
-    apply_draft = _compiled_dashboard_method(
-        "_apply_draft",
-        {
-            "AnnouncementPriority": SimpleNamespace(ASSERTIVE="assertive"),
-            "FeedbackTone": SimpleNamespace(ERROR="error"),
-            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
-        },
-    )
-
-    def raise_internal_error(*_args: object, **_kwargs: object) -> object:
-        raise RuntimeError("private persistence detail")
-
-    dialog, messages = _appearance_apply_test_dialog(
-        SimpleNamespace(apply_garden_appearance=raise_internal_error)
-    )
-
-    apply_draft(dialog)
-
-    assert messages == [
-        "Could not apply changes. "
-        "Your current Garden appearance is unchanged."
-    ]
-    assert "private persistence detail" not in messages[0]
-    assert dialog._loadout_failure is True
 
 
 def test_endgame_presenters_consume_engine_catalog_summaries() -> None:

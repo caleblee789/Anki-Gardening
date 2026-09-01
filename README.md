@@ -328,7 +328,7 @@ are a frozen v26 baseline only. They preserve the 34-surface topology and
 historical review record, but they do not certify the integrated 2.2.0
 package. The fresh evidence is recorded in the
 [final 2.2.0 UI audit](docs/ui/final-ui-audit-2.2.0.md) and indexed by the
-[155312 five-page contact-sheet set](build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json);
+[002050 five-page contact-sheet set](build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260901-002050/contact-sheet-set.json);
 human, platform, accessibility, and mixed-DPI gates remain separate.
 
 ## Diagnostics

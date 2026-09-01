@@ -167,7 +167,7 @@ def test_today_page_copy_has_no_goal_or_find_drought_language() -> None:
         assert forbidden not in literals
     assert "at start" in literals
     assert "remaining today" in literals
-    assert "anki cutoff" in literals
+    assert "daily reset" in literals
     assert "queued for tomorrow" in literals
 
 

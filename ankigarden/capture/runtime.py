@@ -782,7 +782,6 @@ CAPTURE_RENDERER_SHARED_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "__init__",
         "_install_application_filter",
         "showEvent",
-        "hideEvent",
         "prepare_to_show",
         "_derived_ux_state",
         "_recommended_window_size",
@@ -965,7 +964,9 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
     ),
     "collection": (
         "GardenDashboard._open_collection",
+        "GardenProgressDialog.open_collection",
         "GardenDashboard.open_collection",
+        "GardenDashboard.open_garden_landmarks",
         "GardenDashboard.open_plant_selection",
         "GardenDashboard._release_collection_activation",
         "GardenDashboard._open_loadout_detail",
@@ -980,10 +981,9 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._toggle_collection_sort",
         "GardenDashboard._clear_collection_filters",
         "GardenDashboard._collection_appearance_summary",
-        "GardenDashboard._growth_project_state_counts",
-        "GardenDashboard._growth_project_track",
-        "GardenDashboard._growth_project_progress_track",
-        "GardenDashboard._growth_projects_panel",
+        "GardenDashboard._landmark_project_widgets",
+        "GardenDashboard._refresh_garden_landmarks_content",
+        "GardenDashboard._use_landmark_appearance",
         "GardenDashboard._begin_growth_project_action",
         "GardenDashboard._cancel_growth_project_action",
         "GardenDashboard._confirm_growth_project_action",
@@ -1037,10 +1037,6 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._on_toast_geometry_changed",
         "GardenDashboard._plant_popover_motion_enabled",
         "GardenDashboard._refresh_selected_plant_card",
-        "GardenDashboard._booster_is_active",
-        "GardenDashboard._has_visible_timed_plant_status",
-        "GardenDashboard._sync_fertilizer_timer",
-        "GardenDashboard._refresh_timed_plant_statuses",
         "GardenDashboard._fertilizer_text",
         "GardenDashboard._nurture_plant",
         "GardenDashboard._undo_nurture",
@@ -1161,9 +1157,6 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
 # label set is not a subset of its callee must be declared here. Direct calls
 # outside this list close recursively.
 CAPTURE_RENDERER_HIDDEN_CALL_EXCEPTIONS: dict[str, tuple[str, ...]] = {
-    "GardenDashboard.__init__": (
-        "GardenDashboard._refresh_timed_plant_statuses",
-    ),
     "GardenDashboard._build_ui": (
         "GardenDashboard._activate_onboarding_action",
         "GardenDashboard._nurture_plant",
@@ -4212,9 +4205,7 @@ def nursery_bed_incomplete_state_issue_codes(
         "unlock_policy": "automatic_achievement",
         "resulting_capacity": 3,
         "capacity_copy": (
-            "Unlocks automatically through Garden Progress.\n"
-            "Unlocks when your first plant reaches Mature.\n"
-            "Garden capacity after unlock: 3 plants"
+            "Automatically unlocked when one plant reaches the Mature stage."
         ),
         "price_present": False,
         "action_present": False,
@@ -4224,10 +4215,7 @@ def nursery_bed_incomplete_state_issue_codes(
     issues: list[str] = []
     for key, expected_value in expected.items():
         actual = evidence.get(key)
-        if key == "capacity_copy":
-            if expected_value not in str(actual or ""):
-                issues.append(f"nursery-bed-incomplete:{key}")
-        elif actual != expected_value:
+        if actual != expected_value:
             issues.append(f"nursery-bed-incomplete:{key}")
     return tuple(issues)
 
@@ -9388,9 +9376,17 @@ class _UiFaceCaptureRunner:
                 # action grid independent of the shared button variant token.
                 size_passed = bool(actual_height == 36 and actual_width > 0)
             elif icon_only:
+                dashboard_header_icon = bool(
+                    button.property("dashboardSettingsButton")
+                )
+                expected_icon_visual_size = (
+                    36 if dashboard_header_icon else 32
+                )
                 size_passed = bool(
-                    visual_size == 32
-                    and 32 <= actual_height <= 38
+                    visual_size == expected_icon_visual_size
+                    and expected_icon_visual_size
+                    <= actual_height
+                    <= expected_icon_visual_size + 6
                     and actual_width == actual_height
                     and 14 <= icon_size[0] <= 18
                     and 14 <= icon_size[1] <= 18
@@ -15467,6 +15463,12 @@ class _UiFaceCaptureRunner:
             )
             checkpoint_sequence: list[str] = []
             checkpoint_snapshots: dict[str, Any] = {}
+            checkpoint_expected_sequence = [
+                "marker-reached",
+                "reward-revealed",
+                "excess-fill-complete",
+                "header-increment-settled",
+            ]
             hud.clear_reward()
             hud._reward_queue.clear()
             update_session({
@@ -15552,19 +15554,13 @@ class _UiFaceCaptureRunner:
                 deferred = dict(checkpoint_snapshots.get("deferred", {}) or {})
                 marker = dict(checkpoint_snapshots.get("marker", {}) or {})
                 reveal = dict(checkpoint_snapshots.get("reveal", {}) or {})
-                expected_sequence = [
-                    "marker-reached",
-                    "reward-revealed",
-                    "excess-fill-complete",
-                    "header-increment-settled",
-                ]
                 post_commit = {
                     "presented": checkpoint_presented,
                     "deferred_before_marker": deferred,
                     "marker_snapshot": marker,
                     "reveal_snapshot": reveal,
                     "sequence": list(checkpoint_sequence),
-                    "expected_sequence": expected_sequence,
+                    "expected_sequence": list(checkpoint_expected_sequence),
                     "eyebrow": str(hud._reward_eyebrow.text()),
                     "hero_title": " ".join(
                         str(hud._reward_title.text()).split()
@@ -15598,7 +15594,7 @@ class _UiFaceCaptureRunner:
                     and post_commit["marker_before_reveal"]
                     and post_commit["reward_before_excess_fill"]
                     and post_commit["header_increment_deferred"]
-                    and post_commit["sequence"] == expected_sequence
+                    and post_commit["sequence"] == checkpoint_expected_sequence
                     and post_commit["eyebrow"] == "CHECKPOINT REACHED"
                     and post_commit["hero_title"] == "25% checkpoint"
                     and post_commit["coin_copy"] == "+2 Garden Coins"
@@ -16375,11 +16371,56 @@ class _UiFaceCaptureRunner:
                     resilience_records,
                 )
 
-            # One marker takes 300 ms to fill and 300 ms to pulse.  Deferred
-            # session totals then run their 600 ms count-up after the marker
-            # releases, so sample the fully settled checkpoint composition
-            # after that complete sequence (with a small native-event margin).
-            QTimer.singleShot(1_350, after_checkpoint)
+            def checkpoint_capture_settled() -> bool:
+                process_events()
+                return bool(
+                    not track.checkpoint_crossing_active
+                    and getattr(track, "_animation", None) is None
+                    and getattr(track, "_pulse_animation", None) is None
+                    and getattr(hud, "_coin_animation", None) is None
+                    and getattr(hud, "_session_count_animation", None) is None
+                    and len(checkpoint_sequence)
+                    >= len(checkpoint_expected_sequence)
+                )
+
+            def checkpoint_settle_observation() -> dict[str, Any]:
+                return {
+                    "checkpoint_crossing_active": bool(
+                        track.checkpoint_crossing_active
+                    ),
+                    "progress_animation_active": bool(
+                        getattr(track, "_animation", None) is not None
+                    ),
+                    "pulse_animation_active": bool(
+                        getattr(track, "_pulse_animation", None) is not None
+                    ),
+                    "coin_animation_active": bool(
+                        getattr(hud, "_coin_animation", None) is not None
+                    ),
+                    "session_animation_active": bool(
+                        getattr(hud, "_session_count_animation", None) is not None
+                    ),
+                    "sequence": list(checkpoint_sequence),
+                    "expected_sequence": list(checkpoint_expected_sequence),
+                }
+
+            # One marker takes 300 ms to fill and 300 ms to pulse. Deferred
+            # session totals then run their 600 ms count-up. Native event-loop
+            # load can deliver a fixed timer before the final animation signal,
+            # so wait on the real animation state before sampling chronology.
+            QTimer.singleShot(
+                1_350,
+                lambda: wait_until(
+                    checkpoint_capture_settled,
+                    after_checkpoint,
+                    reason=(
+                        "Reviewer HUD checkpoint animations did not settle "
+                        "before acceptance sampling"
+                    ),
+                    tries=30,
+                    failure_observation=checkpoint_settle_observation,
+                ),
+            )
 
         def restore_canonical_then_content() -> None:
             canonical_spec = REVIEWER_HUD_VIEWPORT_SPECS[0]
@@ -20383,6 +20424,9 @@ class _UiFaceCaptureRunner:
         close_geometry = local_bounds(
             close_button if isinstance(close_button, QWidget) else None
         )
+        close_visual_size = int(
+            close_button.property("visualControlSize") or 0
+        ) if isinstance(close_button, QWidget) else 0
 
         metadata_line = next(
             (
@@ -20399,7 +20443,9 @@ class _UiFaceCaptureRunner:
         ]
         metadata_single_line = bool(
             metadata_line is not None
-            and str(metadata_line.property("layoutMode") or "") == "single-line"
+            and str(
+                metadata_line.property("speciesMetadataLayout") or ""
+            ) == "single-line"
             and len(metadata_items) == 3
             and len({local_bounds(candidate)[1] for candidate in metadata_items}) == 1
         )
@@ -20538,7 +20584,10 @@ class _UiFaceCaptureRunner:
                 and isinstance(title, QLabel)
                 and bool(re.fullmatch(r"\S(?:.*\S)? Collection", str(title.text())))
                 and 0 < title_pixel_size <= 20.5
-                and close_geometry[2:] == [32, 32]
+                and close_visual_size == 32
+                and len(close_geometry) == 4
+                and close_geometry[2] == close_geometry[3]
+                and 32 <= close_geometry[2] <= 38
                 and (metadata_single_line if collected else metadata_line is None)
                 and (bool(plant_rows) if collected else not plant_rows)
                 and all(
@@ -20547,7 +20596,10 @@ class _UiFaceCaptureRunner:
                     and row["progress_separate_from_actions"]
                     and row["buttons_text_fit"]
                     and row["overflow_icon_button"]
-                    and all(height <= 36 for height in row["button_heights"])
+                    # Shared 36 px visual text buttons include up to 4 px of
+                    # native outer chrome. The icon-only overflow control is
+                    # independently held to its 36 px square contract above.
+                    and all(height <= 40 for height in row["button_heights"])
                     for row in plant_row_geometry
                 )
                 and one_plant_no_scroll
@@ -20566,6 +20618,7 @@ class _UiFaceCaptureRunner:
             "title": str(title.text()) if isinstance(title, QLabel) else "",
             "title_pixel_size": title_pixel_size,
             "close_geometry": close_geometry,
+            "close_visual_size": close_visual_size,
             "metadata_single_line": metadata_single_line,
             "collection_state": "collected" if collected else "not-collected",
             "plant_rows": plant_row_geometry,
@@ -22400,8 +22453,7 @@ class _UiFaceCaptureRunner:
                     "progress.collection-count"
                 )
                 expected_painted_copy = (
-                    "Species 10 / 10\n"
-                    "Entries 30 / 39"
+                    "Species 10 / 10 · Entries 30 / 39"
                 )
                 require(
                     "representative_collection_summary",

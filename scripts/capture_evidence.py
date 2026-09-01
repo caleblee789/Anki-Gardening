@@ -3044,7 +3044,7 @@ def _v26_surface_acceptance_issues(
             and counts.get("species_copy")
             == "10 of 10 species discovered"
             and counts.get("collection_entries_copy")
-            == "30 of 93 collection entries discovered"
+            == "30 of 39 collection entries discovered"
             and counts.get("species_copy_visible") is True
             and counts.get("collection_entries_copy_visible") is True
         ):

@@ -462,7 +462,7 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
     ) == ("active_project", "mastery", "rose")
     assert destination.heading == "Rose Cultivation Mastery"
     assert destination.artwork_id
-    assert destination.status == "Active project"
+    assert destination.status == "In progress"
 
     choose_snapshot = build_growth_projects_snapshot(
         state_revision=2,
@@ -545,8 +545,8 @@ def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
     assert "QSizePolicy.Policy.Ignored" in effect_chip_block
     assert "chip.setMaximumWidth" not in effect_chip_block
     assert "QSizePolicy.Policy.Expanding" in effect_chip_block
-    assert "chip_layout.setContentsMargins(3, 0, 3, 0)" in effect_chip_block
-    assert "chip_layout.setSpacing(2)" in effect_chip_block
+    assert "chip_layout.setContentsMargins(1, 0, 1, 0)" in effect_chip_block
+    assert "chip_layout.setSpacing(1)" in effect_chip_block
     assert 'label.setProperty("hudEffectLabel", True)' in effect_chip_block
     clear_celebration = WIDGET_SOURCE.split(
         "def _clear_celebration",
@@ -920,7 +920,7 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     )
 
     assert bundle.compact.eyebrow == "MILESTONE REACHED"
-    assert bundle.compact.hero_title == "Full Bloom achieved"
+    assert bundle.compact.hero_title == "Full Bloom reached"
     assert bundle.compact.hero_subtitle == "Rose"
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
         "1 Standard Find",
@@ -1660,7 +1660,7 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
         '"QToolButton#reviewerHudSelectPlant',
         1,
     )[1].split('"QScrollArea#reviewerHudBodyScroll', 1)[0]
-    assert 't["reviewer_hud_growth_strong"]' in select_style
+    assert 't["action_accent"]' in select_style
     assert "reviewer_hud_coin" not in select_style
 
     routine_feedback = WIDGET_SOURCE.split("def animate_growth_delta", 1)[1].split(

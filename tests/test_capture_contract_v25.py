@@ -444,7 +444,7 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         for stable_id in REGISTRY.profile_labels("full")
     )
     assert len(REGISTRY.profile_labels("representative")) == 18
-    assert len(REGISTRY.profile_labels("full")) == 38
+    assert len(REGISTRY.profile_labels("full")) == 34
     assert REGISTRY.profile_labels("full")[23] == (
         "nursery-garden-decorations-scenery"
     )
@@ -456,7 +456,7 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
     assert representative_labels[14] == "sync-rewards-summary"
     assert representative_labels[15] == "reviewer-reward-dock-bundle"
     assert REGISTRY.profile_page_count("representative") == 2
-    assert REGISTRY.profile_page_count("full") == 6
+    assert REGISTRY.profile_page_count("full") == 5
     assert "starter-selection-confirmation" in compiled["retired_ids"]
     assert REGISTRY["starter-selection-confirmation"].placements == ()
     runtime_source = (
@@ -537,9 +537,8 @@ def test_primary_today_cards_and_reward_receipt_surfaces_are_active() -> None:
         "models/sync_reward.py",
         "reward_presentation.py",
         "ui/environment_art.py",
-            "ui/garden_asset_thumbnail.py",
-            "ui/landmark_display.py",
-            "ui/plant_art.py",
+        "ui/garden_asset_thumbnail.py",
+        "ui/plant_art.py",
         "ui/session_summary.py",
         "ui/session_summary_card.py",
         "ui/sync_reward_summary.py",
@@ -607,7 +606,7 @@ def test_session_summary_responsive_evidence_is_transient_not_new_surfaces() -> 
     )
     assert set(content_states).isdisjoint(labels)
     assert len(REGISTRY.profile_labels("representative")) == 18
-    assert len(REGISTRY.profile_labels("full")) == 38
+    assert len(REGISTRY.profile_labels("full")) == 34
 
 
 def test_reward_presentation_surfaces_own_direct_imports() -> None:
@@ -620,57 +619,6 @@ def test_reward_presentation_surfaces_own_direct_imports() -> None:
                 "garden_finds.py",
                 "ui/session_summary.py",
             } <= dependencies, surface.stable_id
-
-
-@pytest.mark.parametrize("renderer_module", ("ui/home_widget.py", "ui/scene.py"))
-def test_v26_renderers_own_landmark_display_import(renderer_module: str) -> None:
-    """Keep all v26 Home and Garden renderers closed over landmark imports."""
-
-    renderer_surfaces = tuple(
-        surface
-        for surface in REGISTRY.surfaces
-        if renderer_module in surface.owned_module_dependencies
-    )
-
-    assert renderer_surfaces
-    for surface in renderer_surfaces:
-        assert (
-            "ui/landmark_display.py" in surface.owned_module_dependencies
-        ), surface.stable_id
-
-
-def test_v26_anki_qt_home_mapping_owns_landmark_display_import() -> None:
-    """Mirror the planner's non-Reviewer AnkiQt Home renderer mapping."""
-
-    mapped_surfaces = tuple(
-        surface
-        for surface in REGISTRY.surfaces
-        if surface.renderer_family == "AnkiQt"
-        and not surface.stable_id.startswith("reviewer-")
-    )
-
-    assert mapped_surfaces
-    for surface in mapped_surfaces:
-        assert (
-            "ui/landmark_display.py" in surface.owned_module_dependencies
-        ), surface.stable_id
-
-
-def test_v26_scene_renderers_own_both_landmark_modules() -> None:
-    """Keep scene roots closed over both direct Landmark renderer imports."""
-
-    scene_surfaces = tuple(
-        surface
-        for surface in REGISTRY.surfaces
-        if "ui/scene.py" in surface.owned_module_dependencies
-    )
-
-    assert scene_surfaces
-    for surface in scene_surfaces:
-        assert {
-            "ui/landmarks.py",
-            "ui/landmark_display.py",
-        } <= set(surface.owned_module_dependencies), surface.stable_id
 
 
 def test_reviewer_hud_acceptance_matrix_is_transient_and_complete() -> None:
@@ -828,7 +776,7 @@ def test_reviewer_hud_acceptance_matrix_is_transient_and_complete() -> None:
     assert "min(right - 2.5, natural_x)" in widget_source
     assert '"Checkpoint reward", self._checkpoint_reward_row' in widget_source
     assert len(REGISTRY.profile_labels("representative")) == 18
-    assert len(REGISTRY.profile_labels("full")) == 38
+    assert len(REGISTRY.profile_labels("full")) == 34
 
 
 def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
@@ -1164,7 +1112,7 @@ def test_sync_reward_capture_fixture_is_rich_multiday_and_nonmodal() -> None:
         "environment_count": 1,
         "progression_event_count": 2,
         "all_clear_coin_reward": 0,
-        "fertilizer_cards_remaining": 0,
+        "fertilizer_remaining_seconds": 0,
         "fertilizer_item_id": "",
         "booster_cards_remaining": 0,
         "booster_item_id": "",
@@ -1365,8 +1313,8 @@ def test_session_summary_capture_runs_viewport_matrix_before_acquisition() -> No
     assert "capture_home_due_cards = 18" in scenario
     assert 'observed.get("remainingAfter")' in scenario
     assert '"session_summary_content_matrix": content_matrix' in scenario
-    assert '"19 remaining" in normalized_summary_copy' in postcondition
-    assert '"126 of 145 completed" in normalized_summary_copy' in postcondition
+    assert '"19 cards remaining" in normalized_summary_copy' in postcondition
+    assert '"126 of 145 cards completed" in normalized_summary_copy' in postcondition
     assert '"reward breakdown" in normalized_summary_copy' in postcondition
     assert 'home_counts.get("newAfter") == "1"' in postcondition
     assert 'home_counts.get("learnAfter") == "0"' in postcondition
@@ -1380,7 +1328,7 @@ def test_collection_capture_summary_matches_current_catalog_fixture() -> None:
         "_capture_fixture_postcondition",
     )
     assert "expected_collected_count = 30" in postcondition
-    assert "expected_collectible_count = 93" in postcondition
+    assert "expected_collectible_count = 39" in postcondition
     assert 'count_widget.property("collectedCount")' in postcondition
     assert 'count_widget.property("collectibleCount")' in postcondition
 
@@ -1574,7 +1522,7 @@ def test_selected_plant_capture_runs_matrix_without_expanding_registry() -> None
     assert '"bottom-right"' in matrix_source
     assert "for toast_visible in (False, True)" in matrix_source
     assert "expected_case_count" in matrix_source
-    assert len(REGISTRY.profile_labels("full")) == 38
+    assert len(REGISTRY.profile_labels("full")) == 34
     assert "selected-plant-nurtured" in REGISTRY.profile_labels("full")
 
 

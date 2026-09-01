@@ -27,32 +27,48 @@ The validated economy catalog digest is
 ## Final evidence
 
 - Representative manifest:
-  [capture-sequence-20260831-154002/assembled/manifest.json](../../build/ui-face-captures/representative/capture-sequence-20260831-154002/assembled/manifest.json)
+  [capture-sequence-20260901-002619/assembled/manifest.json](../../build/ui-face-captures/representative/capture-sequence-20260901-002619/assembled/manifest.json)
+- Representative capture report:
+  [capture-sequence-20260901-002619/capture-report.json](../../build/ui-face-captures/representative/capture-sequence-20260901-002619/capture-report.json)
+- Representative two-sheet index:
+  [contact-sheet-set.json](../../build/ui-face-captures/representative/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260901-002619/contact-sheet-set.json)
+- Representative evidence archive:
+  [anki-garden-ui-faces-20260901-002619.zip](../../build/ui-face-captures/representative/anki-garden-ui-faces-20260901-002619.zip)
 - Full manifest:
-  [capture-sequence-20260831-155312/assembled/manifest.json](../../build/ui-face-captures/full/capture-sequence-20260831-155312/assembled/manifest.json)
+  [capture-sequence-20260901-002050/assembled/manifest.json](../../build/ui-face-captures/full/capture-sequence-20260901-002050/assembled/manifest.json)
 - Full capture report:
-  [capture-sequence-20260831-155312/capture-report.json](../../build/ui-face-captures/full/capture-sequence-20260831-155312/capture-report.json)
+  [capture-sequence-20260901-002050/capture-report.json](../../build/ui-face-captures/full/capture-sequence-20260901-002050/capture-report.json)
 - Five-sheet directory:
-  `build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312`
+  `build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260901-002050`
 - Contact-sheet index:
-  [contact-sheet-set.json](../../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json)
+  [contact-sheet-set.json](../../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260901-002050/contact-sheet-set.json)
 - Evidence archive:
-  [anki-garden-ui-faces-20260831-155312.zip](../../build/ui-face-captures/full/anki-garden-ui-faces-20260831-155312.zip)
+  [anki-garden-ui-faces-20260901-002050.zip](../../build/ui-face-captures/full/anki-garden-ui-faces-20260901-002050.zip)
+
+The full final-release manifest is complete at 34/34 with SHA-256
+`6f8e4fc7f222693572165a2680833c87859b196230dfc9d07f128da226e131e7`.
+Every full surface was freshly captured in this run (`captured_faces` contains
+all 34 surfaces and `reused_faces` is empty). The full report is valid, records
+no audit advisory or outstanding recapture, and has SHA-256
+`42412002746d602e55e6fe31101ec27dd3f000ec6a525bab61043449e08d79aa`.
+The five-page index is complete with SHA-256
+`0292d4e775510b7892df6c5cea21cc732fb39a43d41c8cc6e00b5f760ecb3952`.
 
 The representative manifest is complete at 18/18 with SHA-256
-`e9b55cb2cb4e073e90fddd8c54c3a01c795da617f3e2397de84adab4c0303121`.
-The full manifest is complete at 34/34 with SHA-256
-`acacad3f9df86139014993f4b35fec1302bd9128de6c909ab7cb1f7cfd3f6aae`.
-The full report is valid, records no outstanding recapture, and has SHA-256
-`5965b91ab7b4b32a5e3a40708ca9367330056348882bfae0a303962f709c6c9e`.
-The five-page index is complete with SHA-256
-`2e69c2bc1076b9d82a1273c02643457dc5e169c04b89697cb597c35ec9d15747`.
+`bc430eb2056137a5a461400f29410f290ee859358f67f6ddec9bf9f0d72b25c1`.
+It was assembled only from the exact final full manifest: `captured_faces` is
+empty and all 18 representative surfaces are recorded in `reused_faces`. Its
+report SHA-256 is
+`1c6e2d6724b483dd6a8bb41ba03d07b9e1467eb91160c09a636aa7846ad04b56`,
+and its two-page index SHA-256 is
+`6f77fe969db7f019d45745ba823f7edb5c13c4654b446869523cc16d296669a4`.
 
-All 18 representative raws, all 34 full raws, and all five final sheets were
-reviewed. The final Move Mode correction is present: current and destination
-treatments use the intended mint hierarchy, and the planter contours follow
-the full rendered planter shells rather than the former inner-soil ellipses.
-No remaining user-facing contour defect was recorded.
+All 34 full manifest-owned raw PNGs, all five full sheets, and both
+representative sheets were reviewed at original resolution. No gross clipping,
+overlap, missing artwork, stale copy, or alignment defect was recorded. The
+review included the full Garden header, Move Mode, Collection tabs and Species
+Overview states, Nursery Bed 3 copy, Settings, Reviewer HUD, Session Summary,
+Sync Rewards, and Growth Charge confirmation/success states.
 
 That review is the documented Codex visual pass recorded in the separate
 ledger. The generated sheet index intentionally retains `Automated checks
@@ -65,15 +81,23 @@ The evidence binds these exact artifacts:
 
 | Artifact | Files | Bytes | SHA-256 |
 | --- | ---: | ---: | --- |
-| Production `dist/anki_garden.ankiaddon` | 322 | 100,389,172 | `f782d6b58ddd682bc92cacea4f28de44caf481a7e2e1e39a1bb44d558dda8971` |
-| Capture derivative | 334 | 100,781,416 | `c57848064ee03db9a84454df0a434b3bc68da857a197b2d392e4b135a8618afd` |
-| Full evidence ZIP | n/a | 26,126,453 | `8094c23a051c2d5e49d96d4f4f118160b791a94f7cfe8bd5b691d12a1593b8d3` |
+| Production `dist/anki_garden.ankiaddon` | 322 | 100,410,805 | `2c6f06f675110bbaf4ae99581311ef3e580c6e21ca56046d6ea1e4f067335468` |
+| Capture derivative | 334 | 100,811,192 | `d8165d22b1670d185a3ce292e55ee7f34e7740082e948152af41eed0b4e9d1f2` |
+| Full evidence ZIP | n/a | 41,952,947 | `26a3a6de38df942f79c2ef02855dd1feaa3baf83723dadb2c5c9b44337b6e02a` |
+| Representative evidence ZIP | n/a | 14,079,522 | `a6d6a53d28bdce373ae4c5623eec564df37250d8c5a6156080b4c0907280d052` |
 
 Production/capture shared-payload parity is byte-identical across 321 entries.
 The shared-payload digest is
-`848e953fc3dbeddae2bc6ed67ee7114710ce21e0c93002b8ec640be26816a964`.
+`db3515bc22cbd0b931be9f579ebf47c0cc6b7e1e2b7e25b4cc61cdfe6e0834f8`.
 The capture derivative adds only the capture capability and mode payload; it
 does not replace or mutate the production archive.
+
+The capture contract digest is
+`bfe80c845b4f18619de748603f2d4eb8e3133c75019303623fc7d01d466856ce`;
+the full environment, evidence-schema, and scenario-contract digests are
+`3b365abc854753dc049378e8f534c7a6afc32f6d6dbd9e3a149c5251d4ff1bb7`,
+`79b824fe249b0b3fa31a4efae44afaa73590efc95685dfcf8ab79fa5c90b2091`,
+and `1a315dbc76925cad61a021cb3193a898f9afb50b00801b0775cff72e674c9d90`.
 
 ## Economy validation boundary
 
@@ -83,24 +107,36 @@ It is the authority for engine replay/parity; the UI consumes frozen economy
 projections and committed results rather than reproducing prices, Growth,
 reward, balance, project, or queue calculations.
 
-The final 10,000-run balance report and its PDF are still pending return from
-the external economy validation lane. They are not claimed as delivered by
-this audit and must be added with their final paths and hashes when returned.
+The tracked
+`output/pdf/anki-garden-economy-progression-balance-analysis.pdf` is retained
+as an older 2026-08-29 artifact (136,824 bytes; SHA-256
+`da17fe13e600f18397bd8f5ff7e22e627f14cb6e995bc371c53aaf3c4e382468`).
+No matching frozen input bundle establishes it as the final return for this
+integrated candidate. Receipt and audit of the final 10,000-run balance return
+therefore remain open and are not claimed by this UI audit.
 
 ## Local automated validation
 
-Exactly one complete pytest union was run:
+The complete non-heavy pytest union was run with canonical repository options
+and reported 2,395 passed, 37 skipped, and 1 deselected. The separately gated
+heavy public-engine/package parity test passed in 1,346.16 seconds.
 
 ```bash
-PYTHONPYCACHEPREFIX=/private/tmp/ag-ui-final \
-./.venv/bin/python -m pytest -q -p no:cacheprovider -o addopts=''
+PYTHONPYCACHEPREFIX=/private/tmp/<task> \
+./.venv/bin/python -m pytest -q -p no:cacheprovider -o addopts='' \
+  --ignore=tests/test_public_engine_package_parity.py
+
+PYTHONPYCACHEPREFIX=/private/tmp/<task> \
+./.venv/bin/python -m pytest -q -p no:cacheprovider -o addopts='' \
+  tests/test_public_engine_package_parity.py
 ```
 
-It reported 2,311 passed, 35 skipped, and 3 failed. Each failure was corrected
-in its nearest existing test node, and those three focused nodes were rerun
-green. A second complete union was intentionally not run, so the focused
-reruns must not be restated as a second all-green full suite. No new UI test
-file was created.
+After native diagnostic fixes, the focused static and capture contracts were
+rerun green: 100 passed for the combined header/Collection repair set, 95
+passed with 2 skipped and 10 deselected for the Species/Bed set, 88 passed with
+19 deselected for reviewer-settle and Species outer geometry, and 67 passed
+with 7 deselected for the final Species close-control contract. The skips are
+isolated Qt tests unavailable outside Anki, not failures.
 
 The proportional non-GUI release gates are valid: Python compilation, asset
 audit, catalog validation, production package build, ZIP integrity, capture
@@ -109,12 +145,12 @@ These checks do not replace the open acceptance gates below.
 
 ## Regeneration and review accounting
 
-This candidate has one complete regeneration cycle. The accepted evidence was
-assembled through dependency-closed targeted recapture and exact validated
-reuse; the final `155312` sheet pass reused all 34 accepted surface records and
-did not recapture unrelated UI. Earlier targeted native probes were incomplete
-diagnostic iterations within the same correction cycle. They produced no final
-sheet set and do not increment the complete regeneration-cycle count.
+This candidate has one accepted complete full regeneration cycle. The final
+`002050` run freshly acquired all 34 surfaces without reuse. Earlier targeted
+native probes were diagnostic iterations and are superseded. The subsequent
+`002619` representative preflight was deliberately assembled through explicit
+exact reuse from the accepted full manifest; no older evidence set was
+considered.
 
 The final review covered every manifest-owned raw PNG and every generated
 sheet, including cross-surface terminology, artwork identity, arithmetic,

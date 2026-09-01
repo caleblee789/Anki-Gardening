@@ -2184,8 +2184,8 @@ _V25_SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser
                             'scroll:FertilizerReplacementDialog'),
   'owned_dependency_groups': ('fertilizer', 'purchase-fertilizer'),
   'owned_module_dependencies': (),
-  'retired_reason': 'Fixed-card Fertilizer tiers queue without discarding paid cards; the '
-                    'replacement confirmation is no longer reachable.',
+  'retired_reason': 'Timed Fertilizer tiers queue without discarding paid time; the replacement '
+                    'confirmation is no longer reachable.',
   'state_contract': {'kind': 'dialog',
                      'profile': {'profile_id': 'fertilizer-replacement-confirmation',
                                  'window_family': 'FertilizerReplacementDialog',
@@ -5412,7 +5412,6 @@ _V26_REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
     ),
     "starter-nursery-plants": (
         "onboarding_step",
-        "starter_economy",
     ),
     "starter-placement": (
         "first_run_sequential_species",
@@ -5429,9 +5428,6 @@ _V26_REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
     ),
     "streak-active": (
         "thirty_day_next_reward",
-    ),
-    "reviewer-hud-expanded": (
-        "garden_rhythm_effect",
     ),
     "coins-activity": (
         "coin_activity_state_matrix",
@@ -5457,9 +5453,6 @@ _V26_REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
     ),
     "purchase-confirmation-growth-charge": (
         "growth_charge_purchase_state_matrix",
-    ),
-    "purchase-confirmation-species": (
-        "species_uniform_price",
     ),
     "nursery-garden-spaces": (
         "nursery_bed_incomplete_state",
@@ -5797,11 +5790,7 @@ def _v26_surface_rows() -> tuple[dict[str, object], ...]:
         rows.append(_with_v26_scenario_identity(
             _with_v26_required_facts(replacement)
         ))
-    rows.extend(_v26_economy_transaction_rows())
-    return tuple(
-        _with_v26_landmark_display_dependency_closure(row)
-        for row in rows
-    )
+    return tuple(rows)
 
 
 SURFACE_ROWS: tuple[dict[str, object], ...] = _v26_surface_rows()

@@ -231,7 +231,7 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
 
     for name in (
         "Plants catalog",
-        "Magical Fertilizer and boosts catalog",
+        "Fertilizers and boosts catalog",
         "Garden beds catalog",
         "Garden Decorations and Scenery catalog",
     ):
@@ -1791,7 +1791,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         "ankigarden.ui.dashboard.project_collection",
         lambda _state: SimpleNamespace(
             species_text="10 of 10 species discovered",
-            collection_entries_text="30 of 93 collection entries discovered",
+            collection_entries_text="30 of 39 collection entries discovered",
             collection_complete=True,
         ),
     )
@@ -1813,7 +1813,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         if button.isVisibleTo(final_nursery)
     ]
     assert "10 of 10 species discovered" in final_labels
-    assert "30 of 93 collection entries discovered" in final_labels
+    assert "30 of 39 collection entries discovered" in final_labels
     assert final_actions.count("View collection") == 1
     final_nursery.hide()
     assert_surface(fertilizer_selection, "Fertilizer selection")

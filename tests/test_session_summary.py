@@ -765,12 +765,18 @@ def test_today_cards_projection_uses_approved_cards_language_only():
         waiting_cards=2,
         next_due_in_seconds=6 * 60,
     )
-    assert waiting.player_lines == ("2 remaining", "Next card in 6 minutes")
+    assert waiting.player_lines == (
+        "2 cards remaining",
+        "Next card in 6 minutes",
+    )
     progress = project_today_cards(
         _today(remaining=160, complete=0, total=160),
         _today(remaining=18, complete=142, total=160),
     )
-    assert progress.lines == ("18 remaining", "142 of 160 completed")
+    assert progress.lines == (
+        "18 cards remaining",
+        "142 of 160 cards completed",
+    )
     assert (progress.progress_value, progress.progress_max) == (142, 160)
     assert progress.progress_fraction == pytest.approx(0.8875)
     assert progress.start_progress_fraction == 0.0
@@ -782,14 +788,14 @@ def test_today_cards_projection_uses_approved_cards_language_only():
     )
     assert completed_during_session.lines == (
         "All of today’s cards complete",
-        "176 of 176 completed",
+        "176 of 176 cards completed",
     )
     assert completed_during_session.progress_fraction == 1.0
     assert completed_during_session.can_continue_reviews is False
     complete_at_both = project_today_cards(completed, completed)
     assert complete_at_both.lines == (
         "All of today’s cards complete",
-        "176 of 176 completed",
+        "176 of 176 cards completed",
     )
 
     all_copy = " ".join((
@@ -871,8 +877,8 @@ def test_second_session_keeps_session_work_separate_from_today_progress():
     assert summary.cards_completed == 42
     assert projection.cards_completed_value == "42"
     assert projection.today_cards.lines == (
-        "18 remaining",
-        "126 of 144 completed",
+        "18 cards remaining",
+        "126 of 144 cards completed",
     )
     assert projection.today_cards.start_progress_value == 84
     assert projection.today_cards.progress_value == 126
@@ -905,7 +911,7 @@ def test_today_kind_scope_and_continuation_are_explicit():
         _today(remaining=60, complete=84, total=144, contributing_decks=3),
         _today(remaining=18, complete=126, total=144, contributing_decks=3),
     )
-    assert multi_deck.status_text == "18 remaining across all decks"
+    assert multi_deck.status_text == "18 cards remaining across all decks"
     assert multi_deck.continuation_target == ReviewContinuationTarget(
         "deck", 1, "Default"
     )
@@ -1203,7 +1209,7 @@ def test_owned_environment_is_not_reported_as_a_new_discovery():
 @pytest.mark.parametrize(
     ("category", "label"),
     (
-        ("garden_item", "GARDEN DISCOVERY UNLOCKED"),
+        ("garden_item", "GARDEN DISCOVERY"),
         ("environment", "ENVIRONMENT UNLOCKED"),
         ("plant", "PLANT UNLOCKED"),
         ("planter", "PLANTER UNLOCKED"),
@@ -1421,7 +1427,7 @@ def test_unified_highlights_follow_product_priority_before_chronology():
     assert [item.unlock_category for item in highlights.featured] == [
         "plant", "garden_item"
     ]
-    assert highlights.featured[1].eyebrow == "GARDEN DISCOVERY UNLOCKED"
+    assert highlights.featured[1].eyebrow == "GARDEN DISCOVERY"
     assert (
         highlights.featured[1].supporting_text
         == "Added to your Garden collection"

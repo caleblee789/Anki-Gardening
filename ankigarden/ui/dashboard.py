@@ -6916,14 +6916,14 @@ def apply_explanatory_tooltip(widget: QWidget, text: str) -> None:
 def _learner_text(value: Any) -> str:
     """Render legacy separator-based messages as readable stacked statements."""
     separator = chr(0xB7)
-    return learner_card_copy(
-        "\n".join(
-            segment.strip()
-            for line in str(value or "").splitlines()
-            for segment in line.split(separator)
-            if segment.strip()
-        )
+    normalized = "\n".join(
+        segment.strip()
+        for line in str(value or "").splitlines()
+        for segment in line.split(separator)
+        if segment.strip()
     )
+    normalizer = globals().get("learner_card_copy")
+    return normalizer(normalized) if callable(normalizer) else normalized
 
 
 def _environment_kind_label(kind: object) -> str:
@@ -10147,7 +10147,14 @@ class ResponsiveMetadataLine(QWidget):
             for separator in self.separators:
                 separator.show()
             self.grid.setColumnStretch(4, 1)
-        self.setProperty("layoutMode", "two-line" if compact else "single-line")
+        # ``AdaptiveRow`` owns the generic ``layoutMode`` telemetry property
+        # (``wide``/``compact``). Publish the metadata arrangement separately
+        # so capture can prove that these three facts share one row without
+        # telemetry overwriting the value.
+        self.setProperty(
+            "speciesMetadataLayout",
+            "two-line" if compact else "single-line",
+        )
         self.grid.invalidate()
         self.grid.activate()
         self.updateGeometry()
@@ -19325,6 +19332,16 @@ def _today_cards_page_projection(
         "unavailable" if visible_status == "unavailable" else
         "pending"
     )
+    bonus_effect_resolver = globals().get("garden_bonus_effect_copy")
+    active_bonus_item = GARDEN_FEATURE_CATALOG.get(weather_id)
+    active_bonus_effect = (
+        bonus_effect_resolver(
+            weather_id,
+            getattr(active_bonus_item, "effect", ""),
+        ).strip()
+        if callable(bonus_effect_resolver) else
+        str(getattr(active_bonus_item, "effect", "") or "").strip()
+    )
     return TodayCardsPageProjection(
         status=today,
         starting_cards=starting_cards,
@@ -19341,10 +19358,7 @@ def _today_cards_page_projection(
             GARDEN_FEATURE_CATALOG,
             weather_id,
         ),
-        active_bonus_effect=garden_bonus_effect_copy(
-            weather_id,
-            getattr(GARDEN_FEATURE_CATALOG.get(weather_id), "effect", ""),
-        ).strip(),
+        active_bonus_effect=active_bonus_effect,
         active_bonus_id=weather_id,
         visual_effects_enabled=visual_effects_enabled,
         queued_weather_name=queued_weather_name,
@@ -22809,9 +22823,6 @@ class GardenDashboard(DialogShell):
         self.apply_size_policy(DialogSizeClass.GARDEN_WORKSPACE)
         self._build_ui()
         self._apply_responsive_layout(self._dashboard_content_width())
-        self._fertilizer_timer = QTimer(self)
-        self._fertilizer_timer.setInterval(1_000)
-        self._fertilizer_timer.timeout.connect(self._refresh_timed_plant_statuses)
         self._install_application_filter()
         QTimer.singleShot(0, self._update_scene_height)
 
@@ -22828,13 +22839,6 @@ class GardenDashboard(DialogShell):
             self._skip_next_show_refresh = False
         else:
             self.refresh_all()
-        self._sync_fertilizer_timer()
-
-    def hideEvent(self, event: Any) -> None:
-        timer = getattr(self, "_fertilizer_timer", None)
-        if timer is not None:
-            timer.stop()
-        super().hideEvent(event)
 
     def prepare_to_show(self) -> None:
         """Refresh exactly once before either showing or raising the Garden."""
@@ -23098,6 +23102,12 @@ class GardenDashboard(DialogShell):
         self.settings_btn = GardenIconButton("settings", UI_TEXT["open_settings"])
         self.settings_btn.setProperty("headerAction", True)
         self.settings_btn.setProperty("dashboardSettingsButton", True)
+        # The full dashboard header uses the same 36 px visual control token as
+        # its neighbouring secondary actions.  Keep the icon component role for
+        # accessibility and painting, while advertising its header-specific
+        # geometry to native capture telemetry instead of the generic 32 px
+        # dialog-icon token installed by ``GardenIconButton``.
+        set_button_size(self.settings_btn, ButtonSize.SECONDARY)
         self.settings_btn.setFixedSize(36, 36)
         self.settings_btn.setIconSize(QSize(16, 16))
         self.settings_btn.clicked.connect(self._open_settings)
@@ -24250,7 +24260,6 @@ class GardenDashboard(DialogShell):
         if plant is None:
             self._update_scene_height()
         self._position_plant_card()
-        self._sync_fertilizer_timer()
 
     def _on_landmark_activated(self, action_id: str) -> None:
         action = str(action_id)
@@ -25032,119 +25041,6 @@ class GardenDashboard(DialogShell):
         self._position_plant_card()
 
     @staticmethod
-    def _booster_is_active(plant: Any, *, now: float) -> bool:
-        batches = (
-            *tuple(getattr(plant, "booster_card_batches", ()) or ()),
-            *tuple(getattr(plant, "booster_card_queue", ()) or ()),
-        )
-        if any(
-            max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
-            for batch in batches
-        ):
-            return True
-        booster = getattr(plant, "booster", None)
-        return bool(
-            booster is not None
-            and float(getattr(booster, "expires_at", 0) or 0) > now
-        )
-
-    def _has_visible_timed_plant_status(self, *, now: float) -> bool:
-        active = self.engine.active_plant()
-        active_status = (
-            fertilizer_status(
-                self.engine,
-                active,
-                now=now,
-                description=FERTILIZER_CARD_DESCRIPTION,
-            )
-            if active is not None else None
-        )
-        if (
-            active_status is not None
-            and active_status.active
-            and active_status.expires_at_ms is not None
-        ):
-            return True
-        selected_id = self.scene.selected_plant_id()
-        selected = self.engine.plant_story(selected_id) if selected_id else None
-        if selected is None:
-            return False
-        selected_status = fertilizer_status(
-            self.engine,
-            selected,
-            now=now,
-            description=FERTILIZER_CARD_DESCRIPTION,
-        )
-        return bool(
-            selected_status.active
-            and selected_status.expires_at_ms is not None
-        )
-
-    def _sync_fertilizer_timer(self) -> None:
-        timer = getattr(self, "_fertilizer_timer", None)
-        if timer is None:
-            return
-        should_run = bool(
-            self.isVisible()
-            and self._has_visible_timed_plant_status(now=time.time())
-        )
-        if should_run and not timer.isActive():
-            timer.start()
-        elif not should_run and timer.isActive():
-            timer.stop()
-
-    def _refresh_timed_plant_statuses(self) -> None:
-        """Refresh countdown copy and invalidate forecasts exactly at expiry."""
-
-        if not self.isVisible():
-            self._sync_fertilizer_timer()
-            return
-        now = time.time()
-        active = self.engine.active_plant()
-        active_status = (
-            fertilizer_status(
-                self.engine,
-                active,
-                now=now,
-                description=FERTILIZER_CARD_DESCRIPTION,
-            )
-            if active is not None else
-            None
-        )
-        active_phase = (
-            str(getattr(active, "plant_id", "") or ""),
-            active_status.phase if active_status is not None else "inactive",
-        )
-        previous_phase = getattr(self, "_active_fertilizer_phase", None)
-        self._active_fertilizer_phase = active_phase
-
-        selected_id = self.scene.selected_plant_id()
-        selected = self.engine.plant_story(selected_id) if selected_id else None
-        selected_status = (
-            fertilizer_status(
-                self.engine,
-                selected,
-                now=now,
-                description=FERTILIZER_CARD_DESCRIPTION,
-            )
-            if selected is not None else
-            None
-        )
-        selected_token = (
-            str(selected_id or ""),
-            selected_status.phase if selected_status is not None else "inactive",
-            selected_status.duration if selected_status is not None else "",
-            self._booster_text(selected) if selected is not None else "None active",
-        )
-        if selected_token != getattr(self, "_selected_fertilizer_token", None):
-            self._selected_fertilizer_token = selected_token
-            self._refresh_selected_plant_card()
-
-        if previous_phase is not None and active_phase != previous_phase:
-            self.refresh_all()
-        self._sync_fertilizer_timer()
-
-    @staticmethod
     def _is_widget_descendant(widget: Any, ancestor: QWidget) -> bool:
         current = widget if isinstance(widget, QWidget) else None
         while current is not None:
@@ -25203,7 +25099,6 @@ class GardenDashboard(DialogShell):
 
     def done(self, result: int) -> None:
         """Refresh the underlying Anki home surface after the modal dashboard closes."""
-        self._fertilizer_timer.stop()
         if self._starter_placement_active:
             self._starter_placement_active = False
             self._active_placement_token = None

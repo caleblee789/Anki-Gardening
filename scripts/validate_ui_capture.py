@@ -4532,11 +4532,8 @@ def nursery_bed_incomplete_state_issue_codes(
     for key, expected_value in expected.items():
         if evidence.get(key) != expected_value:
             issues.append(f"nursery-bed-incomplete:{key}")
-    if (
-        "Unlocks automatically through Garden Progress.\n"
-        "Unlocks when your first plant reaches Mature.\n"
-        "Garden capacity after unlock: 3 plants"
-        not in str(evidence.get("capacity_copy", ""))
+    if evidence.get("capacity_copy") != (
+        "Automatically unlocked when one plant reaches the Mature stage."
     ):
         issues.append("nursery-bed-incomplete:capacity_copy")
     if evidence.get("passed") is not True:

@@ -29,7 +29,7 @@ fixture ID, and one-based step are mandatory throughout lineage and v25 reuse
 is rejected. Current run paths, archive and capture hashes, artifact sizes, and
 validation totals are recorded only in the
 [final 2.2.0 UI audit](final-ui-audit-2.2.0.md) and the
-[five-page contact-sheet index](../../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
+[five-page contact-sheet index](../../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260901-002050/contact-sheet-set.json).
 This remains
 `quality_status: review-required`, `release_ready: false`; manual, platform,
 accessibility, mixed-DPI, keyboard, and human approval gates remain open.

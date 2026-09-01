@@ -211,7 +211,7 @@ def test_v26_never_reuses_v25_surface_evidence(tmp_path: Path) -> None:
     assert plan["reasons"][LABEL] == ["v25-reuse-forbidden"]
 
 
-def test_v26_nursery_collection_count_authority_is_thirty_of_ninety_three() -> None:
+def test_v26_nursery_collection_count_authority_is_thirty_of_thirty_nine() -> None:
     record = {
         "label": "nursery-plants",
         "fixture_validation": {
@@ -231,14 +231,14 @@ def test_v26_nursery_collection_count_authority_is_thirty_of_ninety_three() -> N
             "fixture_state_passed": True,
             "species_copy": "10 of 10 species discovered",
             "collection_entries_copy": (
-                "30 of 93 collection entries discovered"
+                "30 of 39 collection entries discovered"
             ),
             "species_copy_visible": True,
             "collection_entries_copy_visible": True,
             "deprecated_visible_copy": {
                 "visible_copy": (
                     "Nursery 10 of 10 species discovered "
-                    "30 of 93 collection entries discovered"
+                    "30 of 39 collection entries discovered"
                 ),
                 "hits": [],
                 "collection_issues": [],
@@ -254,7 +254,7 @@ def test_v26_nursery_collection_count_authority_is_thirty_of_ninety_three() -> N
 
     retired_count = copy.deepcopy(record)
     retired_count["audit"]["collection_entries_copy"] = (
-        "30 of 39 collection entries discovered"
+        "30 of 93 collection entries discovered"
     )
     assert _v26_surface_acceptance_issues(retired_count) == (
         "v26 Nursery collection counts are not canonical",

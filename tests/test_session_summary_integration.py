@@ -1975,8 +1975,8 @@ def test_session_summary_projection_contains_no_prohibited_progress_copy():
     assert "find drought" not in projection_text
     assert "find cap" not in projection_text
     assert re.search(r"\b\d[\d,]*\s+answers?\b", projection_text) is None
-    assert "2 remaining" in projection_text
-    assert "18 of 20 completed" in projection_text
+    assert "2 cards remaining" in projection_text
+    assert "18 of 20 cards completed" in projection_text
     assert "next card in 6 minutes" in projection_text
 
 

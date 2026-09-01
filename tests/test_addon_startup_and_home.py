@@ -1092,7 +1092,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     environment = handler._consolidated_reward_feedback(events[:1])
 
     assert environment is not None
-    assert environment.title == "Garden discovery"
+    assert environment.title == "Firefly Evening discovered"
     assert environment.tier == "Rare"
     assert environment.message == "Added to Garden decorations"
 

@@ -11,6 +11,7 @@ from scripts.validate_ui_capture import (
     growth_stage_strip_issue_codes,
     move_occupied_hover_issue_codes,
     move_planter_contour_issue_codes,
+    nursery_bed_incomplete_state_issue_codes,
     nursery_supplement_state_matrix_issue_codes,
     reviewer_hud_acceptance_matrix_issue_codes,
     reviewer_reward_dock_issue_codes,
@@ -18,6 +19,32 @@ from scripts.validate_ui_capture import (
     streak_fold_geometry_issue_codes,
     visible_action_geometry_issue_codes,
 )
+
+
+def test_nursery_bed_progression_uses_current_automatic_unlock_copy() -> None:
+    evidence = {
+        "unlocked_beds": 2,
+        "summary": "2 of 6 beds unlocked",
+        "bed_number": 3,
+        "bed_title": "Next: Bed 3",
+        "requirement": "First plant reaches Mature",
+        "unlock_policy": "automatic_achievement",
+        "resulting_capacity": 3,
+        "capacity_copy": (
+            "Automatically unlocked when one plant reaches the Mature stage."
+        ),
+        "price_present": False,
+        "action_present": False,
+        "painted": True,
+        "contained": True,
+        "passed": True,
+    }
+
+    assert nursery_bed_incomplete_state_issue_codes(evidence) == ()
+    evidence["capacity_copy"] = "Unlocks automatically through Garden Progress."
+    assert nursery_bed_incomplete_state_issue_codes(evidence) == (
+        "nursery-bed-incomplete:capacity_copy",
+    )
 
 
 def _canonical_starter_nursery_geometry() -> dict[str, object]:
@@ -399,7 +426,7 @@ def test_visible_action_geometry_recomputes_containment_and_overlap() -> None:
 
 def _streak_fold() -> dict[str, object]:
     return {
-        "scroll_name": "Anki Streak details",
+        "scroll_name": "Anki streak details",
         "at_initial_fold": True,
         "viewport_size": [892, 420],
         "configured_bottom_padding": 24,
@@ -556,7 +583,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "active_reveal_count": 1,
         "hero_count": 1,
         "eyebrow": "MILESTONE REACHED",
-        "hero_title": "Full Bloom achieved",
+        "hero_title": "Full Bloom reached",
         "projected_hero_subtitle": "Juniper of the Moonlit Library Garden",
         "hero_subtitle": "",
         "active_plant_identity_suppressed": True,
@@ -747,7 +774,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "released_after_progress": True,
                 },
                 "restored": {
-                    "label": "Next card",
+                "label": "Next card:",
                     "value": "+18 Growth",
                     "result_state": "projection",
                     "art_pulse": False,
@@ -1153,8 +1180,8 @@ def _reviewer_baseline_content() -> dict[str, object]:
 
 def _reviewer_reward_content() -> dict[str, object]:
     settled_copy = (
-        "Future Growth will go to other planted plants. "
-        "Any remainder will be stored."
+        "Future Growth will go to other unfinished plants. "
+        "Any remainder becomes Stored Growth."
     )
     expected_detail_rows = [
         {
@@ -1164,7 +1191,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "event_ids": [event_id],
         }
         for category, name, value, event_id in (
-            ("Milestone", "Full Bloom achieved", "+14 Garden Coins", "event:1"),
+            ("Milestone", "Full Bloom reached", "+14 Garden Coins", "event:1"),
             ("Growth applied", "Plant Growth", "+40 growth", "event:2"),
             ("Garden Coins", "Garden Coins", "+14 Garden Coins", "event:3"),
             ("Discovery", "Firefly Evening", "New", "event:4"),
@@ -1198,7 +1225,7 @@ def _reviewer_reward_content() -> dict[str, object]:
         },
         "full-bloom": {
             "eyebrow": "MILESTONE REACHED",
-            "hero_title": "Full Bloom achieved",
+            "hero_title": "Full Bloom reached",
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "class_label": "Bonsai",
@@ -1342,7 +1369,7 @@ def _reviewer_reward_content() -> dict[str, object]:
         },
         "session-history-named-growth": {
             "meaningful_names": [
-                "Full Bloom achieved",
+                "Full Bloom reached",
                 "Mature reached",
                 "75% checkpoint",
                 "Morning Dew",

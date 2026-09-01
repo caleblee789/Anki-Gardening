@@ -35,10 +35,10 @@ def test_compiled_v26_contract_reports_current_surface_requirement(
         _load_current_contract_payload(stale_path)
 
     assert (
-        "compiled v26 contract must contain 38 active surfaces"
+        "compiled v26 contract must contain 34 active surfaces"
         in error.value.issues
     )
-    assert all("34 active surfaces" not in issue for issue in error.value.issues)
+    assert all("38 active surfaces" not in issue for issue in error.value.issues)
 
 
 def _save_rgba(path: Path, image: Image.Image) -> None:

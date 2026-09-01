@@ -185,8 +185,7 @@ def test_collection_growth_items_render_their_canonical_artwork() -> None:
     method_source = ast.get_source_segment(source, method) or ""
 
     assert 'if definition.category == "growth_items":' in method_source
-    assert 'if str(definition.source_id) == "fertilizer_basic"' in method_source
-    assert 'else str(definition.source_id or "")' in method_source
+    assert 'artwork_ref = str(definition.source_id or "")' in method_source
     assert "icon = _item_preview_label(" in method_source
     assert 'icon.setProperty("collectibleItemArtwork", True)' in method_source
     assert 'icon.setProperty("collectibleItemArtworkRef", artwork_ref)' in method_source

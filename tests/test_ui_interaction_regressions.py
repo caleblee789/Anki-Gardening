@@ -1705,9 +1705,10 @@ def test_plant_detail_popover_declares_compact_anatomy_and_stable_states() -> No
     assert "self.nurture.setFixedHeight(36)" in layout_source
     assert "self.danger_section.setVisible(active and not fully_grown)" in layout_source
 
-    assert "format_growth_destination(next_stage)" in selected_source
-    assert "value_text=format_growth(stage_points, stage_goal)" in selected_source
-    assert "format_stage_progress" not in selected_source
+    assert "value_text=format_stage_progress(" in selected_source
+    assert "stage_points" in selected_source
+    assert "stage_goal" in selected_source
+    assert "next_stage" in selected_source
     assert "self.fertilized_badge.hide()" in selected_source
     assert "self.status_row.setVisible(bool(status_text) and not fully_grown)" in selected_source
     assert "first_open = not self._visible_cycle_active" in present_source

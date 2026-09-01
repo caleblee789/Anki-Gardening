@@ -183,6 +183,9 @@ def test_today_progress_is_native_semantic_and_animation_ready():
 
 def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     source = SOURCE_PATH.read_text(encoding="utf-8")
+    projection_source = SOURCE_PATH.with_name("session_summary.py").read_text(
+        encoding="utf-8"
+    )
     method = _method_source("_add_highlight_card", "_reward_metrics")
     assert 'setProperty("summaryHighlightKind", kind)' in method
     assert 'setProperty("summaryStatic", True)' in method
@@ -190,7 +193,7 @@ def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     assert "setWordWrap(True)" in source
     assert 'setProperty("summaryTwoLineName", True)' in source
     assert "elidedText" not in source
-    assert "Final growth stage reached" in source
+    assert "Final growth stage reached" in projection_source
     assert "unlock_category_copy" in source
     assert "Completed during this session" not in source
     highlights = _method_source("_add_highlights", "_add_highlight_card")

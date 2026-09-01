@@ -134,7 +134,7 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
     assert checkpoint.plant_class == "Bonsai"
     assert checkpoint.sequence == 1
     assert bundle.compact.eyebrow == "MILESTONE REACHED"
-    assert bundle.compact.hero_title == "Full Bloom achieved"
+    assert bundle.compact.hero_title == "Full Bloom reached"
     assert bundle.compact.hero_subtitle == "Rose"
     assert [summary.label for summary in bundle.visible_summaries] == [
         "1 Standard Find",
@@ -455,7 +455,7 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
 
     assert compact == RewardCompactProjection(
         eyebrow="MILESTONE REACHED",
-        hero_title="Full Bloom achieved",
+        hero_title="Full Bloom reached",
         hero_subtitle="Rose",
         visible_summaries=(
             RewardCompactSummary(
@@ -711,7 +711,7 @@ def test_session_history_names_meaningful_events_and_aggregates_routine_growth()
     rows = project_reward_session_history((bloom, collectibles, bloom))
 
     assert tuple(row.name for row in rows) == (
-        "Full Bloom achieved",
+        "Full Bloom reached",
         "Morning Dew",
         "Firefly Evening",
         "Growth applied",

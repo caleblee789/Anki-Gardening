@@ -22,9 +22,9 @@ CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v26.json")
 _IDENTITY_ID = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 _EXPECTED_PROFILE_TOTALS = {
     "representative": (18, 2),
-    "full": (38, 6),
+    "full": (34, 5),
 }
-_EXPECTED_ACTIVE_SURFACE_COUNT = 38
+_EXPECTED_ACTIVE_SURFACE_COUNT = 34
 _RENAMED_SURFACE = "nursery-garden-decorations-scenery"
 _RETIRED_SURFACE = "nursery-weather-scenery"
 _SCENARIO_OVERRIDES: dict[str, tuple[str, int]] = {

@@ -80,7 +80,7 @@ def test_home_and_main_scene_project_the_same_fixed_landmark_anchor() -> None:
     assert GARDEN_LANDMARK_ANCHOR.identity == "0.360,0.180,0.280,0.520"
 
 
-def test_home_landmark_is_absent_until_displayed_identity_and_asset_are_present() -> None:
+def test_home_landmark_remains_absent_after_landmarks_move_to_collection() -> None:
     empty_html = render_home_widget(
         HomeWidgetSnapshot(1, "success", _home_data())
     )
@@ -104,9 +104,7 @@ def test_home_landmark_is_absent_until_displayed_identity_and_asset_are_present(
 
     assert 'data-testid="home-garden-landmark"' not in empty_html
     assert 'data-testid="home-garden-landmark"' not in missing_asset_html
-    assert 'data-testid="home-garden-landmark"' in displayed_html
-    assert 'data-landmark="mossy_stone_path"' in displayed_html
-    assert 'data-landmark-anchor="0.360,0.180,0.280,0.520"' in displayed_html
+    assert 'data-testid="home-garden-landmark"' not in displayed_html
 
 
 def test_completed_displayed_project_resolves_the_matching_landmark_asset_identity() -> None:

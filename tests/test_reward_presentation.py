@@ -86,7 +86,7 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
         (SimpleNamespace(target_type="mastery", target_id="rose", units=100),),
         SimpleNamespace(active_target=target, mastery_track=lambda _species: track),
     )[0]
-    assert project.status == "Active project · Ready to claim"
+    assert project.status == "Reward ready"
 
 
 def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None:
