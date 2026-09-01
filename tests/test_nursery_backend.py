@@ -14,7 +14,6 @@ from ankigarden.models.state import (
     GROWTH_THRESHOLDS,
     DailyStats,
     GardenState,
-    OnboardingStep,
     Plant,
     STATE_VERSION,
 )
@@ -234,7 +233,7 @@ def test_bundled_catalog_exposes_only_complete_v6_lines():
     assert {"bonsai", "rose"}.issubset(ready)
 
 
-def test_free_starter_atomically_nurtures_and_does_not_backfill_earlier_reviews():
+def test_free_starter_is_atomic_requires_nurture_and_does_not_backfill_earlier_reviews():
     storage = FakeStorage()
     engine = GardenGameEngine(FakeConfig(), storage)
 
@@ -252,19 +251,11 @@ def test_free_starter_atomically_nurtures_and_does_not_backfill_earlier_reviews(
 
     assert ok and plant is not None
     assert plant.slot_index == 0
-    assert storage.state.active_plant_id == plant.plant_id
+    assert storage.state.active_plant_id is None
     assert storage.state.unlocked_slots == 2
     assert storage.state.unlocked_species == ["rose"]
     assert storage.state.starter_selection_complete
-    assert storage.state.garden_setup_version == 1
-    assert storage.state.onboarding.step is OnboardingStep.DONE
-    assert [memory.memory_id for memory in plant.memories].count("nurture:first") == 1
-    assert [
-        (period.plant_id, period.started_at_ms)
-        for period in storage.state.active_plant_periods[-2:]
-    ] == [(None, 0), (plant.plant_id, storage.now_ms)]
     assert storage.state.currency_balance == 0
-    assert plant.growth_points == 0
 
     earlier_revlog = storage.now_ms - 1_000
     synced = engine.apply_same_day_reviews(
@@ -280,18 +271,31 @@ def test_free_starter_atomically_nurtures_and_does_not_backfill_earlier_reviews(
     assert plant.growth_points == 0
     assert storage.state.total_reviews == 2
 
-    # This test isolates activation/no-backfill semantics from the independent
-    # Garden Find lottery, whose valid first-answer reward can include direct
-    # Growth. Keep the lottery boundary beyond this one review.
-    storage.state.garden_find_activation_ms = storage.now_ms + 2_000
     storage.now_ms += 1_000
-    after_activation = engine.register_review({
+    after_choice = engine.register_review({
         "queue": 2,
         "ease": 3,
         "revlog_id": storage.now_ms,
         "answered_at_ms": storage.now_ms,
     })
-    assert after_activation.total_growth == 10
+    assert after_choice.total_growth == 0
+    assert plant.growth_points == 0
+
+    storage.now_ms += 1_000
+    nurtured, _message = engine.set_active_plant(plant.plant_id)
+    assert nurtured
+    assert storage.state.active_plant_id == plant.plant_id
+    # This test isolates activation/no-backfill semantics from the independent
+    # Garden Find lottery, whose valid first-answer reward can include direct
+    # Growth. Keep the lottery boundary beyond this one review.
+    storage.state.garden_find_activation_ms = storage.now_ms + 1
+    after_nurture = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "revlog_id": storage.now_ms,
+        "answered_at_ms": storage.now_ms,
+    })
+    assert after_nurture.total_growth == 10
     assert plant.growth_points == 10
 
 

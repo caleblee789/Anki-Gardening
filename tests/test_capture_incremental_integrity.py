@@ -229,37 +229,15 @@ def test_v26_nursery_collection_count_authority_is_thirty_of_thirty_nine() -> No
             "semantic_audit_passed": True,
             "passed": True,
             "fixture_state_passed": True,
-            "species_copy": "All 10 plant species discovered",
+            "species_copy": "10 of 10 species discovered",
             "collection_entries_copy": (
                 "30 of 39 collection entries discovered"
             ),
             "species_copy_visible": True,
             "collection_entries_copy_visible": True,
-            "nursery_shell_contract": {
-                "passed": True,
-                "tab_labels": [
-                    "Plants",
-                    "Fertilizers & boosts",
-                    "Garden beds",
-                    "Decorations & scenery",
-                ],
-                "tab_rows": 1,
-                "tab_widths": [220, 220, 220, 220],
-                "equal_width_tabs": True,
-                "active_tab_index": 0,
-                "active_segment_count": 1,
-                "page_title": "Plants",
-                "tab_bar_clear_of_scroll": True,
-                "tab_bar_contained": True,
-                "scroll_contained": True,
-                "coin_width": 96,
-                "coin_visible": True,
-                "close_size": [32, 32],
-                "status_chips_noninteractive": True,
-            },
             "deprecated_visible_copy": {
                 "visible_copy": (
-                    "Nursery All 10 plant species discovered "
+                    "Nursery 10 of 10 species discovered "
                     "30 of 39 collection entries discovered"
                 ),
                 "hits": [],

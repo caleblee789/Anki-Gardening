@@ -38,15 +38,15 @@ def _method_source(name: str, following: str) -> str:
     return source.split(f"def {name}", 1)[1].split(f"def {following}", 1)[0]
 
 
-def test_session_summary_geometry_uses_380_preferred_width_and_32px_narrow_allowance():
-    assert SESSION_SUMMARY_DEFAULT_WIDTH == 380
-    assert SESSION_SUMMARY_MAX_WIDTH == 380
+def test_session_summary_geometry_uses_416_preferred_width_and_32px_narrow_allowance():
+    assert SESSION_SUMMARY_DEFAULT_WIDTH == 416
+    assert SESSION_SUMMARY_MAX_WIDTH == 416
     assert SESSION_SUMMARY_EDGE_MARGIN == 20
     assert SESSION_SUMMARY_PREFERRED_TOP_MARGIN == 48
     assert SESSION_SUMMARY_MIN_VERTICAL_MARGIN == 16
     assert SESSION_SUMMARY_MAX_HEIGHT is None
-    assert session_summary_geometry(1_200, 900, 900) == (800, 16, 380, 868)
-    assert session_summary_geometry(1_200, 954, 865) == (800, 48, 380, 865)
+    assert session_summary_geometry(1_200, 900, 900) == (764, 16, 416, 868)
+    assert session_summary_geometry(1_200, 954, 865) == (764, 48, 416, 865)
     assert SESSION_SUMMARY_HEADER_HEIGHT == 52
     assert SESSION_SUMMARY_FOOTER_HEIGHT == 60
     assert SESSION_SUMMARY_FRAME_BORDER_WIDTH == 1
@@ -54,14 +54,14 @@ def test_session_summary_geometry_uses_380_preferred_width_and_32px_narrow_allow
 
 def test_session_summary_geometry_contracts_inside_small_viewports():
     assert session_summary_geometry(340, 300, 500) == (12, 16, 308, 268)
-    assert session_summary_geometry(900, 800, 212) == (500, 48, 380, 212)
+    assert session_summary_geometry(900, 800, 212) == (464, 48, 416, 212)
     assert session_summary_geometry(28, 30, 500) == (7, 16, 1, 1)
     assert session_summary_geometry(
         1_200,
         900,
         900,
         reserved_top=124,
-    ) == (800, 140, 380, 744)
+    ) == (764, 140, 416, 744)
 
 
 def test_session_summary_compact_density_covers_measured_macos_host_heights():
@@ -97,10 +97,10 @@ def test_session_summary_typography_keeps_the_approved_title_and_hero_scale():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     assert "font-size:13px" in source
     assert "summaryTitle='true'] {font-size:18px" in source
-    assert "summaryHero='true'] {font-size:34px" in source
+    assert "summaryHero='true'] {font-size:40px" in source
     assert "summaryHeroLabel='true']" in source
     assert "font-size:14px;font-weight:520" in source
-    assert "hero_layout.setSpacing(2)" in source
+    assert "hero_layout.setSpacing(5)" in source
     assert "font-size:20px;font-weight:700" in source
     assert "summaryLongMetric='true'] {font-size:17px;}" in source
     assert "QPushButton:pressed, QToolButton:pressed" in source
@@ -226,8 +226,7 @@ def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
     ):
         assert object_name in source
     for key in (
-        "total_growth",
-        "plant_growth",
+        "growth_applied",
         "garden_coins",
         "standard_finds",
         "shared_growth",
@@ -247,9 +246,7 @@ def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
     assert "Total earned." in source
     assert 'self._section_heading("Progress details")' in source
     assert "Rewards Earned" in source
-    assert 'self._section_heading("Items added")' in source
-    assert '"Total Growth"' in source
-    assert '"Plant Growth"' in source
+    assert '"Growth applied"' in source
     assert '"Standard Finds"' in source
     assert "logical_size=14" in _method_source(
         "_add_reward_strip", "_add_find_summary"
@@ -537,10 +534,6 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
     assert plan[0].item_id == "growth_charge_small"
     assert plan[0].quantity == 2
     assert plan[0].source_labels == ("Standard Find", "Full Bloom")
-    assert tuple(
-        (contribution.label, contribution.quantity)
-        for contribution in plan[0].source_contributions
-    ) == (("Standard Find", 1), ("Full Bloom", 1))
 
     receipt_only = session_earned_item_plan(SimpleNamespace(
         find_items_reconciled=False,

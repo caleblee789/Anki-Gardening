@@ -17,7 +17,6 @@ from ankigarden.ui.plant_display import (
     PLANT_POPOVER_PREFERRED_WIDTH,
     Rect,
     SceneGeometryLayout,
-    bed_interaction_state,
     bed_badge_rect,
     compact_plant_layout,
     contained_canvas_rect,
@@ -1205,42 +1204,6 @@ def test_move_badges_use_dedicated_anchors_and_compact_semantic_states():
 
     occupied = bed_badge_rect(rows[1], "Swap with plant", 900, 560, obstacles)
     assert occupied.width >= 108
-
-    starter_states = [
-        bed_interaction_state(
-            slot,
-            origin_slot=None,
-            destination_slot=1,
-            unlocked_slots=2,
-            occupied_slots=set(),
-            starter_placement=True,
-        )
-        for slot in range(6)
-    ]
-    assert [state.label for state in starter_states] == [
-        "Bed 1",
-        "Bed 2 selected",
-        "Locked",
-        "Locked",
-        "Locked",
-        "Locked",
-    ]
-    assert [state.state for state in starter_states] == [
-        "available",
-        "selected",
-        "locked",
-        "locked",
-        "locked",
-        "locked",
-    ]
-    assert [state.pointer_enabled for state in starter_states] == [
-        True,
-        True,
-        False,
-        False,
-        False,
-        False,
-    ]
 
 
 

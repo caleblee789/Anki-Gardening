@@ -160,20 +160,19 @@ def _runtime_method_source(class_name: str, method_name: str) -> str:
     return segment
 
 
-def test_growth_charge_transient_contract_hides_same_stage_event_and_zero_reward() -> None:
+def test_growth_charge_transient_contract_keeps_same_stage_comparison_visible() -> None:
     check = _compiled_runtime_function(
         "growth_charge_transient_variant_issue_codes"
     )
     records = {
         "ready-no-transition": {
-            "transition_statement": "",
-            "before_label": "Sprout",
+            "transition_statement": "Bonsai Plant will gain 100 Growth",
+            "before_label": "Before · Sprout",
             "after_label": "After · Sprout",
-            "impact_value": "2 → 1 owned",
+            "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
             "inventory_value": "2 → 1",
-            "progress_label": "After use toward Young",
-            "stage_progress": "300 / 1,600 Growth",
+            "stage_progress": "300 / 1,600 Growth to Young",
             "current_growth": 600,
             "projected_growth": 700,
             "inventory_before": 2,
@@ -181,22 +180,21 @@ def test_growth_charge_transient_contract_hides_same_stage_event_and_zero_reward
             "progress_minimum": 0,
             "progress_maximum": 1_600,
             "progress_value": 300,
-            "stage_transition_visible": False,
+            "stage_row_visible": True,
             "reward_banner_visible": False,
             "painted": True,
         },
         "success-no-stage-reward": {
-            "transition_statement": "",
-            "before_label": "Sprout",
+            "transition_statement": "Bonsai Plant gained 100 Growth",
+            "before_label": "Before · Sprout",
             "after_label": "After · Sprout",
-            "impact_value": "2 → 1 owned",
+            "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
             "inventory_value": "2 → 1",
-            "progress_label": "Result toward Young",
-            "stage_progress": "300 / 1,600 Growth",
+            "stage_progress": "300 / 1,600 Growth to Young",
             "completed_stage_count": 0,
             "reward_total": 0,
-            "stage_transition_visible": False,
+            "stage_row_visible": True,
             "reward_banner_visible": False,
             "resulting_growth": 700,
             "inventory_remaining": 1,
@@ -208,9 +206,9 @@ def test_growth_charge_transient_contract_hides_same_stage_event_and_zero_reward
     }
 
     assert check(records) == ()
-    records["success-no-stage-reward"]["stage_transition_visible"] = True
+    records["success-no-stage-reward"]["stage_row_visible"] = False
     assert check(records) == (
-        "growth-charge-success-no-stage-reward:stage_transition_visible",
+        "growth-charge-success-no-stage-reward:stage_row_visible",
     )
 
 
@@ -838,7 +836,7 @@ def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
             "active_boosts",
         ],
         "reward_metric_order": [
-            "total_growth",
+            "growth_applied",
             "garden_coins",
             "standard_finds",
         ],

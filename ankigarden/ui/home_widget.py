@@ -73,7 +73,6 @@ class HomeWidgetData:
     collection_count: int = 0
     active_plant_name: str = ""
     active_plant_stage: str = ""
-    active_art_key: str = ""
     active_growth_points: int = 0
     active_stage_points: int = 0
     active_stage_goal: int = 0
@@ -557,10 +556,10 @@ HOME_WIDGET_STYLE = """
 #ag-home-root button.ag-home__open::after { content:""; display:none; }
 #ag-home-root button.ag-home__open:disabled::after { content:""; margin:0; }
 #ag-home-root button:hover { background: #75e3ae; }
-#ag-home-root button:active { background:#4fc98e; }
+#ag-home-root button:active { background:#4fc98e; transform:translateY(1px); }
 #ag-home-root button:disabled { cursor:wait; background:#172721; border-color:#30443b; color:#83968b; }
 #ag-home-root button:focus-visible {
-  outline: 2px solid #A0F0C8;
+  outline: 2px solid #75E3AE;
   outline-offset: 2px;
   box-shadow:0 0 0 4px #081814;
 }
@@ -588,10 +587,10 @@ HOME_WIDGET_STYLE = """
   background:#081814;
   box-shadow:0 10px 28px rgba(0,0,0,.24);
   cursor:default;
-  transition:border-color 140ms ease,box-shadow 140ms ease,background-color 140ms ease,color 140ms ease;
+  transition:transform 120ms ease,border-color 120ms ease,box-shadow 120ms ease;
 }
 #ag-home-root:focus-visible {
-  outline:2px solid #A0F0C8;
+  outline:2px solid #75E3AE;
   outline-offset:2px;
   box-shadow:0 0 0 4px #081814,0 14px 34px rgba(0,0,0,.3);
 }
@@ -636,8 +635,7 @@ HOME_WIDGET_STYLE = """
   column-gap:12px;
   align-items:start;
 }
-.ag-home__identity { width:100%; max-width:260px; min-width:0; grid-column:1; display:flex; align-items:center; gap:8px; }
-.ag-home__identity-copy { min-width:0; flex:1 1 auto; }
+.ag-home__identity { width:100%; max-width:260px; min-width:0; grid-column:1; }
 .ag-home__artwork-zone { min-width:0; grid-column:2; pointer-events:none; }
 .ag-home__identity-row > .ag-home__open,
 .ag-home__identity-row > button { grid-column:3; }
@@ -669,16 +667,16 @@ HOME_WIDGET_STYLE = """
   white-space:nowrap;
 }
 .ag-home__growth-track {
-  position:relative;
-  left:auto;
+  position:absolute;
+  left:16px;
   right:auto;
-  bottom:auto;
-  width:100%;
+  bottom:7px;
+  width:260px;
   height:4px;
-  margin:4px 0 0;
+  margin:0;
   overflow:hidden;
   border-radius:999px;
-  background:rgba(188,216,201,.18);
+  background:rgba(99,217,159,.26);
 }
 .ag-home__growth-track > span {
   display:block;
@@ -690,7 +688,7 @@ HOME_WIDGET_STYLE = """
   height:100%;
   margin:0;
   border-radius:inherit;
-  background:linear-gradient(90deg,#52CA92,#63DFA5);
+  background:#63D99F;
 }
 .ag-home__garden-context,.ag-home__status-notice { display:none; }
 .ag-home__partial-message,.ag-home__stage-up {
@@ -725,61 +723,17 @@ HOME_WIDGET_STYLE = """
   font-size:13px !important;
   font-weight:600;
   box-shadow:0 4px 14px rgba(0,0,0,.22);
-  transition:background-color 140ms ease,border-color 140ms ease,color 140ms ease,opacity 140ms ease;
 }
 #ag-home-root button:hover { background:#75E3AE; }
 #ag-home-root button:active { background:#4FC98E; }
 #ag-home-root button.ag-home__open::after { content:""; display:none; }
-#ag-home-root:not(.ag-home--no-starter) button.ag-home__open { font-size:14px !important; }
-.ag-home--no-starter {
-  width:min(calc(100% - 40px),520px) !important;
-  max-width:520px;
-  height:auto !important;
-  min-height:88px;
-  margin:18px auto;
-}
-.ag-home--no-starter .ag-home__body {
-  height:auto;
-  min-height:88px;
-}
-.ag-home--no-starter .ag-home__scene::after {
-  background:
-    linear-gradient(90deg,rgba(3,12,9,.995) 0%,rgba(3,13,10,.91) 44%,rgba(4,14,11,.48) 69%,rgba(4,14,11,.08) 100%),
-    linear-gradient(180deg,rgba(4,14,11,.14) 0%,transparent 62%,rgba(4,14,11,.08) 100%);
-}
-.ag-home--no-starter .ag-home__details {
-  position:relative;
-  min-height:88px;
-  padding:12px 16px;
-  justify-content:center;
-}
-.ag-home--no-starter .ag-home__identity-row {
-  grid-template-columns:minmax(0,1fr) 112px;
-  align-items:center;
-  column-gap:16px;
-}
-.ag-home--no-starter .ag-home__identity {
-  max-width:none;
-}
-.ag-home--no-starter .ag-home__artwork-zone { display:none; }
-.ag-home--no-starter .ag-home__identity-row > .ag-home__open,
-.ag-home--no-starter .ag-home__identity-row > button { grid-column:2; }
-.ag-home--no-starter .ag-home__support {
-  max-width:none;
-  overflow:visible;
-  color:#B7C4BD;
-  text-overflow:clip;
-  white-space:normal;
-}
 #ag-home-root[data-motion="reduced"] { transition:none; }
 #ag-home-root[data-motion="reduced"]:hover { transform:none; }
-#ag-home-root[data-motion="reduced"] button { transition:none; }
 #ag-home-root[data-motion="reduced"] button:active { transform:none; }
 #ag-home-root[data-motion="reduced"] .ag-home__scene-frame { transition:none; }
 @media (prefers-reduced-motion: reduce) {
   #ag-home-root { transition:none; }
   #ag-home-root:hover { transform:none; }
-  #ag-home-root button { transition:none; }
   #ag-home-root button:active { transform:none; }
   .ag-home__scene-frame { transition:none; }
 }
@@ -800,33 +754,13 @@ HOME_WIDGET_STYLE = """
     justify-self:end;
   }
   .ag-home__support { max-width:100%; }
-  .ag-home__growth-track { left:auto; right:auto; bottom:auto; width:100%; }
-  #ag-home-root.ag-home--no-starter {
-    height:auto;
-    min-height:136px;
-  }
-  .ag-home--no-starter .ag-home__body,
-  .ag-home--no-starter .ag-home__details { min-height:136px; }
-  .ag-home--no-starter .ag-home__identity-row {
-    grid-template-columns:minmax(0,1fr);
-    align-items:start;
-    gap:8px;
-  }
-  .ag-home--no-starter .ag-home__identity-row > .ag-home__open,
-  .ag-home--no-starter .ag-home__identity-row > button {
-    grid-column:1;
-    justify-self:start;
-  }
+  .ag-home__growth-track { left:14px; right:140px; bottom:7px; width:auto; }
 }
 @container (max-width:340px) {
   .ag-home__details { padding:12px; }
   .ag-home__identity-row { gap:8px; }
   .ag-home__support,.ag-home__progress-copy,.ag-home__growth-track { display:none; }
   .ag-home__focus-name { font-size:18px; }
-  .ag-home--no-starter .ag-home__support {
-    display:block;
-    white-space:normal;
-  }
 }
 @container (max-width:300px) {
   .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 100px; }
@@ -1122,12 +1056,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         f'--ag-scene-opacity:{preview.scene_opacity:.3f}'
     )
     background_url = str(surface_variant.get("url") or data.background_url)
-    background_preload = (
-        '<link rel="preload" as="image" fetchpriority="high" '
-        f'href="{escape(background_url, quote=True)}">'
-        if background_url and not bool(data.starter_selected) else
-        ""
-    )
     fallback_background = (
         "linear-gradient(180deg,#244954 0%,#31594d 55%,#294a35 55%,#17332d 100%)"
     )
@@ -1463,26 +1391,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     else:
         preview_support = HOME_NO_STARTER_BODY if not starter_selected else preview.summary
         preview_identity = preview_support
-    active_plant = next(
-        (
-            item
-            for item in scene_items
-            if isinstance(item, dict) and bool(item.get("is_active"))
-        ),
-        None,
-    )
-    active_art_key = str(
-        data.active_art_key
-        or (
-            active_plant.get("asset_key", "")
-            if isinstance(active_plant, dict) else
-            ""
-        )
-        or ""
-    )
     garden_identity_html = (
         '<div class="ag-home__identity">'
-        '<div class="ag-home__identity-copy">'
         '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
         f'<h2 class="ag-home__focus-name" data-testid="home-title" '
         f'aria-label="{escape(preview_title, quote=True)}" '
@@ -1503,7 +1413,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             '<span></span></div>'
             if display_growth_goal > 0 else ""
         )
-        + '</div></div>'
+        + '</div>'
     )
     action_text = surface_view.action_text
     action_label = f"Open {garden_name_value}" if starter_selected else CHOOSE_STARTER_ACTION
@@ -1512,6 +1422,14 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     no_starter_body = (
         f'<span id="home-no-starter-accessible" class="ag-home__sr-only">{HOME_NO_STARTER_ACCESSIBLE}</span>'
         if not starter_selected else ""
+    )
+    active_plant = next(
+        (
+            item
+            for item in scene_items
+            if isinstance(item, dict) and bool(item.get("is_active"))
+        ),
+        None,
     )
     active_slot = int(active_plant.get("slot_index", -1)) if active_plant else -1
     active_layout = next(
@@ -1543,8 +1461,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     )
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
-    return f"""{HOME_WIDGET_STYLE}{background_preload}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-home-mode=\"{surface_view.mode.value}\" data-progress-current=\"{surface_view.progress_current}\" data-progress-maximum=\"{surface_view.progress_maximum}\" data-progress-percent=\"{surface_view.progress_percent:.2f}\" data-motion=\"{motion_mode}\" data-active-slot=\"{active_slot}\" data-active-art-key=\"{escape(active_art_key, quote=True)}\" data-active-band=\"{active_band}\" data-active-side=\"{active_side}\" data-summary-clearance=\"{summary_clearance}\"{focal_style} role=\"region\"
+    return f"""{HOME_WIDGET_STYLE}
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-home-mode=\"{surface_view.mode.value}\" data-progress-current=\"{surface_view.progress_current}\" data-progress-maximum=\"{surface_view.progress_maximum}\" data-progress-percent=\"{surface_view.progress_percent:.2f}\" data-motion=\"{motion_mode}\" data-active-slot=\"{active_slot}\" data-active-band=\"{active_band}\" data-active-side=\"{active_side}\" data-summary-clearance=\"{summary_clearance}\"{focal_style} role=\"region\"
   aria-label=\"{escape(garden_name_value, quote=True)} Anki Garden summary. {escape(preview_support, quote=True)}\">
   <div class=\"ag-home__body\">
     {stage_up_html}
@@ -1600,22 +1518,6 @@ def build_home_widget_success_data(
     active_plant = next(
         (plant for plant in plants if str(getattr(plant, "plant_id", "") or "") == active_id),
         None,
-    )
-    active_scene_item = next(
-        (
-            item for item in scene_items
-            if isinstance(item, dict)
-            and (
-                str(item.get("plant_id", "") or "") == active_id
-                or bool(item.get("is_active"))
-            )
-        ),
-        None,
-    )
-    active_art_key = (
-        str(active_scene_item.get("asset_key", "") or "")
-        if isinstance(active_scene_item, dict) else
-        ""
     )
     # Starter selection appends the first Plant before paid collection items.
     # Do not relabel a later planted purchase as the starter if that first
@@ -1730,7 +1632,6 @@ def build_home_widget_success_data(
         collection_count=max(0, len(plants)),
         active_plant_name=str(getattr(active_plant, "name", "") or ""),
         active_plant_stage=str(getattr(active_plant, "growth_stage", "") or ""),
-        active_art_key=active_art_key,
         active_growth_points=max(0, int(getattr(active_plant, "growth_points", 0) or 0)),
         active_stage_points=active_growth.stage_points if active_plant is not None else 0,
         active_stage_goal=active_growth.stage_goal if active_plant is not None else 0,

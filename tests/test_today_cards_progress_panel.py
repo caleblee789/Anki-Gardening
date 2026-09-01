@@ -163,13 +163,11 @@ def test_today_page_copy_has_no_goal_or_find_drought_language() -> None:
         "answers",
         "drought",
         "52 / 75",
-        "due at start",
-        "remaining today",
-        "daily reset",
     ):
         assert forbidden not in literals
-    assert "cards complete" in literals
-    assert "next reset" in literals
+    assert "at start" in literals
+    assert "remaining today" in literals
+    assert "daily reset" in literals
     assert "queued for tomorrow" in literals
 
 
@@ -178,7 +176,6 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
     state = SimpleNamespace(
         daily_completion=SimpleNamespace(
             starting_required_cards=194,
-            starting_required_cards_completed=176,
             remaining_new_cards=4,
             remaining_required_reviews=10,
             remaining_learning_steps=2,
@@ -219,8 +216,7 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
     assert result.status.finds_detail == ""
     assert result.status.heading == "TODAY’S CARDS"
     assert result.status.primary == "18 cards remaining"
-    assert result.status.secondary == ()
-    assert result.completed_cards == 176
+    assert result.status.secondary == ("176 cards completed",)
     assert result.weather_name == "Watering Station"
     assert result.scenery_name == "Spring Bloom"
     assert result.loadout_locked is True

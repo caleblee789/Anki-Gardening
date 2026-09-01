@@ -300,7 +300,7 @@ def format_approximate_cards(count: Any) -> str:
     """Format an estimated card count without reintroducing answer copy."""
 
     normalized = max(0, int(_to_decimal(count)))
-    return f"About {format_quantity(normalized, 'card')}"
+    return f"~{format_quantity(normalized, 'card')}"
 
 
 def format_status_label(value: str) -> str:

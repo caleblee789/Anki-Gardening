@@ -716,15 +716,10 @@ def test_home_and_vertical_settings_capture_bounds_match_the_release_layout() ->
     assert "Place in Bed" not in starter_postcondition
 
 
-def test_loadout_catalog_fills_the_left_panel_and_scrolls_only_its_grid() -> None:
+def test_loadout_first_fold_reserves_two_complete_native_tile_rows() -> None:
     dashboard_source = (ROOT / "ankigarden" / "ui" / "dashboard.py").read_text(
         "utf-8"
     )
 
-    assert "self.option_tabs.setFixedHeight(304)" not in dashboard_source
-    assert "scroll.setFixedHeight(260)" not in dashboard_source
-    assert "library_layout.addWidget(self.option_tabs, 1)" in dashboard_source
-    assert "page_layout.addWidget(scroll, 1)" in dashboard_source
-    assert "host.setMinimumHeight(required_height)" in dashboard_source
-    assert "self.main_grid.addWidget(self.library, 0, 0)" in dashboard_source
-    assert "self.main_grid.addWidget(self.preview_panel, 0, 1)" in dashboard_source
+    assert "self.option_tabs.setFixedHeight(304)" in dashboard_source
+    assert "scroll.setFixedHeight(260)" in dashboard_source

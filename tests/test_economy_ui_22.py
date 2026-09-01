@@ -38,11 +38,6 @@ def test_fertilizer_status_is_card_counted_fifo_and_time_invariant() -> None:
     assert early.cards_remaining == 97
     assert early.total_cards == 200
     assert early.queued_cards == 200
-    assert early.queued_next is not None
-    assert early.queued_next.name == "Quality Fertilizer"
-    assert early.queued_next.effect == "+1 Growth per card"
-    assert early.queued_next.duration == "200 cards queued"
-    assert early.queued_next.starts_after == "Basic Fertilizer"
     assert early.seconds_remaining == 0
     assert "cards queued after this dose" in early.accessible_text
 

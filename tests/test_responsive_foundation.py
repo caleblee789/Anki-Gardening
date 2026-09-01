@@ -214,27 +214,6 @@ def test_shared_split_breakpoint_is_stable_at_plus_or_minus_two() -> None:
     }
 
 
-def test_collection_grid_keeps_four_columns_inside_the_950_px_progress_shell() -> None:
-    assert responsive_column_count(
-        698,
-        minimum_item_width=160,
-        maximum_columns=4,
-        spacing=10,
-    ) == 4
-    assert responsive_column_count(
-        693,
-        minimum_item_width=160,
-        maximum_columns=4,
-        spacing=10,
-    ) == 3
-    assert responsive_column_count(
-        523,
-        minimum_item_width=160,
-        maximum_columns=4,
-        spacing=10,
-    ) == 2
-
-
 def test_continuous_responsive_values_have_no_hidden_pixel_cliffs() -> None:
     assert responsive_progress(100, 100, 200) == 0.0
     assert responsive_progress(200, 100, 200) == 1.0

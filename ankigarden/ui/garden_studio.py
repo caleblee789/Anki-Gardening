@@ -34,12 +34,7 @@ from ..environment import (
     SCENERY_CATALOG,
     canonical_garden_feature_id,
 )
-from .copy import (
-    HOME_ACTIVE_ACTION,
-    REDUCED_MOTION_DESCRIPTION,
-    REDUCED_MOTION_LABEL,
-    learner_card_copy,
-)
+from .copy import HOME_ACTIVE_ACTION, REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION_LABEL
 from .accessibility import effective_motion_enabled, read_system_reduced_motion
 from .controls import GardenToggleSwitch
 from .garden_asset_thumbnail import GardenAssetThumbnail
@@ -483,29 +478,16 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        # The canonical Settings viewport needs the Advanced accordion without
-        # a routine outer scroll. Its content remains naturally measured; this
-        # smaller floor removes the obsolete preview-era vertical reserve.
-        self.theme_card.setMinimumHeight(104)
+        self.theme_card.setMinimumHeight(112)
         theme_layout = QHBoxLayout(self.theme_card)
-        theme_layout.setContentsMargins(6, 4, 6, 4)
-        theme_layout.setSpacing(8)
-        self.theme_thumbnail_host = QWidget(self.theme_card)
-        self.theme_thumbnail_host.setFixedSize(64, 56)
-        thumbnail_layout = QHBoxLayout(self.theme_thumbnail_host)
-        thumbnail_layout.setContentsMargins(0, 0, 0, 0)
-        thumbnail_layout.setSpacing(0)
-        self.theme_thumbnail = GardenAssetThumbnail(
-            self.theme_thumbnail_host,
-            engine=self.engine,
-            asset_id="default",
-            asset_type="environment",
-            width=64,
-            height=56,
-        )
-        self.theme_thumbnail.setProperty("thumbnailRole", "appearance-primary")
-        thumbnail_layout.addWidget(self.theme_thumbnail)
+        theme_layout.setContentsMargins(8, 8, 8, 8)
+        theme_layout.setSpacing(10)
+        self.theme_thumbnail = QLabel()
+        self.theme_thumbnail.setFixedSize(80, 40)
+        self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.theme_thumbnail.setWordWrap(True)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
+        self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
         self.theme_title = QLabel("Garden appearance")
         self.theme_title.setProperty("settingsHeading", True)
         self.theme_title.setWordWrap(True)
@@ -521,7 +503,7 @@ class GardenStudioWidget(QWidget):
         self.appearance_grid = QGridLayout()
         self.appearance_grid.setContentsMargins(0, 0, 0, 0)
         self.appearance_grid.setHorizontalSpacing(8)
-        self.appearance_grid.setVerticalSpacing(0)
+        self.appearance_grid.setVerticalSpacing(2)
         self.appearance_grid.setColumnStretch(0, 0)
         self.appearance_grid.setColumnStretch(1, 0)
         self.appearance_grid.setColumnStretch(2, 1)
@@ -529,8 +511,8 @@ class GardenStudioWidget(QWidget):
         self.appearance_art_hosts: dict[str, QWidget] = {}
         for row, (key, caption) in enumerate((
             ("scenery", "Scenery"),
-            ("displayed_decoration", "Decoration"),
-            ("active_bonus", "Garden bonus"),
+            ("displayed_decoration", "Displayed decoration"),
+            ("active_bonus", "Active garden bonus"),
             ("visual_effects", "Visual effects"),
         )):
             if key in {"displayed_decoration", "active_bonus"}:
@@ -552,14 +534,9 @@ class GardenStudioWidget(QWidget):
             self.appearance_values[key] = value
         theme_copy = QVBoxLayout()
         theme_copy.setContentsMargins(0, 0, 0, 0)
-        theme_copy.setSpacing(1)
+        theme_copy.setSpacing(3)
         theme_copy.addWidget(self.theme_title)
         theme_copy.addLayout(self.appearance_grid)
-        self.bonus_description = QLabel("")
-        self.bonus_description.setProperty("settingsNote", True)
-        self.bonus_description.setWordWrap(True)
-        self.bonus_description.setMinimumWidth(0)
-        theme_copy.addWidget(self.bonus_description)
         theme_copy.addWidget(self.theme_summary)
         self.manage_environment = QToolButton()
         self.manage_environment.setText("Edit appearance")
@@ -569,7 +546,7 @@ class GardenStudioWidget(QWidget):
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
         theme_layout.addWidget(
-            self.theme_thumbnail_host,
+            self.theme_thumbnail,
             0,
             Qt.AlignmentFlag.AlignVCenter,
         )
@@ -577,7 +554,7 @@ class GardenStudioWidget(QWidget):
         theme_layout.addWidget(
             self.manage_environment,
             0,
-            Qt.AlignmentFlag.AlignTop,
+            Qt.AlignmentFlag.AlignVCenter,
         )
 
         self.reduced_motion = GardenToggleSwitch()
@@ -1034,33 +1011,7 @@ class GardenStudioWidget(QWidget):
         )
         artwork.setAccessibleName(accessible_name)
         artwork.setProperty("appearanceField", str(key))
-        artwork.setProperty("thumbnailRole", "appearance-inline")
         layout.addWidget(artwork)
-
-    def _set_primary_appearance_artwork(
-        self,
-        asset_id: str,
-        accessible_name: str,
-    ) -> None:
-        layout = self.theme_thumbnail_host.layout()
-        if layout is None:
-            return
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        self.theme_thumbnail = GardenAssetThumbnail(
-            self.theme_thumbnail_host,
-            engine=self.engine,
-            asset_id=str(asset_id or "default"),
-            asset_type="environment",
-            width=64,
-            height=56,
-        )
-        self.theme_thumbnail.setProperty("thumbnailRole", "appearance-primary")
-        self.theme_thumbnail.setAccessibleName(accessible_name)
-        layout.addWidget(self.theme_thumbnail)
 
     def _refresh_appearance_card(self) -> None:
         """Refresh the compact current-scenery summary shown in Settings."""
@@ -1142,14 +1093,14 @@ class GardenStudioWidget(QWidget):
         )
         expected_captions = (
             "Scenery",
-            "Decoration",
-            "Garden bonus",
+            "Displayed decoration",
+            "Active garden bonus",
             "Visual effects",
         )
         if set(shared_values) == set(expected_captions):
             scenery_label = shared_values["Scenery"]
-            decoration_label = shared_values["Decoration"]
-            bonus_label = shared_values["Garden bonus"]
+            decoration_label = shared_values["Displayed decoration"]
+            bonus_label = shared_values["Active garden bonus"]
             effects_label = shared_values["Visual effects"]
             if effects_label.casefold() in {"on", "enabled", "true"}:
                 effects_label = "Enabled"
@@ -1158,7 +1109,7 @@ class GardenStudioWidget(QWidget):
         values = {
             "scenery": scenery_label,
             "displayed_decoration": decoration_label,
-            "active_bonus": bonus_label.split(" · ", 1)[0],
+            "active_bonus": bonus_label,
             "visual_effects": effects_label,
         }
         for key, value in values.items():
@@ -1171,33 +1122,73 @@ class GardenStudioWidget(QWidget):
         self._set_appearance_artwork(
             "active_bonus",
             bonus_id,
-            f"{bonus_label.split(' · ', 1)[0]} today's garden bonus artwork",
+            f"{bonus_label.split(' · ', 1)[0]} active garden bonus artwork",
         )
-        bonus_effect = learner_card_copy(
-            getattr(bonus, "effect", "") if bonus is not None else ""
-        ).strip().rstrip(".")
-        self.bonus_description.setText(bonus_effect)
-        self.bonus_description.setVisible(bool(bonus_effect))
-        summary = "; ".join(
-            value
-            for value in (
-                f"Scenery {scenery_label}",
-                f"decoration {decoration_label}",
-                f"garden bonus {bonus_label.split(' · ', 1)[0]}",
-                bonus_effect,
-                f"visual effects {effects_label}",
-            )
-            if str(value or "").strip()
-        )
+        summary = "; ".join((
+            f"Scenery {scenery_label}",
+            f"displayed decoration {decoration_label}",
+            f"active garden bonus {bonus_label}",
+            f"visual effects {effects_label}",
+        ))
         self.theme_summary.setText(summary)
         self.theme_card.setAccessibleName("Current Garden appearance")
         self.theme_card.setAccessibleDescription(summary)
-        self._set_primary_appearance_artwork(
-            scenery_id,
-            f"{scenery_label} preview",
-        )
+        self.theme_thumbnail.setAccessibleName(f"{scenery_label} preview")
         self.theme_thumbnail.setToolTip(scenery_label)
         self.theme_thumbnail.setProperty("appearanceArtworkId", scenery_id)
+        quality = "balanced"
+        asset_paths: dict[str, Any] = {}
+        background_path: Any = None
+        scenery_resolver = getattr(
+            self.engine,
+            "resolve_scenery_preview_asset",
+            None,
+        )
+        if callable(scenery_resolver):
+            try:
+                resolved_scenery = scenery_resolver(scenery_id)
+                background_path = (
+                    resolved_scenery.get("path")
+                    if isinstance(resolved_scenery, dict) else
+                    getattr(resolved_scenery, "path", None)
+                )
+            except Exception:
+                background_path = None
+        if not background_path and self.asset_resolver:
+            try:
+                try:
+                    asset_paths = self.asset_resolver(
+                        self._normalize_theme(str(self.preview["theme"])),
+                        preview_decoration,
+                        str(self.preview["growth_stage"]),
+                        quality,
+                        real_plants,
+                    )
+                except TypeError:
+                    asset_paths = self.asset_resolver(
+                        self._normalize_theme(str(self.preview["theme"])),
+                        preview_decoration,
+                        str(self.preview["growth_stage"]),
+                        quality,
+                    )
+            except Exception:
+                asset_paths = {}
+            background_asset = asset_paths.get("background")
+            background_path = (
+                background_asset.get("path")
+                if isinstance(background_asset, dict)
+                else background_asset
+            )
+        background_pixmap = QPixmap(str(background_path)) if background_path else QPixmap()
+        if background_pixmap.isNull():
+            self.theme_thumbnail.setPixmap(QPixmap())
+            self.theme_thumbnail.setText(scenery_label)
+        else:
+            self.theme_thumbnail.setText("")
+            self.theme_thumbnail.setPixmap(background_pixmap.scaled(
+                self.theme_thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
 
     def _garden_snapshot(self) -> dict[str, Any]:
         if self.garden_snapshot_provider is None:

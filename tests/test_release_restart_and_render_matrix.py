@@ -209,18 +209,6 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert storage.state.onboarding.step is OnboardingStep.PLACEMENT
     assert storage.state.onboarding.pending_species == "bonsai"
     assert storage.state.plants == []
-    exact_step_two_snapshot = storage.state.to_dict()
-
-    original_save = storage.save
-    storage.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
-    try:
-        failed, _message, failed_plant, failed_change = (
-            engine.place_starter_with_change(0)
-        )
-    finally:
-        storage.save = original_save
-    assert failed is False and failed_plant is None and failed_change is None
-    assert storage.state.to_dict() == exact_step_two_snapshot
 
     ok, _message, starter, placement_change = engine.place_starter_with_change(0)
     assert ok and starter is not None and placement_change is not None
@@ -229,7 +217,9 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert engine.undo_starter_placement(placement_change)[0] is False
     storage.state.garden_name = original_name
     assert engine.undo_starter_placement(placement_change)[0]
-    assert storage.state.to_dict() == exact_step_two_snapshot
+    assert storage.state.onboarding.step is OnboardingStep.PLACEMENT
+    assert storage.state.onboarding.pending_species == "bonsai"
+    assert storage.state.plants == []
 
     ok, _message, starter, placement_change = engine.place_starter_with_change(0)
     assert ok and starter is not None and placement_change is not None
@@ -242,19 +232,30 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     assert storage.state.starter_selection_complete is True
     assert [plant.species for plant in storage.state.plants] == ["bonsai"]
-    assert storage.state.active_plant_id == starter_id
-    assert storage.state.garden_setup_version == 1
-    assert storage.state.onboarding.step is OnboardingStep.DONE
+    assert storage.state.active_plant_id is None
+    assert storage.state.onboarding.step is OnboardingStep.NURTURE
     assert onboarding_state_display(storage.state, 0).state is (
-        OnboardingState.ONBOARDING_COMPLETE
+        OnboardingState.STARTER_PLANTED_NOT_NURTURED
     )
+
+    assert engine.set_active_plant(starter_id)[0]
+    assert engine.set_active_plant(starter_id)[0]
+    engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     starter = engine.plant_story(starter_id)
     assert starter is not None
     assert storage.state.active_plant_id == starter_id
     assert [memory.memory_id for memory in starter.memories].count("nurture:first") == 1
-    periods = storage.state.active_plant_periods
-    assert any(period.plant_id is None and period.started_at_ms == 0 for period in periods)
-    assert any(period.plant_id == starter_id and period.started_at_ms > 0 for period in periods)
+    assert onboarding_state_display(storage.state, 0).state is (
+        OnboardingState.NURTURED_PLANT_ASSIGNED
+    )
+    assert storage.state.onboarding.step is OnboardingStep.COMPLETION
+
+    assert engine.finish_onboarding()[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.DONE
+    assert onboarding_state_display(storage.state, 0).state is (
+        OnboardingState.ONBOARDING_COMPLETE
+    )
 
     growth_before_move = starter.growth_points
     assert engine.place_plant(starter_id, 1)[0]

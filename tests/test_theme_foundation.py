@@ -216,21 +216,17 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
         scope["SEMANTIC_COLORS"]["warning"],
     }
     expected_colors = {
-        "bg": "#06271F",
-        "shell": "#0B352B",
-        "surface_deep": "#06271F",
-        "surface_1": "#0B352B",
-        "surface_2": "#104438",
-        "surface_3": "#155143",
-        "surface_hover": "#155143",
-        "border": "#356759",
-        "primary": "#63DFA5",
-        "primary_hover": "#7AE8B6",
-        "primary_pressed": "#52CA92",
-        "gold": "#F3BE2D",
+        "bg": "#08251C",
+        "surface_deep": "#0B1F1B",
+        "surface_1": "#0D3026",
+        "surface_2": "#123D31",
+        "surface_hover": "#164C3D",
+        "primary": "#63D99F",
+        "primary_hover": "#75E4AE",
+        "primary_pressed": "#4FC58C",
+        "gold": "#E7B94A",
         "warning_bg": "#44281C",
-        "danger": "#D98277",
-        "focus": "#A0F0C8",
+        "danger": "#F07B75",
     }
     assert expected_colors.items() <= scope["SEMANTIC_COLORS"].items()
 
@@ -275,8 +271,8 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert scope["BUTTON_MIN_HEIGHT"] == 36
     assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 40
     assert scope["INPUT_VISUAL_HEIGHT"] == 40
-    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 36
-    assert scope["ICON_BUTTON_SIZE"] == 36
+    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 32
+    assert scope["ICON_BUTTON_SIZE"] == 32
 
     buttons = scope["button_stylesheet"]()
     tools = scope["tool_button_stylesheet"]()
@@ -288,8 +284,8 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QPushButton:disabled:hover" in buttons
     assert "QPushButton[pending='true']" in buttons
     assert "QPushButton[keyboardFocusVisible='true']:focus" in buttons
-    assert "font-size: 14px" in buttons
-    assert "border: 1px solid" in buttons
+    assert "font-size: 13px" in buttons
+    assert "border: 2px solid" in buttons
     assert f"border-color: {scope['GARDEN_THEME']['growth_accent']}" in buttons
     assert f"border-color: {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QPushButton[keyboardFocusVisible='true']:focus {\n            border-color:" in buttons
@@ -297,7 +293,7 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QToolButton:enabled:hover" in tools
     assert "QToolButton:disabled:hover" in tools
     assert "QToolButton[pending='true']" in tools
-    assert "font-size: 14px" in tools
+    assert "font-size: 13px" in tools
 
 
 def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
@@ -314,7 +310,7 @@ def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
         "secondary": (36, 14),
         "primary": (40, 16),
         "onboarding": (36, 16),
-        "icon": (36, 0),
+        "icon": (32, 0),
     }
     widget = _Widget()
     token = scope["apply_button_size"](widget, "onboarding")
@@ -325,7 +321,7 @@ def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
     assert (widget.minimum_width, widget.maximum_width) == (0, 16_777_215)
 
     scope["apply_button_size"](widget, button_size.ICON)
-    assert (widget.minimum_width, widget.maximum_width) == (36, 36)
+    assert (widget.minimum_width, widget.maximum_width) == (32, 32)
 
 
 def test_capture_button_calibration_matches_release_button_tokens() -> None:
@@ -357,7 +353,7 @@ def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> 
         role.value: (tokens[role].width_px, tokens[role].height_px)
         for role in geometry
     } == {
-        "icon-button": (36, 36),
+        "icon-button": (32, 32),
         "input": (None, 40),
         "select": (None, 40),
         "switch": (38, 22),
@@ -420,22 +416,10 @@ def test_semantic_colors_sentence_case_and_status_chips_have_one_authority() -> 
     assert widget.properties["statusTone"] == "rare"
     assert widget.properties["statusInteractive"] is False
     assert widget.properties["statusShadow"] is False
-    assert (widget.minimum_height, widget.maximum_height) == (24, 28)
-
-    next_widget = _Widget()
-    next_tone = scope["apply_status_chip"](next_widget, "next")
-    assert next_tone is scope["StatusChipTone"].NEXT
-    assert next_widget.properties["statusTone"] == "next"
+    assert (widget.minimum_height, widget.maximum_height) == (22, 26)
 
     stylesheet = scope["semantic_component_stylesheet"]()
     assert "QLabel[gardenRole='status-badge'][statusTone='rare']" in stylesheet
-    assert "QLabel[gardenRole='status-badge'][statusTone='next']" in stylesheet
-    assert scope["GARDEN_THEME"]["shadow_dialog"] == (
-        "0 18px 50px rgba(0, 0, 0, 0.34)"
-    )
-    assert scope["GARDEN_THEME"]["shadow_floating"] == (
-        "0 10px 28px rgba(0, 0, 0, 0.28)"
-    )
 
 
 def test_control_helpers_apply_variant_and_restore_disabled_description() -> None:
@@ -499,7 +483,7 @@ def test_icon_helper_requires_a_descriptive_name_and_preserves_hit_target() -> N
     assert widget.tooltip == "Close"
     assert widget.properties["iconButton"] is True
     assert widget.properties["gardenRole"] == "icon-button"
-    assert (widget.minimum_width, widget.minimum_height) == (36, 36)
+    assert (widget.minimum_width, widget.minimum_height) == (32, 32)
 
 
 def test_non_button_focus_surface_uses_the_shared_visible_ring_hook() -> None:

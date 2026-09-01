@@ -70,7 +70,7 @@ TEXT_ROLE_TOKENS: dict[TextRole, TypographyToken] = {
     TextRole.METADATA: TypographyToken(12, 16, 500, 0.1),
     TextRole.BADGE: TypographyToken(12, 16, 600, 0.2),
     TextRole.NUMERIC_DISPLAY: TypographyToken(28, 34, 700, tabular_numerals=True),
-    TextRole.BUTTON_LABEL: TypographyToken(14, 20, 600),
+    TextRole.BUTTON_LABEL: TypographyToken(13, 18, 600),
 }
 
 # Public compatibility/readability aliases. All three names reference the same
@@ -185,7 +185,7 @@ PRIMARY_BUTTON_VISUAL_HEIGHT = 40
 COMPACT_BUTTON_HEIGHT = 32
 BANNER_BUTTON_HEIGHT = 36
 ONBOARDING_BUTTON_VISUAL_HEIGHT = 36
-ICON_BUTTON_VISUAL_SIZE = 36
+ICON_BUTTON_VISUAL_SIZE = 32
 INPUT_VISUAL_HEIGHT = 40
 TAB_VISUAL_HEIGHT = 44
 TOGGLE_VISUAL_WIDTH = 38
@@ -200,9 +200,9 @@ CONTROL_HEIGHT_SCALE: dict[str, int] = {
     "primary": PRIMARY_BUTTON_VISUAL_HEIGHT,
 }
 PROGRESS_BAR_HEIGHT = 6
-STATUS_CHIP_MIN_HEIGHT = 24
-STATUS_CHIP_VISUAL_HEIGHT = 26
-STATUS_CHIP_MAX_HEIGHT = 28
+STATUS_CHIP_MIN_HEIGHT = 22
+STATUS_CHIP_VISUAL_HEIGHT = 24
+STATUS_CHIP_MAX_HEIGHT = 26
 
 BUTTON_SIZE_TOKENS: dict[ButtonSize, ButtonSizeToken] = {
     ButtonSize.COMPACT_ROW: ButtonSizeToken(COMPACT_BUTTON_HEIGHT, 10),
@@ -257,29 +257,24 @@ class ThemeContext(str, Enum):
 
 
 SEMANTIC_COLORS = {
-    "bg": "#06271F",
-    "shell": "#0B352B",
-    "surface_deep": "#06271F",
-    "surface_1": "#0B352B",
-    "surface_2": "#104438",
-    "surface_3": "#155143",
-    "surface_hover": "#155143",
-    "border": "#356759",
-    "border_subtle": "rgba(188, 216, 201, 0.18)",
-    "divider": "rgba(188, 216, 201, 0.14)",
-    "text_primary": "#F3F1DF",
-    "text_secondary": "#BEC9C1",
-    "text_muted": "#95A99F",
-    "text_disabled": "#81978C",
-    "primary": "#63DFA5",
-    "primary_hover": "#7AE8B6",
-    "primary_pressed": "#52CA92",
-    "primary_ink": "#05271E",
-    "primary_soft": "rgba(99, 223, 165, 0.13)",
-    "gold": "#F3BE2D",
-    "danger": "#D98277",
-    "danger_soft": "rgba(217, 130, 119, 0.12)",
-    "focus": "#A0F0C8",
+    "bg": "#08251C",
+    "shell": "#08251C",
+    "surface_deep": "#0B1F1B",
+    "surface_1": "#0D3026",
+    "surface_2": "#123D31",
+    "surface_3": "#0B1F1B",
+    "surface_hover": "#164C3D",
+    "border": "#70998A",
+    "divider": "#315247",
+    "text_primary": "#F4F3DF",
+    "text_secondary": "#B7C4BD",
+    "text_muted": "#95A89F",
+    "text_disabled": "#7F9289",
+    "primary": "#63D99F",
+    "primary_hover": "#75E4AE",
+    "primary_pressed": "#4FC58C",
+    "gold": "#E7B94A",
+    "danger": "#F07B75",
     "rare": "#B69AFF",
     # Warning amber is deliberately warmer than coin gold so a caution card
     # cannot read as a reward surface at a glance.
@@ -288,9 +283,9 @@ SEMANTIC_COLORS = {
     "info": "#79C8E8",
     # Nursery rows are part of the same product hierarchy. Earth tones are
     # reserved for artwork accents rather than whole catalogue cards.
-    "shop_surface_1": "#0B352B",
-    "shop_surface_2": "#104438",
-    "shop_surface_3": "#155143",
+    "shop_surface_1": "#0D3026",
+    "shop_surface_2": "#123D31",
+    "shop_surface_3": "#0B1F1B",
 }
 
 
@@ -329,7 +324,7 @@ SEMANTIC_ROLE_COLORS: dict[SemanticColorRole, str] = {
 }
 
 GREEN_SURFACE_LEVELS: tuple[str, str, str, str] = (
-    SEMANTIC_COLORS["bg"],
+    SEMANTIC_COLORS["shell"],
     SEMANTIC_COLORS["surface_1"],
     SEMANTIC_COLORS["surface_2"],
     SEMANTIC_COLORS["surface_3"],
@@ -355,8 +350,7 @@ GARDEN_THEME = {
     "raised_surface": SEMANTIC_COLORS["surface_1"],
     "selected_surface": SEMANTIC_COLORS["surface_2"],
     "elevated_surface": SEMANTIC_COLORS["surface_3"],
-    "subtle_border": SEMANTIC_COLORS["border_subtle"],
-    "divider": SEMANTIC_COLORS["divider"],
+    "subtle_border": SEMANTIC_COLORS["divider"],
     "strong_border": SEMANTIC_COLORS["border"],
     "text_primary": SEMANTIC_COLORS["text_primary"],
     "text_secondary": SEMANTIC_COLORS["text_secondary"],
@@ -365,10 +359,9 @@ GARDEN_THEME = {
     "action_accent": SEMANTIC_COLORS["primary"],
     "action_hover": SEMANTIC_COLORS["primary_hover"],
     "action_pressed": SEMANTIC_COLORS["primary_pressed"],
-    "action_text": SEMANTIC_COLORS["primary_ink"],
-    "action_soft": SEMANTIC_COLORS["primary_soft"],
+    "action_text": "#08251C",
     "action_border": SEMANTIC_COLORS["primary"],
-    "secondary_action": SEMANTIC_COLORS["surface_1"],
+    "secondary_action": SEMANTIC_COLORS["surface_2"],
     "secondary_hover": SEMANTIC_COLORS["surface_hover"],
     "secondary_pressed": SEMANTIC_COLORS["surface_1"],
     "secondary_border": SEMANTIC_COLORS["border"],
@@ -384,13 +377,8 @@ GARDEN_THEME = {
     "warning_surface": SEMANTIC_COLORS["warning_bg"],
     "error": SEMANTIC_COLORS["danger"],
     "danger": SEMANTIC_COLORS["danger"],
-    "danger_soft": SEMANTIC_COLORS["danger_soft"],
     "info": SEMANTIC_COLORS["info"],
-    "focus_ring": SEMANTIC_COLORS["focus"],
-    "shadow_dialog": "0 18px 50px rgba(0, 0, 0, 0.34)",
-    "shadow_dialog_color": "rgba(0, 0, 0, 0.34)",
-    "shadow_floating": "0 10px 28px rgba(0, 0, 0, 0.28)",
-    "shadow_floating_color": "rgba(0, 0, 0, 0.28)",
+    "focus_ring": SEMANTIC_COLORS["primary_hover"],
     "shop_surface_1": SEMANTIC_COLORS["shop_surface_1"],
     "shop_surface_2": SEMANTIC_COLORS["shop_surface_2"],
     "shop_surface_3": SEMANTIC_COLORS["shop_surface_3"],
@@ -432,20 +420,20 @@ GARDEN_THEME = {
     "session_summary_chip_surface": "rgba(241, 195, 76, 26)",
     # Selected-plant popover palette. Keep these component semantics here so
     # the compact overlay never grows its own scatter of one-off colors.
-    "plant_popover_bg": SEMANTIC_COLORS["surface_2"],
-    "plant_popover_raised": SEMANTIC_COLORS["surface_1"],
-    "plant_popover_border": SEMANTIC_COLORS["border_subtle"],
-    "plant_popover_status_surface": SEMANTIC_COLORS["primary_soft"],
-    "plant_popover_status_border": SEMANTIC_COLORS["border_subtle"],
-    "plant_popover_status_text": SEMANTIC_COLORS["primary"],
-    "plant_popover_progress_track": SEMANTIC_COLORS["surface_1"],
-    "plant_popover_divider": SEMANTIC_COLORS["divider"],
-    "plant_popover_danger_surface": SEMANTIC_COLORS["danger_soft"],
-    "plant_popover_danger_hover": "rgba(217, 130, 119, 0.18)",
-    "plant_popover_danger_pressed": "rgba(217, 130, 119, 0.24)",
-    "plant_popover_danger_border": SEMANTIC_COLORS["danger"],
-    "plant_popover_danger_text": SEMANTIC_COLORS["danger"],
-    "plant_popover_shadow": "rgba(0, 0, 0, 0.28)",
+    "plant_popover_bg": "#174B3C",
+    "plant_popover_raised": "#0F3A2D",
+    "plant_popover_border": "rgba(126, 221, 179, 72)",
+    "plant_popover_status_surface": "rgba(102, 222, 164, 41)",
+    "plant_popover_status_border": "rgba(102, 222, 164, 77)",
+    "plant_popover_status_text": "#8DEBBB",
+    "plant_popover_progress_track": "rgba(234, 250, 242, 36)",
+    "plant_popover_divider": "rgba(219, 240, 229, 33)",
+    "plant_popover_danger_surface": "rgba(166, 52, 56, 56)",
+    "plant_popover_danger_hover": "rgba(178, 58, 63, 82)",
+    "plant_popover_danger_pressed": "rgba(142, 43, 48, 92)",
+    "plant_popover_danger_border": "rgba(242, 105, 110, 158)",
+    "plant_popover_danger_text": "#FFDADC",
+    "plant_popover_shadow": "#57000000",
 }
 
 # Nursery uses the same green hierarchy. Soil and wood colors remain inside
@@ -506,7 +494,6 @@ class StatusChipTone(str, Enum):
     NEUTRAL = "neutral"
     ACTIVE = "active"
     COMPLETED = "completed"
-    NEXT = "next"
     LOCKED = "locked"
     RARE = "rare"
     WARNING = "warning"
@@ -1109,15 +1096,15 @@ def button_stylesheet(
     """Return the complete text-button contract, including safe defaults."""
 
     t = theme_palette(context)
-    hover_border = t["strong_border"]
-    pressed_border = t["strong_border"]
-    primary_pressed_border = t["action_pressed"]
+    hover_border = "#5b836f"
+    pressed_border = "#6d9581"
+    primary_pressed_border = "#86bc91"
     return f"""
         QPushButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
             max-height: {BUTTON_VISUAL_HEIGHT}px;
             padding: 0 14px;
-            border: 1px solid {t['secondary_border']};
+            border: 2px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             background: {t['secondary_action']};
             color: {t['text_primary']};
@@ -1165,15 +1152,12 @@ def button_stylesheet(
             color: {t['text_primary']};
         }}
         QPushButton[variant='destructive'] {{
-            background: {t['danger_soft']};
-            border-color: transparent;
-            color: {t['danger']};
+            background: #6d2d2d;
+            border-color: #a44a4a;
+            color: #ffecec;
         }}
-        QPushButton[variant='destructive']:enabled:hover {{
-            background: {t['selected_surface']};
-            border-color: {t['danger']};
-        }}
-        QPushButton[variant='destructive']:enabled:pressed {{ background: {t['raised_surface']}; }}
+        QPushButton[variant='destructive']:enabled:hover {{ background: #7b3434; }}
+        QPushButton[variant='destructive']:enabled:pressed {{ background: #562424; }}
         QPushButton[compactRowAction='true'] {{
             min-height: {COMPACT_BUTTON_HEIGHT}px;
             max-height: {COMPACT_BUTTON_HEIGHT}px;
@@ -1234,8 +1218,8 @@ def tool_button_stylesheet(
     """Return the matching treatment for visible and icon tool buttons."""
 
     t = theme_palette(context)
-    hover_border = t["strong_border"]
-    pressed_border = t["strong_border"]
+    hover_border = "#5b836f"
+    pressed_border = "#6d9581"
     return f"""
         QToolButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
@@ -1243,7 +1227,7 @@ def tool_button_stylesheet(
             padding: 0 14px;
             color: {t['text_primary']};
             background: {t['secondary_action']};
-            border: 1px solid {t['secondary_border']};
+            border: 2px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_size_px}px;
             font-weight: 600;
@@ -1285,15 +1269,12 @@ def tool_button_stylesheet(
             color: {t['text_primary']};
         }}
         QToolButton[variant='destructive'] {{
-            background: {t['danger_soft']};
-            border-color: transparent;
-            color: {t['danger']};
+            background: #6d2d2d;
+            border-color: #a44a4a;
+            color: #ffecec;
         }}
-        QToolButton[variant='destructive']:enabled:hover {{
-            background: {t['selected_surface']};
-            border-color: {t['danger']};
-        }}
-        QToolButton[variant='destructive']:enabled:pressed {{ background: {t['raised_surface']}; }}
+        QToolButton[variant='destructive']:enabled:hover {{ background: #7b3434; }}
+        QToolButton[variant='destructive']:enabled:pressed {{ background: #562424; }}
         QToolButton[gardenRole='icon-button'] {{
             min-width: {ICON_BUTTON_SIZE}px;
             min-height: {ICON_BUTTON_SIZE}px;
@@ -1585,20 +1566,10 @@ def semantic_component_stylesheet(
             background: {t['status_accent']};
             border-color: {t['subtle_border']};
         }}
-        QLabel[gardenRole='status-badge'][statusTone='active'] {{
-            color: {t['growth_accent']};
-            background: {t['action_soft']};
-            border-color: {t['subtle_border']};
-        }}
+        QLabel[gardenRole='status-badge'][statusTone='active'],
         QLabel[gardenRole='status-badge'][statusTone='completed'] {{
-            color: {t['text_primary']};
-            background: {t['selected_surface']};
-            border-color: {t['subtle_border']};
-        }}
-        QLabel[gardenRole='status-badge'][statusTone='next'] {{
-            color: {t['text_primary']};
-            background: {t['elevated_surface']};
-            border-color: {t['strong_border']};
+            color: {t['growth_accent']};
+            border-color: {t['growth_accent']};
         }}
         QLabel[gardenRole='status-badge'][statusTone='rare'] {{
             color: {t['rare_accent']};
@@ -1614,8 +1585,7 @@ def semantic_component_stylesheet(
         }}
         QLabel[gardenRole='status-badge'][statusTone='locked'] {{
             color: {t['disabled_text']};
-            background: {t['surface_deep']};
-            border-color: {t['subtle_border']};
+            border-color: {t['disabled_border']};
         }}
         QLabel[gardenRole='currency-badge'] {{
             color: {t['coin_accent']};

@@ -2662,7 +2662,7 @@ def bed_interaction_state(
         return BedInteractionState(slot, "current", "Current bed", False, occupied)
     selected = slot == destination_slot
     if starter_placement:
-        label = f"Bed {slot + 1} selected" if selected else f"Bed {slot + 1}"
+        label = f"Bed {slot + 1} selected" if selected else "Available"
         return BedInteractionState(
             slot,
             "selected" if selected else "available",

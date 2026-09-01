@@ -148,8 +148,18 @@ class GardenAppearanceProjection:
     def summary_rows(self) -> tuple[tuple[str, str], ...]:
         return (
             ("Scenery", self.scenery_name),
-            ("Decoration", self.displayed_decoration_name),
-            ("Garden bonus", self.active_bonus_name),
+            ("Displayed decoration", self.displayed_decoration_name),
+            (
+                "Active garden bonus",
+                " · ".join(
+                    part
+                    for part in (
+                        self.active_bonus_name,
+                        self.active_bonus_effect,
+                    )
+                    if part
+                ),
+            ),
             ("Visual effects", self.visual_effects_text),
         )
 
@@ -170,9 +180,9 @@ def project_garden_appearance(
 ) -> GardenAppearanceProjection:
     """Resolve displayed, active, and day-locked appearance state separately."""
 
-    # Catalog mechanics are authoritative; presentation only removes internal
-    # eligibility vocabulary from the exact catalog effect.
-    from .ui.copy import learner_card_copy
+    # Keep engine/catalog effect language stable while projecting the exact
+    # learner-facing card cadence shared by every Garden surface.
+    from .ui.copy import garden_bonus_effect_copy
 
     loadout = _read(state, "loadout")
     schedule = _read(state, "daily_loadout")
@@ -234,8 +244,9 @@ def project_garden_appearance(
         active_bonus_decoration_id=active_bonus_id,
         active_bonus_name=_catalog_name(GARDEN_FEATURE_CATALOG, active_bonus_id),
         visual_effects_enabled=bool(visual_effects_enabled),
-        active_bonus_effect=learner_card_copy(
-            _catalog_effect(GARDEN_FEATURE_CATALOG, active_bonus_id)
+        active_bonus_effect=garden_bonus_effect_copy(
+            active_bonus_id,
+            _catalog_effect(GARDEN_FEATURE_CATALOG, active_bonus_id),
         ),
     )
 
@@ -362,7 +373,7 @@ def project_diagnostics(
             summary="Scanning artwork and display telemetry.",
             icon_name="refresh",
             accent_role="checking",
-            check_label="Checking artwork…",
+            check_label="Checking…",
             check_enabled=False,
         )
     if copy_confirmed:
@@ -373,9 +384,9 @@ def project_diagnostics(
             summary=summary,
             icon_name=icon_name,
             accent_role=accent_role,
-            check_label="Check now",
+            check_label="Check again",
             check_enabled=True,
-            copy_confirmation="Report copied",
+            copy_confirmation="Report copied to clipboard",
         )
     return DiagnosticsProjection(
         state=result_state,
@@ -384,6 +395,6 @@ def project_diagnostics(
         summary=summary,
         icon_name=icon_name,
         accent_role=accent_role,
-        check_label="Check now",
+        check_label="Check again",
         check_enabled=True,
     )

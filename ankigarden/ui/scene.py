@@ -698,10 +698,6 @@ class GardenSceneWidget(QWidget):
         started = self._interaction.begin_unplaced("__starter__", valid)
         if not started:
             return False
-        # A starter destination is always an explicit choice. The interaction
-        # helper seeds unplaced flows with the first valid slot for keyboard
-        # compatibility, so clear that provisional value before painting.
-        self._interaction.destination_slot = None
         self._activate_placement_session()
         self._starter_placement = True
         self._inline_message = "Choose a bed."
@@ -714,20 +710,6 @@ class GardenSceneWidget(QWidget):
         self.placementStateChanged.emit(True)
         self._sync_landmark_hotspot()
         self.setFocus()
-        self.update()
-        return True
-
-    def select_starter_destination(self, slot: int) -> bool:
-        """Restore one explicit starter choice after a retryable save failure."""
-
-        if not self._interaction.placing or not self._starter_placement:
-            return False
-        destination = int(slot)
-        valid = self._destination_slots()
-        if not self._interaction.choose_destination(destination, valid):
-            return False
-        self._inline_message = f"Bed {destination + 1} selected"
-        self.placementDestinationChanged.emit(destination)
         self.update()
         return True
 
@@ -2366,7 +2348,7 @@ class GardenSceneWidget(QWidget):
             # The badge is the complete locked treatment. The previous
             # planter-sized translucent rounded rectangle made adjacent beds
             # merge into a foggy panel and obscured the source artwork.
-            badge_height = max(30.0, min(34.0, bed.width() * 0.22))
+            badge_height = max(22.0, min(26.0, bed.width() * 0.18))
             badge_width = badge_height
             badge_rect = QRectF(
                 planter.x + planter.width / 2 - badge_width / 2,
@@ -2374,10 +2356,10 @@ class GardenSceneWidget(QWidget):
                 badge_width,
                 badge_height,
             )
-            locked_border = QColor(GARDEN_THEME["strong_border"])
-            locked_border.setAlpha(230)
-            painter.setPen(QPen(locked_border, 1.4))
-            painter.setBrush(QColor(8, 37, 28, 245))
+            locked_border = QColor(GARDEN_THEME["text_muted"])
+            locked_border.setAlpha(150)
+            painter.setPen(QPen(locked_border, 1.0))
+            painter.setBrush(QColor(8, 37, 28, 170))
             painter.drawRoundedRect(
                 badge_rect,
                 badge_height * 0.28,
@@ -2392,8 +2374,8 @@ class GardenSceneWidget(QWidget):
                 body_height,
             )
             painter.setPen(Qt.PenStyle.NoPen)
-            locked_icon = QColor(GARDEN_THEME["text_primary"])
-            locked_icon.setAlpha(238)
+            locked_icon = QColor(GARDEN_THEME["text_muted"])
+            locked_icon.setAlpha(175)
             painter.setBrush(locked_icon)
             painter.drawRoundedRect(body_rect, 2.0, 2.0)
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -2421,7 +2403,7 @@ class GardenSceneWidget(QWidget):
                     round(float(badge_rect.width()), 2),
                     round(float(badge_rect.height()), 2),
                 ],
-                "relative_visual_strength": 0.82,
+                "relative_visual_strength": 0.58,
                 "interactive": False,
             }
             painter.restore()
@@ -2519,16 +2501,6 @@ class GardenSceneWidget(QWidget):
                 pen_color.setAlpha(245 if active else 112)
                 fill_color = QColor(54, 161, 104, 100 if active else 18)
             outline_width = 2.0 if active else 1.25
-            if selected_destination and callable(draw_asset_outline):
-                glow = QColor(GARDEN_THEME["action_accent"])
-                draw_asset_outline(
-                    painter,
-                    layout,
-                    color=glow.name(),
-                    width=5.0,
-                    opacity=0.22,
-                    family=planter_family,
-                )
             outline_drawn = bool(
                 callable(draw_asset_outline)
                 and (current or target_state == "valid")
@@ -2573,11 +2545,7 @@ class GardenSceneWidget(QWidget):
             # Destination rings remain visible, but action copy appears only
             # for the current keyboard/hover target. The origin keeps its
             # persistent Current chip for orientation.
-            if (
-                not current
-                and not active
-                and not (starter_placement and target_state == "valid")
-            ):
+            if not current and not active:
                 painter.restore()
                 continue
             obstacles = [obstacle for _obstacle_slot, obstacle in obstacle_rows] + placed_badges
@@ -2976,18 +2944,10 @@ class GardenSceneWidget(QWidget):
             )
             hover_changed = hover_slot != self._hovered_move_slot
             self._hovered_move_slot = hover_slot
-            # Starter locks carry a short textual tooltip. Established move
-            # mode keeps tooltips suppressed because its longer swap copy would
-            # obscure neighbouring beds.
-            if target_state == "locked" and self._starter_placement:
-                global_position = (
-                    event.globalPosition().toPoint()
-                    if hasattr(event, "globalPosition")
-                    else event.globalPos()
-                )
-                QToolTip.showText(global_position, "Locked", self)
-            else:
-                QToolTip.hideText()
+            # Destination meaning is painted in the scene and announced to
+            # assistive technology. Native tooltips obscure neighboring beds,
+            # so they are intentionally suppressed for the complete move mode.
+            QToolTip.hideText()
             if target_state == "locked":
                 self._inline_message = "That bed is locked."
             elif target_state == "unavailable":
@@ -3036,7 +2996,7 @@ class GardenSceneWidget(QWidget):
                     return
             if target_state == "valid":
                 self.setCursor(Qt.CursorShape.PointingHandCursor)
-            elif target_state in {"locked", "unavailable"}:
+            elif target_state == "unavailable":
                 self.setCursor(Qt.CursorShape.ForbiddenCursor)
             else:
                 self.unsetCursor()

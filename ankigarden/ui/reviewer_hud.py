@@ -17,11 +17,6 @@ from ..growth import GROWTH_UNITS_PER_POINT, stage_presentation, stage_progress
 from ..presentation import PlantIdentity
 from ..environment import GARDEN_FEATURE_CATALOG
 from ..garden_features import FEATURE_EFFECT_KEYS
-from .event_presentation import (
-    EventPresentationKind,
-    EventPresentationUnit,
-    EventRowPresentation,
-)
 from .formatters import format_approximate_cards, format_garden_coins, format_quantity
 
 
@@ -48,7 +43,7 @@ HUD_HEADER_ACTIONS_PREFERRED_WIDTH = 170
 # Keep one renderer-neutral learner-facing contract so the projection and the
 # native HUD cannot drift.
 FULL_BLOOM_GROWTH_ROUTE_COPY = (
-    "Future Growth goes to unfinished plants. "
+    "Future Growth will go to other unfinished plants. "
     "Any remainder becomes Stored Growth."
 )
 
@@ -157,7 +152,6 @@ class NurtureProjection:
     fully_grown: bool = False
     all_plants_full_bloom: bool = False
     growth_destination: GrowthDestinationProjection | None = None
-    effect_presentations: tuple[EventRowPresentation, ...] = ()
 
     @property
     def next_answer_value(self) -> str:
@@ -172,10 +166,6 @@ class NurtureProjection:
     @property
     def visible_effect_art_refs(self) -> tuple[str, ...]:
         return self.effect_art_refs[:2]
-
-    @property
-    def visible_effect_presentations(self) -> tuple[EventRowPresentation, ...]:
-        return self.effect_presentations[:2]
 
     @property
     def effect_overflow_count(self) -> int:
@@ -563,60 +553,6 @@ def _active_effect_chips(
     )
 
 
-def _effect_remaining_presentations(plant: Any) -> tuple[EventRowPresentation, ...]:
-    """Carry authoritative remaining values and units beside effect copy."""
-
-    rows: list[EventRowPresentation] = []
-    fertilizer_batches = tuple(
-        batch
-        for batch in tuple(getattr(plant, "fertilizer_card_batches", ()) or ())
-        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
-    )
-    if fertilizer_batches:
-        first = fertilizer_batches[0]
-        effect_id = str(getattr(first, "effect_id", "") or "")
-        tier = effect_id.removeprefix("fertilizer_")
-        remaining_cards = sum(
-            max(0, int(getattr(batch, "remaining_cards", 0) or 0))
-            for batch in fertilizer_batches
-            if str(getattr(batch, "effect_id", "") or "") == effect_id
-        )
-        rows.append(EventRowPresentation(
-            EventPresentationKind.EFFECT_REMAINING,
-            _fertilizer_display_name(tier),
-            remaining_cards,
-            EventPresentationUnit.CARDS,
-            "Active effect",
-            f"fertilizer_{tier}" if tier in {"basic", "quality", "premium"} else "",
-            None,
-            (effect_id,),
-        ))
-    booster_batches = tuple(
-        batch
-        for batch in tuple(getattr(plant, "booster_card_batches", ()) or ())
-        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
-    )
-    if booster_batches:
-        remaining_cards = sum(
-            max(0, int(getattr(batch, "remaining_cards", 0) or 0))
-            for batch in booster_batches
-        )
-        rows.append(EventRowPresentation(
-            EventPresentationKind.EFFECT_REMAINING,
-            "Booster Potion",
-            remaining_cards,
-            EventPresentationUnit.CARDS,
-            "Active effect",
-            "booster_potion",
-            None,
-            tuple(
-                str(getattr(batch, "effect_id", "") or "")
-                for batch in booster_batches
-            ),
-        ))
-    return tuple(rows)
-
-
 def _checkpoint_reward(engine: Any, next_stage: str, percent: int) -> int:
     resolver = getattr(engine, "project_checkpoint_reward", None)
     if callable(resolver) and percent:
@@ -953,11 +889,11 @@ def project_nurture(
             else 0
         )
         estimate_line = (
-            format_approximate_cards(estimated_cards)
+            f"{format_approximate_cards(estimated_cards)} to the next checkpoint"
             if estimated_cards else
             ""
         )
-        checkpoint_line = f"{growth_remaining:,} Growth to checkpoint"
+        checkpoint_line = f"{growth_remaining:,} Growth to next checkpoint"
         checkpoint_reward = _checkpoint_reward(engine, next_stage, checkpoint_percent)
 
     canonical_stage = stage_presentation(stage_key)
@@ -1041,7 +977,6 @@ def project_nurture(
             if fully_grown and all_plants_full_bloom
             else None
         ),
-        effect_presentations=_effect_remaining_presentations(target),
     )
 
 

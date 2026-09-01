@@ -141,12 +141,10 @@ def test_collection_subtabs_preserve_state_and_landmarks_fit_canonical_width(
         clear_filters=lambda: None,
     )
     plants.set_fixed_header(controls)
-    plant_cards = []
     for _index in range(24):
         card = QFrame()
-        card.setFixedHeight(168)
+        card.setFixedHeight(158)
         plants.add_card(card)
-        plant_cards.append(card)
     plants.finish()
 
     landmarks = GardenLandmarksPane()
@@ -171,18 +169,13 @@ def test_collection_subtabs_preserve_state_and_landmarks_fit_canonical_width(
         snapshot.landmark_track,
         displayed_tier_id="",
         tier_growth_units_by_id=tier_growth,
-        query="",
-        status_filter="all",
-        sort_order="project",
         on_claim=lambda _tier_id: None,
         on_use=lambda _tier_id: None,
-        on_clear_filters=lambda: None,
     )
     landmarks.replace_content((overview, tiers), preserve_scroll=False)
     collection = CollectionSection(engine, plants, landmarks)
-    # 950 px outer dialog minus 48 px shell padding, the 184 px rail, and
-    # the 20 px rail/content gap.
-    collection.resize(698, 455)
+    # 950 px outer dialog minus shell margins and the 160 px navigation rail.
+    collection.resize(720, 455)
     collection.show()
     application.processEvents()
     application.processEvents()
@@ -192,26 +185,6 @@ def test_collection_subtabs_preserve_state_and_landmarks_fit_canonical_width(
     assert controls.status_combo.currentData() == "collected"
     assert controls.category_combo.currentData() == "plants"
     assert controls.sort_combo.currentData() == "name"
-    assert controls.search.height() == 40
-    assert [
-        controls.status.height(),
-        controls.category.height(),
-        controls.sort_order.height(),
-        controls.clear.height(),
-    ] == [36, 36, 36, 36]
-    assert plants._columns == 4
-    first_two_rows = plant_cards[:8]
-    assert all(card.height() == 168 for card in first_two_rows)
-    assert all(
-        0 <= card.mapTo(plants.scroll.viewport(), card.rect().topLeft()).y()
-        and card.mapTo(
-            plants.scroll.viewport(),
-            card.rect().bottomLeft(),
-        ).y() < plants.scroll.viewport().height()
-        for card in first_two_rows
-    )
-    assert plants.grid.contentsMargins().right() >= 8
-    assert plants.scroll.horizontalScrollBar().maximum() == 0
     plant_bar = plants.scroll.verticalScrollBar()
     assert plant_bar.maximum() > 0
     plant_position = min(96, plant_bar.maximum())
@@ -249,50 +222,4 @@ def test_collection_subtabs_preserve_state_and_landmarks_fit_canonical_width(
 
     collection.close()
     collection.deleteLater()
-    application.processEvents()
-
-
-def test_species_plant_actions_move_below_intact_progress_on_compact_width(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    try:
-        from aqt.qt import QApplication, QFrame, QHBoxLayout, QPushButton, QWidget
-        from ankigarden.ui.dashboard import SpeciesPlantRow
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip("Anki's Qt runtime is not installed")
-
-    application = QApplication.instance() or QApplication([])
-    identity = QFrame()
-    identity.setMinimumHeight(50)
-    progress = QFrame()
-    progress.setMinimumHeight(36)
-    actions = QWidget()
-    action_layout = QHBoxLayout(actions)
-    action_layout.setContentsMargins(0, 0, 0, 0)
-    nurture = QPushButton("Nurture")
-    nurture.setFixedHeight(36)
-    more = QPushButton("More")
-    more.setFixedSize(32, 32)
-    action_layout.addWidget(nurture)
-    action_layout.addWidget(more)
-    row = SpeciesPlantRow(
-        identity,
-        progress,
-        actions,
-        semantic_id="species-overview.compact-layout-test",
-    )
-    row.resize(500, 180)
-    row.show()
-    application.processEvents()
-    application.processEvents()
-
-    assert row.property("speciesPlantLayout") == "compact"
-    assert progress.geometry().bottom() < actions.geometry().top()
-    assert nurture.height() == 36
-    assert more.size().width() == more.size().height() == 32
-
-    row.close()
-    row.deleteLater()
     application.processEvents()

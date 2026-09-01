@@ -57,16 +57,7 @@ def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str 
 @pytest.mark.parametrize(
     ("changes", "expected_mode", "current", "maximum", "percent"),
     (
-        (
-            {
-                "starter_selected": False,
-                "background_url": "/_addons/anki_garden/assets/garden.png",
-            },
-            HomeSurfaceMode.STARTER,
-            0,
-            0,
-            0.0,
-        ),
+        ({"starter_selected": False}, HomeSurfaceMode.STARTER, 0, 0, 0.0),
         ({"active_plant_name": ""}, HomeSurfaceMode.EMPTY, 0, 0, 0.0),
         ({"active_stage_points": 0}, HomeSurfaceMode.ACTIVE_ZERO, 0, 500, 0.0),
         ({"active_stage_points": 125}, HomeSurfaceMode.ACTIVE_PARTIAL, 125, 500, 25.0),
@@ -104,18 +95,6 @@ def test_home_surface_view_model_drives_every_compact_product_state(
     assert f'data-home-mode="{expected_mode.value}"' in html
     assert f'data-progress-current="{current}"' in html
     assert f'data-progress-maximum="{maximum}"' in html
-    if expected_mode is HomeSurfaceMode.STARTER:
-        assert 'id="ag-home-root" class="ag-home--no-starter"' in html
-        assert "width:min(calc(100% - 40px),520px) !important" in html
-        assert "min-height:88px" in html
-        assert "grid-template-columns:minmax(0,1fr) 112px" in html
-        assert '<link rel="preload" as="image" fetchpriority="high"' in html
-        assert (
-            "#ag-home-root.ag-home--no-starter {\n"
-            "    height:auto;\n"
-            "    min-height:136px"
-        ) in html
-        assert "translateY" not in html
 
 
 def test_loading_state_preserves_preview_geometry_without_actions() -> None:
@@ -140,11 +119,11 @@ def test_empty_state_renders_empty_message() -> None:
     assert 'data-state="empty"' in html
     assert 'data-testid="home-empty"' in html
     assert 'role="region" aria-label="Anki Garden"' in html
-    assert "Choose your starter" in html
+    assert "Start your garden" in html
     assert "Your first plant is free." in html
     assert "Start with one free seed." not in html
     assert "Reviews completed before setup do not earn Growth." not in html
-    assert "Choose your starter. Your first plant is free. Choose starter." in html
+    assert "Start your garden. Your first plant is free. Choose starter." in html
     assert "Reviews completed beforehand cannot earn Growth." not in html
     assert "pycmd('anki-garden:choose-starter')" in html
     assert "Answer your first card" not in html
@@ -235,9 +214,9 @@ def test_success_state_renders_key_fields() -> None:
     assert "min-height:36px" in html
     assert "max-height:36px" in html
     assert "min-width:112px" in html
-    assert "outline:2px solid #A0F0C8" in html
+    assert "outline:2px solid #75E4AE" in html
     assert "outline-offset: 2px" in html
-    assert "box-shadow:0 0 0 4px #06271F" in html
+    assert "box-shadow:0 0 0 4px #08251C" in html
     assert "this.disabled=true" in html
     assert "setTimeout" in html
 
@@ -397,12 +376,10 @@ def test_home_summary_panel_uses_compact_visual_hierarchy_at_each_breakpoint() -
     assert '<div class="ag-home__metrics"' not in html
     assert "height:100px" in html
     assert "height:4px" in html
-    assert 'data-testid="home-active-plant-thumbnail"' not in html
-    assert "flex:0 0 36px" not in html
-    assert "position:relative" in html
+    assert "left:16px" in html
     assert "right:auto" in html
-    assert "width:100%" in html
-    assert "bottom:auto" in html
+    assert "width:260px" in html
+    assert "bottom:7px" in html
     assert "filter:brightness(1.12)" in html
     assert "linear-gradient(90deg,rgba(3,12,9,.99)" in html
     assert "linear-gradient(180deg,rgba(4,14,11,.18)" in html
@@ -742,23 +719,7 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
         },
     )
 
-    data = build_home_widget_success_data(
-        state=state,
-        reviews_today=3,
-        scene_items=[{
-            "plant_id": "plant-1",
-            "is_active": True,
-            "slot_index": 0,
-            "name": "Briar",
-            "stage": "sprout",
-            "asset_key": "rose:sprout",
-            "url": "/_addons/123/assets/rose-sprout.svg",
-            "placement": {
-                "visible_bounds": [0.1, 0.05, 0.8, 0.9],
-                "base_type": "soil",
-            },
-        }],
-    )
+    data = build_home_widget_success_data(state=state, reviews_today=3, scene_items=[])
     html = render_home_widget(HomeWidgetSnapshot(request_id=9, phase="success", data=data))
 
     assert data.active_plant_name == "Briar"
@@ -768,21 +729,9 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert 'data-testid="home-support" title="Briar · Sprout · 200 / 1,600 Growth"' in html
     assert 'data-testid="home-growth-progress"' in html
     assert 'data-testid="home-progress-copy"' in html
-    assert data.active_art_key == "rose:sprout"
-    assert 'data-active-art-key="rose:sprout"' in html
-    assert 'data-testid="home-active-plant-thumbnail"' not in html
-    assert 'class="ag-home__plant-thumbnail"' not in html
-    assert 'data-visible-bounds="0.100,0.050,0.800,0.900"' not in html
-    assert 'src="/_addons/123/assets/rose-sprout.svg"' in html
-    assert ".ag-home__growth-track {\n  position:relative;" in html
-    assert "\n  bottom:auto;\n  width:100%;\n  height:4px;" in html
-    assert "background:rgba(188,216,201,.18)" in html
-    assert "background:linear-gradient(90deg,#52CA92,#63DFA5)" in html
-    assert (
-        "#ag-home-root:not(.ag-home--no-starter) button.ag-home__open { "
-        "font-size:14px !important; }"
-    ) in html
-    assert '#ag-home-root[data-motion="reduced"] button { transition:none; }' in html
+    assert ".ag-home__growth-track {\n  position:absolute;" in html
+    assert "\n  bottom:7px;\n  width:260px;\n  height:4px;" in html
+    assert "background:rgba(99,217,159,.26)" in html
     assert "line-height:14px" in html
     assert ".ag-home__growth-track > span {\n  display:block;\n  position:absolute;" in html
     assert "\n  left:0;\n  width:var(--ag-growth-percent,0%);" in html

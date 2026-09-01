@@ -337,7 +337,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         assert presentation.outcome == "Adds 100 Growth to one plant."
         assert [
             (fact.label, fact.value) for fact in presentation.facts
-        ] == [("Owned", "0 → 1")]
+        ] == [("Inventory", "0 → 1")]
 
 
 def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
@@ -544,7 +544,7 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
     assert [
         (fact.key, fact.label, fact.value)
         for fact in presentation.facts
-    ] == [("inventory", "Owned", "0 → 1")]
+    ] == [("inventory", "Inventory", "0 → 1")]
     assert presentation.primary_label == "Buy charge"
     if status is PurchaseStatus.STALE_BALANCE:
         assert presentation.title == "Buy Small Growth Charge?"
@@ -1156,7 +1156,6 @@ def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> N
             "_learner_text": lambda text: text,
             "_set_button_variant": lambda *_args: None,
             "BUTTON_VARIANT_PRIMARY": "primary",
-            "BUTTON_VARIANT_SECONDARY": "secondary",
             "QTimer": SimpleNamespace(singleShot=lambda *_args: None),
         },
     )
