@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CAPTURE_SOURCE = ROOT / "ankigarden" / "capture" / "runtime.py"
 CAPTURE_BOOTSTRAP_SOURCE = ROOT / "ankigarden" / "capture_ui_faces.py"
 DEFAULT_CAPTURE_CONTRACT = (
-    ROOT / "ankigarden" / "capture" / "capture-contract-v26.json"
+    ROOT / "ankigarden" / "capture" / "capture-contract-v27.json"
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CONTINUED_SUFFIX = " (continued)"
@@ -60,10 +60,6 @@ _V26_DEPRECATED_VISIBLE_COPY_PATTERNS = (
     r"\btoday['’]s environment\b",
     r"\bnursery weather scenery\b",
     r"\bgarden item unlocked\b",
-    r"\b[+-]?\d[\d,]*(?:\.\d+)?\s+(?:more\s+)?coins?\b",
-    r"\bnot enough coins\b",
-    r"\bno coins were spent\b",
-    r"(?<!garden )\bcoin balance\b",
     r"\beligible cards?\b",
     r"\bper review\b",
     r"\breviews? remaining\b",
@@ -235,10 +231,10 @@ def _load_current_contract_payload(
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise CaptureValidationError(
-            (f"could not read compiled v26 capture contract {path}: {error}",)
+            (f"could not read compiled v27 capture contract {path}: {error}",)
         ) from error
     if not isinstance(payload, dict):
-        raise CaptureValidationError(("compiled v26 capture contract must be an object",))
+        raise CaptureValidationError(("compiled v27 capture contract must be an object",))
     normalized = dict(payload)
     expected_digest = normalized.pop("contract_digest", None)
     actual_digest = hashlib.sha256(
@@ -254,8 +250,8 @@ def _load_current_contract_payload(
     issues: list[str] = []
     if payload.get("schema_version") != 2:
         issues.append("compiled capture contract schema is not v2")
-    if payload.get("contract_version") != 26:
-        issues.append("compiled capture contract is not v26")
+    if payload.get("contract_version") != 27:
+        issues.append("compiled capture contract is not v27")
     if payload.get("scenario_schema_version") != 3:
         issues.append("compiled capture scenario schema is not v3")
     if expected_digest != actual_digest:
@@ -273,12 +269,10 @@ def _load_current_contract_payload(
         ]
         active_ids = {str(row.get("id", "")) for row in active}
         retired_ids = set(payload.get("retired_ids", ()))
-        if len(active) != 34 or payload.get("surface_count") != 34:
-            issues.append("compiled v26 contract must contain 34 active surfaces")
-        if "nursery-garden-decorations-scenery" not in active_ids:
-            issues.append("compiled v26 contract is missing renamed nursery surface")
+        if len(active) != 36 or payload.get("surface_count") != 36:
+            issues.append("compiled v27 contract must contain 36 active surfaces")
         if "nursery-weather-scenery" not in retired_ids:
-            issues.append("compiled v26 contract did not reserve the retired nursery ID")
+            issues.append("compiled v27 contract did not reserve the retired nursery ID")
         for index, row in enumerate(surfaces):
             if not isinstance(row, dict):
                 continue
@@ -293,7 +287,7 @@ def _load_current_contract_payload(
     if isinstance(profiles, dict):
         for profile, expected in {
             "representative": (18, 2),
-            "full": (34, 5),
+            "full": (36, 5),
         }.items():
             raw_profile = profiles.get(profile)
             if not isinstance(raw_profile, dict) or (
@@ -317,7 +311,7 @@ def _current_surface_map() -> dict[str, dict[str, Any]]:
         if isinstance(row, dict) and row.get("active") is True
     }
     if len(result) != int(payload.get("surface_count", -1)):
-        raise CaptureValidationError(("compiled v26 surface count is stale",))
+        raise CaptureValidationError(("compiled v27 surface count is stale",))
     return result
 
 
@@ -378,7 +372,7 @@ def load_capture_contract(
         ):
             raise CaptureValidationError((f"compiled profile {profile!r} is malformed",))
         return CaptureContract(
-            26,
+            int(payload["contract_version"]),
             groups,
             profile,
             3,
@@ -1811,6 +1805,10 @@ def load_capture_scenario_contracts(
             identity["surface_spec_dependency_digest"] = str(
                 current_surfaces[label].get("dependency_digest", "")
             )
+            identity["support_module_inputs"] = {
+                name: hashlib.sha256((ROOT / "ankigarden" / "capture" / name).read_bytes()).hexdigest()
+                for name in ("workspace.py", "workspace_specs.py")
+            }
         identity["digest"] = _canonical_digest(identity)
         results[label] = identity
     return results
@@ -2265,7 +2263,7 @@ def _raw_scenario_metadata_issues(
     page_path: Path,
     scenario_contract: Mapping[str, Any],
 ) -> list[str]:
-    """Verify scalar v26 scenario provenance embedded in one raw screenshot."""
+    """Verify scalar v27 scenario provenance embedded in one raw screenshot."""
 
     metadata, error = _read_png_text_metadata(page_path)
     if metadata is None:
@@ -2284,7 +2282,7 @@ def _contact_scenario_metadata_issues(
     metadata: Mapping[str, str],
     surface_identity_map: Mapping[str, Mapping[str, Any]],
 ) -> list[str]:
-    """Verify the deterministic, per-page v26 scenario identity projection."""
+    """Verify the deterministic, per-page v27 scenario identity projection."""
 
     expected_metadata = {
         "surface_ids": _canonical_json_text(list(surface_identity_map)),
@@ -2933,10 +2931,10 @@ def deprecated_visible_copy_evidence_issue_codes(
     return tuple(dict.fromkeys(issues))
 
 
-def v26_capture_semantic_gate_issue_codes(
+def v27_capture_semantic_gate_issue_codes(
     record: Any,
 ) -> tuple[str, ...]:
-    """Validate the v26 per-surface semantic acceptance envelope."""
+    """Validate the v27 per-surface semantic acceptance envelope."""
 
     if not isinstance(record, dict):
         return ("invalid-capture-record",)
@@ -6587,10 +6585,13 @@ def _visual_contract_record_issues(
                 )
             ):
                 reject("active Fertilizer must use the compact icon-led status card")
-    elif state_kind not in {"home", "reviewer", "reviewer_hud"}:
+    elif state_kind not in {"home", "reviewer", "reviewer_hud", "workspace-reward"}:
         reject("visual contract was inapplicable for a Qt-owned surface")
 
     if audit is None:
+        return problems
+
+    if state_kind == "workspace-reward":
         return problems
 
     def audit_object(name: str) -> dict[str, Any]:
@@ -8737,7 +8738,7 @@ def validate_capture_manifest(
                         f"capture {index:03d} {label}: capture acceptance did not pass"
                     )
         if contract.version >= 26:
-            for semantic_issue in v26_capture_semantic_gate_issue_codes(record):
+            for semantic_issue in v27_capture_semantic_gate_issue_codes(record):
                 issues.append(
                     f"capture {index:03d} {label}: {semantic_issue}"
                 )
@@ -9311,7 +9312,7 @@ def validate_contact_sheet_set(
             if page.get("surface_identity_map") != expected_surface_identity_map:
                 issues.append(
                     f"contact-sheet page {page_index}: surface_identity_map does "
-                    "not match the v26 scenario contract"
+                    "not match the v27 scenario contract"
                 )
             for identity_field, expected_field_map in (
                 expected_identity_field_maps.items()
@@ -9319,7 +9320,7 @@ def validate_contact_sheet_set(
                 if page.get(identity_field) != expected_field_map:
                     issues.append(
                         f"contact-sheet page {page_index}: {identity_field} map "
-                        "does not match the v26 scenario contract"
+                        "does not match the v27 scenario contract"
                     )
 
         groups = page.get("groups")

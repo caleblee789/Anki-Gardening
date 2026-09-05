@@ -30,12 +30,12 @@ class SceneLandmark:
 
 DEFAULT_LANDMARK_ACTIONS: Mapping[str, LandmarkAction] = {
     "garden.nursery.open": LandmarkAction(
-        accessible_name="Nursery",
-        tooltip="Open nursery",
+        accessible_name="Shop",
+        tooltip="Open shop",
     ),
     "garden.progress.open": LandmarkAction(
-        accessible_name="Garden Progress",
-        tooltip="Open garden progress",
+        accessible_name="Progress",
+        tooltip="Open progress",
     ),
     "garden.collection.open": LandmarkAction(
         accessible_name="Collection",

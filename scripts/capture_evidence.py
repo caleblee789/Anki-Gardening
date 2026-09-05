@@ -1285,6 +1285,14 @@ def _renderer_method_dependencies(
 ]:
     """Expand and verify the source-owned per-state method dependency map."""
 
+    if _literal_assignment(capture_source, "CAPTURE_CONTRACT_VERSION") >= 27:
+        # Every workspace page now shares one mounted dashboard. Own its whole
+        # module and imported renderers rather than maintaining method lists
+        # for the retired dialog boundaries. This deliberately broadens
+        # invalidation and still binds every production byte used to render it.
+        native_labels = frozenset(label for label in labels if renderer_families[label] != "AnkiQt")
+        return ({}, {label: () for label in labels}, frozenset(), frozenset(), {"ui/dashboard.py": native_labels}, {})
+
     groups_raw = _literal_assignment(
         capture_source,
         "CAPTURE_RENDERER_DEPENDENCY_GROUPS",

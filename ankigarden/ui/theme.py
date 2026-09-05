@@ -89,9 +89,9 @@ class SpacingToken(IntEnum):
 
     NONE = 0
     XS = 4
-    SM = 8
-    MD = 12
-    LG = 16
+    SM = 6
+    MD = 8
+    LG = 12
     DIALOG_BODY = 20
     XL = 24
     XXL = 32
@@ -124,9 +124,9 @@ SPACING_ALIASES: dict[str, int] = {
 class RadiusToken(IntEnum):
     """Shared corner radii for controls, cards, and dialog surfaces."""
 
-    SM = 8
-    MD = 12
-    LG = 16
+    SM = 6
+    MD = 8
+    LG = 12
 
 
 Radius = RadiusToken
@@ -177,17 +177,17 @@ BUTTON_VARIANT_TERTIARY = "tertiary"
 
 # These values are native widget geometry, not QSS content-box estimates.
 # Capture and interaction telemetry therefore observe the same release sizes.
-MIN_HIT_TARGET = 36
+MIN_HIT_TARGET = 28
 CONTROL_MIN_HIT_TARGET = MIN_HIT_TARGET
 BUTTON_MIN_HEIGHT = MIN_HIT_TARGET
-BUTTON_VISUAL_HEIGHT = 36
-PRIMARY_BUTTON_VISUAL_HEIGHT = 40
-COMPACT_BUTTON_HEIGHT = 32
-BANNER_BUTTON_HEIGHT = 36
-ONBOARDING_BUTTON_VISUAL_HEIGHT = 36
-ICON_BUTTON_VISUAL_SIZE = 32
-INPUT_VISUAL_HEIGHT = 40
-TAB_VISUAL_HEIGHT = 44
+BUTTON_VISUAL_HEIGHT = 32
+PRIMARY_BUTTON_VISUAL_HEIGHT = 32
+COMPACT_BUTTON_HEIGHT = 28
+BANNER_BUTTON_HEIGHT = 32
+ONBOARDING_BUTTON_VISUAL_HEIGHT = 32
+ICON_BUTTON_VISUAL_SIZE = 28
+INPUT_VISUAL_HEIGHT = 32
+TAB_VISUAL_HEIGHT = 34
 TOGGLE_VISUAL_WIDTH = 38
 TOGGLE_VISUAL_HEIGHT = 22
 PLANT_ACTION_MIN_HEIGHT = COMPACT_BUTTON_HEIGHT
@@ -200,16 +200,16 @@ CONTROL_HEIGHT_SCALE: dict[str, int] = {
     "primary": PRIMARY_BUTTON_VISUAL_HEIGHT,
 }
 PROGRESS_BAR_HEIGHT = 6
-STATUS_CHIP_MIN_HEIGHT = 22
-STATUS_CHIP_VISUAL_HEIGHT = 24
-STATUS_CHIP_MAX_HEIGHT = 26
+STATUS_CHIP_MIN_HEIGHT = 20
+STATUS_CHIP_VISUAL_HEIGHT = 20
+STATUS_CHIP_MAX_HEIGHT = 22
 
 BUTTON_SIZE_TOKENS: dict[ButtonSize, ButtonSizeToken] = {
     ButtonSize.COMPACT_ROW: ButtonSizeToken(COMPACT_BUTTON_HEIGHT, 10),
     ButtonSize.BANNER: ButtonSizeToken(BANNER_BUTTON_HEIGHT, 10),
-    ButtonSize.SECONDARY: ButtonSizeToken(BUTTON_VISUAL_HEIGHT, 14),
-    ButtonSize.PRIMARY: ButtonSizeToken(PRIMARY_BUTTON_VISUAL_HEIGHT, 16),
-    ButtonSize.ONBOARDING: ButtonSizeToken(ONBOARDING_BUTTON_VISUAL_HEIGHT, 16),
+    ButtonSize.SECONDARY: ButtonSizeToken(BUTTON_VISUAL_HEIGHT, 12),
+    ButtonSize.PRIMARY: ButtonSizeToken(PRIMARY_BUTTON_VISUAL_HEIGHT, 12),
+    ButtonSize.ONBOARDING: ButtonSizeToken(ONBOARDING_BUTTON_VISUAL_HEIGHT, 12),
     ButtonSize.ICON: ButtonSizeToken(ICON_BUTTON_VISUAL_SIZE, 0, square=True),
 }
 
@@ -364,7 +364,7 @@ GARDEN_THEME = {
     "secondary_action": SEMANTIC_COLORS["surface_2"],
     "secondary_hover": SEMANTIC_COLORS["surface_hover"],
     "secondary_pressed": SEMANTIC_COLORS["surface_1"],
-    "secondary_border": SEMANTIC_COLORS["border"],
+    "secondary_border": SEMANTIC_COLORS["divider"],
     "disabled_surface": "#173029",
     "disabled_border": "#3F5C50",
     "disabled_text": "#A6B6AE",
@@ -385,7 +385,7 @@ GARDEN_THEME = {
     # Reviewer HUD depth roles. These are shared semantic aliases rather than
     # a component-owned palette: native reviewer cards, their integrated
     # reward dock, and capture fixtures all resolve the same values here.
-    "reviewer_hud_shell": "#171C1A",
+    "reviewer_hud_shell": SEMANTIC_COLORS["shell"],
     "reviewer_hud_surface": "#0D3027",
     "reviewer_hud_surface_raised": "#123B31",
     "reviewer_hud_surface_hover": "#17483B",
@@ -1104,7 +1104,7 @@ def button_stylesheet(
             min-height: {BUTTON_MIN_HEIGHT}px;
             max-height: {BUTTON_VISUAL_HEIGHT}px;
             padding: 0 14px;
-            border: 2px solid {t['secondary_border']};
+            border: 1px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             background: {t['secondary_action']};
             color: {t['text_primary']};
@@ -1227,7 +1227,7 @@ def tool_button_stylesheet(
             padding: 0 14px;
             color: {t['text_primary']};
             background: {t['secondary_action']};
-            border: 2px solid {t['secondary_border']};
+            border: 1px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_size_px}px;
             font-weight: 600;
@@ -1456,7 +1456,7 @@ def semantic_component_stylesheet(
             padding: 0 {SpacingToken.MD}px;
             color: {t['text_secondary']};
             background: {t['secondary_action']};
-            border: 2px solid {t['secondary_border']};
+            border: 1px solid {t['secondary_border']};
             border-radius: 8px;
         }}
         QPushButton[gardenRole='segmented-filter']:checked {{

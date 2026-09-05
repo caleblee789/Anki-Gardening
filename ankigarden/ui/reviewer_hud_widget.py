@@ -4272,6 +4272,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             2,
             Qt.AlignmentFlag.AlignRight,
         )
+        # Reinserting a hidden widget into a visible grid can show it again.
+        for index, chip in enumerate(self._effect_chips):
+            chip.setVisible(index < len(texts) and bool(texts[index]))
         self._effects_single_column = single_column
         self._effects.setProperty("singleColumn", single_column)
         layout.invalidate()
@@ -4322,7 +4325,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         body_margin, body_spacing = (
             ((10, 10), (6, 8), (4, 6))[level]
             if full_bloom else
-            ((10, 10), (8, 8), (6, 6))[level]
+            ((6, 6), (6, 6), (4, 4))[level]
         )
         self._body_layout.setContentsMargins(
             body_margin,
@@ -4332,9 +4335,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._body_layout.setSpacing(body_spacing)
         today_min, today_max, today_vertical_margin = (
-            (68, 82, 10),
-            (62, 72, 8),
             (58, 68, 6),
+            (56, 64, 4),
+            (54, 60, 4),
         )[detail_level]
         self._today_card.setMinimumHeight(today_min)
         self._today_card.setMaximumHeight(today_max)
@@ -4344,9 +4347,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
         if not full_bloom:
             plant_vertical_margin, plant_spacing, region_height, art_size = (
-                (11, 6, 146, 136),
-                (8, 5, 116, 108),
-                (6, 4, 90, 84),
+                (6, 4, 140, 136),
+                (4, 4, 136, 132),
+                (4, 3, 132, 128),
             )[level]
             self._plant_layout.setContentsMargins(
                 12,
@@ -4363,12 +4366,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 and not nurture.fully_grown
             )
             self._checkpoint_distance_row.setVisible(bool(
-                level < 2
+                level == 0
                 and normal
                 and (nurture.checkpoint_line or nurture.estimate_line)
             ))
             self._checkpoint_reward_row.setVisible(bool(
-                level < 2
+                level == 0
                 and normal
                 and nurture.next_checkpoint_reward_coins
             ))
@@ -4424,7 +4427,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._growth_feedback_revision += 1
         revision = self._growth_feedback_revision
         self._swap_next_answer_row(
-            "Growth applied",
+            "This card:",
             f"{format_growth_units(units, signed=True)} Growth",
             state="applied",
         )
@@ -6095,7 +6098,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 # hint. Ask each layout for its height at the final HUD width
                 # so the shell expands instead of needlessly scrolling at the
                 # canonical reviewer size.
-                self._apply_body_compact_level(0)
+                self._apply_body_compact_level(1)
                 body_height = natural_height(self._body_contents, body_layout)
                 uncompacted_body_height = body_height
                 reward_height = (
@@ -6125,7 +6128,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                         )
                 else:
                     for compact_level in (1, 2):
-                        if 46 + body_height + reward_height <= available_height:
+                        if 46 + body_height + reward_height <= min(420 + reward_height, available_height):
                             break
                         self._apply_body_compact_level(compact_level)
                         body_height = natural_height(
@@ -6138,12 +6141,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 # height from the daily/plant body at its natural size.
                 content_height = 46 + body_height + reward_height
                 if self._full_bloom_bundle is not None:
-                    content_height = min(content_height, 690)
+                    content_height = min(content_height, 560)
                 elif (
                     self._settled_full_bloom_bundle is not None
                     or bool(self._plant_card.property("fullBloomSettled"))
                 ):
-                    content_height = min(content_height, 680)
+                    content_height = min(content_height, 560)
                 self.setProperty("hudBodyNaturalHeight", body_height)
                 self.setProperty(
                     "hudBodyUncompactedHeight", uncompacted_body_height

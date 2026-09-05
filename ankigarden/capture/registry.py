@@ -1,4 +1,4 @@
-"""Materialize and query the single v26 capture surface registry."""
+"""Materialize and query the single v27 capture surface registry."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import math
 from dataclasses import replace
 from typing import Iterable, Iterator, Mapping, Sequence
 
-from ._surface_specs import SURFACE_ROWS
+from .workspace_specs import SURFACE_ROWS
 from .model import ProfilePlacement, SurfaceSpec
 
 

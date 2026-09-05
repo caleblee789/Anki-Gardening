@@ -120,11 +120,11 @@ def archive_package(
         required_capture_entries = {
             "capture_ui_faces.py",
             "capture/runtime.py",
-            "capture/capture-contract-v26.json",
+            "capture/capture-contract-v27.json",
         }
         if not required_capture_entries.issubset(names):
             raise CaptureError(
-                "The built package does not contain the complete v26 capture runtime"
+                "The built package does not contain the complete v27 capture runtime"
             )
     package_id = str(manifest.get("package", "")).strip()
     if not package_id or any(part in package_id for part in ("/", "\\", "..")):
@@ -476,7 +476,7 @@ def _contact_page_surface_identity_map(
     page: list[tuple[str, list[str]]],
     records: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    """Return the exact v26 scenario identity for every surface on one page."""
+    """Return the exact v27 scenario identity for every surface on one page."""
 
     identity_map: dict[str, dict[str, Any]] = {}
     for _group_name, labels in page:
@@ -1284,7 +1284,7 @@ def main() -> int:
 
 
 def _repository_owned_main() -> int:
-    """Delegate orchestration to the checked-in v26 runner, or fail closed."""
+    """Delegate orchestration to the checked-in v27 runner, or fail closed."""
 
     repo = Path.cwd()
     for index, argument in enumerate(sys.argv[1:], start=1):
@@ -1297,7 +1297,7 @@ def _repository_owned_main() -> int:
     delegate = repo.expanduser().resolve() / "scripts" / "capture_sequence.py"
     if not delegate.is_file():
         raise CaptureError(
-            "The repository-owned v26 capture runner is required: "
+            "The repository-owned v27 capture runner is required: "
             f"{delegate}"
         )
     os.environ["ANKI_GARDEN_CAPTURE_SKILL_RUNNER"] = str(Path(__file__).resolve())

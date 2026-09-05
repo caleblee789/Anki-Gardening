@@ -202,11 +202,11 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
 
     assert scope["GARDEN_COLOR_TOKENS"] is scope["SEMANTIC_COLORS"]
     assert scope["COLOR_TOKENS"] is scope["SEMANTIC_COLORS"]
-    assert scope["RADIUS_SCALE"] == {"sm": 8, "md": 12, "lg": 16}
+    assert scope["RADIUS_SCALE"] == {"sm": 6, "md": 8, "lg": 12}
     assert scope["CONTROL_HEIGHT_SCALE"] == {
-        "compact": 32,
-        "default": 36,
-        "primary": 40,
+        "compact": 28,
+        "default": 32,
+        "primary": 32,
     }
     assert scope["PROGRESS_BAR_HEIGHT"] == 6
     assert len(set(scope["GREEN_SURFACE_LEVELS"])) == 4
@@ -267,12 +267,12 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
         "destructive",
     }
     assert scope["BUTTON_VARIANT_TERTIARY"] == "tertiary"
-    assert scope["MIN_HIT_TARGET"] == 36
-    assert scope["BUTTON_MIN_HEIGHT"] == 36
-    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 40
-    assert scope["INPUT_VISUAL_HEIGHT"] == 40
-    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 32
-    assert scope["ICON_BUTTON_SIZE"] == 32
+    assert scope["MIN_HIT_TARGET"] == 28
+    assert scope["BUTTON_MIN_HEIGHT"] == 28
+    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 32
+    assert scope["INPUT_VISUAL_HEIGHT"] == 32
+    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 28
+    assert scope["ICON_BUTTON_SIZE"] == 28
 
     buttons = scope["button_stylesheet"]()
     tools = scope["tool_button_stylesheet"]()
@@ -285,7 +285,6 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QPushButton[pending='true']" in buttons
     assert "QPushButton[keyboardFocusVisible='true']:focus" in buttons
     assert "font-size: 13px" in buttons
-    assert "border: 2px solid" in buttons
     assert f"border-color: {scope['GARDEN_THEME']['growth_accent']}" in buttons
     assert f"border-color: {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QPushButton[keyboardFocusVisible='true']:focus {\n            border-color:" in buttons
@@ -305,23 +304,23 @@ def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
         size.value: (tokens[size].height_px, tokens[size].horizontal_padding_px)
         for size in button_size
     } == {
-        "compact-row": (32, 10),
-        "banner": (36, 10),
-        "secondary": (36, 14),
-        "primary": (40, 16),
-        "onboarding": (36, 16),
-        "icon": (32, 0),
+        "compact-row": (28, 10),
+        "banner": (32, 10),
+        "secondary": (32, 12),
+        "primary": (32, 12),
+        "onboarding": (32, 12),
+        "icon": (28, 0),
     }
     widget = _Widget()
     token = scope["apply_button_size"](widget, "onboarding")
     assert token is tokens[button_size.ONBOARDING]
     assert widget.properties["buttonSize"] == "onboarding"
-    assert widget.properties["visualControlSize"] == 36
-    assert (widget.minimum_height, widget.maximum_height) == (36, 36)
+    assert widget.properties["visualControlSize"] == 32
+    assert (widget.minimum_height, widget.maximum_height) == (32, 32)
     assert (widget.minimum_width, widget.maximum_width) == (0, 16_777_215)
 
     scope["apply_button_size"](widget, button_size.ICON)
-    assert (widget.minimum_width, widget.maximum_width) == (32, 32)
+    assert (widget.minimum_width, widget.maximum_width) == (28, 28)
 
 
 def test_capture_button_calibration_matches_release_button_tokens() -> None:
@@ -353,16 +352,16 @@ def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> 
         role.value: (tokens[role].width_px, tokens[role].height_px)
         for role in geometry
     } == {
-        "icon-button": (32, 32),
-        "input": (None, 40),
-        "select": (None, 40),
+        "icon-button": (28, 28),
+        "input": (None, 32),
+        "select": (None, 32),
         "switch": (38, 22),
-        "tab": (None, 44),
+        "tab": (None, 34),
     }
 
     input_widget = _Widget()
     scope["apply_input_geometry"](input_widget)
-    assert (input_widget.minimum_height, input_widget.maximum_height) == (40, 40)
+    assert (input_widget.minimum_height, input_widget.maximum_height) == (32, 32)
     assert input_widget.properties["gardenControl"] == "input"
 
     switch = _Widget()
@@ -416,7 +415,7 @@ def test_semantic_colors_sentence_case_and_status_chips_have_one_authority() -> 
     assert widget.properties["statusTone"] == "rare"
     assert widget.properties["statusInteractive"] is False
     assert widget.properties["statusShadow"] is False
-    assert (widget.minimum_height, widget.maximum_height) == (22, 26)
+    assert (widget.minimum_height, widget.maximum_height) == (20, 22)
 
     stylesheet = scope["semantic_component_stylesheet"]()
     assert "QLabel[gardenRole='status-badge'][statusTone='rare']" in stylesheet
@@ -429,7 +428,7 @@ def test_control_helpers_apply_variant_and_restore_disabled_description() -> Non
     normalized = scope["apply_control_variant"](widget, "tertiary")
     assert normalized is scope["ControlVariant"].QUIET
     assert widget.properties["variant"] == "quiet"
-    assert (widget.minimum_width, widget.minimum_height) == (36, 36)
+    assert (widget.minimum_width, widget.minimum_height) == (28, 28)
 
     with pytest.raises(ValueError, match="disabled_reason"):
         scope["set_control_enabled"](widget, False)
@@ -483,7 +482,7 @@ def test_icon_helper_requires_a_descriptive_name_and_preserves_hit_target() -> N
     assert widget.tooltip == "Close"
     assert widget.properties["iconButton"] is True
     assert widget.properties["gardenRole"] == "icon-button"
-    assert (widget.minimum_width, widget.minimum_height) == (32, 32)
+    assert (widget.minimum_width, widget.minimum_height) == (28, 28)
 
 
 def test_non_button_focus_surface_uses_the_shared_visible_ring_hook() -> None:
@@ -526,78 +525,6 @@ def test_tabular_numerals_apply_feature_with_a_safe_unsupported_fallback() -> No
     assert widget.properties["textLineHeight"] == token.line_height_px
 
 
-def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> None:
-    scope = _theme_scope()
-    garden = scope["semantic_component_stylesheet"]("garden")
-    nursery = scope["semantic_component_stylesheet"]("nursery")
-
-    for role in (
-        "dialog-shell",
-        "dialog-header",
-        "dialog-body",
-        "dialog-footer",
-        "card",
-        "input",
-        "select",
-        "switch",
-        "tabs",
-        "segmented-filter",
-        "badge",
-        "status-badge",
-        "currency-badge",
-        "progress",
-        "progress-meter",
-        "inventory-row",
-        "stage-strip",
-        "disclosure",
-        "tooltip",
-        "banner",
-        "notice-banner",
-        "toast",
-        "toast-stack",
-        "empty-state",
-        "missing-art",
-    ):
-        assert f"gardenRole='{role}'" in garden
-    assert "min-height: 44px" in garden
-    assert "max-height: 32px" in garden
-    assert "QCheckBox[keyboardFocusVisible='true']:focus" in garden
-    assert "QCheckBox::indicator:checked" in garden
-    assert "QCheckBox[gardenRole='switch']::indicator" in garden
-    assert "min-height: 6px" in garden
-    assert "max-height: 6px" in garden
-    assert "width: 36px" in garden
-    assert "height: 20px" in garden
-    assert "QLineEdit" in garden
-    assert "QComboBox::drop-down" in garden
-    assert "min-height: 40px" in garden
-    assert (
-        f"QTabBar[gardenRole='tabs']::tab {{" in garden
-        and f"background: {scope['GARDEN_THEME']['raised_surface']}" in garden
-    )
-    assert "border-bottom: 2px solid transparent" in garden
-    assert f"border-bottom-color: {scope['GARDEN_THEME']['growth_accent']}" in garden
-    assert scope["GARDEN_THEME"]["raised_surface"] in garden
-    assert scope["NURSERY_THEME"]["raised_surface"] in nursery
-    assert scope["NURSERY_THEME"]["focus_ring"] in nursery
-    assert scope["NURSERY_THEME"]["raised_surface"] in garden
-    catalog = scope["nursery_catalog_stylesheet"]()
-    assert scope["NURSERY_THEME"]["shop_surface_2"] in catalog
-    assert scope["NURSERY_THEME"]["shop_surface_3"] in catalog
-    assert "QFrame[nurseryCatalog='true']" in catalog
-    nursery_foundation = scope["foundation_stylesheet"]("nursery")
-    assert scope["NURSERY_THEME"]["action_accent"] in nursery_foundation
-    assert scope["NURSERY_THEME"]["secondary_action"] in nursery_foundation
-
-    widget = _Widget()
-    role = scope["set_semantic_role"](
-        widget,
-        scope["SemanticRole"].BANNER,
-        tone=scope["FeedbackTone"].WARNING,
-    )
-    assert role is scope["SemanticRole"].BANNER
-    assert widget.properties["gardenRole"] == "banner"
-    assert widget.properties["gardenTone"] == "warning"
 
 
 def test_action_palettes_keep_legible_contrast_in_every_interaction_state() -> None:

@@ -1150,11 +1150,8 @@ def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
     application.processEvents()
 
 
-def test_live_qt_plant_popover_state_matrix_when_available(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Prove anatomy and action geometry across the existing plant states."""
-
+def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep actions usable and Growth truthful across selected-plant states."""
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
@@ -1162,140 +1159,183 @@ def test_live_qt_plant_popover_state_matrix_when_available(
         from ankigarden.ui.dashboard import PlantInfoCard
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
-
     application = QApplication.instance() or QApplication([])
     owner = QWidget()
-    owner.resize(640, 520)
     owner.show()
     card = PlantInfoCard(owner)
+    base = dict(plant_id="rose", name="Rose Plant", species="rose", stage="sprout",
+                next_stage="young", stage_points=0, stage_goal=2000, is_active=True,
+                fully_grown=False, fertilizer_status={"phase": "inactive"}, asset=None)
 
-    def payload(**overrides: Any) -> dict[str, Any]:
-        values: dict[str, Any] = {
-            "plant_id": "rose",
-            "name": "Rose Plant",
-            "species": "rose",
-            "stage": "sprout",
-            "next_stage": "young",
-            "growth_points": 500,
-            "stage_points": 0,
-            "stage_goal": 2_000,
-            "fully_grown": False,
-            "is_active": True,
-            "fertilizer_status": {"phase": "inactive"},
-            "growth_today": 0,
-            "asset": None,
-        }
-        values.update(overrides)
-        return values
-
-    def settle(values: dict[str, Any]) -> int:
-        card.set_selected(values)
-        card.setFixedWidth(304)
-        card.layout().invalidate()
-        card.layout().activate()
-        card.adjustSize()
+    def settle(**changes: Any) -> None:
+        card.set_selected({**base, **changes})
+        card.resize(304, card.preferred_height(304))
         card.show()
-        application.processEvents()
-        application.processEvents()
-        return card.height()
+        for _ in range(3):
+            application.processEvents()
+        assert card.content_scroll.horizontalScrollBar().maximum() == 0
+        assert card.content_scroll.verticalScrollBar().maximum() == 0
+        assert card.close_btn.isVisibleTo(card)
 
-    active_height = settle(payload())
-    assert card.width() == 304
-    assert 300 <= active_height <= 325
-    assert card.artwork.size().width() == card.artwork.size().height() == 48
-    assert card.close_btn.size().width() == card.close_btn.size().height() == 32
-    assert card.identity.y() == card.nurtured_badge.y()
-    assert card.identity.geometry().right() + 6 <= card.nurtured_badge.geometry().left()
-    heading_right = card.heading.mapTo(card, card.heading.rect().topRight()).x()
-    close_left = card.close_btn.mapTo(card, card.close_btn.rect().topLeft()).x()
-    assert heading_right + 10 <= close_left
-    assert card.stage_progress.label.text() == "Growth toward Young"
-    assert card.stage_progress.value_label.text() == "0 / 2,000"
-    assert card.stage_progress.bar.minimum() == 0
-    assert card.stage_progress.bar.maximum() == 2_000
-    assert card.stage_progress.bar.value() == 0
-
-    assert card.growth_charge.height() == 36
-    assert card.fertilize.height() == card.move.height() == 36
-    assert card.move.width() == 84
-    assert card.fertilize.geometry().right() + 8 == card.move.geometry().left()
-    assert card.growth_charge.geometry().left() == card.fertilize.geometry().left()
-    assert card.growth_charge.geometry().right() == card.move.geometry().right()
-    assert card.story.height() == card.nurture.height() == 36
-    assert card.story.geometry().left() == card.nurture.geometry().left()
-    assert card.story.geometry().right() == card.nurture.geometry().right()
-    assert card.story.property("navigationRow") is True
-    assert card.danger_section.isVisibleTo(card)
-
-    stable_geometry = card.growth_charge.geometry()
-    card.growth_charge.setEnabled(False)
-    card._repolish(card.growth_charge)
-    application.processEvents()
-    assert card.growth_charge.geometry() == stable_geometry
-    card.growth_charge.setEnabled(True)
-    card.set_action_busy("growth_charge", True)
-    application.processEvents()
-    assert card.growth_charge.geometry() == stable_geometry
-    card.set_action_busy("growth_charge", False)
-
-    for current in (0, 1_000, 2_000):
-        settle(payload(stage_points=current))
+    for current in (0, 1000, 2000):
+        settle(stage_points=current)
         assert card.stage_progress.bar.value() == current
-        assert card.stage_progress.value_label.text() == f"{current:,} / 2,000"
-
-    fertilizer_height = settle(payload(
-        fertilizer_status={
-            "phase": "active",
-            "name": "Premium Fertilizer",
-            "duration": "12 min left",
-            "accessible_text": "Premium Fertilizer, 12 min left",
-        },
-    ))
+        assert card.stage_progress.value_label.text() == f"{current:,} / 2,000 Growth to Young"
+        assert card.fertilize.isVisibleTo(card) and card.fertilize.isEnabled()
+        assert card.move.isVisibleTo(card) and card.story.isVisibleTo(card)
+        assert card.more.isVisibleTo(card)
+        assert not card.growth_charge.isVisibleTo(card)
+    stable = card.fertilize.geometry()
+    card.set_action_busy("fertilize", True)
+    application.processEvents()
+    assert card.fertilize.geometry() == stable
+    card.set_action_busy("fertilize", False)
+    settle(fertilizer_status={"phase": "active", "name": "Magical Fertilizer", "duration": "100 cards remaining"})
+    assert card.status_value.text() == "Magical Fertilizer · 100 cards remaining"
     assert card.status_row.isVisibleTo(card)
-    assert card.status_value.text() == "Premium Fertilizer · 12 min left"
-    assert fertilizer_height <= 420
-
-    long_height = settle(payload(
-        name="Extraordinarily Long Rose Plant Name",
-        stage="ancient bloom",
-        next_stage="evergreen canopy",
-        stage_points=1_500,
-    ))
-    assert card.heading.height() <= card.heading.fontMetrics().lineSpacing() * 2 + 2
-    heading_right = card.heading.mapTo(card, card.heading.rect().topRight()).x()
-    close_left = card.close_btn.mapTo(card, card.close_btn.rect().topLeft()).x()
-    assert heading_right + 10 <= close_left
-    assert card.badge_container.geometry().right() <= card.identity_region.width()
-    assert long_height <= 420
-
-    inactive_height = settle(payload(is_active=False))
-    assert card.nurture.text() == "Nurture"
-    assert card.nurture.isVisibleTo(card)
-    assert not card.growth_charge.isVisibleTo(card)
+    settle(name="An extraordinarily long name for this particular Rose Plant")
+    assert card.heading.property("fullText") == "An extraordinarily long name for this particular Rose Plant"
+    assert not card.artwork.pixmap().isNull()
+    settle(is_active=False)
+    assert card.nurture.isVisibleTo(card) and card.nurture.isEnabled()
     assert not card.fertilize.isVisibleTo(card)
-    assert not card.danger_section.isVisibleTo(card)
-    assert card.move.geometry().left() == card.nurture.geometry().left()
-    assert card.move.geometry().right() == card.nurture.geometry().right()
-    assert inactive_height < active_height
-
-    final_height = settle(payload(
-        fully_grown=True,
-        is_active=False,
-        stage="rare flowering",
-        next_stage=None,
-    ))
+    assert not card.more.isVisibleTo(card)
+    settle(fully_grown=True, is_active=False, stage="rare", next_stage=None)
+    assert card.fully_grown_badge.isVisibleTo(card)
+    assert not card.identity.isVisibleTo(card)
     assert not card.progress_region.isVisibleTo(card)
     assert card.choose_another.isVisibleTo(card)
-    assert card.move.isVisibleTo(card)
-    assert card.story.isVisibleTo(card)
     assert not card.nurture.isVisibleTo(card)
-    assert not card.danger_section.isVisibleTo(card)
-    assert final_height < active_height
-
-    card.set_selected(None)
-    card.hide()
-    owner.close()
+    settle()
+    card.resize(304, 150)
     application.processEvents()
+    assert card.close_btn.isVisibleTo(card)
+    assert card.content_scroll.verticalScrollBar().maximum() > 0
+    assert card.content_scroll.horizontalScrollBar().maximum() == 0
+    card.set_selected(None)
+    assert not card.isVisible()
+    owner.close()
+
+
+def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Inspection, dismissal, and explicit nurture remain separate operations."""
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QWidget, Qt
+        from PyQt6.QtTest import QTest
+        from ankigarden.ui.dashboard import GardenDashboard, GardenDialog
+        from ankigarden.models.state import OnboardingStep, Plant
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+    application = QApplication.instance() or QApplication([])
+    config, storage, engine = _live_engine_fixture()
+    config.data["enable_animations"] = False
+    storage.state.plants[0].slot_index = 0
+    storage.state.plants.append(Plant("p2", "rose", "Rose Plant", 1))
+    storage.state.starter_selection_complete = True
+    storage.state.onboarding.step = OnboardingStep.DONE
+    owner = QWidget()
+    owner.resize(1400, 900)
+    owner.show()
+    dashboard = GardenDashboard(owner, engine, storage, config)
+    dashboard.show()
+
+    def settle() -> None:
+        for _ in range(4):
+            application.processEvents()
+
+    try:
+        settle()
+        bar = dashboard.nurtured_plant_bar
+        assert bar.plant_id == "p1"
+        assert not dashboard.plant_card.isVisibleTo(dashboard)
+        target = dashboard.scene.plant_geometry("p2").center().toPoint()
+        QTest.mouseMove(dashboard.scene, target)
+        settle()
+        assert not dashboard.plant_card.isVisibleTo(dashboard)
+        QTest.mouseClick(dashboard.scene, Qt.MouseButton.LeftButton, pos=target)
+        settle()
+        assert dashboard.plant_card.isVisibleTo(dashboard)
+        assert dashboard.plant_card.plant_id == "p2"
+        assert bar.plant_id == storage.state.active_plant_id == "p1"
+        dashboard.refresh_all()
+        settle()
+        assert dashboard.plant_card.plant_id == "p2" and bar.plant_id == "p1"
+        dashboard.plant_card.resize(304, 150)
+        dashboard._sync_overflow_owner()
+        settle()
+        assert dashboard.plant_card.content_scroll.verticalScrollBar().isVisibleTo(dashboard.plant_card)
+        dashboard.plant_card.close_btn.click()
+        dashboard.refresh_all()
+        settle()
+        assert not dashboard.plant_card.isVisibleTo(dashboard)
+        QTest.mouseClick(bar.view_plant, Qt.MouseButton.LeftButton)
+        settle()
+        QTest.mouseClick(bar.view_plant, Qt.MouseButton.LeftButton)
+        settle()
+        assert dashboard.scene.selected_plant_id() == "p1"
+        assert dashboard.plant_card.isVisibleTo(dashboard)
+        menu = dashboard.plant_card.more.menu()
+        menu.popup(dashboard.plant_card.more.mapToGlobal(dashboard.plant_card.more.rect().bottomLeft()))
+        settle()
+        QTest.keyClick(menu, Qt.Key.Key_Escape)
+        assert dashboard.scene.selected_plant_id() == "p1"
+
+        def close_owned_dialog(dialog: Any) -> int:
+            dialog.show()
+            settle()
+            QTest.keyClick(dialog, Qt.Key.Key_Escape)
+            assert dashboard.scene.selected_plant_id() == "p1"
+            return 0
+
+        monkeypatch.setattr(GardenDialog, "exec", close_owned_dialog)
+        QTest.mouseClick(dashboard.plant_card.story, Qt.MouseButton.LeftButton)
+        settle()
+        assert dashboard.plant_card.isVisibleTo(dashboard)
+        QTest.mouseClick(dashboard.plant_card.fertilize, Qt.MouseButton.LeftButton)
+        settle()
+        assert dashboard.plant_card.isVisibleTo(dashboard)
+        QTest.mouseClick(dashboard.plant_card.move, Qt.MouseButton.LeftButton)
+        settle()
+        assert dashboard.scene._interaction.placing
+        assert not dashboard.plant_card.isVisibleTo(dashboard)
+        QTest.keyClick(dashboard.scene, Qt.Key.Key_Escape)
+        settle()
+        assert not dashboard.scene._interaction.placing
+        assert dashboard.plant_card.isVisibleTo(dashboard)
+        QTest.keyClick(dashboard.scene, Qt.Key.Key_Escape)
+        settle()
+        assert not dashboard.plant_card.isVisibleTo(dashboard)
+        QTest.keyClick(dashboard.scene, Qt.Key.Key_Return)
+        settle()
+        assert dashboard.plant_card.isVisibleTo(dashboard)
+        dashboard.scene.keep_card_open("p2")
+        dashboard.plant_card.nurture.click()
+        settle()
+        assert bar.plant_id == storage.state.active_plant_id == "p2"
+        dashboard._undo_nurture()
+        settle()
+        assert bar.plant_id == storage.state.active_plant_id == "p1"
+        dashboard.open_section("collection")
+        assert dashboard.scene.selected_plant_id() is None
+        dashboard.open_section("garden")
+        dashboard.refresh_all()
+        settle()
+        assert not dashboard.plant_card.isVisibleTo(dashboard)
+        engine.set_active_plant(None)
+        dashboard.refresh_all()
+        settle()
+        assert not bar.plant_id and bar.view_plant.text() == "Choose plant"
+        bar.view_plant.click()
+        settle()
+        assert dashboard.plant_card.isVisibleTo(dashboard)
+        assert storage.state.active_plant_id is None
+    finally:
+        dashboard.close()
+        owner.close()
+        settle()
+
 
 
 def test_live_qt_settings_details_stay_bounded_and_scroll_when_needed(

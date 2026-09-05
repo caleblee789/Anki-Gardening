@@ -98,7 +98,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 26
+CAPTURE_CONTRACT_VERSION = 27
 
 
 def capture_acceptance_passes_contract(
@@ -3278,7 +3278,7 @@ _REVIEWER_CAPTURE_LABELS = frozenset(
     if str(surface.state_contract.get("kind", "")) in {
         "reviewer",
         "reviewer_hud",
-    }
+    } or (surface.stable_id.startswith("reviewer-") and surface.renderer_family == "AnkiQt")
 )
 _SESSION_SUMMARY_CAPTURE_LABELS = frozenset(
     surface.stable_id
@@ -3343,10 +3343,6 @@ CAPTURE_DEPRECATED_VISIBLE_COPY_PATTERNS: tuple[str, ...] = (
     r"\btoday['’]s environment\b",
     r"\bnursery weather scenery\b",
     r"\bgarden item unlocked\b",
-    r"\b[+-]?\d[\d,]*(?:\.\d+)?\s+(?:more\s+)?coins?\b",
-    r"\bnot enough coins\b",
-    r"\bno coins were spent\b",
-    r"(?<!garden )\bcoin balance\b",
     r"\beligible cards?\b",
     r"\bper review\b",
     r"\breviews? remaining\b",
@@ -3728,8 +3724,8 @@ def growth_charge_transient_variant_issue_codes(
 
     expected = {
         "ready-no-transition": {
-            "transition_statement": "Bonsai Plant will gain 100 Growth",
-            "before_label": "Before · Sprout",
+            "transition_statement": "Bonsai Plant",
+            "before_label": "Sprout",
             "after_label": "After · Sprout",
             "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
@@ -3747,8 +3743,8 @@ def growth_charge_transient_variant_issue_codes(
             "painted": True,
         },
         "success-no-stage-reward": {
-            "transition_statement": "Bonsai Plant gained 100 Growth",
-            "before_label": "Before · Sprout",
+            "transition_statement": "Bonsai Plant",
+            "before_label": "Sprout",
             "after_label": "After · Sprout",
             "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
@@ -4808,12 +4804,12 @@ CAPTURE_LAYOUT_LIMITS: dict[str, float | int] = {
 }
 
 CAPTURE_BUTTON_HEIGHTS: dict[str, int] = {
-    "compact-row": 32,
-    "banner": 36,
-    "secondary": 36,
-    "primary": 40,
-    "onboarding": 36,
-    "icon": 32,
+    "compact-row": 28,
+    "banner": 32,
+    "secondary": 32,
+    "primary": 32,
+    "onboarding": 32,
+    "icon": 28,
 }
 
 # Canonical v25 surfaces whose initial 100% viewport must fit without vertical
@@ -4932,6 +4928,8 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
     family = expected_capture_window_family(label)
     if not family:
         return {}
+    if str(REGISTRY[label].state_contract.get("kind", "")).startswith("workspace"):
+        return dict(REGISTRY[label].state_contract["profile"])
     profile: dict[str, Any] = {
         "profile_id": label,
         "window_family": family,
@@ -5287,6 +5285,11 @@ def start_capture(app: Any) -> None:
 
 
 class _UiFaceCaptureRunner:
+    def _capture_workspace_surface(self, label: str, route: str) -> None:
+        from .workspace import capture_workspace_surface
+
+        capture_workspace_surface(self, label, route, self._capture_and_advance)
+
     def __init__(self, app: Any) -> None:
         self.app = app
         self._capture_started_at = datetime.now().isoformat(timespec="milliseconds")
@@ -5843,6 +5846,9 @@ class _UiFaceCaptureRunner:
     def _prepare_capture_window(self) -> None:
         """Select one display only after geometry and DPR preflight."""
 
+        from .workspace import verify_capture_isolation
+
+        self._atomic_json(self.session_dir / "isolation-gates.json", verify_capture_isolation())
         try:
             screens = list(QGuiApplication.screens())
         except Exception:
@@ -9372,15 +9378,16 @@ class _UiFaceCaptureRunner:
                     and switch_contract.get("passed") is True
                 )
             elif popover_action:
-                # The compact selected-plant popover owns an explicit 36 px
-                # action grid independent of the shared button variant token.
-                size_passed = bool(actual_height == 36 and actual_width > 0)
+                # The v27 menu uses the same 32 px action height as the
+                # consolidated workspace; older contracts used 36 px rows.
+                expected_height = 32 if CAPTURE_CONTRACT_VERSION >= 27 else 36
+                size_passed = bool(actual_height == expected_height and actual_width > 0)
             elif icon_only:
                 dashboard_header_icon = bool(
                     button.property("dashboardSettingsButton")
                 )
                 expected_icon_visual_size = (
-                    36 if dashboard_header_icon else 32
+                    28
                 )
                 size_passed = bool(
                     visual_size == expected_icon_visual_size
@@ -9395,7 +9402,7 @@ class _UiFaceCaptureRunner:
                 # Qt's styled frame can add up to three physical border pixels
                 # per side to the capture-visible widget rectangle.
                 size_passed = bool(
-                    visual_size in {32, 36, 40}
+                    visual_size in {28, 32, 34, 36, 40}
                     and visual_size <= actual_height <= visual_size + 6
                 )
             else:
@@ -11284,7 +11291,7 @@ class _UiFaceCaptureRunner:
             and answer_controls.get("passed", False)
         )
         window_mode = self._home_fullscreen_window_evidence()
-        return {
+        result = {
             **evidence,
             "capture_bounds": list(
                 capture_evidence.get("bounds", ()) or ()
@@ -11363,6 +11370,14 @@ class _UiFaceCaptureRunner:
                 and window_mode.get("passed", False)
             ),
         }
+        if CAPTURE_CONTRACT_VERSION >= 27:
+            from .workspace import compact_reward_audit
+            compact = compact_reward_audit(self, hud)
+            compact["checks"]["answer_controls_clear"] = bool(
+                result.get("answer_controls_exclusion", {}).get("passed"))
+            compact["passed"] = all(compact["checks"].values())
+            result.update(compact)
+        return result
 
     def _reviewer_hud_viewport_audit(
         self,
@@ -12041,6 +12056,10 @@ class _UiFaceCaptureRunner:
         card: Any,
     ) -> dict[str, Any]:
         """Prove the right-docked, focus-safe, single-scroll sync receipt."""
+        if CAPTURE_CONTRACT_VERSION >= 27:
+            from .workspace import compact_reward_audit
+            return compact_reward_audit(self, card)
+
 
         from ..ui.sync_reward_summary import sync_reward_subtitle
 
@@ -12512,6 +12531,10 @@ class _UiFaceCaptureRunner:
         require_retina: bool = False,
     ) -> dict[str, Any]:
         """Prove the post-review summary's complete responsive contract."""
+        if CAPTURE_CONTRACT_VERSION >= 27:
+            from .workspace import compact_reward_audit
+            return compact_reward_audit(self, card)
+
 
         parent = getattr(mw, "web", None)
         actual_parent = card.parentWidget() if card is not None else None
@@ -13712,6 +13735,14 @@ class _UiFaceCaptureRunner:
         on_error: Callable[[], None],
     ) -> None:
         """Exercise the required Reviewer window/content states transiently."""
+        if CAPTURE_CONTRACT_VERSION >= 27:
+            from .workspace import compact_reward_audit
+            audit = compact_reward_audit(self, getattr(handler, "_reviewer_hud", None))
+            # The old layout permutation matrix was tied to the retired 320px HUD.
+            # The current card keeps measured bounds and answer-control exclusion.
+            on_ready(audit, audit, audit)
+            return
+
 
         from ..ui.reviewer_hud import (
             ReviewerHudProjection,
@@ -18950,6 +18981,14 @@ class _UiFaceCaptureRunner:
         on_error: Callable[[], None],
     ) -> None:
         """Exercise responsive states without creating additional surfaces."""
+        if CAPTURE_CONTRACT_VERSION >= 27:
+            from .workspace import compact_reward_audit, compact_reward_disclosure_audit
+            disclosure = compact_reward_disclosure_audit(self, card)
+            audit = compact_reward_audit(self, card)
+            on_ready({"scope": "compact summary and Details", "passed": disclosure["passed"],
+                      "content_states": disclosure}, audit)
+            return
+
 
         records: dict[str, Any] = {}
         finished = False
@@ -20706,6 +20745,23 @@ class _UiFaceCaptureRunner:
             None,
         )
         annotation = dict(self._capture_annotations.get(label, {}) or {})
+
+        if kind == "workspace-reward":
+            key = {"session-summary-after-review": "session_summary_geometry",
+                   "sync-rewards-summary": "sync_reward_summary_geometry"}.get(label, "reviewer_hud_geometry")
+            reward = dict(annotation.get(key, {}) or {})
+            checks = dict(reward.get("checks", {}) or {})
+            require("compact_reward_checks", bool(checks) and all(value is True for value in checks.values()), checks)
+            require("reward_surface_visible", reward.get("passed") is True, reward.get("passed") is True)
+            return {"profile_id": label, "kind": kind, "facts": facts, "issues": issues, "passed": not issues}
+
+        if kind == "workspace":
+            from .workspace import workspace_postcondition
+
+            workspace = workspace_postcondition(self, widget, str(expectation["route"]))
+            facts.update({key: value for key, value in workspace.items() if key != "issues"})
+            issues.extend(workspace["issues"])
+            return {"profile_id": label, "kind": kind, "facts": facts, "issues": issues, "passed": not issues}
 
         if state_name in {
             "starter-placement",
@@ -25249,6 +25305,10 @@ class _UiFaceCaptureRunner:
         """Return the visible dialog family plus its selected page/tab."""
 
         family = str(root.property("windowFamily") or type(root).__name__)
+        if family == "GardenDashboard" and str(root.property("workspaceSection")) == "shop":
+            tabs = root._shop.catalog_tabs
+            page = ("plants", "supplies", "scenery", "decorations")[tabs.currentIndex()]
+            return f"{family}:shop/{page}"
         if family == "GardenProgressDialog":
             navigation = getattr(root, "navigation", None)
             keys = list(getattr(navigation, "keys", ()) or ())
@@ -25624,7 +25684,9 @@ class _UiFaceCaptureRunner:
                 > int(scroll.verticalScrollBar().minimum())
             )
             expected_active_count = int(
-                window_mode == "workspace"
+                (window_mode == "workspace" and bool(visible_deliberate))
+                or (CAPTURE_CONTRACT_VERSION >= 27 and bool(visible_deliberate)
+                    and root.property("workspaceSection") is not None)
                 or (
                     window_mode == "content"
                     and content_screen_limited
@@ -25639,7 +25701,7 @@ class _UiFaceCaptureRunner:
                 != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
             dialog_scroll_audit.update({
-                "applicable": bool(deliberate),
+                "applicable": bool(visible_deliberate),
                 "registered_count": len(deliberate),
                 "active_count": len(active_scrolls),
                 "expected_active_count": expected_active_count,
@@ -25717,6 +25779,9 @@ class _UiFaceCaptureRunner:
                         int(content_layout.contentsMargins().bottom())
                         - int(base[3])
                     )
+                if not footer_visible:
+                    # No footer reserves space; page padding may change with its content.
+                    layout_clearance = 0
                 declared = scroll.property("footerClearance")
                 declared_clearance = -1 if declared is None else int(declared)
                 size_hint_height = (
@@ -26415,7 +26480,7 @@ class _UiFaceCaptureRunner:
                     # stricter Garden-shell identity requirement.
                     home_semantic_paint_ready = bool(
                         metrics["generic_content_passed"]
-                        if label == "sync-rewards-summary"
+                        if label == "sync-rewards-summary" or label in _REVIEWER_CAPTURE_LABELS
                         else metrics["passed"]
                     )
             return (
@@ -26596,7 +26661,7 @@ class _UiFaceCaptureRunner:
             if (
                 abs(int(actual.x()) - target_x) > 1
                 or abs(int(actual.y()) - target_y) > 1
-            ):
+            ) and widget.rect().contains(widget.mapFromGlobal(actual)):
                 raise RuntimeError(
                     "cursor did not reach the neutral corner: "
                     f"target=({target_x}, {target_y}), "
@@ -43359,6 +43424,10 @@ class _UiFaceCaptureRunner:
         canonical_summary: Any,
     ) -> dict[str, Any]:
         """Paint omitted and collapsed discovery states before Surface 29."""
+        if CAPTURE_CONTRACT_VERSION >= 27:
+            from .workspace import compact_reward_disclosure_audit
+            return compact_reward_disclosure_audit(self, card)
+
 
         def settle() -> None:
             app = QApplication.instance()

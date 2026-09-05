@@ -16,17 +16,16 @@ GARDEN_SETUP_BODY = "Pick one free plant for your garden."
 GARDEN_SETUP_SECONDARY_ACTION = "Skip for now"
 GARDEN_NURTURE_TITLE = "Nurture your first plant"
 GARDEN_NURTURE_BODY = (
-    "Nurture this plant to send card Growth here."
+    "Nurture this plant to grow it as you study."
 )
 GARDEN_NURTURE_ACTION = "Open plant"
 
 NURSERY_STARTER_TITLE = "Choose your starter"
 NURSERY_STARTER_RATIONALE = (
-    "Your first plant is free and will be added to your collection. "
-    "Appearance only. Every plant grows at the same rate."
+    "Your first plant is free. All plants grow at the same rate."
 )
 NURSERY_STARTER_COUNT = ""
-DISABLED_STARTER_TABS = "More Nursery sections are available after choosing a starter."
+DISABLED_STARTER_TABS = "The Shop opens after you choose a starter."
 COST_FREE = "Free"
 STARTER_CONFIRMATION_TEMPLATE = "Choose {plant_name}?"
 REVIEWER_NO_STARTER_NOTICE = "Choose a starter to earn Growth."
@@ -52,25 +51,23 @@ REWARD_DISCLOSURE = "How rewards work"
 STARTER_SAVE_ERROR = "Couldn’t save your garden. Nothing was changed."
 
 GARDEN_LANDMARK_DESCRIPTION = (
-    "Fund this permanent cosmetic garden feature with Stored Growth, then claim "
-    "each completed tier with Garden Coins."
+    "Use Stored Growth and Coins to build landmarks for your garden."
 )
 GARDEN_LANDMARK_ACTIVE_ROUTING = (
-    "Stored Growth earned after Full Bloom is routed to this project."
+    "New Stored Growth goes toward this landmark."
 )
 GARDEN_LANDMARK_UNLOCK_TITLE = (
     "Garden Landmarks unlock after your first Full Bloom"
 )
 GARDEN_LANDMARK_UNLOCK_BODY = (
-    "Bring one plant to Full Bloom to begin funding this permanent cosmetic "
-    "construction track."
+    "Grow one plant to Full Bloom to start building landmarks."
 )
 
 # These terms are learner-facing authorities. Internal enum values, schemas,
 # telemetry, and developer diagnostics intentionally keep their stable names.
 GARDEN_APPEARANCE = "Garden appearance"
 EDIT_APPEARANCE_ACTION = "Edit appearance"
-OPEN_NURSERY_ACTION = "Open nursery"
+OPEN_NURSERY_ACTION = "Shop"
 TRY_AGAIN_ACTION = "Try again"
 TECHNICAL_DETAILS_ACTION = "Technical details"
 
@@ -140,6 +137,24 @@ _GARDEN_BONUS_EFFECT_COPY = {
         "Every 5 cards, the unfinished plant nearest its next checkpoint gains "
         "+3 Growth."
     ),
+    "autumn": (
+        "Finish today’s cards for +4 Coins. Plant checkpoints and first-time "
+        "stage rewards give 50% more Coins."
+    ),
+    "snowy": (
+        "Earn a Small Growth Charge every second day you finish today’s cards with this bonus."
+    ),
+    "full_moon": (
+        "Earn a Booster Potion every sixth day you finish today’s cards with this bonus."
+    ),
+    "herbalist_hourglass": (
+        "Earn a Booster Potion every 30 days you finish today’s cards with this bonus. "
+        "Potions started with this bonus last 25 extra cards."
+    ),
+    "prism_trellis": (
+        "Set aside 1 Growth on each of your first 100 cards per day, up to 300. "
+        "Finish today’s cards with this bonus to release it."
+    ),
 }
 
 
@@ -155,6 +170,11 @@ def learner_card_copy(value: object) -> str:
         (r"\breviews remaining\b", "cards remaining"),
         (r"\breview remaining\b", "card remaining"),
         (r"\bper review\b", "per card"),
+        (r"\bNursery\b", "Shop"),
+        (r"\bDisplay Decoration\b", "decoration"),
+        (r"\bScenery appearance\b", "scenery"),
+        (r"\bGarden Coins\b", "Coins"),
+        (r"\bGarden Coin\b", "Coin"),
     )
     for pattern, replacement in replacements:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)

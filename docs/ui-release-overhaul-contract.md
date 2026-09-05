@@ -1,8 +1,11 @@
 # Anki Garden UI release contract
 
-Status: implemented contract for Anki Garden 2.2.0, state schema 27, and UI
-capture contract v26, contract schema 2 and scenario schema 3. Source code and
-persisted behavior are authoritative.
+Status: historical 2.2.0 architecture reference. The current UI layout,
+wording, dimensions, navigation, and capture requirements are in the
+[UI redesign contract and report](ui/ui-redesign-2.2.0.md), which supersedes
+the corresponding sections below. The engine, storage, and reward ownership
+boundaries remain in force. The redesign does not require a new test suite,
+font enlargement, or a broad accessibility audit.
 
 ## Authority map
 
