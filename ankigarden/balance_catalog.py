@@ -751,9 +751,9 @@ COIN_SOURCES = (
     ),
     CoinSourceDefinition(
         CoinSourceId.STANDARD_FIND,
-        "Standard Finds",
+        "Garden Finds",
         CoinBehaviorFamily.FINDS,
-        "Committed Standard Find with a Garden Coin outcome.",
+        "Committed Garden Find with a Garden Coin outcome.",
     ),
     CoinSourceDefinition(
         CoinSourceId.HARVEST_BELL,
@@ -832,7 +832,7 @@ CONSUMABLES = (
         how_to_acquire="Nursery for 30 Garden Coins or the Rich Compost Garden Find.",
         effect_description="Adds 1 Growth to each of the next 100 eligible cards.",
         purchase_action_text="Buy",
-        queued_purchase_action_text="Buy and queue",
+        queued_purchase_action_text="Buy and use next",
     ),
     ConsumableDefinition(
         ConsumableId.FERTILIZER_QUALITY,
@@ -846,7 +846,7 @@ CONSUMABLES = (
         how_to_acquire="Nursery for 100 Garden Coins.",
         effect_description="Adds 2 Growth to each of the next 200 eligible cards.",
         purchase_action_text="Buy",
-        queued_purchase_action_text="Buy and queue",
+        queued_purchase_action_text="Buy and use next",
     ),
     ConsumableDefinition(
         ConsumableId.FERTILIZER_PREMIUM,
@@ -860,7 +860,7 @@ CONSUMABLES = (
         how_to_acquire="Nursery for 300 Garden Coins.",
         effect_description="Adds 3 Growth to each of the next 400 eligible cards.",
         purchase_action_text="Buy",
-        queued_purchase_action_text="Buy and queue",
+        queued_purchase_action_text="Buy and use next",
     ),
     ConsumableDefinition(
         ConsumableId.BOOSTER_POTION,
@@ -2417,7 +2417,7 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
             _require(item.instant_growth == 0, "card effects cannot grant instant Growth")
             if item.kind is ConsumableKind.FERTILIZER and item.purchasable:
                 _require(
-                    item.queued_purchase_action_text == "Buy and queue",
+                    item.queued_purchase_action_text == "Buy and use next",
                     "queued Fertilizer action text drifted",
                 )
         else:

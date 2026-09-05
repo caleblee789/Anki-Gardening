@@ -216,17 +216,17 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
         scope["SEMANTIC_COLORS"]["warning"],
     }
     expected_colors = {
-        "bg": "#08251C",
+        "bg": "#081C16",
         "surface_deep": "#0B1F1B",
-        "surface_1": "#0D3026",
-        "surface_2": "#123D31",
+        "surface_1": "#0D2A21",
+        "surface_2": "#14382C",
         "surface_hover": "#164C3D",
-        "primary": "#63D99F",
+        "primary": "#62D6A1",
         "primary_hover": "#75E4AE",
         "primary_pressed": "#4FC58C",
-        "gold": "#E7B94A",
+        "gold": "#E8C568",
         "warning_bg": "#44281C",
-        "danger": "#F07B75",
+        "danger": "#DB8C83",
     }
     assert expected_colors.items() <= scope["SEMANTIC_COLORS"].items()
 

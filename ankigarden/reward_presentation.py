@@ -1271,7 +1271,7 @@ def _session_history_row(item: RewardItemProjection) -> RewardDetailRow:
             else "Checkpoint reached"
         )
     elif item.kind is RewardHero.GARDEN_FIND:
-        category = "Standard Find"
+        category = "Garden Find"
     elif item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
         category = "Discovery"
 
@@ -1622,8 +1622,8 @@ def project_committed_reward_bundle(
         items.append(RewardItemProjection(
             event_id=find.event_id,
             kind=RewardHero.GARDEN_FIND,
-            title=find.find_name or "Standard Find",
-            category_label="Standard Find",
+            title=find.find_name or "Garden Find",
+            category_label="Garden Find",
             occurred_at=find.occurred_at or event.occurred_at,
             growth_units=growth_units,
             garden_coins=coins,
@@ -1641,8 +1641,8 @@ def project_committed_reward_bundle(
             items.append(RewardItemProjection(
                 event_id=f"{find.event_id}:occurrence:{occurrence}",
                 kind=RewardHero.GARDEN_FIND,
-                title=find.find_name or "Standard Find",
-                category_label="Standard Find",
+                title=find.find_name or "Garden Find",
+                category_label="Garden Find",
                 occurred_at=find.occurred_at or event.occurred_at,
                 rarity=find.rarity,
                 artwork_ref=find.art_asset,
@@ -1659,8 +1659,8 @@ def project_committed_reward_bundle(
         items.append(RewardItemProjection(
             event_id=f"{bundle_id}:find:unitemized:{occurrence}",
             kind=RewardHero.GARDEN_FIND,
-            title="Standard Find",
-            category_label="Standard Find",
+            title="Garden Find",
+            category_label="Garden Find",
             occurred_at=event.occurred_at,
             detail="Details unavailable",
             sequence=len(items),
@@ -1744,7 +1744,7 @@ def project_committed_reward_bundle(
             category = "Garden discovery"
         elif "garden_find" in sources:
             kind = RewardHero.GARDEN_FIND
-            category = "Standard Find"
+            category = "Garden Find"
         elif event_key in milestone_event_ids:
             # Numeric milestone values already live on the richer typed item.
             continue

@@ -50,10 +50,8 @@ LEGACY_CAPTURE_ACCEPTANCE_POLICY = "gross-failures-only"
 V26_CAPTURE_ACCEPTANCE_POLICY = "gross-and-semantic-fail-closed"
 _V26_DEPRECATED_VISIBLE_COPY_PATTERNS = (
     r"\bstage [1-5] of 5\b",
-    r"\bgarden finds?\b",
     r"\b1 find\b",
     r"\bnew environments?\b",
-    r"\buse bonus\b",
     r"\benvironment discoveries\b",
     r"\benvironment discovery guarantees\b",
     r"\bfuture growth will be shared or stored\b",
@@ -4026,8 +4024,8 @@ def growth_charge_rendered_value_issue_codes(
         "summary_semantic_id": "growth-charge.summary",
         "shared_component": True,
         "shared_markup_tree": True,
-        "before_label": "Before · Seed",
-        "after_label": "After · Sprout",
+        "before_label": "Seed",
+        "after_label": "Sprout",
         "impact_name": "Small Growth Charge",
         "impact_value": "+100 Growth",
         "growth_label": "Total Growth",
@@ -4035,11 +4033,11 @@ def growth_charge_rendered_value_issue_codes(
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
         "progress_label": "Next-stage progress",
-        "stage_progress": "50 / 1,600 Growth to Young",
+        "stage_progress": "50 / 1,600 Growth toward Young",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Stage reward",
+        "reward_label": "Earned stage reward" if label == "growth-charge-success-stage-reward" else "Expected stage reward",
         "reward_value": "+2 Garden Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
@@ -4064,7 +4062,7 @@ def growth_charge_rendered_value_issue_codes(
             "component_variant": "confirmation",
             "data_source": "engine-preview",
             "dialog_title": "Use Small Growth Charge?",
-            "transition_statement": "Bonsai Plant will reach Sprout",
+            "transition_statement": "Bonsai Plant",
             "primary_action": "Use charge",
             "secondary_action": "Cancel",
         }
@@ -4073,8 +4071,8 @@ def growth_charge_rendered_value_issue_codes(
             "variant": "success",
             "component_variant": "success",
             "data_source": "engine-confirmed",
-            "dialog_title": "Small Growth Charge applied",
-            "transition_statement": "Bonsai Plant reached Sprout",
+            "dialog_title": "Bonsai Plant reached Sprout",
+            "transition_statement": "Bonsai Plant",
             "primary_action": "View plant",
             "secondary_action": "Close",
             "resulting_growth": 450,
@@ -4234,7 +4232,7 @@ def sync_reward_discovery_state_matrix_issue_codes(
             "metric_projection": {
                 **base_metrics,
                 "standard_find": {
-                    "label": "Standard Finds",
+                    "label": "Garden Finds",
                     "value": "+3",
                 },
                 "garden_discovery": {
@@ -5027,7 +5025,7 @@ def reviewer_reward_dock_issue_codes(
         and bundle.get("active_plant_identity_suppressed") is True
         and bool(str(bundle.get("projected_hero_subtitle", "")).strip())
         and bundle.get("visible_summary_labels") == [
-            "1 Standard Find",
+            "1 Garden Find",
             "2 Garden discoveries",
         ]
         and bundle.get("visible_summary_reward_types") == [
@@ -5562,7 +5560,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
         if not isinstance(find_row, dict) or not isinstance(discovery_row, dict):
             return False
         return bool(
-            find_row.get("label") == "1 Standard Find"
+            find_row.get("label") == "1 Garden Find"
             and find_row.get("reward_type") == "garden_find"
             and bool(str(find_row.get("artwork_ref", "")).strip())
             and find_row.get("uses_item_art") is True
@@ -5938,11 +5936,11 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             ),
             "one-garden-find": lambda row: (
                 row.get("find_count") == 1
-                and row.get("footer_copy") == "1 Standard Find"
+                and row.get("footer_copy") == "1 Garden Find"
             ),
             "discovery-new-wording": lambda row: (
                 row.get("visible_summary_labels")
-                == ["1 Standard Find", "2 Garden discoveries"]
+                == ["1 Garden Find", "2 Garden discoveries"]
                 and row.get("discovery_summary") == "2 Garden discoveries"
             ),
             "full-bloom": lambda row: (
@@ -6011,7 +6009,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and str(row.get("hero_subtitle", "")).strip() == ""
                 and row.get("active_plant_identity_suppressed") is True
                 and row.get("visible_summary_labels") == [
-                    "1 Standard Find",
+                    "1 Garden Find",
                     "2 Garden discoveries",
                 ]
                 and compact_reward_summary_passed(row)
@@ -6070,7 +6068,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("footer_coins") == row.get("live_coins") == 14
                 and row.get("footer_finds") == row.get("live_finds") == 1
                 and row.get("footer_copy")
-                == ["+60 Growth", "+14 Garden Coins", "1 Standard Find"]
+                == ["+60 Growth", "+14 Garden Coins", "1 Garden Find"]
             ),
             "reward-reveal-lifecycle": lambda row: (
                 row.get("celebrating") == "celebrating"

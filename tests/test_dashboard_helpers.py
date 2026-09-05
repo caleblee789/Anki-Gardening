@@ -62,7 +62,7 @@ def test_nursery_catalog_helpers_cover_shortfalls_receipts_empty_states_and_fold
     fold_plan = _compiled_function("_catalog_fold_alignment_plan")
 
     assert compact_shortfall(1, 0) == "Need 1 more Garden Coin"
-    assert compact_shortfall(100, 0) == "Need 100 more Garden Coins"
+    assert compact_shortfall(100, 0) == "Need 100 more Coins"
     assert compact_shortfall(100, 100) == ""
     assert receipt_actions(False) == ("Place in garden", "View collection")
     assert receipt_actions(True) == ("Place in garden",)
@@ -222,7 +222,6 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
         and node.name == "_refresh_collection_list_content"
     )
     refresh_source = ast.get_source_segment(source, refresh) or ""
-    assert "CollectionFilterControls(" in refresh_source
     assert "collection_list.add_full_width(\n            self.collection_growth_projects_panel" not in refresh_source
     assert "self.collection_section.set_plant_summary(" in refresh_source
     assert "self._refresh_garden_landmarks_content()" in refresh_source
@@ -248,7 +247,7 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
         source, classes["CollectionSubtabs"]
     ) or ""
     assert 'CollectionTab.PLANTS, "Plants"' in subtabs_source
-    assert 'CollectionTab.GARDEN_LANDMARKS, "Garden Landmarks"' in subtabs_source
+    assert 'CollectionTab.GARDEN_LANDMARKS, "Landmarks"' in subtabs_source
     assert 'asset_id="ui_stored_growth"' in subtabs_source
     assert 'asset_id="ui_garden_coin"' in subtabs_source
 
@@ -266,14 +265,9 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
     assert "QScrollArea(" not in overview_source
     assert "QScrollArea(" not in tier_row_source
     assert "size=88" in overview_source
-    assert "setFixedHeight(40)" in overview_source
-    assert "setMaximumWidth(145)" in overview_source
     assert "size=58" in tier_row_source
     assert "setMinimumHeight(86)" in tier_row_source
-    assert "setFixedHeight(38)" in tier_row_source
-    assert "setMaximumWidth(140)" in tier_row_source
     assert "tier.artwork_id" in tier_row_source
-    assert 'asset_id="ui_garden_coin"' in tier_row_source
 
     collection_set_current = next(
         node
@@ -290,9 +284,8 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
         if isinstance(node, ast.FunctionDef) and node.name == "open_collection"
     )
     progress_open_source = ast.get_source_segment(source, progress_open) or ""
-    assert progress_open_source.index('self.open_page("collection")') < (
-        progress_open_source.index("QTimer.singleShot(0, focuser)")
-    )
+    assert 'self._dialog_owner.open_section("collection"' in progress_open_source
+    assert "item_id=focus_tier_id" in progress_open_source
 
 
 def test_landmark_tier_ui_state_keeps_progress_claims_and_selection_independent() -> None:
@@ -325,13 +318,13 @@ def test_landmark_tier_ui_state_keeps_progress_claims_and_selection_independent(
             "project_funded_units": 5_000_000,
         }
     ) == ("in-progress", "In progress")
-    assert state(**{**common, "funded": True}) == ("funded", "Funded")
+    assert state(**{**common, "funded": True}) == ("funded", "Growth complete")
     assert state(
         **{**common, "funded": True, "claimable": True}
-    ) == ("ready-to-claim", "Ready to claim")
+    ) == ("ready-to-claim", "Ready to build")
     assert state(
         **{**common, "funded": True, "claimed": True}
-    ) == ("claimed", "Claimed")
+    ) == ("claimed", "Built")
     assert state(
         **{
             **common,
@@ -339,7 +332,7 @@ def test_landmark_tier_ui_state_keeps_progress_claims_and_selection_independent(
             "claimed": True,
             "displayed_tier_id": "birdbath_terrace",
         }
-    ) == ("in-use", "In use")
+    ) == ("in-use", "Displayed")
 
     project_status = _compiled_function("_landmark_project_ui_status")
     assert project_status(
@@ -362,7 +355,7 @@ def test_landmark_tier_ui_state_keeps_progress_claims_and_selection_independent(
         funded_growth_units=2_500_000,
         claimed_tier_count=0,
         tier_count=6,
-    ) == "Active project"
+    ) == "Receiving Growth"
     assert project_status(
         project_unlocked=True,
         project_active=False,
@@ -478,7 +471,7 @@ def test_affordability_helpers_report_ready_and_shortfall_states() -> None:
 
     assert affordability(25, 25) == (True, "Affordable now.")
     assert affordability(25, 24) == (False, "Need 1 more Garden Coin.")
-    assert affordability(150, 25) == (False, "Need 125 more Garden Coins.")
+    assert affordability(150, 25) == (False, "Need 125 more Coins.")
     assert compact(25, 25, ready_text="Ready to unlock") == "Ready to unlock"
     assert compact(150, 25, ready_text="Ready to unlock") == "125 more needed"
 

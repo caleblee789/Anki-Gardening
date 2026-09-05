@@ -534,7 +534,7 @@ class StandardFind:
 def _standard_find_display_name(find: StandardFind) -> str:
     """Project the concrete inventory grant while retaining its Find ID."""
 
-    fallback = str(find.find_name or "Standard Find")
+    fallback = str(find.find_name or "Garden Find")
     if str(find.reward_type or "") != "inventory_item":
         return fallback
     reward_label = str(find.reward_label or "").strip()
@@ -1521,7 +1521,7 @@ def _limited_find_items(
 ) -> LimitedListProjection:
     visible = tuple(values[:max(0, int(limit))])
     hidden_quantity = sum(item.quantity for item in values[len(visible):])
-    noun = "Standard Find" if hidden_quantity == 1 else "Standard Finds"
+    noun = "Garden Find" if hidden_quantity == 1 else "Garden Finds"
     return LimitedListProjection(
         visible=visible,
         remaining_count=hidden_quantity,
@@ -1747,7 +1747,7 @@ def _session_highlights(summary: SessionDaySummary) -> HighlightProjection:
             occurred_at=find.occurred_at,
             eyebrow=f"{find.rarity.upper()} FIND",
             title=_standard_find_display_name(find),
-            supporting_text=find.reward_label or "Rare Standard Find",
+            supporting_text=find.reward_label or "Rare Garden Find",
             art_asset=find.art_asset,
             unlock_category="garden_item",
         )
@@ -1807,7 +1807,7 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
     if summary.total_finds:
         rows.append(ResultRow(
             "standard_finds",
-            "Standard Finds",
+            "Garden Finds",
             f"+{summary.total_finds:,}",
             summary.find_items_reconciled and bool(summary.find_items),
         ))
@@ -1829,9 +1829,9 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
     )
 
     card_label = (
-        "card completed this session"
+        "card studied this session"
         if summary.cards_completed == 1
-        else "cards completed this session"
+        else "cards studied this session"
     )
     metrics = tuple(rows)
     return SessionDayProjection(

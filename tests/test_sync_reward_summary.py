@@ -65,7 +65,7 @@ def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> N
         "stage_after": "flowering",
         "stage_progress_after": 1,
         "next_stage": "rare",
-    }) == "200 / 20,000 Growth to Full Bloom"
+    }) == "200 / 20,000 Growth toward Full Bloom"
     assert _checkpoint_display_text({
         "percent": 75,
         "stage_name": "flowering",
@@ -189,10 +189,10 @@ def test_exact_generalized_subtitle_copy() -> None:
         "Rewards from 42 card answers on another device."
     )
     assert sync_reward_subtitle(_summary(eligible_answer_count=1)) == (
-        "1 card completed on another device"
+        "Rewards added after syncing"
     )
     assert sync_reward_subtitle(_summary()) == (
-        "42 cards completed on another device"
+        "Rewards added after syncing"
     )
 
 
@@ -288,7 +288,7 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "SYNC REWARDS" in texts
     assert "Your garden caught up" in texts
-    assert "42 cards completed on another device" in texts
+    assert "Rewards added after syncing" in texts
     assert "Rewards already applied." in texts
     assert {
         "Stored Growth added to Garden Landmark",

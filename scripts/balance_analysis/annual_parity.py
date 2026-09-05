@@ -1037,6 +1037,11 @@ def _apply_modeled_inventory_use(
                 tier=item_id.removeprefix("fertilizer_"),
             )
         elif item_id == "booster_potion":
+            if sum(
+                int(batch.remaining_cards) > 0
+                for batch in (*plant.booster_card_batches, *plant.booster_card_queue)
+            ) >= engine.EFFECT_DOSE_CAP:
+                continue
             before_sources = {
                 str(batch.source_event_key)
                 for batch in (

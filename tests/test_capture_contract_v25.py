@@ -698,7 +698,7 @@ def test_sync_reward_capture_fixture_is_rich_multiday_and_nonmodal() -> None:
         / "runtime.py"
     ).read_text("utf-8")
 
-    assert subtitle == "42 cards completed on another device"
+    assert subtitle == "Rewards added after syncing"
     assert facts == {
         "anki_days": ("2026-08-28", "2026-08-29"),
         "eligible_answer_count": 42,

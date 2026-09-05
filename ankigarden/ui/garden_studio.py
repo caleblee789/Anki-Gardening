@@ -53,10 +53,10 @@ STUDIO_TEXT = {
     "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
-    "home_widget_label": "Show garden card on Anki home",
-    "reviewer_hud_label": "Show garden panel while reviewing",
-    "progress_notifications_label": "Show reward updates while reviewing",
-    "sync_rewards_label": "Show sync reward summary",
+    "home_widget_label": "Garden card on Anki home",
+    "reviewer_hud_label": "Garden panel while reviewing",
+    "progress_notifications_label": "Reward updates while reviewing",
+    "sync_rewards_label": "Rewards after syncing",
 }
 
 SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 190

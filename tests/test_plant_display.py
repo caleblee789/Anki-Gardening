@@ -768,10 +768,10 @@ def test_onboarding_stages_first_review_and_nurture_without_schema_state():
     completed = onboarding_display(1, CURRENT_ONBOARDING_VERSION)
     confirmation = onboarding_display(1, CURRENT_ONBOARDING_VERSION, just_completed=True)
 
-    assert fresh.action_label == "Choose starter"
-    assert fresh.title == "Choose a starter"
+    assert fresh.action_label == "Choose a plant"
+    assert fresh.title == "Choose a plant"
     assert fresh.message == "Pick a free plant for your garden."
-    assert reviewed.title == "Choose a starter"
+    assert reviewed.title == "Choose a plant"
     assert reviewed.message == "Pick a free plant for your garden."
     assert updated_existing_user.visible is True
     assert completed.visible is False
@@ -795,7 +795,7 @@ def test_onboarding_handles_malformed_presentation_inputs() -> None:
     display = onboarding_display("not-a-count", "not-a-version")
 
     assert display.visible is True
-    assert display.title == "Choose a starter"
+    assert display.title == "Choose a plant"
 
 
 def test_layout_is_responsive_and_hit_areas_are_generous():

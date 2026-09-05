@@ -6,12 +6,12 @@ from .formatters import format_garden_coins
 
 FALLBACK_GARDEN_NAME = "My Garden"
 
-HOME_NO_STARTER_TITLE = "Start your garden"
+HOME_NO_STARTER_TITLE = "Grow your first plant"
 HOME_NO_STARTER_BODY = "Your first plant is free."
-HOME_NO_STARTER_ACCESSIBLE = "Start your garden. Your first plant is free. Choose starter."
-CHOOSE_STARTER_ACTION = "Choose starter"
+HOME_NO_STARTER_ACCESSIBLE = "Grow your first plant. Your first plant is free. Choose a plant."
+CHOOSE_STARTER_ACTION = "Choose a plant"
 
-GARDEN_SETUP_TITLE = "Choose your starter"
+GARDEN_SETUP_TITLE = "Choose your first plant"
 GARDEN_SETUP_BODY = "Pick one free plant for your garden."
 GARDEN_SETUP_SECONDARY_ACTION = "Skip for now"
 GARDEN_NURTURE_TITLE = "Nurture your first plant"
@@ -20,20 +20,20 @@ GARDEN_NURTURE_BODY = (
 )
 GARDEN_NURTURE_ACTION = "Open plant"
 
-NURSERY_STARTER_TITLE = "Choose your starter"
+NURSERY_STARTER_TITLE = "Choose your first plant"
 NURSERY_STARTER_RATIONALE = (
     "Your first plant is free. All plants grow at the same rate."
 )
 NURSERY_STARTER_COUNT = ""
-DISABLED_STARTER_TABS = "The Shop opens after you choose a starter."
+DISABLED_STARTER_TABS = "The Shop opens after you choose a plant."
 COST_FREE = "Free"
 STARTER_CONFIRMATION_TEMPLATE = "Choose {plant_name}?"
-REVIEWER_NO_STARTER_NOTICE = "Choose a starter to earn Growth."
+REVIEWER_NO_STARTER_NOTICE = "Choose a plant to earn Growth."
 STARTER_READY_TEMPLATE = "{plant_name} is now your nurtured plant."
 ACTIVE_GROWTH_TITLE = "Nurtured"
 ACTIVE_GROWTH_GUIDANCE = ""
 
-FULLY_GROWN_MESSAGE = "Choose next plant to keep earning Growth."
+FULLY_GROWN_MESSAGE = "Choose another plant to nurture."
 FULLY_GROWN_ACTION = "Choose next plant"
 ALL_PLANTS_COMPLETE = "All plants are fully grown."
 
@@ -42,7 +42,7 @@ KEYBOARD_HINT = "Use the arrow keys to explore plants. Press Enter to open the s
 
 HOME_ACTIVE_ACTION = "Open garden"
 NURTURED_STATUS = "Nurtured"
-NO_DISPLAY_ISSUES = "No display issues found"
+NO_DISPLAY_ISSUES = "All artwork is available"
 GROWTH_BREAKDOWN = "Growth breakdown"
 
 REDUCED_MOTION_LABEL = "Reduce motion"
@@ -122,9 +122,9 @@ def fertilizer_queue_copy(
 
     predecessor = str(predecessor_name or "the active Fertilizer").strip()
     return (
-        f"Starts after {predecessor}.\n"
-        f"Adds {fertilizer_effect_copy(growth_per_card)} for the next "
-        f"{card_count_label(card_count)}."
+        f"{fertilizer_effect_copy(growth_per_card)} for "
+        f"{card_count_label(card_count)} once it starts.\n"
+        f"Starts after {predecessor}."
     )
 
 

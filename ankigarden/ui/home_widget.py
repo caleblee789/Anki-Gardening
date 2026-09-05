@@ -627,6 +627,7 @@ HOME_WIDGET_STYLE = """
   flex-direction:column;
   justify-content:flex-start;
   background:none;
+  text-align:left;
 }
 .ag-home__details::before { display:none; }
 .ag-home__identity-row {
@@ -667,13 +668,13 @@ HOME_WIDGET_STYLE = """
   white-space:nowrap;
 }
 .ag-home__growth-track {
-  position:absolute;
-  left:16px;
+  position:relative;
+  left:0;
   right:auto;
-  bottom:7px;
+  bottom:auto;
   width:260px;
   height:4px;
-  margin:0;
+  margin:4px 0 0;
   overflow:hidden;
   border-radius:999px;
   background:rgba(99,217,159,.26);
@@ -1359,7 +1360,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 display_growth_goal,
             )
             if data.active_next_stage:
-                growth_text += f" to {format_status_label(data.active_next_stage)}"
+                growth_text += f" toward {format_status_label(data.active_next_stage)}"
         else:
             growth_text = preview.growth_text or "0"
         preview_identity = f"{preview.active_plant_name} · {stage}"
@@ -1385,7 +1386,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         preview_progress = preview_support_progress
         if starter_progress.next_stage:
             preview_progress += (
-                f" to {format_status_label(starter_progress.next_stage)}"
+                f" toward {format_status_label(starter_progress.next_stage)}"
             )
         preview_support = f"{preview_identity} · {preview_support_progress}"
     else:

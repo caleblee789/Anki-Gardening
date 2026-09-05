@@ -33,6 +33,12 @@ changes and migration boundary are summarized in the
 - The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open Garden** visible without duplicating Today’s Cards, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
 - Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners. Every add-on window now uses a native parented dialog, and visibility-sensitive controls receive parents before they can be shown; an opt-in audit can report unexpected parentless windows without creating native handles.
 - The Garden uses one 1040 × 720 window with persistent Garden, Collection, Shop, and Progress tabs. The scene adapts to its available space and keeps the existing scenery composition without stretching; selecting another tab does not resize the window.
+- A compact floating inspector describes the selected plant, while a separate
+  persistent footer tracks the nurtured plant. Selecting or inspecting another
+  plant preserves the Growth recipient; Move remains available under More.
+- Collection cards identify each plant type's highest owned stage. Shop cards
+  place stage previews under the name and keep Coin icons beside prices;
+  purchase dialogs distinguish ownership changes from using supplies.
 - Reviewer progression stays inside one compact, content-driven HUD. Routine answers update the plant and session totals in place; meaningful committed rewards use one integrated reveal and one correlation-bound bundle rather than detached toast cards.
 - Steady-state review maintenance reuses only an unchanged scheduler-day, review-history, and ledger signature. Proven local card completions use a narrow bounded lookup when safe, while sync, undo, collection reload, or ambiguity invalidates that proof and restores the complete fail-closed reconciliation path.
 - Hidden progress pages render lazily, wall-time refresh timers run only while visible timed status exists, static scene animation timers stop, and bounded per-widget caches reuse scene layout and raster work without changing learner state.
@@ -132,14 +138,14 @@ after syncing** suppresses only the receipt, not reward processing.
 ## Garden interaction
 
 - Hover gives visible artwork a restrained highlight and pointer cursor without opening details or moving the art.
-- Click selects a plant in the compact bottom inspector: its name, stage, progress, and Nurture, Use item, Move, and Details actions.
-- Click outside or press Escape to dismiss. The inspector stays in place and updates when another plant is selected.
+- Click selects a plant in the compact floating inspector: its name, stage, progress, and Nurture or Use item action, plus Details and More. Move is inside More.
+- Click outside or press Escape to dismiss. The inspector retargets when another plant is selected; the separate nurtured-plant footer remains available.
 - Move highlights valid garden spaces. Click or keyboard-select one to save immediately, then use the inline Undo action if needed; Escape cancels before placement.
 - Overlap hit testing follows depth order, and geometry-v2 `interaction_bounds` keep transparent artwork margins from stealing clicks.
 
 One Garden window keeps **Garden**, **Collection**, **Shop**, and **Progress** visible throughout. The coin balance opens **Progress → Coins**; the gear opens Settings. Plant-specific information stays in the inspector and **Plant details**.
 
-The nursery building opens **Shop** and the cottage opens **Collection** in that same window. During placement, the scene keeps the chosen plant and available beds visible. First run offers four free starter choices inline, then asks where to plant the selection and which plant to nurture. Garden naming is optional in Settings; an unnamed garden is **My Garden**.
+The nursery building opens **Shop** and the cottage opens **Collection** in that same window. During placement, the scene keeps the chosen plant and available beds visible. First run offers four free starter choices inline; choosing a tile advances to bed placement, with Back available before planting is confirmed. Garden naming is optional in Settings; an unnamed garden is **My Garden**.
 
 **Collection** has **Plants**, **Scenery**, **Decorations**, and **Landmarks**. **Shop** has **Plants**, **Supplies**, **Scenery**, and **Decorations**. **Progress** has **Today**, **Achievements**, and **Coins**; Today combines daily cards, the streak calendar, and the next bed unlock. Detailed reward rules are behind **Details**.
 
@@ -304,17 +310,20 @@ switches Spaces or creates a stray top-level window. A capture report whose
 `quality_status` remains `review-required` or whose `release_ready` value is
 `false` is review evidence, not release approval.
 
-The September 4 redesign passed the focused UI/package checks and all **36 native
-capture surfaces**, with **five validated contact sheets**. Review the current
-[contact-sheet index](build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260904-173751/contact-sheet-set.json),
-[capture report](build/ui-face-captures/full/capture-sequence-20260904-173751/capture-report.json),
-and [implementation and verification report](docs/ui/ui-redesign-2.2.0.md).
-These captures used Anki 26.8.1 on the primary macOS display at 100% Qt scale.
-The candidate remains `review-required` pending human release acceptance.
+The September 4 polish has **36 native capture surfaces** and **five rebuilt
+contact sheets**. Review the current
+[contact-sheet index](build/ui-release-polish-20260904-191901/native-pass-3/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260904-203429/contact-sheet-set.json),
+[capture report](build/ui-release-polish-20260904-191901/native-pass-3/full/capture-sequence-20260904-203429/capture-report.json),
+and [implementation and verification report](docs/ui/release-polish-20260904.md).
+The sheets use the existing Anki 26.8.1 capture at 100% Qt scale. A subsequent
+supplies-height refinement and sync Growth icon correction are documented in
+the report and are not pictured in this capture. The captured package is
+preserved separately; these sheets do not claim parity with that later source.
+Human release acceptance remains pending.
 
 The [September 1 contact-sheet set](build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260901-002050/contact-sheet-set.json)
 and [earlier 2.2.0 audit](docs/ui/final-ui-audit-2.2.0.md) are preserved as the
-redesign's historical baseline. The current navigation, UI changes, package,
+redesign's historical baseline. Earlier navigation, UI changes, package,
 and validation results are documented in the
 [2.2.0 redesign report](docs/ui/ui-redesign-2.2.0.md).
 

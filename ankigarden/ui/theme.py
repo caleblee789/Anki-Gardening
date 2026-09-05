@@ -257,30 +257,30 @@ class ThemeContext(str, Enum):
 
 
 SEMANTIC_COLORS = {
-    "bg": "#08251C",
-    "shell": "#08251C",
+    "bg": "#081C16",
+    "shell": "#081C16",
     "surface_deep": "#0B1F1B",
-    "surface_1": "#0D3026",
-    "surface_2": "#123D31",
+    "surface_1": "#0D2A21",
+    "surface_2": "#14382C",
     "surface_3": "#0B1F1B",
     "surface_hover": "#164C3D",
     "border": "#70998A",
-    "divider": "#315247",
-    "text_primary": "#F4F3DF",
-    "text_secondary": "#B7C4BD",
-    "text_muted": "#95A89F",
+    "divider": "#2A5041",
+    "text_primary": "#F2F0E2",
+    "text_secondary": "#B5C7BC",
+    "text_muted": "#8CA397",
     "text_disabled": "#7F9289",
-    "primary": "#63D99F",
+    "primary": "#62D6A1",
     "primary_hover": "#75E4AE",
     "primary_pressed": "#4FC58C",
-    "gold": "#E7B94A",
-    "danger": "#F07B75",
+    "gold": "#E8C568",
+    "danger": "#DB8C83",
     "rare": "#B69AFF",
     # Warning amber is deliberately warmer than coin gold so a caution card
     # cannot read as a reward surface at a glance.
     "warning": "#F2A35B",
     "warning_bg": "#44281C",
-    "info": "#79C8E8",
+    "info": "#B5C7BC",
     # Nursery rows are part of the same product hierarchy. Earth tones are
     # reserved for artwork accents rather than whole catalogue cards.
     "shop_surface_1": "#0D3026",
@@ -398,30 +398,30 @@ GARDEN_THEME = {
     "reviewer_hud_coin_soft": "rgba(243, 201, 79, 36)",
     # Session Summary reward semantics.  The native reviewer card consumes
     # these shared roles rather than owning ad-hoc milestone/find colors.
-    "session_summary_panel_bg": "#07231C",
-    "session_summary_card_bg": "#0D3027",
-    "session_summary_card_bg_raised": "#114135",
+    "session_summary_panel_bg": SEMANTIC_COLORS["bg"],
+    "session_summary_card_bg": SEMANTIC_COLORS["surface_1"],
+    "session_summary_card_bg_raised": SEMANTIC_COLORS["surface_2"],
     "session_summary_border": "rgba(135, 202, 175, 61)",
     "session_summary_border_subtle": "rgba(221, 236, 228, 38)",
     "session_summary_divider": "rgba(226, 239, 232, 28)",
-    "session_summary_text_primary": "#F4F1E5",
-    "session_summary_text_secondary": "#C2CEC8",
-    "session_summary_text_muted": "#9AADA4",
+    "session_summary_text_primary": SEMANTIC_COLORS["text_primary"],
+    "session_summary_text_secondary": SEMANTIC_COLORS["text_secondary"],
+    "session_summary_text_muted": SEMANTIC_COLORS["text_muted"],
     "session_summary_progress_track": "rgba(229, 241, 235, 26)",
-    "session_summary_growth": "#5FDBA4",
-    "session_summary_coin": "#F1C34C",
-    "session_summary_find": "#61C8D2",
-    "session_summary_milestone": "#B49CFF",
-    "session_summary_primary": "#60DBA5",
+    "session_summary_growth": SEMANTIC_COLORS["primary"],
+    "session_summary_coin": SEMANTIC_COLORS["gold"],
+    "session_summary_find": SEMANTIC_COLORS["primary"],
+    "session_summary_milestone": SEMANTIC_COLORS["gold"],
+    "session_summary_primary": SEMANTIC_COLORS["primary"],
     "session_summary_primary_hover": "#70E2B0",
     "session_summary_primary_pressed": "#4BC893",
     "session_summary_primary_text": "#06241B",
-    "session_summary_highlight_surface": "#0D3027",
+    "session_summary_highlight_surface": SEMANTIC_COLORS["surface_1"],
     "session_summary_chip_surface": "rgba(241, 195, 76, 26)",
     # Selected-plant popover palette. Keep these component semantics here so
     # the compact overlay never grows its own scatter of one-off colors.
-    "plant_popover_bg": "#174B3C",
-    "plant_popover_raised": "#0F3A2D",
+    "plant_popover_bg": SEMANTIC_COLORS["surface_2"],
+    "plant_popover_raised": SEMANTIC_COLORS["surface_1"],
     "plant_popover_border": "rgba(126, 221, 179, 72)",
     "plant_popover_status_surface": "rgba(102, 222, 164, 41)",
     "plant_popover_status_border": "rgba(102, 222, 164, 77)",
@@ -1363,7 +1363,7 @@ def semantic_component_stylesheet(
         QFrame[gardenRole='inventory-row'] {{
             color: {t['text_primary']};
             background: {t['raised_surface']};
-            border: 2px solid {t['subtle_border']};
+            border: 1px solid {t['subtle_border']};
             border-radius: {RadiusToken.MD}px;
         }}
         QFrame[gardenRole='card'][selected='true'],
@@ -1768,4 +1768,17 @@ def nursery_catalog_stylesheet() -> str:
             background: {t['shop_surface_3']};
             border: 2px solid {t['focus_ring']};
         }}
+    """
+
+
+def secondary_navigation_stylesheet() -> str:
+    """The same compact underline treatment for button-based secondary tabs."""
+    t = GARDEN_THEME
+    return f"""
+        QPushButton {{min-height:32px;max-height:32px;background:transparent;
+            color:{t['text_secondary']};border:0;border-bottom:2px solid transparent;
+            border-radius:0;padding:0 12px;font-weight:600;}}
+        QPushButton:checked {{background:{t['selected_surface']};color:{t['growth_accent']};
+            border-bottom-color:{t['growth_accent']};}}
+        QPushButton:hover {{background:{t['secondary_hover']};}}
     """

@@ -254,7 +254,7 @@ def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
     assert [(row.key, row.label, row.value) for row in projection.reward_metrics] == [
         ("growth_applied", "Growth applied", "+2,092.5"),
         ("garden_coins", "Garden Coins", "+67"),
-        ("standard_finds", "Standard Finds", "+3"),
+        ("standard_finds", "Garden Finds", "+3"),
     ]
     assert not any(row.key == "shared_growth" for row in projection.result_rows)
     assert not any(row.key == "stored_growth" for row in projection.result_rows)
@@ -556,7 +556,7 @@ def test_live_snapshot_is_exact_once_non_finalizing_and_matches_final_reducer():
             SessionProjectGrowthAllocation("mastery", "rose", 100),
         ),
         landmark=300,
-        coins=(CoinAward("coin:live:1", "find", "Standard Find", 4),),
+        coins=(CoinAward("coin:live:1", "find", "Garden Find", 4),),
         finds=(StandardFind(
             "find:live:1",
             "morning_dew",
@@ -663,7 +663,7 @@ def test_authoritative_reversal_removes_whole_card_or_selected_reward_once():
     accumulator.accept_committed(_event(
         "card:2",
         plant_growth=(PlantGrowthDelta("rose", "Rose", 2_000),),
-        coins=(CoinAward("coin:2", "find", "Standard Find", 4),),
+        coins=(CoinAward("coin:2", "find", "Garden Find", 4),),
     ))
 
     selective = AuthoritativeEventReversal("undo:reward", ("coin:1", "find:1"))
@@ -1012,7 +1012,7 @@ def test_find_quantities_reconcile_to_explicit_total_and_limit_by_occurrence():
         "Garden Coin Cache",
     ]
     assert details.remaining_count == 1
-    assert details.more_label == "1 more Standard Find"
+    assert details.more_label == "1 more Garden Find"
 
     plural = _accumulator()
     plural.accept_committed(_event(
@@ -1037,7 +1037,7 @@ def test_find_quantities_reconcile_to_explicit_total_and_limit_by_occurrence():
         plural_payload.segments[0]
     ).find_details
     assert plural_details.remaining_count == 2
-    assert plural_details.more_label == "2 more Standard Finds"
+    assert plural_details.more_label == "2 more Garden Finds"
 
 
 def test_inventory_find_names_the_granted_item_not_internal_flavor_copy():
@@ -1107,7 +1107,7 @@ def test_projection_omits_zero_rows_and_uses_cards_complete_hero_copy():
 
     projection = project_session_day(payload.segments[0])
     assert projection.cards_completed_value == "1"
-    assert projection.cards_completed_label == "card completed this session"
+    assert projection.cards_completed_label == "card studied this session"
     assert projection.result_rows == ()
     assert not hasattr(projection, "no_rewards_copy")
     assert projection.open_garden_available is True

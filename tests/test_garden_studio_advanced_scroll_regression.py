@@ -240,8 +240,8 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
 
 
 def test_dialog_state_preserves_the_declared_ready_focus_contract() -> None:
-    shell = _class_source(DASHBOARD_PATH, "DialogShell")
-    dialog = _class_source(DASHBOARD_PATH, "GardenDialog")
+    shell = _class_source(DASHBOARD_PATH, "_ShellBehavior")
+    dialog = _class_source(DASHBOARD_PATH, "_GardenContent")
 
     assert "def _policy_focus_target" in shell
     assert "InitialFocusPolicy.FIRST_EDITABLE" in shell
@@ -1180,9 +1180,10 @@ def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.M
     for current in (0, 1000, 2000):
         settle(stage_points=current)
         assert card.stage_progress.bar.value() == current
-        assert card.stage_progress.value_label.text() == f"{current:,} / 2,000 Growth to Young"
+        assert card.stage_progress.value_label.text() == f"{current:,} / 2,000 Growth toward Young"
         assert card.fertilize.isVisibleTo(card) and card.fertilize.isEnabled()
-        assert card.move.isVisibleTo(card) and card.story.isVisibleTo(card)
+        assert any(action.text() == "Move" and action.isVisible() for action in card.more.menu().actions())
+        assert card.story.isVisibleTo(card)
         assert card.more.isVisibleTo(card)
         assert not card.growth_charge.isVisibleTo(card)
     stable = card.fertilize.geometry()
@@ -1199,15 +1200,15 @@ def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.M
     settle(is_active=False)
     assert card.nurture.isVisibleTo(card) and card.nurture.isEnabled()
     assert not card.fertilize.isVisibleTo(card)
-    assert not card.more.isVisibleTo(card)
+    assert card.more.isVisibleTo(card)
     settle(fully_grown=True, is_active=False, stage="rare", next_stage=None)
     assert card.fully_grown_badge.isVisibleTo(card)
     assert not card.identity.isVisibleTo(card)
     assert not card.progress_region.isVisibleTo(card)
-    assert card.choose_another.isVisibleTo(card)
+    assert any(action.text() == "Choose another plant" and action.isVisible() for action in card.more.menu().actions())
     assert not card.nurture.isVisibleTo(card)
     settle()
-    card.resize(304, 150)
+    card.resize(304, 100)
     application.processEvents()
     assert card.close_btn.isVisibleTo(card)
     assert card.content_scroll.verticalScrollBar().maximum() > 0
@@ -1296,7 +1297,7 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         QTest.mouseClick(dashboard.plant_card.fertilize, Qt.MouseButton.LeftButton)
         settle()
         assert dashboard.plant_card.isVisibleTo(dashboard)
-        QTest.mouseClick(dashboard.plant_card.move, Qt.MouseButton.LeftButton)
+        next(action for action in dashboard.plant_card.more.menu().actions() if action.text() == "Move").trigger()
         settle()
         assert dashboard.scene._interaction.placing
         assert not dashboard.plant_card.isVisibleTo(dashboard)
@@ -1490,8 +1491,8 @@ def test_live_qt_growth_identity_preserves_short_name_and_numeric_value(
     application.processEvents()
 
     assert strip.growth_name.text() == "Peony Plant"
-    assert strip.growth_value.text() == "0 / 2,000 Growth to Young"
-    assert strip.growth_value.accessibleName() == "0 / 2,000 Growth to Young"
+    assert strip.growth_value.text() == "0 / 2,000 Growth toward Young"
+    assert strip.growth_value.accessibleName() == "0 / 2,000 Growth toward Young"
     assert strip.cells["growth"].property("growthIdentityMode") == "compact"
     growth_cell = strip.cells["growth"]
     for label in (strip.growth_name, strip.growth_value):

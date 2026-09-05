@@ -54,14 +54,14 @@ def test_initial_motion_plan_counts_from_zero_and_emphasizes_full_bloom_once() -
     plan = sync_reward_motion_plan(_summary())
     metrics = {motion.label: motion for motion in plan.metrics}
 
-    assert set(metrics) == {"cards", "Growth", "Garden Coins"}
+    assert set(metrics) == {"cards", "Growth", "Coins"}
     assert metrics["cards"].start_scaled == 0
     assert metrics["cards"].final_text == "1,234"
     assert metrics["Growth"].start_scaled == 0
     assert metrics["Growth"].final_text == "+1,234.5"
     assert metrics["Growth"].decimal_places == 1
     assert metrics["Growth"].show_plus is True
-    assert metrics["Garden Coins"].final_text == "+12"
+    assert metrics["Coins"].final_text == "+12"
     assert [motion.plant_key for motion in plan.plant_progress] == [
         "wisteria",
         "bluebell",
@@ -110,11 +110,11 @@ def test_update_motion_plan_contains_only_changed_metrics_progress_and_events() 
     metrics = {motion.label: motion for motion in plan.metrics}
     progress = {motion.plant_key: motion for motion in plan.plant_progress}
 
-    assert set(metrics) == {"cards", "Garden Coins"}
+    assert set(metrics) == {"cards", "Coins"}
     assert metrics["cards"].start_scaled == 1_234
     assert metrics["cards"].end_scaled == 1_242
-    assert metrics["Garden Coins"].start_scaled == 12
-    assert metrics["Garden Coins"].end_scaled == 20
+    assert metrics["Coins"].start_scaled == 12
+    assert metrics["Coins"].end_scaled == 20
     assert "Growth" not in metrics
     assert set(progress) == {"bluebell", "fern"}
     assert progress["bluebell"].start_value == 68

@@ -1263,7 +1263,7 @@ class ReviewerHookHandler:
             StandardFind(
                 event_id=str(getattr(outcome, "outcome_key", "") or outcome.answer_key),
                 find_id=str(outcome.reward_id or "garden_find"),
-                find_name=str(outcome.display_name or "Standard Find"),
+                find_name=str(outcome.display_name or "Garden Find"),
                 rarity=str(outcome.tier or ""),
                 reward_type=str(outcome.reward_type or ""),
                 reward_label=str(outcome.description or ""),
@@ -1539,7 +1539,7 @@ class ReviewerHookHandler:
             standard_finds.append(StandardFind(
                 str(outcome_key),
                 str(getattr(outcome, "reward_id", "") or "garden_find"),
-                str(getattr(outcome, "display_name", "") or "Standard Find"),
+                str(getattr(outcome, "display_name", "") or "Garden Find"),
                 str(getattr(outcome, "tier", "") or ""),
                 str(getattr(outcome, "reward_type", "") or ""),
                 reward_label,
@@ -4913,7 +4913,7 @@ class ReviewerHookHandler:
                     "Garden discovery"
                 )
             else:
-                title = "Standard Find"
+                title = "Garden Find"
             tier = self._display_tier(find.tier)
             if str(find.pool_id) == "environment" and environment_total:
                 message = "Added to Garden decorations"
@@ -4944,7 +4944,7 @@ class ReviewerHookHandler:
             standard_count = max(0, len(presentations) - discovery_count)
             if discovery_count and standard_count:
                 standard_label = (
-                    "Standard Find" if standard_count == 1 else "Standard Finds"
+                    "Garden Find" if standard_count == 1 else "Garden Finds"
                 )
                 discovery_label = (
                     "Garden discovery"
@@ -4961,8 +4961,8 @@ class ReviewerHookHandler:
                 title = "Garden discoveries"
                 message = "Added to Garden decorations"
             else:
-                title = "Standard Finds"
-                message = " · ".join(reward_parts) or "Standard Finds added"
+                title = "Garden Finds"
+                message = " · ".join(reward_parts) or "Garden Finds added"
         if not message:
             message = self._aggregate_reward_messages(unique)
 
@@ -5498,7 +5498,7 @@ class ReviewerHookHandler:
                     "Garden discovery"
                     if str(getattr(event, "asset_category", "") or "")
                     == "environment"
-                    else "Standard Find"
+                    else "Garden Find"
                 )
                 tier.setAccessibleName(f"{tier_kind} tier: {tier_text}")
                 header.addWidget(
@@ -5683,7 +5683,7 @@ class ReviewerHookHandler:
                 "Garden discovery"
                 if str(getattr(event, "asset_category", "") or "")
                 == "environment"
-                else "Standard Find"
+                else "Garden Find"
             )
         return {
             "reward_summary": "Review rewards",

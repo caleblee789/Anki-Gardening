@@ -106,7 +106,7 @@ def workspace_surface_rows():
                     "cleanup": ("close-dialog", "drain-deferred-delete", "restore-checkpoint"),
                     "evidence_requirements": ("fixture-identity", "geometry", "semantic-state", "nonblank-pixels"),
                     "owned_dependency_groups": (),
-                    "owned_module_dependencies": ("ui/dashboard.py", "ui/dialog_foundations.py", "ui/theme.py", "ui/copy.py", "ui/garden_studio.py"),
+                    "owned_module_dependencies": ("ui/dashboard.py", "ui/dialog_foundations.py", "ui/theme.py", "ui/copy.py", "ui/garden_studio.py", "ui/formatters.py", "ui/plant_display.py", "ui/scene.py"),
                     "state_contract": {
                         "kind": "workspace",
                         "profile": {"profile_id": label, "window_family": family, "kind": "workspace", "state": label, "route": route},
@@ -127,6 +127,8 @@ def workspace_surface_rows():
                 row["evidence_requirements"] += ("scroll:GardenDashboard:shop/scenery",)
             if group_order == 0:
                 row.update(scenario_id="garden_first_run", fixture_id="garden_first_run-v1", scenario_step=within + 1)
+            if label == "garden-starter-selected":
+                row["workflow_revision"] = "Selection retained after Back from placement; no mandatory confirmation step."
             if label == "active-deck-browser-home-after-nurture":
                 row["prerequisites"] = ("garden-inspector-nurtured",)
             rows.append(row)

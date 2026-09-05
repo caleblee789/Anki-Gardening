@@ -176,7 +176,7 @@ def sync_reward_metric_plan(
 
     ``finds`` and ``environment_discoveries`` are separate committed streams.
     Keeping their projections separate prevents a Garden discovery from being
-    presented as a Standard Find without changing either stream's persisted
+    presented as a Garden Find without changing either stream's persisted
     reward or event identity.
     """
 
@@ -217,7 +217,7 @@ def sync_reward_subtitle(summary: SyncRewardSummary) -> str:
 
     count = max(0, int(summary.eligible_answer_count or 0))
     noun = "card" if count == 1 else "cards"
-    return f"{count:,} {noun} completed on another device"
+    return "Rewards added after syncing"
 
 
 @dataclass(frozen=True)
@@ -696,7 +696,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             }}
             QFrame[syncFullBloom='true'] {{
                 background:{p['receipt_primary_surface']};
-                border:1px solid {p['receipt_milestone']}; border-radius:11px;
+                border:0; border-left:3px solid {p['receipt_milestone']}; border-radius:0;
             }}
             QLabel[syncMetricValue='true'] {{ font-size:20px; font-weight:700; }}
             QLabel[syncMetricLabel='true'] {{
@@ -916,6 +916,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             "sync_review_cards": "reviews",
             "standard_find": "find",
             "garden_discovery": "environment-discovery",
+            "garden_coin": "coin",
+            "growth_resource": "growth",
         }.get(icon_name, "")
         if semantic_icon:
             icon = QLabel(tile)
@@ -924,7 +926,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             pixmap = garden_icon_pixmap(
                 semantic_icon,
                 22,
-                color=self._palette["text_secondary"],
+                color=self._palette[
+                    "coin_accent" if semantic_icon == "coin"
+                    else "growth_accent" if semantic_icon == "growth"
+                    else "text_secondary"
+                ],
             )
             if pixmap is not None:
                 icon.setPixmap(pixmap)
@@ -1423,7 +1429,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         copy = QVBoxLayout()
         copy.setContentsMargins(0, 0, 0, 0)
         copy.setSpacing(1)
-        title = str(row.get("display_name", reward_id) or reward_id or "Standard Find")
+        title = str(row.get("display_name", reward_id) or reward_id or "Garden Find")
         label = QLabel(title, frame)
         label.setProperty("syncPrimary", True)
         label.setWordWrap(True)
@@ -1695,7 +1701,13 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         metrics_layout.setContentsMargins(0, 0, 0, 0)
         metrics_layout.setHorizontalSpacing(6)
         metrics_layout.setVerticalSpacing(8)
-        metrics = sync_reward_metric_plan(self._summary)
+        all_metrics = sync_reward_metric_plan(self._summary)
+        metrics = tuple(metric for metric in all_metrics if metric[2] != "sync_review_cards")
+        count = max(0, int(self._summary.eligible_answer_count))
+        headline = QLabel(f"{count:,} {'card' if count == 1 else 'cards'} studied", self._body_widget)
+        headline.setProperty("syncPrimary", True)
+        apply_tabular_numerals(headline)
+        layout.addWidget(headline)
         self.setProperty(
             "syncRewardMetricOrder", [str(metric[1]) for metric in metrics]
         )
@@ -1711,8 +1723,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         # A fifth metric wraps to its own balanced row without squeezing its
         # label, while the common four-metric receipt preserves room for the
         # committed reward and project-allocation sections below.
-        for row_index, offset in enumerate(range(0, len(metrics), 4)):
-            row_metrics = metrics[offset:offset + 4]
+        for row_index, offset in enumerate(range(0, len(metrics), 3)):
+            row_metrics = metrics[offset:offset + 3]
             column_span = 12 // len(row_metrics)
             for column_index, (value, label, icon_name) in enumerate(row_metrics):
                 metrics_layout.addWidget(
