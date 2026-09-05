@@ -588,7 +588,7 @@ class GardenStudioWidget(QWidget):
         self.show_reviewer_hud.setAccessibleName(STUDIO_TEXT["reviewer_hud_label"])
         _describe_control(
             self.show_reviewer_hud,
-            "Keep today’s cards and plant progress visible while reviewing.",
+            "Show today’s cards and plant progress.",
         )
         self.show_rewards_after_syncing = GardenToggleSwitch()
         self.show_rewards_after_syncing.setAccessibleName(
@@ -596,7 +596,7 @@ class GardenStudioWidget(QWidget):
         )
         _describe_control(
             self.show_rewards_after_syncing,
-            "Show a compact summary when cards completed on another device add Garden rewards.",
+            "Show rewards earned on another device.",
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
@@ -642,17 +642,17 @@ class GardenStudioWidget(QWidget):
         self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.notifications_row = ToggleSettingRow(
             STUDIO_TEXT["progress_notifications_label"],
-            "Show brief Garden reward notifications while reviewing.",
+            "Show brief updates for new rewards.",
             self.show_progress_notifications,
         )
         self.reviewer_hud_row = ToggleSettingRow(
             STUDIO_TEXT["reviewer_hud_label"],
-            "Keep today’s cards and plant progress visible while reviewing.",
+            "Show today’s cards and plant progress.",
             self.show_reviewer_hud,
         )
         self.sync_rewards_row = ToggleSettingRow(
             STUDIO_TEXT["sync_rewards_label"],
-            "Show a compact summary when cards completed on another device add Garden rewards.",
+            "Show rewards earned on another device.",
             self.show_rewards_after_syncing,
         )
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)

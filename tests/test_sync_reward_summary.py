@@ -74,8 +74,8 @@ def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> N
 
 
 def test_geometry_is_upper_right_and_viewport_bounded() -> None:
-    assert sync_reward_summary_geometry(900, 700, 300) == (420, 24, 456, 300)
-    assert sync_reward_summary_geometry(900, 700, 900) == (420, 24, 456, 640)
+    assert sync_reward_summary_geometry(900, 700, 300) == (476, 24, 400, 300)
+    assert sync_reward_summary_geometry(900, 700, 900) == (476, 24, 400, 520)
 
     x, y, width, height = sync_reward_summary_geometry(420, 260, 500)
     assert (x, y, width, height) == (24, 24, 372, 212)
@@ -87,12 +87,12 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     assert sync_reward_metric_plan(_summary()) == (
         ("42", "cards", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
-        ("+12", "Garden Coins", "garden_coin"),
+        ("+12", "Coins", "garden_coin"),
     )
     assert len(sync_reward_metric_plan(_summary(garden_coin_delta=0))) == 2
     assert sync_reward_metric_plan(_summary(growth_total_units=0)) == (
         ("42", "cards", "sync_review_cards"),
-        ("+12", "Garden Coins", "garden_coin"),
+        ("+12", "Coins", "garden_coin"),
     )
     find_rows = ({
         "reward_id": "small_charge",
@@ -121,8 +121,8 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     assert sync_reward_metric_plan(reward_summary) == (
         ("42", "cards", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
-        ("+12", "Garden Coins", "garden_coin"),
-        ("+3", "Standard Finds", "standard_find"),
+        ("+12", "Coins", "garden_coin"),
+        ("+3", "Finds", "standard_find"),
         ("+2", "garden discoveries", "garden_discovery"),
     )
     assert sync_reward_metric_plan(
@@ -166,12 +166,12 @@ def test_visibility_uses_one_disclosure_and_keeps_full_bloom_visible() -> None:
     )
 
     collapsed = sync_reward_visibility_plan(summary)
-    assert len(collapsed.plant_growth) == 3
-    assert len(collapsed.environment_discoveries) == 2
-    assert len(collapsed.finds) == 3
+    assert len(collapsed.plant_growth) == 1
+    assert len(collapsed.environment_discoveries) == 1
+    assert collapsed.finds == ()
     assert any(row.get("full_bloom") for row in collapsed.plant_growth)
     assert collapsed.progression_events == ()
-    assert collapsed.hidden_count == 5
+    assert collapsed.hidden_count == 11
 
     expanded = sync_reward_visibility_plan(summary, expanded=True)
     assert expanded.hidden_count == 0

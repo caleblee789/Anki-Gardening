@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the repository-owned v26 incremental Garden capture pipeline."""
+"""Run the repository-owned v27 incremental Garden capture pipeline."""
 
 from __future__ import annotations
 
@@ -669,7 +669,7 @@ def _capture_reuse_plan(
     return evidence_manifests, reuse_plan
 
 
-# Frozen solely for recognizing and retaining historical v24 evidence.  v26
+# Frozen solely for recognizing and retaining historical v24 evidence.  v27
 # capture, validation, and contact-sheet totals are registry-derived.
 _PROFILE_EVIDENCE_COUNTS: dict[str, tuple[int, int]] = {
     "representative": (26, 4),
@@ -757,7 +757,7 @@ def _profile_complete_capture_stamp(
     path: Path,
     output_root: Path,
 ) -> str | None:
-    """Recognize one complete relocatable v26 profile run for retention."""
+    """Recognize one complete relocatable v27 profile run for retention."""
 
     if path.is_symlink() or not path.is_dir():
         return None
@@ -1327,6 +1327,8 @@ def _run_capture_attempt(
     environment.update({str(key): str(value) for key, value in launch["env"].items()})
     environment.update({
         "ANKI_GARDEN_CAPTURE_UI_FACES": "1",
+        "ANKI_GARDEN_CAPTURE_RUN_ROOT": str(run_root),
+        "ANKI_GARDEN_CAPTURE_PROFILE_NAME": anki_profile,
         "ANKI_GARDEN_CAPTURE_DIR": str(capture_dir),
         "ANKI_GARDEN_UI_CAPTURE_DIR": str(capture_dir),
         "ANKI_GARDEN_CAPTURE_PROFILE": profile,

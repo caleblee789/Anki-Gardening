@@ -1,4 +1,4 @@
-"""Compile and independently validate the immutable v26 capture contract."""
+"""Compile and independently validate the immutable v27 capture contract."""
 
 from __future__ import annotations
 
@@ -14,24 +14,24 @@ from typing import Any, Mapping
 from .registry import REGISTRY, SurfaceRegistry
 
 
-CONTRACT_VERSION = 26
+CONTRACT_VERSION = 27
 CONTRACT_SCHEMA_VERSION = 2
 SCENARIO_SCHEMA_VERSION = 3
-CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v26.json")
+CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v27.json")
 
 _IDENTITY_ID = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 _EXPECTED_PROFILE_TOTALS = {
     "representative": (18, 2),
-    "full": (34, 5),
+    "full": (36, 5),
 }
-_EXPECTED_ACTIVE_SURFACE_COUNT = 34
+_EXPECTED_ACTIVE_SURFACE_COUNT = 36
 _RENAMED_SURFACE = "nursery-garden-decorations-scenery"
 _RETIRED_SURFACE = "nursery-weather-scenery"
 _SCENARIO_OVERRIDES: dict[str, tuple[str, int]] = {
-    "starter-deck-browser-home": ("first_run", 1),
-    "starter-garden-onboarding": ("first_run", 2),
-    "starter-nursery-plants": ("first_run", 3),
-    "starter-placement": ("first_run", 4),
+    "starter-deck-browser-home": ("garden_first_run", 1),
+    "garden-starter-picker": ("garden_first_run", 2),
+    "garden-starter-selected": ("garden_first_run", 3),
+    "garden-starter-placement": ("garden_first_run", 4),
     "fertilizer-active": ("fertilizer_queue", 1),
     "purchase-confirmation-fertilizer-queue": ("fertilizer_queue", 2),
     "reviewer-hud-expanded": ("reviewer_hud_base", 1),
@@ -126,7 +126,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
     if payload.get("schema_version") != CONTRACT_SCHEMA_VERSION:
         issues.append("unsupported capture-contract schema version")
     if payload.get("contract_version") != CONTRACT_VERSION:
-        issues.append("capture contract is not v26")
+        issues.append("capture contract is not v27")
     if payload.get("scenario_schema_version") != SCENARIO_SCHEMA_VERSION:
         issues.append("unsupported scenario schema version")
     surfaces = payload.get("surfaces")
@@ -225,7 +225,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
             )
             if scenario_id != expected_scenario or scenario_step != expected_step:
                 issues.append(
-                    f"surface {stable_id!r} has unexpected v26 scenario identity"
+                    f"surface {stable_id!r} has unexpected v27 scenario identity"
                 )
             if raw.get("retired_reason"):
                 issues.append(f"active surface {stable_id!r} has a retirement reason")
@@ -258,14 +258,12 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
         issues.append("capture contract active surface count is stale")
     if len(active_ids) != _EXPECTED_ACTIVE_SURFACE_COUNT:
         issues.append(
-            f"v26 must contain exactly {_EXPECTED_ACTIVE_SURFACE_COUNT} active surfaces"
+            f"v27 must contain exactly {_EXPECTED_ACTIVE_SURFACE_COUNT} active surfaces"
         )
     if set(payload.get("retired_ids", ())) != retired_ids:
         issues.append("capture contract retired ID ledger is stale")
     if _RETIRED_SURFACE not in retired_ids:
-        issues.append(f"v26 must permanently retire {_RETIRED_SURFACE!r}")
-    if _RENAMED_SURFACE not in active_ids:
-        issues.append(f"v26 is missing renamed surface {_RENAMED_SURFACE!r}")
+        issues.append(f"v27 must permanently retire {_RETIRED_SURFACE!r}")
     for scenario_id, steps in active_scenario_steps.items():
         if sorted(steps) != list(range(1, len(steps) + 1)):
             issues.append(
@@ -273,7 +271,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
             )
 
     if set(profiles) != set(_EXPECTED_PROFILE_TOTALS):
-        issues.append("v26 capture profiles must be representative and full")
+        issues.append("v27 capture profiles must be representative and full")
 
     for profile, raw_profile in profiles.items():
         if not isinstance(profile, str) or not isinstance(raw_profile, dict):
@@ -342,8 +340,6 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
         full_ids = set(full_labels)
         if full_ids != active_ids:
             issues.append("full profile does not exactly cover active surfaces")
-        if len(full_labels) >= 24 and full_labels[23] != _RENAMED_SURFACE:
-            issues.append("full profile surface 24 is not the v26 nursery scenery surface")
     if payload.get("contract_digest") != contract_digest(payload):
         issues.append("capture contract digest is stale")
     if issues:

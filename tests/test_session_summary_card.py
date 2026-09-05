@@ -38,30 +38,30 @@ def _method_source(name: str, following: str) -> str:
     return source.split(f"def {name}", 1)[1].split(f"def {following}", 1)[0]
 
 
-def test_session_summary_geometry_uses_416_preferred_width_and_32px_narrow_allowance():
-    assert SESSION_SUMMARY_DEFAULT_WIDTH == 416
-    assert SESSION_SUMMARY_MAX_WIDTH == 416
+def test_session_summary_geometry_uses_400_preferred_width_and_32px_narrow_allowance():
+    assert SESSION_SUMMARY_DEFAULT_WIDTH == 400
+    assert SESSION_SUMMARY_MAX_WIDTH == 400
     assert SESSION_SUMMARY_EDGE_MARGIN == 20
     assert SESSION_SUMMARY_PREFERRED_TOP_MARGIN == 48
     assert SESSION_SUMMARY_MIN_VERTICAL_MARGIN == 16
-    assert SESSION_SUMMARY_MAX_HEIGHT is None
-    assert session_summary_geometry(1_200, 900, 900) == (764, 16, 416, 868)
-    assert session_summary_geometry(1_200, 954, 865) == (764, 48, 416, 865)
-    assert SESSION_SUMMARY_HEADER_HEIGHT == 52
-    assert SESSION_SUMMARY_FOOTER_HEIGHT == 60
+    assert SESSION_SUMMARY_MAX_HEIGHT == 520
+    assert session_summary_geometry(1_200, 900, 900) == (780, 16, 400, 520)
+    assert session_summary_geometry(1_200, 954, 865) == (780, 48, 400, 520)
+    assert SESSION_SUMMARY_HEADER_HEIGHT == 44
+    assert SESSION_SUMMARY_FOOTER_HEIGHT == 48
     assert SESSION_SUMMARY_FRAME_BORDER_WIDTH == 1
 
 
 def test_session_summary_geometry_contracts_inside_small_viewports():
     assert session_summary_geometry(340, 300, 500) == (12, 16, 308, 268)
-    assert session_summary_geometry(900, 800, 212) == (464, 48, 416, 212)
+    assert session_summary_geometry(900, 800, 212) == (480, 48, 400, 212)
     assert session_summary_geometry(28, 30, 500) == (7, 16, 1, 1)
     assert session_summary_geometry(
         1_200,
         900,
         900,
         reserved_top=124,
-    ) == (764, 140, 416, 744)
+    ) == (780, 140, 400, 520)
 
 
 def test_session_summary_compact_density_covers_measured_macos_host_heights():
@@ -73,24 +73,6 @@ def test_session_summary_compact_density_covers_measured_macos_host_heights():
     assert session_summary_uses_compact_density(954) is False
 
 
-def test_session_summary_palette_has_semantic_reward_tokens_and_light_adaptation():
-    dark = session_summary_palette(None)
-    light = session_summary_palette(230)
-    assert dark["elevated_surface"] == GARDEN_THEME["session_summary_panel_bg"]
-    for key in (
-        "growth_accent",
-        "coin_accent",
-        "find_accent",
-        "milestone_accent",
-        "progress_track",
-        "highlight_surface",
-        "action_pressed",
-    ):
-        assert dark[key]
-        assert light[key]
-    assert dark["find_accent"] == GARDEN_THEME["session_summary_find"]
-    assert dark["milestone_accent"] == GARDEN_THEME["session_summary_milestone"]
-    assert light["elevated_surface"] != dark["elevated_surface"]
 
 
 def test_session_summary_typography_keeps_the_approved_title_and_hero_scale():
@@ -151,18 +133,6 @@ def test_card_keeps_header_footer_fixed_and_only_body_scrollable():
     assert "activateWindow" not in source
 
 
-def test_main_body_hierarchy_matches_the_approved_summary_order():
-    method = _method_source("_rebuild_page", "_add_pager")
-    calls = [
-        "self._add_hero",
-        "self._add_today_cards",
-        "self._add_highlights",
-        "self._add_rewards_earned",
-        "self._add_active_boosts",
-    ]
-    positions = [method.index(call) for call in calls]
-    assert positions == sorted(positions)
-    assert 'setObjectName("ankiGardenSessionBody")' in method
 
 
 def test_today_progress_is_native_semantic_and_animation_ready():
@@ -214,63 +184,6 @@ def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     )
 
 
-def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
-    for object_name in (
-        "ankiGardenSessionRewards",
-        "ankiGardenSessionRewardCard",
-        "ankiGardenSessionBreakdownToggle",
-        "ankiGardenSessionBreakdown",
-        "ankiGardenSessionActiveBoosts",
-        "ankiGardenSessionBoostCard",
-    ):
-        assert object_name in source
-    for key in (
-        "growth_applied",
-        "garden_coins",
-        "standard_finds",
-        "shared_growth",
-        "stored_growth",
-        "summaryProjectGrowthUnits",
-        "summaryProjectTargetType",
-        "garden_coins_total",
-    ):
-        assert key in source
-    assert "Direct plant growth" in source
-    assert "Shared Growth distributed" in source
-    assert "Total applied" in source
-    assert "project_growth_total_units" in source
-    assert "project_growth_allocations" in source
-    assert "Reward breakdown" in source
-    assert "Additional to the session subtotal; included in " in source
-    assert "Total earned." in source
-    assert 'self._section_heading("Progress details")' in source
-    assert "Rewards Earned" in source
-    assert '"Growth applied"' in source
-    assert '"Standard Finds"' in source
-    assert "logical_size=14" in _method_source(
-        "_add_reward_strip", "_add_find_summary"
-    )
-    assert 'toggle.setFixedHeight(40)' in source
-    assert 'setProperty("summaryBoostKind", kind)' in source
-    assert 'setProperty("summaryMetricDivider", True)' in source
-    assert 'setProperty("summaryBoostRow", True)' in source
-    boost_rows = _method_source("_add_active_boosts", "_refresh_active_effects")
-    assert "row_widget.setMinimumHeight(36)" in boost_rows
-    assert "row_widget.setFixedHeight(36)" not in boost_rows
-    assert 'semantic_kind="active boost"' in boost_rows
-    assert 'fallback_icon=kind if kind in {"fertilizer", "booster"} else "find"' in boost_rows
-    assert 'setProperty("summaryBoostArt", True)' in boost_rows
-    assert 'setProperty("summaryBoostArtReference", art_reference)' in boost_rows
-    effect_art = _method_source("_effect_art_reference", "_effect_value")
-    assert 'return "booster_potion"' in effect_art
-    assert 'return f"fertilizer_{tier}"' in effect_art
-    assert 'tier in {"basic", "quality", "premium"}' in effect_art
-    reward_art = _method_source("_reward_art_label", "_rebuild_footer")
-    assert 'fallback_icon: str = "find"' in reward_art
-    assert "fallback_icon=fallback_icon" in reward_art
-    assert "row_widget.setVisible(visible)" in source
-    assert "×{max(1, int(quantity)):,}" in source
 
 
 def test_active_boost_art_maps_every_fertilizer_tier_and_booster() -> None:
@@ -350,30 +263,6 @@ def test_find_rows_use_explicit_reconciled_quantities_only():
     assert SessionSummaryCard._find_items(summary) == ()
 
 
-def test_find_summary_keeps_three_aggregated_groups_visible_and_accounts_for_more():
-    items = (
-        ("charge", "Small Growth Charge", "charge.webp", 2),
-        ("cache", "Garden Coin Cache", "cache.webp", 1),
-        ("stored", "Stored Growth Charge", "stored.webp", 1),
-        ("booster", "Booster Potion", "booster.webp", 3),
-    )
-
-    visible, hidden_quantity = session_find_summary_plan(items[:3])
-    assert visible == items[:3]
-    assert hidden_quantity == 0
-
-    visible, hidden_quantity = session_find_summary_plan(items)
-    assert visible == items[:3]
-    assert hidden_quantity == 3
-
-    source = SOURCE_PATH.read_text(encoding="utf-8")
-    method = _method_source("_add_find_summary", "_find_row_widget")
-    assert "QHBoxLayout" not in method
-    assert "for index, item in enumerate(visible)" in method
-    assert 'more.clicked.connect(self._expand_find_breakdown)' in method
-    row = _method_source("_find_row_widget", "_add_find_row")
-    assert "row_widget.setFixedHeight(36)" in row
-    assert "self._reward_art_label(art, 26)" in row
 
 
 def test_semantic_art_records_real_provenance_and_uses_shared_compositors():

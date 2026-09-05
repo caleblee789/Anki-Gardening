@@ -27,14 +27,14 @@ from .session_summary_card import session_summary_palette
 from .theme import apply_tabular_numerals
 
 
-SYNC_REWARD_PREFERRED_WIDTH = 456
-SYNC_REWARD_MIN_WIDTH = 400
-SYNC_REWARD_MAX_WIDTH = 480
-SYNC_REWARD_MAX_HEIGHT = 640
+SYNC_REWARD_PREFERRED_WIDTH = 400
+SYNC_REWARD_MIN_WIDTH = 336
+SYNC_REWARD_MAX_WIDTH = 400
+SYNC_REWARD_MAX_HEIGHT = 520
 SYNC_REWARD_VIEWPORT_MARGIN = 24
 SYNC_REWARD_TOP_OFFSET = 24
 SYNC_REWARD_MIN_HEIGHT = 210
-SYNC_REWARD_BODY_SPACING = 10
+SYNC_REWARD_BODY_SPACING = 8
 SYNC_REWARD_METRIC_ANIMATION_MS = 360
 SYNC_REWARD_FULL_BLOOM_PULSE_MS = 520
 
@@ -149,13 +149,10 @@ def sync_reward_visibility_plan(
     if expanded:
         return SyncRewardVisibilityPlan(plants, environments, finds, events, 0)
 
-    visible_plants = _visible_with_pinned(
-        plants,
-        3,
-        pinned=lambda row: bool(row.get("full_bloom", False)),
-    )
-    visible_environments = environments[:2]
-    visible_finds = finds[:3]
+    featured_plant = next((row for row in plants if row.get("full_bloom")), None)
+    visible_plants = (featured_plant,) if featured_plant is not None else plants[:1]
+    visible_environments = environments[:1]
+    visible_finds = () if visible_environments else finds[:1]
     visible_events: tuple[dict[str, Any], ...] = ()
     hidden = (
         len(plants) - len(visible_plants)
@@ -197,12 +194,12 @@ def sync_reward_metric_plan(
             "growth_resource",
         ))
     if summary.garden_coin_delta > 0:
-        metrics.append((f"+{summary.garden_coin_delta:,}", "Garden Coins", "garden_coin"))
+        metrics.append((f"+{summary.garden_coin_delta:,}", "Coins", "garden_coin"))
     standard_finds = sum(_quantity(row) for row in summary.finds)
     if standard_finds > 0:
         metrics.append((
             f"+{standard_finds:,}",
-            "Standard Find" if standard_finds == 1 else "Standard Finds",
+            "Find" if standard_finds == 1 else "Finds",
             "standard_find",
         ))
     garden_discoveries = len(summary.environment_discoveries)
@@ -818,15 +815,17 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._footer = QFrame(self)
         self._footer.setProperty("syncFooter", True)
         self._footer.setProperty("syncFixedFooter", True)
-        self._footer.setMinimumHeight(56)
+        self._footer.setMinimumHeight(48)
         footer_layout = QHBoxLayout(self._footer)
         footer_layout.setContentsMargins(0, 10, 0, 10)
         footer_layout.setSpacing(8)
-        self._reassurance = QLabel("Rewards already applied.", self._footer)
+        self._reassurance = QLabel("", self._footer)
         self._reassurance.setProperty("syncMuted", True)
         self._reassurance.setWordWrap(True)
         self._reassurance.setTextFormat(Qt.TextFormat.PlainText)
         footer_layout.addWidget(self._reassurance, 1)
+        self._reassurance.hide()
+        footer_layout.addStretch(1)
         self._done_button = QPushButton("Close", self._footer)
         self._done_button.setProperty("syncSecondaryAction", True)
         self._done_button.setProperty("syncActionRole", "secondary")
@@ -1731,8 +1730,15 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 )
         layout.addWidget(metrics_frame)
 
+        if plan.environment_discoveries or plan.finds:
+            layout.addWidget(self._rewards_section(
+                plan.environment_discoveries,
+                plan.finds,
+                self._body_widget,
+            ))
+
         allocation_entries = self._growth_allocation_entries()
-        has_growth = bool(plan.plant_growth or allocation_entries)
+        has_growth = bool(plan.plant_growth or (self._expanded and allocation_entries))
         if has_growth:
             layout.addWidget(self._section_heading("GARDEN PROGRESS", self._body_widget))
             if plan.plant_growth:
@@ -1748,17 +1754,10 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                         bloom_key in motion.full_bloom_event_keys
                     ):
                         self._start_full_bloom_emphasis(plant_frame)
-            if allocation_entries:
+            if self._expanded and allocation_entries:
                 layout.addWidget(self._growth_allocation_strip(self._body_widget))
 
-        if plan.environment_discoveries or plan.finds:
-            layout.addWidget(self._rewards_section(
-                plan.environment_discoveries,
-                plan.finds,
-                self._body_widget,
-            ))
-
-        if self._summary.all_clear_earned:
+        if self._expanded and self._summary.all_clear_earned:
             layout.addWidget(self._section_heading("TODAY’S CARDS", self._body_widget))
             detail = "All due cards are complete."
             if self._summary.all_clear_coin_reward > 0:
@@ -1778,7 +1777,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             ))
 
         effects = _effect_lines(self._summary)
-        if effects:
+        if self._expanded and effects:
             layout.addWidget(self._section_heading("CURRENT BOOSTS", self._body_widget))
             for icon_name, art_identity, text, art_asset in effects:
                 layout.addWidget(self._simple_row(
@@ -1789,10 +1788,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     art_asset=art_asset,
                 ))
 
-        hidden_count = plan.hidden_count
+        hidden_count = (plan.hidden_count + len(allocation_entries) + len(effects)
+                        + int(self._summary.all_clear_earned))
         if hidden_count > 0 or self._expanded:
             self._disclosure = QPushButton(
-                "Show less" if self._expanded else f"Show {hidden_count:,} more",
+                "Less detail" if self._expanded else "Details",
                 self._body_widget,
             )
             self._disclosure.setProperty("syncDisclosure", True)

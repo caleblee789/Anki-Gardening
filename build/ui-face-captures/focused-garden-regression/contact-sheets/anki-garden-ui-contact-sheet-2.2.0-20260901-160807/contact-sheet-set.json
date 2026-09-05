@@ -1,0 +1,43 @@
+{
+  "artifact_scope": "focused-garden-regression-review",
+  "capture_manifest": "build/ui-face-captures/full/capture-sequence-20260901-160807/attempts/01-capture-session/20260901-160959/manifest.json",
+  "complete": false,
+  "contract_surface_count": 34,
+  "package_sha256": "18edc9928f5200702303d412fad7054f977170eb08b8fecebd73506f90b9747e",
+  "package_version": "2.2.0",
+  "page_count": 1,
+  "pages": [
+    {
+      "file": "01-garden-header-regression-verification.png",
+      "fixture_id": {
+        "starter-placement": "first_run-v1"
+      },
+      "groups": [
+        "Garden header regression verification"
+      ],
+      "page": 1,
+      "scenario_id": {
+        "starter-placement": "first_run"
+      },
+      "scenario_step": {
+        "starter-placement": 4
+      },
+      "surface_count": 1,
+      "surface_identity_map": {
+        "starter-placement": {
+          "fixture_id": "first_run-v1",
+          "scenario_id": "first_run",
+          "scenario_step": 4
+        }
+      },
+      "surface_ids": [
+        "starter-placement"
+      ]
+    }
+  ],
+  "quality_status": "review-required",
+  "release_ready": false,
+  "source_capture_profile": "full",
+  "source_surface_count": 1,
+  "surface_count": 1
+}

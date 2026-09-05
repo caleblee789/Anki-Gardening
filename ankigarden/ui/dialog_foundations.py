@@ -74,16 +74,16 @@ def resolve_widget_layout(widget: Any) -> Any | None:
 class DialogLayoutMetrics:
     """Shared non-scrolling shell and central-body spacing contract."""
 
-    horizontal_padding: int = 24
-    compact_body_padding: int = 20
-    header_top_padding: int = 24
-    body_top_padding: int = 16
-    body_bottom_padding: int = 24
+    horizontal_padding: int = 16
+    compact_body_padding: int = 12
+    header_top_padding: int = 16
+    body_top_padding: int = 12
+    body_bottom_padding: int = 16
     footer_top_padding: int = 12
     footer_bottom_padding: int = 16
-    card_padding: int = 16
+    card_padding: int = 12
     section_gap: int = 16
-    row_gap: int = 12
+    row_gap: int = 8
     action_gap: int = 8
 
     @property
@@ -115,7 +115,7 @@ class DialogScrollContract:
     central_body_scrolls: bool = True
     horizontal_scrolls: bool = False
     body_minimum_height: int = 0
-    bottom_padding: int = 24
+    bottom_padding: int = 16
     scrollbar_clearance: int = 8
     overflow_owner_count: int = 1
 
@@ -547,24 +547,24 @@ def should_preserve_transition_height(
 
 DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
     DialogSizeClass.COMPACT_STATUS: DialogSizePolicy(
-        460,
-        150,
-        500,
-        190,
-        520,
-        260,
+        400,
+        140,
+        480,
+        200,
+        560,
+        360,
         1.0,
         1.0,
         False,
         True,
     ),
     DialogSizeClass.TRANSACTION: DialogSizePolicy(
-        480,
+        420,
         180,
-        540,
-        250,
-        600,
-        340,
+        480,
+        270,
+        560,
+        400,
         1.0,
         1.0,
         False,
@@ -573,11 +573,11 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         True,
     ),
     DialogSizeClass.FERTILIZER: DialogSizePolicy(
+        480,
+        200,
+        560,
+        380,
         640,
-        240,
-        660,
-        360,
-        680,
         520,
         1.0,
         1.0,
@@ -586,12 +586,12 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.SETTINGS: DialogSizePolicy(
-        800,
+        560,
+        360,
+        600,
         480,
-        820,
-        510,
-        840,
-        720,
+        660,
+        700,
         1.0,
         1.0,
         False,
@@ -638,12 +638,12 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.PLANT_STORY: DialogSizePolicy(
+        600,
+        300,
+        660,
+        440,
         740,
-        480,
-        760,
-        500,
-        780,
-        520,
+        640,
         1.0,
         1.0,
         False,
@@ -651,12 +651,12 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.SPECIES_DETAIL: DialogSizePolicy(
-        480,
-        260,
-        820,
+        600,
+        300,
+        660,
         440,
-        820,
-        900,
+        740,
+        720,
         1.0,
         1.0,
         False,
@@ -665,12 +665,12 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.GROWTH_CHARGE: DialogSizePolicy(
-        480,
-        400,
-        500,
         460,
-        500,
-        500,
+        260,
+        480,
+        340,
+        560,
+        460,
         1.0,
         1.0,
         False,
@@ -679,10 +679,10 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         True,
     ),
     DialogSizeClass.GARDEN_WORKSPACE: DialogSizePolicy(
-        900,
-        640,
-        1240,
-        840,
+        860,
+        580,
+        1040,
+        720,
         1600,
         1100,
         1.0,
@@ -744,36 +744,36 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
     },
     DialogSizeClass.TRANSACTION: {
         "default": DialogHeightProfile(210, 230, 250, 480, 500, 520),
-        "simple": DialogHeightProfile(210, 230, 250, 480, 500, 520),
+        "simple": DialogHeightProfile(210, 240, 320, 420, 480, 560),
         # The Growth Charge quote is the smallest complete purchase: one
         # artwork row, one cost row, and its actions.  Keep that proposal a
         # true content-fit window instead of inheriting taller catalog states.
-        "growth-charge": DialogHeightProfile(270, 280, 300, 500, 500, 500),
-        "replacement": DialogHeightProfile(230, 300, 340, 500, 520, 540),
-        "complex": DialogHeightProfile(250, 295, 340, 540, 570, 600),
-        "loading": DialogHeightProfile(210, 230, 250, 480, 500, 520),
-        "warning": DialogHeightProfile(180, 210, 240, 480, 510, 540),
-        "error": DialogHeightProfile(180, 210, 240, 480, 510, 540),
-        "success": DialogHeightProfile(180, 210, 240, 480, 510, 540),
+        "growth-charge": DialogHeightProfile(220, 250, 320, 420, 480, 560),
+        "replacement": DialogHeightProfile(230, 280, 380, 420, 480, 560),
+        "complex": DialogHeightProfile(250, 300, 400, 420, 480, 560),
+        "loading": DialogHeightProfile(210, 240, 320, 420, 480, 560),
+        "warning": DialogHeightProfile(180, 230, 340, 420, 480, 560),
+        "error": DialogHeightProfile(180, 230, 340, 420, 480, 560),
+        "success": DialogHeightProfile(180, 230, 340, 420, 480, 560),
     },
     DialogSizeClass.FERTILIZER: {
-        "default": DialogHeightProfile(470, 490, 520, 640, 660, 680),
-        "selection": DialogHeightProfile(470, 490, 520, 640, 660, 680),
-        "replacement": DialogHeightProfile(230, 260, 290, 500, 520, 540),
+        "default": DialogHeightProfile(280, 380, 460, 480, 560, 640),
+        "selection": DialogHeightProfile(280, 380, 460, 480, 560, 640),
+        "replacement": DialogHeightProfile(230, 280, 380, 420, 480, 560),
     },
     DialogSizeClass.SETTINGS: {
         # The Display page no longer carries a 100 px live preview. Keep the
         # shell content-fit around the remaining identity and appearance rows.
-        "display": DialogHeightProfile(390, 400, 420, 800, 820, 840),
+        "display": DialogHeightProfile(400, 480, 520, 560, 600, 660),
         # Advanced adds four compact setting rows beneath the same preview-free
         # Display content. The pinned shell consumes about 217 logical px, so
         # reserve the measured content height plus breathing room rather than
         # opening with the final row behind the emergency scroll viewport.
         # Shorter screens still retain the outer scroll owner.
-        "advanced": DialogHeightProfile(700, 700, 720, 800, 820, 840),
-        "diagnostics-clean": DialogHeightProfile(280, 300, 320, 760, 780, 800),
-        "diagnostics-warning": DialogHeightProfile(280, 300, 320, 760, 780, 800),
-        "diagnostics-expanded": DialogHeightProfile(430, 470, 520, 760, 780, 800),
+        "advanced": DialogHeightProfile(400, 480, 520, 560, 600, 660),
+        "diagnostics-clean": DialogHeightProfile(260, 320, 460, 560, 600, 660),
+        "diagnostics-warning": DialogHeightProfile(260, 320, 460, 560, 600, 660),
+        "diagnostics-expanded": DialogHeightProfile(400, 480, 700, 560, 600, 660),
     },
     DialogSizeClass.NURSERY: {
         # Four starter cards form two complete 90 px rows. The workspace's
@@ -825,27 +825,27 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "default": DialogHeightProfile(680, 680, 680, 980, 1000, 1020),
     },
     DialogSizeClass.PLANT_STORY: {
-        "default": DialogHeightProfile(480, 500, 520, 740, 760, 780),
+        "default": DialogHeightProfile(340, 440, 580, 600, 660, 740),
     },
     DialogSizeClass.SPECIES_DETAIL: {
-        "default": DialogHeightProfile(260, 440, 900, 480, 820, 820),
-        "collected": DialogHeightProfile(260, 440, 900, 480, 820, 820),
-        "uncollected": DialogHeightProfile(260, 360, 900, 480, 820, 820),
+        "default": DialogHeightProfile(300, 440, 640, 600, 660, 740),
+        "collected": DialogHeightProfile(300, 440, 640, 600, 660, 740),
+        "uncollected": DialogHeightProfile(300, 380, 580, 600, 660, 740),
     },
     DialogSizeClass.GROWTH_CHARGE: {
         # Preview, commit, and result all use one markup tree and one geometry
         # envelope. Content-fit may settle anywhere inside these bounds, but
         # changing tense or footer callbacks must not resize the window.
-        "ready": DialogHeightProfile(400, 460, 500, 480, 500, 500),
-        "loading": DialogHeightProfile(400, 460, 500, 480, 500, 500),
+        "ready": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "loading": DialogHeightProfile(280, 340, 440, 460, 480, 560),
         # An availability refresh adds one compact status banner. Let the
         # settled content determine the height instead of manufacturing a
         # transaction-body scrollbar.
-        "stale": DialogHeightProfile(400, 460, 500, 480, 500, 500),
-        "empty": DialogHeightProfile(190, 210, 230, 480, 500, 500),
-        "warning": DialogHeightProfile(180, 210, 240, 480, 500, 500),
-        "error": DialogHeightProfile(180, 210, 240, 480, 500, 500),
-        "success": DialogHeightProfile(400, 460, 500, 480, 500, 500),
+        "stale": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "empty": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "warning": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "error": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "success": DialogHeightProfile(280, 340, 440, 460, 480, 560),
     },
 }
 

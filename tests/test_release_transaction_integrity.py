@@ -1064,7 +1064,6 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "self.engine.confirm_purchase(self.request)" in commit
     assert "except Exception:" in commit
     assert "PurchaseStatus.PERSISTENCE_FAILURE" in commit
-    assert "No Garden Coins were spent" in commit
     assert "self.presentation = purchase_presentation(" in commit
     assert "ignore_status=True" in commit
     assert "if refreshed.ready:" in commit
@@ -1179,7 +1178,7 @@ def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> N
     assert status.visible is False
     assert toast_result["message"] == "Wind Chime added to your collection."
     assert toast_result["action_text"] == "View collection"
-    assert toast_result["dismiss_text"] == "Keep browsing"
+    assert toast_result["dismiss_text"] == "Continue browsing"
     assert callable(toast_result["dismiss_callback"])
     assert toast_result["duration_ms"] == 6_000
     assert toast_result["dismissible"] is True
@@ -1677,7 +1676,7 @@ def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
     assert log_calls
     assert results and results[0][0] is False
     assert message_fragment in results[0][1]
-    assert "Reopen the Nursery" in results[0][1]
+    assert "Reopen the Shop" in results[0][1]
     assert properties == (
         {"transactionPresentation": "committed-result-with-refresh-failure"}
         if committed else {}

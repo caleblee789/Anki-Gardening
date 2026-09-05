@@ -5,6 +5,7 @@ import logging
 import os
 import stat
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -238,7 +239,7 @@ class GardenSceneWidget(QWidget):
         self._landmark_action_id = ""  # Compatibility alias for the first active landmark.
         self._nursery_hotspot = self._create_landmark_hotspot("nursery_entrance")
         self._nursery_hotspot.setText("")
-        self._nursery_hotspot.setAccessibleName("Nursery")
+        self._nursery_hotspot.setAccessibleName("Shop")
         self._nursery_hotspot.setAccessibleDescription("Open nursery")
         self._nursery_hotspot.setToolTip("Open nursery")
         self.placementStateChanged.connect(lambda _active: self._sync_landmark_hotspot())
@@ -1209,7 +1210,13 @@ class GardenSceneWidget(QWidget):
             for obstacle in extra_obstacles
             if obstacle is not None and not obstacle.isEmpty()
         )
-        placement = geometry_layout.resolve_popover(
+        # The image can be letterboxed inside this widget. Overlays can use
+        # those surrounding lanes without changing any bed or artwork geometry.
+        overlay_layout = replace(
+            geometry_layout,
+            scene_bounds=Rect(0.0, 0.0, float(self.width()), float(self.height())),
+        )
+        placement = overlay_layout.resolve_popover(
             selected_slot,
             (float(card_width), float(card_height)),
             (
@@ -1365,8 +1372,11 @@ class GardenSceneWidget(QWidget):
 
     def keep_card_open(self, plant_id: str, message: str = "") -> None:
         changed = self._interaction.pinned_id != plant_id
-        if plant_id in self._plant_ids():
+        plant_ids = self._plant_ids()
+        if plant_id in plant_ids:
             self._interaction.pinned_id = plant_id
+            self._interaction.focused_index = plant_ids.index(plant_id)
+            self._interaction.hover(plant_id)
             self.set_keyboard_hint_suppressed(True)
         self._inline_message = message
         if changed and self._interaction.pinned_id == plant_id:
@@ -2679,7 +2689,7 @@ class GardenSceneWidget(QWidget):
         if selected:
             description = (
                 f"{name}, {species}, {stage}, selected. "
-                f"Use Tab to reach Nurture, Fertilize, Move, and Story in the plant card."
+                f"Use Tab to reach plant actions and Details in the plant menu."
                 f"{nurtured} {keyboard_hint}"
             )
         else:
