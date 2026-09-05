@@ -49,7 +49,7 @@ The Garden is one window with persistent Garden, Collection, Shop, and Progress 
 | Duplicate reward-applied reassurance | Omit it. Close and Open garden are sufficient. |
 | Hidden artwork conflated with inactive effects | Display controls and bonus selection have separate labels and actions. |
 
-An empty or locked state should explain the next useful action once. Do not repeat the same instruction in a heading, card body, tooltip, and footer. Technical diagnostics may retain technical terminology inside their disclosure.
+Visible copy must add information needed to understand a state or make a decision. Omit generic selection or nurture instructions when the controls, ownership count, or plant context already make them clear; do not repeat them in every item row. Keep precise effects, limits, timing, costs, consequences, and restrictions that are not apparent from the controls. Disabled controls retain their accessible explanation without adding repeated visible helper text. An empty or locked state needs prose only when its next useful action is not already clear. Technical diagnostics may retain technical terminology inside their disclosure.
 
 ## Behavior retained
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+
+import pytest
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -209,7 +211,7 @@ def test_growth_charge_preview_and_success_share_one_markup_tree() -> None:
     assert "max(self._MINIMUM_NONZERO_FILL, exact_width)" in progress_source
 
     for required_copy in (
-        '"Use charge"',
+        '"Use 1 charge"',
         '"View plant"',
         '"Charges remaining"',
         '"Next-stage progress"',
@@ -366,7 +368,8 @@ def test_view_profile_and_disposal_never_move_or_detach_dialogs() -> None:
 
 
 
-def test_settings_name_failure_reports_split_commit_when_rollback_fails() -> None:
+@pytest.mark.parametrize("rename_raises", [False, True])
+def test_settings_name_failure_reports_split_commit_when_rollback_fails(rename_raises: bool) -> None:
     class RollbackFailure(Exception):
         pass
 
@@ -393,9 +396,11 @@ def test_settings_name_failure_reports_split_commit_when_rollback_fails() -> Non
             )
             self.garden_name_edit = SimpleNamespace(text=lambda: "New Garden")
             self.config = Config()
-            self.engine = SimpleNamespace(
-                rename_garden=lambda _name: (False, "Garden name was not saved.")
-            )
+            def rename(_name: str) -> tuple[bool, str]:
+                if rename_raises:
+                    raise RuntimeError("Name could not be written")
+                return False, "Garden name was not saved."
+            self.engine = SimpleNamespace(rename_garden=rename)
             self.dirty_baselines: list[tuple[dict[str, bool], str]] = []
             self.errors: list[str] = []
 

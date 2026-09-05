@@ -75,6 +75,37 @@ root:
   --baseline /absolute/path/baseline.json
 ```
 
+The recorder also measures `dashboard.open` (maintenance, construction, and
+presentation) and `dialog.observe-content` (coalesced observer installation).
+Compare first opening separately from startup so shifted work is not mistaken
+for an overall speedup. Keep
+cold launches and warm navigation in separate samples, and keep timing
+thresholds out of unit tests.
+
+To search for smaller artwork encodings without changing the runtime assets:
+
+```bash
+./.venv/bin/python scripts/convert_runtime_assets_to_lossless_webp.py \
+  --compare-output /absolute/path/new-lossless-comparison --workers 4
+```
+
+The destination must be new and outside `ankigarden/`. Each candidate preserves
+full decoded RGBA bytes, dimensions, and ICC/EXIF/XMP metadata. The report
+compares each image's ZIP contribution as well as its installed size. Original
+bytes win ties; larger installed images are never selected. Verify staged
+winners with the supported Anki Qt decoder before applying the report:
+
+```bash
+./.venv/bin/python scripts/convert_runtime_assets_to_lossless_webp.py \
+  --apply-comparison /absolute/path/new-lossless-comparison/comparison.json
+```
+
+Application rechecks the manifest, original hashes, staged hashes, pixels,
+metadata, and size savings before replacing any source asset. Preserve a
+baseline checkout and production archive before applying an optimization.
+For an isolated candidate, call `scripts.package_addon.build(output=...)`;
+the production CLI intentionally targets the normal distribution path.
+
 Capture contract and orchestration tests are deliberately small and Qt-free;
 the real exact-package Qt/WebView, shutdown, manifest, and contact-sheet
 proof is produced by the repository capture command instead of simulated by a

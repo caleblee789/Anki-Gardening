@@ -34,7 +34,7 @@ SOURCE_PATH = Path(__file__).parents[1] / "ankigarden" / "ui" / "session_summary
 
 
 def _method_source(name: str, following: str) -> str:
-    source = SOURCE_PATH.read_text(encoding="utf-8")
+    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     return source.split(f"def {name}", 1)[1].split(f"def {following}", 1)[0]
 
 
@@ -76,13 +76,12 @@ def test_session_summary_compact_density_covers_measured_macos_host_heights():
 
 
 def test_session_summary_typography_keeps_the_approved_title_and_hero_scale():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
+    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     assert "font-size:13px" in source
     assert "summaryTitle='true'] {font-size:16px" in source
     assert "summaryHero='true'] {font-size:40px" in source
     assert "summaryHeroLabel='true']" in source
     assert "font-size:14px;font-weight:520" in source
-    assert "hero_layout.setSpacing(5)" in source
     assert "font-size:20px;font-weight:700" in source
     assert "summaryLongMetric='true'] {font-size:17px;}" in source
     assert "QPushButton:pressed, QToolButton:pressed" in source
@@ -108,7 +107,7 @@ def test_session_summary_card_exposes_new_footer_art_and_motion_api():
 
 
 def test_card_keeps_header_footer_fixed_and_only_body_scrollable():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
+    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     assert "class SessionSummaryCard(QFrame)" in source
     assert "WA_ShowWithoutActivating" in source
     assert "Qt.FocusPolicy.NoFocus" in source
@@ -136,13 +135,13 @@ def test_card_keeps_header_footer_fixed_and_only_body_scrollable():
 
 
 def test_today_progress_is_native_semantic_and_animation_ready():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
+    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     method = _method_source("_add_today_cards", "_section_heading")
     assert 'setObjectName("ankiGardenSessionToday")' in method
     assert "QProgressBar" in method
     assert 'setObjectName("ankiGardenSessionTodayProgress")' in method
     assert 'setProperty("progressFraction"' in method
-    assert "studied this session" in source
+    assert "Study answers in this session" in source
     assert 'QPropertyAnimation(progress, b"value"' in source
     assert "setDuration(320)" in source
     assert "setStartValue(progress_start)" in source
@@ -152,7 +151,7 @@ def test_today_progress_is_native_semantic_and_animation_ready():
 
 
 def test_highlight_cards_are_static_prioritized_and_two_line_safe():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
+    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     projection_source = SOURCE_PATH.with_name("session_summary.py").read_text(
         encoding="utf-8"
     )
@@ -266,7 +265,7 @@ def test_find_rows_use_explicit_reconciled_quantities_only():
 
 
 def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
+    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     for property_name in (
         "summaryArtKind",
         "summaryArtSource",
@@ -446,13 +445,13 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
 
 
 def test_footer_has_contextual_actions_no_dismiss_button_and_failure_stays_open():
-    source = SOURCE_PATH.read_text(encoding="utf-8")
+    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     rebuild = _method_source("_rebuild_page", "_add_pager")
     footer = _method_source("_rebuild_footer", "_open_garden")
     continue_method = _method_source("_continue_reviews", "_natural_height")
-    assert 'QPushButton("Open garden"' in footer
-    assert 'QPushButton("Continue reviewing"' in footer
-    assert 'QPushButton("Close"' in footer
+    assert '"Open garden", self._open_garden' in footer
+    assert '"Continue studying", self._continue_reviews' in footer
+    assert '"Close", self.close' in footer
     assert 'QPushButton("Dismiss"' not in source
     assert 'setObjectName("ankiGardenSessionOpenGarden")' in footer
     assert 'setObjectName("ankiGardenSessionContinueReviews")' in footer

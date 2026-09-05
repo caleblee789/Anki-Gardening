@@ -269,9 +269,9 @@ def test_purchase_quotes_share_exact_current_terms(
             PurchaseKind.FERTILIZER,
             "basic",
             "p1",
-            "Buy and apply Basic Fertilizer?",
+            "Buy Basic Fertilizer?",
             PurchaseAction.PURCHASE_APPLY,
-            "Buy and apply",
+            "Buy and use",
             set(),
         ),
         (
@@ -313,13 +313,13 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
     assert presentation.primary_accessible_name == primary_label
     assert presentation.balance_after == 5_000 - quote.total_price
     if kind is PurchaseKind.SPECIES:
-        assert presentation.outcome == "Adds Sunflower to your collection."
+        assert presentation.outcome == "Adds Sunflower Seed to your collection as a new plant."
         assert "No Growth while in Collection" not in visible
     expected_next_actions = {
-        PurchaseKind.SPECIES: ("Place in garden", "View collection"),
+        PurchaseKind.SPECIES: ("Place in garden", "View in collection"),
         PurchaseKind.GROWTH_CHARGE: ("Use growth charge", "Keep browsing"),
         PurchaseKind.FERTILIZER: ("View plant", "Keep browsing"),
-        PurchaseKind.GARDEN_FEATURE: ("View collection", "Keep browsing"),
+        PurchaseKind.GARDEN_FEATURE: ("View in collection", "Keep browsing"),
     }
     assert presentation.next_actions == expected_next_actions[kind]
     assert presentation.badges == ()
@@ -354,7 +354,7 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     extension_projection = purchase_projection(extension_quote)
     assert extension.action is PurchaseAction.EXTEND
     assert extension.title == "Extend Basic Fertilizer?"
-    assert extension.primary_label == "Extend"
+    assert extension.primary_label == "Buy and use next"
     assert extension_projection.action_text == "Buy and use next"
     assert extension_quote.current_cards_remaining == 100
     assert extension_quote.resulting_cards_remaining == 200
@@ -593,7 +593,7 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
     }[kind]
     assert storage.state.completed_purchase_requests[-1].outcome == outcome
     assert outcome.message == {
-        PurchaseKind.SPECIES: "Sunflower added.",
+        PurchaseKind.SPECIES: "Sunflower Seed added.",
         PurchaseKind.GROWTH_CHARGE: "Small Growth Charge added.",
         PurchaseKind.FERTILIZER: "Basic Fertilizer applied.",
         PurchaseKind.GARDEN_FEATURE: "Wind Chime added to your collection.",
@@ -1177,7 +1177,7 @@ def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> N
 
     assert status.visible is False
     assert toast_result["message"] == "Wind Chime added to your collection."
-    assert toast_result["action_text"] == "View collection"
+    assert toast_result["action_text"] == "View in collection"
     assert toast_result["dismiss_text"] == "Continue browsing"
     assert callable(toast_result["dismiss_callback"])
     assert toast_result["duration_ms"] == 6_000
@@ -1361,7 +1361,7 @@ def test_nursery_timed_fertilizer_queues_without_confirmation_and_uses_item_once
     assert inventory == {"fertilizer_basic": 1}
     assert refreshes == ["parent", "nursery"]
     assert scheduled == [True]
-    assert results[0] == (True, "Basic Fertilizer queued.")
+    assert results[0] == (True, "Basic Fertilizer will be used next.")
 
 
 def test_nursery_fertilizer_purchase_keeps_a_stale_explicit_source_id() -> None:

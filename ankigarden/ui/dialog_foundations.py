@@ -589,13 +589,13 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         560,
         360,
         600,
-        480,
+        580,
         660,
         700,
         1.0,
         1.0,
         False,
-        True,
+        False,
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.NURSERY: DialogSizePolicy(
@@ -836,16 +836,16 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # Preview, commit, and result all use one markup tree and one geometry
         # envelope. Content-fit may settle anywhere inside these bounds, but
         # changing tense or footer callbacks must not resize the window.
-        "ready": DialogHeightProfile(280, 340, 440, 460, 480, 560),
-        "loading": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "ready": DialogHeightProfile(480, 480, 560, 460, 480, 560),
+        "loading": DialogHeightProfile(480, 480, 560, 460, 480, 560),
         # An availability refresh adds one compact status banner. Let the
         # settled content determine the height instead of manufacturing a
         # transaction-body scrollbar.
-        "stale": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "stale": DialogHeightProfile(480, 480, 560, 460, 480, 560),
         "empty": DialogHeightProfile(280, 340, 440, 460, 480, 560),
         "warning": DialogHeightProfile(280, 340, 440, 460, 480, 560),
         "error": DialogHeightProfile(280, 340, 440, 460, 480, 560),
-        "success": DialogHeightProfile(280, 340, 440, 460, 480, 560),
+        "success": DialogHeightProfile(480, 480, 560, 460, 480, 560),
     },
 }
 

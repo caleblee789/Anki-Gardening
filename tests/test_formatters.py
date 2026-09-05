@@ -66,10 +66,10 @@ def test_garden_release_formatters_have_one_stable_representation() -> None:
     assert format_streak(7) == "7 days"
     assert (
         format_stage_progress(1_250, 2_000, "young")
-        == "1,250 / 2,000 Growth to Young"
+        == "1,250 / 2,000 Growth toward Young"
     )
     assert format_balance_after(4_850) == "Balance after: 4,850"
-    assert format_available(2) == "2 available"
+    assert format_available(2) == "You own: 2"
     assert format_shortfall(30) == "30 Coins needed"
 
 

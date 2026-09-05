@@ -178,11 +178,18 @@ def format_growth(
     return f"{amount} Growth" if include_unit else amount
 
 
+def format_plant_name(plant: Any) -> str:
+    """Use the canonical plant identity, preserving customized names exactly."""
+    from ..presentation import PlantIdentity
+
+    return PlantIdentity.from_plant(plant).display_name
+
+
 def format_stage_progress(value: Any, maximum: Any, destination: str) -> str:
     """Format the one visible progress expression used by Garden surfaces."""
 
     return (
-        f"{format_growth(value, maximum, include_unit=False)} Growth to "
+        f"{format_growth(value, maximum, include_unit=False)} Growth toward "
         f"{format_status_label(destination)}"
     )
 
@@ -214,7 +221,7 @@ def format_balance_after(value: Any) -> str:
 def format_available(value: Any) -> str:
     """Format a compact owned consumable count without inventory terminology."""
 
-    return f"{format_integer(value)} available"
+    return f"You own: {format_integer(value)}"
 
 
 def format_shortfall(value: Any) -> str:

@@ -53,10 +53,10 @@ STUDIO_TEXT = {
     "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
-    "home_widget_label": "Garden card on Anki home",
-    "reviewer_hud_label": "Garden panel while reviewing",
-    "progress_notifications_label": "Reward updates while reviewing",
-    "sync_rewards_label": "Rewards after syncing",
+    "home_widget_label": "Show garden on Anki home",
+    "reviewer_hud_label": "Show garden while studying",
+    "progress_notifications_label": "Show reward notifications",
+    "sync_rewards_label": "Show rewards after syncing",
 }
 
 SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 190
@@ -121,12 +121,12 @@ class ToggleSettingRow(QFrame):
             QSizePolicy.Policy.Maximum,
         )
         self.setMinimumWidth(0)
-        self.setFixedHeight(44)
+        self.setMinimumHeight(44)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 3, 0, 3)
         layout.setSpacing(12)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetDefaultConstraint)
         copy = QVBoxLayout()
         copy.setSpacing(2)
         heading = QLabel(title)
@@ -420,12 +420,11 @@ class GardenStudioWidget(QWidget):
             QLabel[settingValue='true'] {{ color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }}
             QFrame[settingsSection='true'] {{ border:0; }}
             QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
-            QFrame[settingsAdvanced='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
+            QFrame[settingsAdvanced='true'] {{ background:transparent; border:0; }}
             QFrame[themeCard='true'] {{ background:transparent; border:0; }}
             QFrame[toggleSettingRow='true'] {{
                 background:transparent;
                 border:0;
-                border-bottom:1px solid {t['subtle_border']};
             }}
             QComboBox {{ color:{t['text_primary']}; background:#142c27; border:1px solid {t['secondary_border']}; border-radius:8px; padding:0 28px 0 8px; min-height:36px; max-height:36px; }}
             QComboBox:hover {{ border-color:#5b836f; }}
@@ -568,7 +567,7 @@ class GardenStudioWidget(QWidget):
         self.animations_enabled = self.reduced_motion
         self.motion_row = ToggleSettingRow(
             STUDIO_TEXT["animations_label"],
-            "Limits movement and transitions.",
+            "Use less motion and fewer transitions.",
             self.reduced_motion,
         )
 
@@ -588,7 +587,7 @@ class GardenStudioWidget(QWidget):
         self.show_reviewer_hud.setAccessibleName(STUDIO_TEXT["reviewer_hud_label"])
         _describe_control(
             self.show_reviewer_hud,
-            "Show today’s cards and plant progress.",
+            "Show today’s cards and plant progress while you study.",
         )
         self.show_rewards_after_syncing = GardenToggleSwitch()
         self.show_rewards_after_syncing.setAccessibleName(
@@ -596,11 +595,11 @@ class GardenStudioWidget(QWidget):
         )
         _describe_control(
             self.show_rewards_after_syncing,
-            "Show rewards earned on another device.",
+            "Show rewards earned on your other devices.",
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
-            "Display Garden progress on the deck list and overview.",
+            "Show garden progress on the deck list and deck overview.",
             self.show_home_widget,
         )
         controls_layout.insertWidget(0, self.home_preview_row)
@@ -642,17 +641,17 @@ class GardenStudioWidget(QWidget):
         self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.notifications_row = ToggleSettingRow(
             STUDIO_TEXT["progress_notifications_label"],
-            "Show brief updates for new rewards.",
+            "Show new rewards while you study.",
             self.show_progress_notifications,
         )
         self.reviewer_hud_row = ToggleSettingRow(
             STUDIO_TEXT["reviewer_hud_label"],
-            "Show today’s cards and plant progress.",
+            "Show today’s cards and plant progress while you study.",
             self.show_reviewer_hud,
         )
         self.sync_rewards_row = ToggleSettingRow(
             STUDIO_TEXT["sync_rewards_label"],
-            "Show rewards earned on another device.",
+            "Show rewards earned on your other devices.",
             self.show_rewards_after_syncing,
         )
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)

@@ -782,11 +782,31 @@ class ReviewerHookHandler:
         self,
         currently_due_cards: int,
     ) -> ReviewContinuationTarget | None:
-        tree = self._due_tree()
-        if tree is None:
+        if currently_due_cards <= 0:
             return None
-        node = self._selectable_due_subtree(tree, currently_due_cards)
-        if node is None:
+        collection = getattr(getattr(self.storage, "mw", None), "col", None) or getattr(mw, "col", None)
+        decks = getattr(collection, "decks", None)
+        selected = getattr(decks, "get_current_id", None)
+        if not callable(selected):
+            selected = getattr(decks, "selected", None)
+        try:
+            current_id = int(selected()) if callable(selected) else 0
+        except (TypeError, ValueError):
+            return None
+        tree = self._due_tree()
+        if tree is None or current_id <= 0:
+            return None
+        # Continue the selected study flow. Remaining work in another deck
+        # does not make this receipt a navigation shortcut to that deck.
+        pending = [tree]
+        node = None
+        while pending:
+            candidate = pending.pop()
+            if int(getattr(candidate, "deck_id", getattr(candidate, "did", 0)) or 0) == current_id:
+                node = candidate
+                break
+            pending.extend(tuple(getattr(candidate, "children", ()) or ()))
+        if node is None or self._due_tree_node_total(node) <= 0:
             return None
         try:
             deck_id = int(getattr(node, "deck_id", getattr(node, "did", 0)) or 0)

@@ -144,24 +144,15 @@ def _due_time(seconds: int) -> str:
 
 
 def format_growth_units(units: int, *, signed: bool = False) -> str:
-    """Format exact hundredth units with at most one displayed decimal."""
+    """Format exact hundredths through the shared Growth formatter."""
+    from .formatters import format_growth
 
     normalized = int(units)
-    value = (Decimal(abs(normalized)) / Decimal(100)).quantize(
-        Decimal("0.1"),
-        rounding=ROUND_HALF_UP,
+    return format_growth(
+        Decimal(normalized) / Decimal(100),
+        include_unit=False,
+        signed=signed and normalized > 0,
     )
-    if value == value.to_integral():
-        text = f"{int(value):,}"
-    else:
-        whole, fraction = f"{value:.1f}".split(".")
-        text = f"{int(whole):,}.{fraction}"
-    if normalized < 0:
-        return f"-{text}"
-    if signed and normalized > 0:
-        return f"+{text}"
-    return text
-
 
 @dataclass(frozen=True)
 class ReviewContinuationTarget:

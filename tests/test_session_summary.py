@@ -1114,10 +1114,10 @@ def test_projection_omits_zero_rows_and_uses_cards_complete_hero_copy():
     assert projection.continue_reviews_available is True
 
 
-def test_growth_format_has_separators_and_at_most_one_decimal():
+def test_growth_format_preserves_exact_units_with_separators():
     assert format_growth_units(128_400, signed=True) == "+1,284"
     assert format_growth_units(128_450, signed=True) == "+1,284.5"
-    assert format_growth_units(1_855, signed=True) == "+18.6"
+    assert format_growth_units(1_855, signed=True) == "+18.55"
     assert format_growth_units(-3_200) == "-32"
 
 

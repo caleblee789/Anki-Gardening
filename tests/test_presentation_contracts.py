@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from ankigarden.environment import (
     GARDEN_FEATURE_CATALOG,
     GROWTH_CHARGES,
@@ -58,9 +60,16 @@ def test_plant_identity_preserves_the_instance_name_and_species_name() -> None:
 
     assert identity == PlantIdentity(
         plant_id="bonsai-1",
-        display_name="Bonsai Plant",
+        display_name="Bonsai",
         species_name="Bonsai",
     )
+
+
+@pytest.mark.parametrize("name", ["Bonsai Plant", "My Bonsai", "Plant Plant"])
+def test_customized_plant_names_are_preserved(name: str) -> None:
+    assert PlantIdentity.from_plant(SimpleNamespace(
+        species="bonsai", name=name, name_customized=True,
+    )).display_name == name
 
 
 def test_collection_projection_names_exact_species_and_registry_denominators() -> None:

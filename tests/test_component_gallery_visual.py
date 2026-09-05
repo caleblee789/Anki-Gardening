@@ -247,10 +247,10 @@ def test_off_contract_component_gallery_snapshot_is_deterministic(
     assert canvas.size == (960, 640)
     assert output.stat().st_size > 2_000
     assert [bottom - top for _left, top, _right, bottom in button_boxes] == [
+        28,
         32,
-        36,
-        40,
-        36,
+        32,
+        32,
     ]
     assert (icon_box[2] - icon_box[0], icon_box[3] - icon_box[1]) == (32, 32)
     assert tabs_box[3] - tabs_box[1] == 42

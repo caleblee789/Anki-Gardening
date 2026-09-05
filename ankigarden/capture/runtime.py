@@ -3722,13 +3722,13 @@ def growth_charge_transient_variant_issue_codes(
 
     expected = {
         "ready-no-transition": {
-            "transition_statement": "Bonsai Plant",
+            "transition_statement": "Bonsai",
             "before_label": "Sprout",
             "after_label": "Sprout",
             "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
             "inventory_value": "2 → 1",
-            "stage_progress": "300 / 1,600 Growth to Young",
+            "stage_progress": "300 / 1,600 Growth",
             "current_growth": 600,
             "projected_growth": 700,
             "inventory_before": 2,
@@ -3741,13 +3741,13 @@ def growth_charge_transient_variant_issue_codes(
             "painted": True,
         },
         "success-no-stage-reward": {
-            "transition_statement": "Bonsai Plant",
+            "transition_statement": "Bonsai",
             "before_label": "Sprout",
             "after_label": "Sprout",
             "impact_value": "+100 Growth",
-            "growth_value": "600 → 700",
-            "inventory_value": "2 → 1",
-            "stage_progress": "300 / 1,600 Growth to Young",
+            "growth_value": "700",
+            "inventory_value": "1",
+            "stage_progress": "300 / 1,600 Growth",
             "completed_stage_count": 0,
             "reward_total": 0,
             "stage_row_visible": True,
@@ -6713,7 +6713,7 @@ class _UiFaceCaptureRunner:
               const visibleRoots = roots.filter(candidate => {
                 const bounds = candidate.getBoundingClientRect();
                 const style = window.getComputedStyle(candidate);
-                return bounds.width >= 100 && bounds.height >= 100
+                return bounds.width >= 100 && bounds.height > 0
                   && style.display !== 'none' && style.visibility !== 'hidden';
               });
               const root = visibleRoots.length
@@ -11791,6 +11791,15 @@ class _UiFaceCaptureRunner:
         footer_bounds = list(footer_geometry.get("bounds", ()) or ())
         reveal_height = int(reveal_bounds[3]) if len(reveal_bounds) == 4 else 0
         footer_height = int(footer_bounds[3]) if len(footer_bounds) == 4 else 0
+        # The compact strip must fit its measured content exactly, without the
+        # obsolete 130px minimum forcing empty space beneath a short reward.
+        reveal_natural_height = int(reveal.layout().sizeHint().height()) if reveal is not None and reveal.layout() is not None else -1
+        collapsed_session = bool(footer is not None and not footer.property("historyExpanded"))
+        session_totals_hidden = bool(hud is not None and all(
+            not widget.isVisibleTo(hud) for widget in (
+                hud._session_growth, hud._session_coins, hud._session_finds,
+            )
+        ))
         reward_bundle_id = str(
             reveal.property("rewardBundleId") if reveal is not None else ""
         )
@@ -11983,8 +11992,10 @@ class _UiFaceCaptureRunner:
             and in_normal_flow
             and not overlaps_bottom_controls
             and horizontal_range == 0
-            and 130 <= reveal_height <= 150
-            and footer_height in {54, 68}
+            and 0 < reveal_height == reveal_natural_height <= 150
+            and collapsed_session
+            and session_totals_hidden
+            and footer_height == 32
             and single_outer_surface
             and divider_visible
             and divider_count == 1
@@ -12012,6 +12023,9 @@ class _UiFaceCaptureRunner:
             "reveal_bounds": reveal_bounds,
             "footer_bounds": footer_bounds,
             "reveal_height": reveal_height,
+            "reveal_natural_height": reveal_natural_height,
+            "collapsed_session": collapsed_session,
+            "session_totals_hidden": session_totals_hidden,
             "footer_height": footer_height,
             "reward_bundle_id": reward_bundle_id,
             "hud_reward_visible": hud_reward_visible,
@@ -16791,6 +16805,7 @@ class _UiFaceCaptureRunner:
             "reveal_height": int(
                 compact_geometry.get("reveal_height", 0) or 0
             ),
+            "reveal_natural_height": int(compact_geometry.get("reveal_natural_height", -1)),
             "title_details_non_overlapping": bool(
                 compact_geometry.get("title_details_non_overlapping", False)
             ),
@@ -16822,13 +16837,13 @@ class _UiFaceCaptureRunner:
             compact["bundle_id"] == bundle.bundle_id
             and not compact["details_expanded"]
             and compact["eyebrow"] == compact_projection.eyebrow
-            and compact["hero_title"] == compact_projection.hero_title
+            and compact["hero_title"] == "Recent rewards"
             and compact["active_plant_identity_suppressed"]
             and compact["hero_subtitle"] == ""
             and not compact["hero_title_clamped"]
             and compact["visible_summary_count"] == 2
             and compact["visible_summary_labels"]
-            == ["1 Garden Find", "2 Garden discoveries"]
+            == ["1 Garden Find", "2 Discoveries"]
             and compact["visible_summary_rows"]
             == [
                 {
@@ -16840,7 +16855,7 @@ class _UiFaceCaptureRunner:
                     "icon_kind": "item-art",
                 },
                 {
-                    "label": "2 Garden discoveries",
+                    "label": "2 Discoveries",
                     "reward_type": "environment_discovery",
                     "artwork_ref": compact["visible_summary_rows"][1]["artwork_ref"],
                     "uses_item_art": False,
@@ -16856,7 +16871,7 @@ class _UiFaceCaptureRunner:
             and compact["details_footer_non_overlapping"]
             and compact["details_divider_clearance"] >= 8
             and compact["compact_vertical_scroll_maximum"] == 0
-            and 130 <= compact["reveal_height"] <= 150
+            and 0 < compact["reveal_height"] == compact["reveal_natural_height"] <= 150
             and compact["title_details_non_overlapping"]
             and compact["detail_event_ids_reconciled"]
             and not compact["obsolete_bottom_details_present"]
@@ -16877,7 +16892,7 @@ class _UiFaceCaptureRunner:
                 "",
             ),
             "passed": bool(
-                summary_labels == ["1 Garden Find", "2 Garden discoveries"]
+                summary_labels == ["1 Garden Find", "2 Discoveries"]
                 and summary_rows[0]["icon_kind"] == "item-art"
                 and summary_rows[1]["icon_kind"]
                 == "environment-discovery"
@@ -17100,12 +17115,9 @@ class _UiFaceCaptureRunner:
                 or celebration_record["art_scale"] > 1.0
                 or celebration_record["particles_active"]
             )
-            and not celebration_record["select_another_visible"]
+            and celebration_record["select_another_visible"]
             and celebration_record["settled_copy"]
-            == (
-                "Future Growth will go to other unfinished plants. "
-                "Any remainder becomes Stored Growth."
-            )
+            == "New Growth is shared or stored."
         )
         content["full-bloom-celebration"] = celebration_record
         celebration_started = bool(celebration_record["passed"])
@@ -17476,7 +17488,7 @@ class _UiFaceCaptureRunner:
         }
         full_bloom["passed"] = bool(
             full_bloom["eyebrow"] == "MILESTONE REACHED"
-            and full_bloom["hero_title"] == "Full Bloom reached"
+            and full_bloom["hero_title"] == "Recent rewards"
             and full_bloom["hero_subtitle"] == ""
             and full_bloom["active_plant_identity_suppressed"]
             and full_bloom["class_label"] == "Bonsai"
@@ -17490,10 +17502,7 @@ class _UiFaceCaptureRunner:
             and full_bloom["art_height"] >= 132
             and not full_bloom["light_rays"]
             and full_bloom["settled_copy"]
-            == (
-                "Future Growth will go to other unfinished plants. "
-                "Any remainder becomes Stored Growth."
-            )
+            == "New Growth is shared or stored."
             and full_bloom["select_another_visible"]
             and full_bloom["select_another_copy"] == "Choose next plant"
             and full_bloom["art_scale"] == 1.0
@@ -17646,7 +17655,7 @@ class _UiFaceCaptureRunner:
             and all_full_settled["settled"]
             and all_full_settled["temporary_gold_cleared"]
             and all_full_settled["all_plants_full_bloom"]
-            and all_full_settled["settled_copy"] == all_full_route_copy
+            and all_full_settled["settled_copy"] == "New Growth becomes Stored Growth."
             and not all_full_settled["select_another_visible"]
             and all_full_settled["destination_visible"]
             and all_full_settled["destination_kind"] == "stored_growth"
@@ -17819,6 +17828,7 @@ class _UiFaceCaptureRunner:
             "reveal_height": int(
                 short_dock_geometry.get("reveal_height", 0) or 0
             ),
+            "reveal_natural_height": int(short_dock_geometry.get("reveal_natural_height", -1)),
         }
         short_height_record["passed"] = bool(
             short_height_record["hud_safe_area_passed"]
@@ -17838,7 +17848,7 @@ class _UiFaceCaptureRunner:
             and short_height_record["fixed_regions_non_overlapping"]
             and short_height_record["sticky_reward_and_footer"]
             and short_height_record["reward_footer_non_overlapping"]
-            and 130 <= short_height_record["reveal_height"] <= 150
+            and 0 < short_height_record["reveal_height"] == short_height_record["reveal_natural_height"] <= 150
         )
         content["full-bloom-short-height"] = short_height_record
         if original_maximized:
@@ -35197,25 +35207,29 @@ class _UiFaceCaptureRunner:
             ),
             "passed": True,
         }
+        # Sheet 5 requires a current-state receipt after the same transaction.
+        # Measured Qt evidence: previews/observations.json retains 350 Growth,
+        # two charges and 248 Coins before use; success has 450, one and 250.
+        # Keep every accounting, stage-bar, ledger and repeat-activation gate.
         common_rendered_ok = bool(
             rendered_values["summary_semantic_id"] == "growth-charge.summary"
             and rendered_values["shared_component"] is True
             and rendered_values["shared_markup_tree"] is True
             and rendered_values["before_label"] == "Seed"
-            and rendered_values["after_label"] == "Sprout"
-            and rendered_values["impact_name"] == "Small Growth Charge"
+            and rendered_values["after_label"] == ("Seed → Sprout" if variant == "success" else "Sprout")
+            and rendered_values["impact_name"] == ("Growth applied" if variant == "success" else "Small Growth Charge")
             and rendered_values["impact_value"] == "+100 Growth"
             and rendered_values["growth_label"] == "Total Growth"
-            and rendered_values["growth_value"] == "350 → 450"
-            and rendered_values["inventory_label"] == "Charges remaining"
-            and rendered_values["inventory_value"] == "2 → 1"
-            and rendered_values["progress_label"] == "Next-stage progress"
+            and rendered_values["growth_value"] == ("450" if variant == "success" else "350 → 450")
+            and rendered_values["inventory_label"] == ("Small Growth Charge remaining" if variant == "success" else "Charges remaining")
+            and rendered_values["inventory_value"] == ("1" if variant == "success" else "2 → 1")
+            and rendered_values["progress_label"] == ("To Young" if variant == "success" else "To Young after use")
             and rendered_values["stage_progress"]
-            == "50 / 1,600 Growth to Young"
+            == "50 / 1,600 Growth"
             and rendered_values["progress_minimum"] == 0
             and rendered_values["progress_maximum"] == 1_600
             and rendered_values["progress_value"] == 50
-            and rendered_values["reward_label"] == ("Stage reward earned" if variant == "success" else "Stage reward on use")
+            and rendered_values["reward_label"] == ("Coins earned" if variant == "success" else "Reaching Sprout earns")
             and rendered_values["reward_value"] == "+2 Coins"
             and rendered_values["reward_visible"] is True
             and rendered_values["charge_artwork_fallback"] is False
@@ -35229,7 +35243,7 @@ class _UiFaceCaptureRunner:
             and rendered_values["comparison_labels"] == "before-after"
             and rendered_values["before_art_role"] == "before"
             and rendered_values["after_art_role"] == "after"
-            and rendered_values["transition_arrow_visible"] is True
+            and rendered_values["transition_arrow_visible"] is (variant != "success")
             and rendered_values["transition_arrow_role"] is True
         )
         if variant == "ready":
@@ -35237,12 +35251,12 @@ class _UiFaceCaptureRunner:
                 dialog.summary_panel.isVisibleTo(dialog)
                 and common_rendered_ok
                 and rendered_values["dialog_title"]
-                == "Use Small Growth Charge?"
+                == "Use a Growth Charge?"
                 and rendered_values["component_variant"] == "confirmation"
                 and rendered_values["data_source"] == "engine-preview"
                 and rendered_values["transition_statement"]
-                == "Bonsai Plant"
-                and rendered_values["primary_action"] == "Use charge"
+                == "Bonsai"
+                and rendered_values["primary_action"] == "Use 1 charge"
                 and rendered_values["secondary_action"] == "Cancel"
             )
         elif variant == "success":
@@ -35286,7 +35300,7 @@ class _UiFaceCaptureRunner:
                 and rendered_values["component_variant"] == "success"
                 and rendered_values["data_source"] == "engine-confirmed"
                 and rendered_values["transition_statement"]
-                == "Bonsai Plant"
+                == "Bonsai"
                 and rendered_values["primary_action"] == "View plant"
                 and rendered_values["secondary_action"] == "Close"
                 and rendered_values["resulting_growth"] == 450

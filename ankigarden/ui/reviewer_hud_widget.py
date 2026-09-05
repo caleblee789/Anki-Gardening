@@ -6,7 +6,7 @@ from collections import deque
 import re
 from typing import Any, Callable, Literal, Mapping, Optional
 
-from .formatters import format_garden_coins, format_quantity, format_status_label
+from .formatters import format_garden_coins, format_growth, format_quantity, format_status_label
 from .plant_art import normalized_plant_pixmap
 from .reviewer_hud import (
     FULL_BLOOM_GROWTH_ROUTE_COPY,
@@ -919,8 +919,9 @@ class _TwoLineLabel(QLabel):  # type: ignore[misc,valid-type]
         try:
             metrics = self.fontMetrics()
             width = max(1, self.contentsRect().width())
-            self.setMinimumHeight(metrics.lineSpacing() * 2 + 3)
-            self.setMaximumHeight(metrics.lineSpacing() * 2 + 3)
+            line_count = 1 if self.property("singleLine") else 2
+            self.setMinimumHeight(metrics.lineSpacing() * line_count + 3)
+            self.setMaximumHeight(metrics.lineSpacing() * line_count + 3)
             if not text or metrics.horizontalAdvance(text) <= width:
                 visible = text
             else:
@@ -1387,7 +1388,7 @@ class CheckpointTrack(QWidget):  # type: ignore[misc,valid-type]
             gradient.setColorAt(1.0, QColor(GARDEN_THEME["reviewer_hud_growth_strong"]))
             painter.setBrush(gradient)
             painter.drawRoundedRect(QRectF(left, 5.0, fill_width, 8.0), 4.0, 4.0)
-        for checkpoint in self._checkpoints:
+        for checkpoint in (self._checkpoints if self.property("showMarkers") else ()):
             natural_x = left + width * checkpoint / 100.0
             # Keep endpoint markers clear of the rounded track edge. Interior
             # checkpoint coordinates remain data-driven and visually exact.
@@ -1802,7 +1803,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QFrame#reviewerHudHeader:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
             "QFrame[hudCard='true'] {background:" + t["reviewer_hud_surface"] + ";border-radius:12px;}"
             "QFrame[hudCard='true'][cardRole='subtle'] {border:1px solid rgba(112,220,170,26);}"
-            "QFrame[hudCard='true'][cardRole='standard'] {border:1px solid rgba(112,220,170,43);}"
+            "QFrame[hudCard='true'][cardRole='standard'] {background:transparent;border:0;}"
             "QFrame#reviewerHudTodayCard[completionSettling='true'] {border-color:" + t["reviewer_hud_growth_strong"] + ";}"
             "QFrame#reviewerHudPlantCard:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
             "QFrame#reviewerHudPlantCard[celebration='stage-change'] {border-color:" + t["reviewer_hud_growth_strong"] + ";}"
@@ -1815,14 +1816,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "fx:0.5,fy:0.54,stop:0 rgba(240,194,79,42),stop:0.42 rgba(103,220,169,28),stop:1 rgba(13,48,39,0));}"
             "QFrame#reviewerHudArtRegion[fullBloomLightRays='true'] {background:qradialgradient(cx:0.5,cy:0.52,radius:0.62,"
             "fx:0.5,fy:0.52,stop:0 rgba(240,194,79,96),stop:0.45 rgba(103,220,169,52),stop:1 rgba(13,48,39,0));}"
-            "QFrame#reviewerHudNextAnswer {background:rgba(103,220,169,18);border:0;border-radius:9px;}"
+            "QFrame#reviewerHudNextAnswer {background:transparent;border:0;}"
             "QFrame#reviewerHudNextAnswer[resultState='applied'] {background:rgba(103,220,169,30);}"
             "QFrame#reviewerHudGrowthDestination {background:rgba(103,220,169,13);"
             "border:1px solid rgba(112,220,170,43);border-radius:9px;}"
             "QLabel[hudGrowthDestinationHeading='true'] {color:" + t["text_primary"] + ";"
             "font-size:12px;font-weight:650;}"
-            "QFrame#reviewerHudRewardDockSurface {background:" + t["reviewer_hud_surface_raised"] + ";"
-            "border:1px solid rgba(112,220,170,43);border-radius:12px;}"
+            "QFrame#reviewerHudRewardDockSurface {background:transparent;border:0;}"
             "QFrame#reviewerHudRewardReveal {background:transparent;border:0;border-radius:11px;}"
             "QFrame#reviewerHudRewardReveal[activeMilestone='true'] {"
             "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
@@ -1853,7 +1853,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QLabel[hudPlantName='true'] {font-size:18px;font-weight:650;}"
             "QLabel[hudStage='true'] {font-size:13px;font-weight:600;}"
             "QLabel[hudStage='true'][fullBloomAccent='true'] {color:" + t["reviewer_hud_coin"] + ";}"
-            "QLabel[hudRewardTitle='true'] {font-size:16px;font-weight:650;}"
+            "QLabel[hudRewardTitle='true'] {font-size:14px;font-weight:600;}"
             "QLabel[hudGrowth='true'] {color:" + t["reviewer_hud_growth_strong"] + ";font-weight:700;}"
             "QLabel[hudEyebrow='true'] {color:" + t["text_secondary"] + ";font-size:11px;font-weight:700;}"
             "QLabel#reviewerHudRewardArt {background:rgba(103,220,169,18);border:0;border-radius:12px;}"
@@ -2020,7 +2020,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._collapse_button.setFixedSize(32, 32)
         self._collapse_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._collapse_button.setAccessibleName("Collapse Anki Garden review panel")
-        self._collapse_button.setIcon(self._icon("chevron-right", 18, GARDEN_THEME["text_primary"]))
+        self._collapse_button.setIcon(self._icon("chevron-up", 18, GARDEN_THEME["text_primary"]))
         self._collapse_button.clicked.connect(self._toggle_from_control)
         actions_layout.addWidget(self._collapse_button)
         header_layout.addWidget(self._header_actions)
@@ -2134,7 +2134,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._plant_name.setObjectName("reviewerHudPlantName")
         self._plant_name.setProperty("hudPlantName", True)
         _set_decoration(self._plant_name)
-        layout.addWidget(self._plant_name)
+        layout.insertWidget(0, self._plant_name)
 
         self._art_region = _ArtRegion(self._plant_card)
         self._art_region.setObjectName("reviewerHudArtRegion")
@@ -2160,6 +2160,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         apply_tabular_numerals(self._percent)
         _set_decoration(self._percent)
         layout.addLayout(stage_row)
+        self._progress_destination = QLabel("", self._plant_card)
+        self._progress_destination.setProperty("hudMuted", True)
+        _set_decoration(self._progress_destination)
+        layout.addWidget(self._progress_destination)
         layout.addWidget(self._percent)
         self._checkpoint_track = CheckpointTrack(self._plant_card)
         layout.addWidget(self._checkpoint_track)
@@ -2219,9 +2223,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._next_answer.setProperty("legacySemanticId", "reviewer.hud.next-answer")
         self._next_answer.setProperty("resultState", "projection")
         next_layout = QHBoxLayout(self._next_answer)
-        next_layout.setContentsMargins(10, 7, 10, 7)
+        next_layout.setContentsMargins(0, 4, 0, 0)
         next_layout.setSpacing(8)
-        self._next_answer_label = QLabel("Next card:", self._next_answer)
+        self._next_answer_label = QLabel("Next card total:", self._next_answer)
         self._next_answer_label.setObjectName("reviewerHudNextAnswerLabel")
         _set_decoration(self._next_answer_label)
         next_layout.addWidget(self._next_answer_label, 1)
@@ -2286,7 +2290,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._select_plant.setProperty("semanticId", "reviewer.hud.select-plant")
         self._select_plant.setProperty("actionRole", "primary")
         self._select_plant.setText("Choose next plant")
-        self._select_plant.setMinimumHeight(32)
+        self._select_plant.setMinimumHeight(28)
         self._select_plant.setMinimumWidth(
             self._select_plant.fontMetrics().horizontalAdvance(
                 self._select_plant.text()
@@ -2394,6 +2398,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
         self._reward_scroll = _PreferredHeightScrollArea(self._reward_surface)
         self._reward_scroll.setObjectName("reviewerHudRewardScroll")
+        self._reward_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._reward_scroll.viewport().setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._reward_scroll.setProperty("semanticId", "reviewer.hud.reward-scroll")
         self._reward_scroll.setWidgetResizable(True)
         self._reward_scroll.setHorizontalScrollBarPolicy(
@@ -2490,6 +2496,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         # Backward-compatible attribute for capture/runtime consumers.
         self._reward_category = self._reward_subtitle
         primary_values = QHBoxLayout()
+        self._reward_primary_values = primary_values
         primary_values.setSpacing(8)
         self._reward_growth = QLabel("", self._reward_reveal)
         self._reward_growth.setProperty("hudGrowth", True)
@@ -2535,12 +2542,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )):
             cell = QFrame(self._reward_summary_row)
             cell.setProperty("hudRewardMetric", True)
-            cell.setMinimumHeight(30)
+            cell.setMinimumHeight(22)
             cell_layout = QHBoxLayout(cell)
             # The fixed 296px safe area must fit both canonical semantic labels
             # without abbreviating them.  Keep the icon, but spend compact-chip
             # width on copy rather than decorative inset.
-            cell_layout.setContentsMargins(2, 4, 2, 4)
+            cell_layout.setContentsMargins(2, 1, 2, 1)
             cell_layout.setSpacing(2)
             icon = QLabel(cell)
             icon.setFixedSize(12, 12)
@@ -3091,7 +3098,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._dock = projection.dock
         self.setProperty("hudDock", projection.dock)
         self._collapse_button.setIcon(self._icon(
-            "chevron-left" if projection.dock == "left" else "chevron-right",
+            "chevron-up",
             18,
             GARDEN_THEME["text_primary"],
         ))
@@ -3692,7 +3699,14 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.setProperty("fullBloomAccent", bool(nurture.fully_grown))
         _repolish(self._stage)
         self._stage.setVisible(bool(nurture.stage_label))
-        self._percent.setText(f"{nurture.stage_points:,} / {nurture.stage_goal:,} Growth to {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else "Full Bloom")
+        self._percent.setText(format_growth(nurture.stage_points, nurture.stage_goal) if nurture.next_stage_key else "Full Bloom")
+        self._progress_destination.setText(f"To {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else "")
+        self._progress_destination.setVisible(normal)
+        self._checkpoint_track.setProperty("showMarkers", bool(nurture.next_checkpoint_reward_coins))
+        self._checkpoint_track.setToolTip(
+            f"Stage milestones award Coins. Next milestone: {nurture.next_checkpoint_percent}%, {format_garden_coins(nurture.next_checkpoint_reward_coins, signed=True)}."
+            if nurture.next_checkpoint_reward_coins else ""
+        )
         self._percent.setVisible(normal)
         self._checkpoint_track.set_milestones(
             tuple(
@@ -3744,7 +3758,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._checkpoint_reward_row.setVisible(bool(nurture.next_checkpoint_reward_coins))
         if str(self._next_answer.property("resultState") or "") != "applied":
-            self._next_answer_label.setText("Next card:")
+            self._next_answer_label.setText("Next card total:")
             self._next_answer_value.setText(nurture.next_answer_value)
             self._next_answer.setVisible(bool(nurture.next_answer_value))
         message = "\n".join(
@@ -4334,12 +4348,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             or self._settled_full_bloom_bundle is not None
             or self._plant_card.property("fullBloomSettled")
         )
-        detail_level = 0 if full_bloom else level
-        body_margin, body_spacing = (
-            ((10, 10), (6, 8), (4, 6))[level]
-            if full_bloom else
-            ((6, 6), (6, 6), (4, 4))[level]
-        )
+        detail_level = level
+        body_margin, body_spacing = ((6, 6), (6, 6), (4, 4))[level]
+        if full_bloom:
+            self._plant_layout.setContentsMargins(12, 4, 12, 4)
+            self._plant_layout.setSpacing(4)
         self._body_layout.setContentsMargins(
             body_margin,
             body_margin,
@@ -4529,7 +4542,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         nurture = self._projection.nurture if self._projection is not None else None
         next_value = str(getattr(nurture, "next_answer_value", "") or "")
         self._swap_next_answer_row(
-            "Next card:",
+            "Next card total:",
             next_value,
             state="projection",
         )
@@ -4597,6 +4610,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _repolish(self._stage)
         self._stage.show()
         self._percent.hide()
+        self._progress_destination.hide()
         self._checkpoint_track.hide()
         self._checkpoint_distance_row.hide()
         self._checkpoint_reward_row.hide()
@@ -4605,21 +4619,23 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._effect_details.hide()
         projected = self._projection.nurture if self._projection is not None else None
         destination = getattr(projected, "growth_destination", None)
+        route = str(getattr(destination, "route_copy", "") or "") or FULL_BLOOM_GROWTH_ROUTE_COPY
         self._plant_message.setText(
-            str(getattr(destination, "route_copy", "") or "")
-            or FULL_BLOOM_GROWTH_ROUTE_COPY
+            "New Growth supports your project."
+            if str(getattr(destination, "kind", "")) == "active_project" else
+            "New Growth becomes Stored Growth."
+            if bool(getattr(projected, "all_plants_full_bloom", False)) else
+            "New Growth is shared or stored."
         )
+        self._plant_card.setToolTip(route)
+        self._plant_message.setAccessibleDescription(route)
         self._plant_message.show()
-        if settled:
-            self._sync_full_bloom_destination(projected)
-        else:
-            self._select_plant.hide()
-            self._growth_destination.hide()
+        self._sync_full_bloom_destination(projected)
         self._collapsed_ring.set_progress(100)
-        art_region_size = 132 if settled else 140
+        art_region_size = 140
         # The settled card is shorter because the surrounding copy tightens,
         # not because the Full Bloom plant becomes secondary again.
-        art_size = 132
+        art_size = 136
         self._art_region.setFixedHeight(art_region_size)
         self._plant_art.setFixedSize(art_size, art_size)
         pixmap = self._reward_full_pixmap
@@ -4648,6 +4664,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _repolish(self._stage)
         self._stage.show()
         self._percent.hide()
+        self._progress_destination.hide()
         self._checkpoint_track.hide()
         self._checkpoint_distance_row.hide()
         self._checkpoint_reward_row.hide()
@@ -4655,15 +4672,21 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._effects.hide()
         self._effect_details.hide()
         destination = getattr(nurture, "growth_destination", None)
+        route = str(getattr(destination, "route_copy", "") or "") or FULL_BLOOM_GROWTH_ROUTE_COPY
         self._plant_message.setText(
-            str(getattr(destination, "route_copy", "") or "")
-            or FULL_BLOOM_GROWTH_ROUTE_COPY
+            "New Growth supports your project."
+            if str(getattr(destination, "kind", "")) == "active_project" else
+            "New Growth becomes Stored Growth."
+            if bool(getattr(nurture, "all_plants_full_bloom", False)) else
+            "New Growth is shared or stored."
         )
+        self._plant_card.setToolTip(route)
+        self._plant_message.setAccessibleDescription(route)
         self._plant_message.show()
         self._sync_full_bloom_destination(nurture)
         self._collapsed_ring.set_progress(100)
-        self._art_region.setFixedHeight(132)
-        self._plant_art.setFixedSize(132, 132)
+        self._art_region.setFixedHeight(140)
+        self._plant_art.setFixedSize(136, 136)
         try:
             pixmap = QPixmap(self._plant_art.pixmap())
             if not pixmap.isNull():
@@ -4817,6 +4840,18 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
         layout = getattr(self, "_session_metrics_layout", None)
         if layout is None:
+            return
+        expanded = bool(self._session_footer.property("historyExpanded"))
+        for index, widget in enumerate(self._session_metric_widgets()):
+            widget.setVisible(expanded and bool(self._session_totals[index]))
+        self._session_heading.setText("This session · totals" if expanded else "This session")
+        self._session_history_chevron.setVisible(self._session_has_results)
+        self._set_session_history_chevron(expanded)
+        if not expanded:
+            self._session_growth_separator.hide()
+            self._session_find_separator.hide()
+            self._session_footer.setFixedHeight(32)
+            self._session_footer.setToolTip(" · ".join(_session_metric_labels(*self._session_totals)))
             return
         was_wrapped = bool(self._session_footer.property("metricsWrapped"))
         separators = (
@@ -4974,6 +5009,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         history_visible = bool(not self._reward_history_panel.isHidden())
         scroll_visible = reveal_visible or history_visible
         footer_visible = bool(self._session_has_results)
+        self._sync_session_metric_wrap()
         divider_visible = scroll_visible and footer_visible
         dock_visible = scroll_visible or footer_visible
         self._reward_scroll.setVisible(scroll_visible)
@@ -5026,7 +5062,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             # its viewport the full compact envelope so Qt's post-layout
             # contents adjustment cannot create a tiny, meaningless scrollbar
             # for the Details control or semantic summary chips.
-            natural = max(natural, _COMPACT_REWARD_MAX_HEIGHT)
+            natural = max(natural, self._reward_reveal.minimumSizeHint().height())
         target = max(1, min(_REWARD_SCROLL_MAX_HEIGHT, natural))
         # The dock's size hint must include the compact disclosure control so
         # the sticky footer cannot cover it. The viewport keeps a one-pixel
@@ -5209,7 +5245,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             heading.setStretch(1, 0 if compact_milestone else 1)
             self._reward_heading_milestone = compact_milestone
         self._reward_eyebrow.setVisible(not compact_milestone)
-        self._reward_title.set_full_text(_reward_hero_title(bundle))
+        self._reward_title.setProperty("singleLine", compact_milestone and mode != "history")
+        self._reward_title.set_full_text("Recent rewards" if compact_milestone and mode != "history" else _reward_hero_title(bundle))
         self._sync_reward_identity_visibility()
         rarity = _hero_rarity(bundle)
         self._reward_rarity.setText(rarity.title())
@@ -5221,7 +5258,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         normalized_kind = _hero_kind(bundle).replace("-", "_")
         active_milestone = normalized_kind in {"full_bloom", "stage_change"}
         self._reward_reveal.setProperty("activeMilestone", active_milestone)
-        self._reward_accent.setVisible(active_milestone)
+        self._reward_accent.hide()
         _repolish(self._reward_reveal)
         growth_units, coins = _hero_amounts(bundle)
         self._reward_growth.setText(
@@ -5235,6 +5272,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._reward_coins.setVisible(bool(coins))
         self._reward_coin_icon.setVisible(bool(coins))
+        compact_values = compact_milestone and mode != "history"
+        values_layout = self._reward_heading.layout() if compact_values else self._reward_primary_values
+        values_layout.insertWidget(1 if compact_values else 1, self._reward_coin_icon)
+        values_layout.insertWidget(2, self._reward_coins)
+        if compact_values and coins:
+            self._reward_coins.setText(format_garden_coins(coins, signed=True, include_unit=False))
+        self._reward_coins.setAccessibleName(format_garden_coins(coins, signed=True))
         inventory_labels = _hero_inventory_labels(bundle)
         self._reward_inventory.setText(" · ".join(inventory_labels))
         self._reward_inventory.setVisible(bool(inventory_labels))
@@ -5298,6 +5342,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             _value(_bundle_hero(bundle), "plant_name", default="") or ""
         ).strip()
         suppress_identity = bool(
+            _hero_kind(bundle).replace("-", "_") in {"full_bloom", "stage_change"}
+            and self._reward_presentation_mode != "history"
+        ) or bool(
             displayed_plant_id
             and event_plant_id == displayed_plant_id
             and event_plant_name
@@ -5504,6 +5551,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                     "rewardRarity",
                     str(_value(summary, "rarity", default="") or "").casefold(),
                 )
+                text = text.replace("Garden discoveries", "Discoveries").replace("Garden discovery", "Discovery")
                 chip.set_full_text(text)
                 chip.setProperty("metricTone", tone)
                 cell_layout = cell.layout()
@@ -5567,7 +5615,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_reveal.setMinimumHeight(
             240
             if self._reward_details_expanded
-            else _COMPACT_REWARD_MIN_HEIGHT
+            else 1
         )
         self._sync_reward_dock_visibility()
 
@@ -5796,7 +5844,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._history_pager.setProperty("historyPage", self._reward_history_page)
         self._history_pager.setProperty("historyPageCount", page_count)
-        available = bool(all_recent)
+        available = bool(all_recent) or self._session_has_results
         self._session_footer.setProperty("historyAvailable", available)
         history_expanded = bool(
             self._session_footer.property("historyExpanded")
@@ -5893,10 +5941,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             self._show_reward(self._reward_queue.popleft())
 
     def _toggle_reward_history(self) -> None:
-        if not self._reward_history:
+        if not self._session_has_results:
             return
-        expanded = self._reward_history_panel.isHidden()
-        self._reward_history_panel.setVisible(expanded)
+        expanded = not bool(self._session_footer.property("historyExpanded"))
+        self._reward_history_panel.setVisible(expanded and bool(self._reward_history))
         self._session_footer.setProperty("historyExpanded", expanded)
         self._set_session_history_chevron(expanded)
         if expanded:

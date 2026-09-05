@@ -115,10 +115,14 @@ def test_dashboard_state_refresh_marks_every_progress_domain_dirty() -> None:
         ),
     )
 
-    mark_dirty(dashboard)
+    on_state_changed = _compiled_method("GardenDashboard", "_on_state_changed")
+    dashboard.isVisible = lambda: False
+    dashboard._mark_progress_pages_dirty = lambda: mark_dirty(dashboard)
+    on_state_changed(dashboard, "collection changed while hidden")
 
     assert dashboard._progress_page_dirty == {"achievements", "collection"}
     assert metric_marks == ["metrics"]
+    assert dashboard._shop_dirty is True
 
 
 def test_dashboard_has_no_wall_clock_fertilizer_polling() -> None:

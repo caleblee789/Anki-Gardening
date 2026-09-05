@@ -345,6 +345,9 @@ class _FakeFont:
     def setPointSizeF(self, value: float) -> None:
         self._size = value
 
+    def setPixelSize(self, value: int) -> None:
+        self._size = float(value)
+
     def setBold(self, _value: bool) -> None:
         return None
 
@@ -1610,7 +1613,7 @@ def test_state_event_updates_move_scene_or_all_visible_surfaces() -> None:
     dashboard._home_surface_dirty = False
     state_changed(dashboard, "nurtured-plant undo")
 
-    assert calls == ["full", "story"]
+    assert calls == ["dirty", "full", "story"]
     assert dashboard._home_surface_dirty is True
 
 
@@ -1705,7 +1708,7 @@ def test_first_nurture_and_undo_use_the_shared_refresh_boundary() -> None:
         DASHBOARD_PATH,
         "GardenDashboard",
         "_nurture_plant",
-        {"OnboardingStep": OnboardingStep},
+        {"OnboardingStep": OnboardingStep, "PlantIdentity": PlantIdentity},
     )
 
     for initial_active_id in (None, "starter"):
@@ -2140,7 +2143,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     assert rearrange.retry.focused is True
     assert rearrange.heading == "Move Aster"
     assert rearrange.instruction == (
-        "Choose an empty bed, or swap with another plant."
+        "Choose an empty bed, or another plant to swap."
     )
 
 

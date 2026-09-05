@@ -64,7 +64,7 @@ def package_archives(
 
     root = tmp_path_factory.mktemp("package-archives")
     return {
-        "production": build(),
+        "production": build(output=root / "anki_garden_production.ankiaddon"),
         "production_rebuild": build(
             PRODUCTION_BUILD,
             output=root / "anki_garden_production_rebuild.ankiaddon",

@@ -160,6 +160,8 @@ class PlantIdentity:
             or _read(plant, "name", "")
             or f"{species_name} Plant"
         )
+        if not bool(_read(plant, "name_customized", False)) and display_name == f"{species_name} Plant":
+            display_name = species_name
         return cls(plant_id, display_name, species_name)
 
 
@@ -408,6 +410,7 @@ def visible_reward_term(internal_id: Any) -> VisibleRewardTerm:
 class DiagnosticsUiState(str, Enum):
     """Visible Diagnostics result and interaction states."""
 
+    NOT_CHECKED = "not-checked"
     SUCCESS = "success"
     WARNING = "warning"
     FAILURE = "failure"
@@ -436,6 +439,7 @@ class DiagnosticsProjection:
 
 def project_diagnostics(
     *,
+    checked: bool = True,
     missing_artwork_count: int = 0,
     contract_failure_count: int = 0,
     parsing_exception_count: int = 0,
@@ -449,9 +453,15 @@ def project_diagnostics(
     contract_failures = max(0, int(contract_failure_count))
     parsing_exceptions = max(0, int(parsing_exception_count))
     failure = str(failure_message or "").strip()
-    if failure or contract_failures or parsing_exceptions:
+    if not checked:
+        result_state = DiagnosticsUiState.NOT_CHECKED
+        title = "Check garden artwork"
+        summary = "Check that the artwork included with Anki Garden is available."
+        icon_name = "refresh"
+        accent_role = "neutral"
+    elif failure or contract_failures or parsing_exceptions:
         result_state = DiagnosticsUiState.FAILURE
-        title = "Display issues detected"
+        title = "Couldn’t check artwork" if failure else "Display issues detected"
         summary = failure or (
             "Check again. Copy the current report if the issue continues."
         )
@@ -459,12 +469,8 @@ def project_diagnostics(
         accent_role = "error"
     elif missing:
         result_state = DiagnosticsUiState.WARNING
-        title = (
-            f"{missing:,} artwork file is missing"
-            if missing == 1 else
-            f"{missing:,} artwork files are missing"
-        )
-        summary = "Some plants, decorations, or scenery may not appear."
+        title = "Some artwork couldn’t be found"
+        summary = "Some plants, decorations, or scenery may not appear. Check again or copy the support report."
         icon_name = "warning"
         accent_role = "warning"
     else:
@@ -478,8 +484,8 @@ def project_diagnostics(
         return DiagnosticsProjection(
             state=DiagnosticsUiState.CHECKING,
             result_state=result_state,
-            title="Checking display diagnostics",
-            summary="Scanning artwork and display telemetry.",
+            title="Checking artwork…",
+            summary="Checking the artwork included with Anki Garden.",
             icon_name="refresh",
             accent_role="checking",
             check_label="Checking…",
@@ -495,7 +501,7 @@ def project_diagnostics(
             accent_role=accent_role,
             check_label="Check again",
             check_enabled=True,
-            copy_confirmation="Report copied to clipboard",
+            copy_confirmation="Report copied",
         )
     return DiagnosticsProjection(
         state=result_state,
@@ -504,6 +510,6 @@ def project_diagnostics(
         summary=summary,
         icon_name=icon_name,
         accent_role=accent_role,
-        check_label="Check again",
+        check_label="Check again" if checked else "Check artwork",
         check_enabled=True,
     )

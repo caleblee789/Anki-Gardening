@@ -202,7 +202,7 @@ def test_success_state_renders_key_fields() -> None:
         in html
     )
     assert 'aria-label="Open My Garden"' in html
-    assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
+    assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' not in html
     assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
     assert "width:min(calc(100% - 48px), 520px)" in html
     assert "max-width:520px" in html
@@ -402,7 +402,7 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
     assert f'title="{name} · Flowering · 30 / 500 Growth"' in html
     assert f'class="ag-home__plant-name">{name}</span>' in html
     assert 'class="ag-home__plant-stage">· Flowering</span>' in html
-    assert '>30 / 500 Growth to Full Bloom</span>' in html
+    assert '>To Full Bloom: 30 / 500 Growth</span>' in html
     assert "white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 400px)" in html

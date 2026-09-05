@@ -22,13 +22,11 @@ def _typographic(value: str) -> str:
 
 def test_current_economy_docs_identify_schema27_catalog_authority() -> None:
     reference = _text(REFERENCE)
-    readme = _text(README)
     docs_index = _text(DOCS_INDEX)
     release_notes = _text(RELEASE_NOTES)
 
     assert "Anki Garden 2.2.0 and state schema 27" in reference
     assert "ankigarden/balance_catalog.py" in reference
-    assert "Schema 27" in readme
     assert "schema-27 Anki Garden 2.2.0" in docs_index
     assert "Anki Garden 2.2.0 release notes" in release_notes
     assert "release-notes-2.2.0.md" in docs_index

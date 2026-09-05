@@ -397,3 +397,19 @@ def test_cached_layout_reassociates_the_current_nongeometry_plant_payload() -> N
     assert second[0][0]["name"] == "Current name"
     assert second[0][0]["is_active"] is True
     assert set(scene._plant_hit_rects) == {"plant-current"}
+
+
+def test_render_cache_enforces_bytes_through_replacement_eviction_and_clear() -> None:
+    cache = BoundedLruCache(3, max_bytes=8, size_of=len)
+    cache["a"] = b"aaa"
+    cache["b"] = b"bbbb"
+    assert cache.get("a") == b"aaa"
+    cache["c"] = b"ccc"
+    assert "b" not in cache
+    assert cache.current_bytes == 6
+    cache["a"] = b"a"
+    assert cache.current_bytes == 4
+    cache["oversized"] = b"x" * 9
+    assert "oversized" not in cache and len(cache) == 2
+    cache.clear()
+    assert cache.current_bytes == 0 and len(cache) == 0

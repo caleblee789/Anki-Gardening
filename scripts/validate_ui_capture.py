@@ -4032,12 +4032,12 @@ def growth_charge_rendered_value_issue_codes(
         "growth_value": "350 → 450",
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
-        "progress_label": "Next-stage progress",
-        "stage_progress": "50 / 1,600 Growth to Young",
+        "progress_label": "To Young after use",
+        "stage_progress": "50 / 1,600 Growth",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Stage reward earned" if label == "growth-charge-success-stage-reward" else "Stage reward on use",
+        "reward_label": "Coins earned" if label == "growth-charge-success-stage-reward" else "Reaching Sprout earns",
         "reward_value": "+2 Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
@@ -4061,18 +4061,25 @@ def growth_charge_rendered_value_issue_codes(
             "variant": "ready",
             "component_variant": "confirmation",
             "data_source": "engine-preview",
-            "dialog_title": "Use Small Growth Charge?",
-            "transition_statement": "Bonsai Plant",
-            "primary_action": "Use charge",
+            "dialog_title": "Use a Growth Charge?",
+            "transition_statement": "Bonsai",
+            "primary_action": "Use 1 charge",
             "secondary_action": "Cancel",
         }
     elif label == "growth-charge-success-stage-reward":
         expected = {**common,
             "variant": "success",
             "component_variant": "success",
+            "after_label": "Seed → Sprout",
+            "impact_name": "Growth applied",
+            "growth_value": "450",
+            "inventory_label": "Small Growth Charge remaining",
+            "inventory_value": "1",
+            "progress_label": "To Young",
+            "transition_arrow_visible": False,
             "data_source": "engine-confirmed",
             "dialog_title": "Reached Sprout",
-            "transition_statement": "Bonsai Plant",
+            "transition_statement": "Bonsai",
             "primary_action": "View plant",
             "secondary_action": "Close",
             "resulting_growth": 450,
@@ -5059,8 +5066,11 @@ def reviewer_reward_dock_issue_codes(
         and geometry.get("in_normal_flow") is True
         and geometry.get("overlaps_bottom_controls") is False
         and geometry.get("horizontal_scroll_maximum") == 0
-        and 130 <= int(geometry.get("reveal_height", 0) or 0) <= 150
-        and int(geometry.get("footer_height", 0) or 0) in {54, 68}
+        and 0 < int(geometry.get("reveal_height", 0) or 0)
+        == int(geometry.get("reveal_natural_height", -1)) <= 150
+        and geometry.get("collapsed_session") is True
+        and geometry.get("session_totals_hidden") is True
+        and int(geometry.get("footer_height", 0) or 0) == 32
         and geometry.get("single_outer_surface") is True
         and geometry.get("divider_visible") is True
         and int(geometry.get("divider_count", 0) or 0) == 1
@@ -5566,7 +5576,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             and find_row.get("uses_item_art") is True
             and find_row.get("icon_present") is True
             and find_row.get("icon_kind") == "item-art"
-            and discovery_row.get("label") == "2 Garden discoveries"
+            and discovery_row.get("label") == "2 Discoveries"
             and discovery_row.get("reward_type") == "environment_discovery"
             and discovery_row.get("uses_item_art") is False
             and discovery_row.get("icon_present") is True
@@ -5940,12 +5950,12 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             ),
             "discovery-new-wording": lambda row: (
                 row.get("visible_summary_labels")
-                == ["1 Garden Find", "2 Garden discoveries"]
-                and row.get("discovery_summary") == "2 Garden discoveries"
+                == ["1 Garden Find", "2 Discoveries"]
+                and row.get("discovery_summary") == "2 Discoveries"
             ),
             "full-bloom": lambda row: (
                 row.get("eyebrow") == "MILESTONE REACHED"
-                and row.get("hero_title") == "Full Bloom reached"
+                and row.get("hero_title") == "Recent rewards"
                 and str(row.get("hero_subtitle", "")).strip() == ""
                 and row.get("active_plant_identity_suppressed") is True
                 and row.get("class_label") == "Bonsai"
@@ -5953,10 +5963,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("settled") is True
                 and row.get("temporary_gold_cleared") is True
                 and row.get("settled_copy")
-                == (
-                    "Future Growth will go to other unfinished plants. "
-                    "Any remainder becomes Stored Growth."
-                )
+                == "New Growth is shared or stored."
                 and row.get("select_another_visible") is True
                 and row.get("select_another_copy") == "Choose next plant"
                 and row.get("art_scale") == 1.0
@@ -5971,17 +5978,14 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                     or float(row.get("art_scale", 1.0) or 1.0) > 1.0
                     or row.get("particles_active") is True
                 )
-                and row.get("select_another_visible") is False
+                and row.get("select_another_visible") is True
             ),
             "full-bloom-settled": lambda row: (
                 row.get("settled") is True
                 and row.get("temporary_gold_cleared") is True
                 and row.get("all_plants_full_bloom") is True
                 and row.get("settled_copy")
-                == (
-                    "All planted plants are at Full Bloom. "
-                    "Future Growth will be stored."
-                )
+                == "New Growth becomes Stored Growth."
                 and row.get("select_another_visible") is False
                 and row.get("destination_visible") is True
                 and row.get("destination_kind") == "stored_growth"
@@ -6010,13 +6014,14 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("active_plant_identity_suppressed") is True
                 and row.get("visible_summary_labels") == [
                     "1 Garden Find",
-                    "2 Garden discoveries",
+                    "2 Discoveries",
                 ]
                 and compact_reward_summary_passed(row)
                 and row.get("details_action_copy") == "Details ›"
                 and int(row.get("details_click_height", 0) or 0) >= 28
                 and row.get("details_heading_aligned") is True
-                and 130 <= int(row.get("reveal_height", 0) or 0) <= 150
+                and 0 < int(row.get("reveal_height", 0) or 0)
+                == int(row.get("reveal_natural_height", -1)) <= 150
                 and row.get("title_details_non_overlapping") is True
                 and row.get("detail_event_ids_reconciled") is True
                 and row.get("obsolete_bottom_details_present") is False
@@ -6058,7 +6063,8 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("fixed_regions_non_overlapping") is True
                 and row.get("sticky_reward_and_footer") is True
                 and row.get("reward_footer_non_overlapping") is True
-                and 130 <= int(row.get("reveal_height", 0) or 0) <= 150
+                and 0 < int(row.get("reveal_height", 0) or 0)
+                == int(row.get("reveal_natural_height", -1)) <= 150
                 and row.get("canonical_viewport_restored") is True
             ),
             "session-footer-reconciliation": lambda row: (

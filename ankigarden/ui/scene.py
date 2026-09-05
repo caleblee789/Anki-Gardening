@@ -81,7 +81,7 @@ from .plant_display import (
 )
 from ..terminology import PROGRESSION_SUMMARY
 from .copy import KEYBOARD_HINT
-from .render_cache import BoundedLruCache
+from .render_cache import BoundedLruCache, pixmap_bytes
 from .theme import GARDEN_THEME, SCENE_HELP_BUTTON_SIZE
 
 SCENE_TEXT = {
@@ -135,16 +135,16 @@ class GardenSceneWidget(QWidget):
             BoundedLruCache(SVG_CACHE_LIMIT)
         )
         self._raster_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
-            BoundedLruCache(RASTER_CACHE_LIMIT)
+            BoundedLruCache(RASTER_CACHE_LIMIT, max_bytes=128 * 1024 * 1024, size_of=pixmap_bytes)
         )
         self._graded_raster_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
-            BoundedLruCache(GRADED_RASTER_CACHE_LIMIT)
+            BoundedLruCache(GRADED_RASTER_CACHE_LIMIT, max_bytes=96 * 1024 * 1024, size_of=pixmap_bytes)
         )
         self._highlight_pixmap_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
-            BoundedLruCache(HIGHLIGHT_CACHE_LIMIT)
+            BoundedLruCache(HIGHLIGHT_CACHE_LIMIT, max_bytes=24 * 1024 * 1024, size_of=pixmap_bytes)
         )
         self._landmark_lighting_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
-            BoundedLruCache(SURFACE_CACHE_LIMIT)
+            BoundedLruCache(SURFACE_CACHE_LIMIT, max_bytes=24 * 1024 * 1024, size_of=pixmap_bytes)
         )
         self._file_identity_cache: BoundedLruCache[
             str, tuple[int, int, int, int] | None
@@ -763,6 +763,7 @@ class GardenSceneWidget(QWidget):
         self._interaction.cancel_placement()
         self._allowed_move_slots = None
         self._starter_placement = False
+        self._starter_preview = None
         self._hovered_move_slot = None
         self._press_position = None
         self._press_plant_id = None
@@ -1693,7 +1694,7 @@ class GardenSceneWidget(QWidget):
                         and not self._interaction.pinned_id
                         and plant_id == focused_id
                     )
-                    hovered = 0.0 if self._interaction.pinned_id else self._hover_opacity.get(
+                    hovered = 0.0 if (self._interaction.placing or self._interaction.pinned_id) else self._hover_opacity.get(
                         plant_id,
                         1.0 if hover_target and not self.timer.isActive() else 0.0,
                     )
@@ -1740,6 +1741,7 @@ class GardenSceneWidget(QWidget):
                 selected = not self._interaction.placing and plant_id == self._interaction.pinned_id
                 keyboard_focused = bool(
                     self.hasFocus()
+                    and not self._interaction.placing
                     and not self._interaction.pinned_id
                     and plant_id == focused_id
                 )
@@ -2637,7 +2639,7 @@ class GardenSceneWidget(QWidget):
             painter.drawRoundedRect(badge_rect, 10, 10)
             painter.setPen(badge_text)
             badge_font = painter.font()
-            badge_font.setPointSizeF(12.0)
+            badge_font.setPixelSize(12)
             badge_font.setWeight(QFont.Weight.DemiBold)
             painter.setFont(badge_font)
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, visual_label)
@@ -2645,6 +2647,21 @@ class GardenSceneWidget(QWidget):
             painter.restore()
 
     def _draw_move_preview(self, painter: QPainter, destination_slot: int) -> None:
+        preview = getattr(self, "_starter_preview", None)
+        if self._starter_placement and preview:
+            canvas = self._garden_canvas_rect()
+            background = self.scene.get("asset_paths", {}).get("background", {})
+            placement = background.get("placement", {}) if isinstance(background, dict) else {}
+            items = [plant_layout_item(preview if slot == destination_slot else {}, slot) for slot in range(6)]
+            rows = plant_layout(canvas.width(), canvas.height(), items, placement,
+                                composition_count=1, protected_status=False, reserve_move_controls=True)
+            row = next((item for item in rows if item.slot_index == destination_slot), None)
+            if row is not None:
+                row = translated_plant_placement(row, canvas.x(), canvas.y())
+                path, _placement = self._plant_asset_record(preview)
+                if path:
+                    self._draw_asset_contain(painter, str(path), self._plant_draw_box(row, preview), opacity=0.55)
+            return
         plant_id = str(self._interaction.dragged_id or self._interaction.pinned_id or "")
         plant = self._plant_for_id(plant_id)
         origin = self._slot_placements.get(self._interaction.drag_origin_slot)

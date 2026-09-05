@@ -458,6 +458,10 @@ def _canonical_action_text(quote: PurchaseQuote, action: PurchaseAction) -> str:
     if quote.kind is PurchaseKind.FERTILIZER and action is PurchaseAction.PURCHASE_QUEUE:
         item = CONSUMABLE_BY_ID.get(canonical_consumable_id(quote.item_id))
         return str(getattr(item, "queued_purchase_action_text", "") or "Buy and use next")
+    if quote.kind is PurchaseKind.FERTILIZER:
+        if quote.disposition is PurchaseDisposition.INVENTORY:
+            return "Buy fertilizer"
+        return "Buy and use next" if quote.disposition is PurchaseDisposition.EXTENDED else "Buy and use"
     if quote.kind is PurchaseKind.BED:
         _before, bed_number = _bed_unlock_counts(quote)
         definition = BED_UNLOCK_BY_NUMBER.get(bed_number)
@@ -536,9 +540,9 @@ def purchase_presentation(
     if quote.kind is PurchaseKind.SPECIES:
         species_name = item_name[:-5] if item_name.lower().endswith(" seed") else item_name
         title = f"Buy {item_name}?"
-        outcome = f"Adds {species_name} to your collection."
-        success_message = f"{species_name} added."
-        next_actions = ("Place in garden", "View collection")
+        outcome = f"Adds {item_name} to your collection as a new plant."
+        success_message = f"{item_name} added."
+        next_actions = ("Place in garden", "View in collection")
     elif quote.kind is PurchaseKind.GROWTH_CHARGE:
         title = f"Buy {item_name}?"
         growth_effect = re.sub(
@@ -563,7 +567,7 @@ def purchase_presentation(
         fertilizer_target = target_name or "your nurtured plant"
         if quote.disposition is PurchaseDisposition.INVENTORY:
             title = f"Buy {item_name}?"
-            outcome = f"Adds one {item_name} to your inventory."
+            outcome = f"Adds one {item_name} to your supplies."
             activity_label = f"Purchased {item_name} for inventory"
             success_message = f"{item_name} added to inventory."
             next_actions = ("Keep browsing",)
@@ -588,7 +592,7 @@ def purchase_presentation(
             success_message = f"{item_name} extended."
         else:
             action = PurchaseAction.PURCHASE_APPLY
-            title = f"Buy and apply {item_name}?"
+            title = f"Buy {item_name}?"
             outcome = (
                 f"{fertilizer_target} · {_compact_effect(quote.descriptor.buff)} · "
                 f"{_without_period(quote.descriptor.duration)}"
@@ -602,13 +606,13 @@ def purchase_presentation(
         outcome = "Adds it to garden decorations and scenery."
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
-        next_actions = ("View collection", "Keep browsing")
+        next_actions = ("View in collection", "Keep browsing")
     elif quote.kind is PurchaseKind.COSMETIC:
         title = f"Buy {item_name}?"
         outcome = "Adds a cosmetic-only Display Decoration to your collection."
         preview_style = PurchasePreviewStyle.SQUARE
         success_message = f"{item_name} added to your collection."
-        next_actions = ("View collection", "Keep browsing")
+        next_actions = ("View in collection", "Keep browsing")
     else:
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
@@ -880,9 +884,8 @@ def purchase_projection(
     action_text = str(presentation.primary_label)
     if quote.kind is PurchaseKind.FERTILIZER and stored_item is not None:
         action_text = (
-            "Buy and use next"
-            if stored_item.disposition is FertilizerStoredItemDisposition.QUEUE
-            and quote.total_price > 0
+            _canonical_action_text(quote, presentation.action)
+            if quote.total_price > 0
             else stored_item.action_text
         )
     elif quote.kind is PurchaseKind.BED:

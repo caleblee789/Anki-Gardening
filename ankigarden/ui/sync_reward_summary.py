@@ -23,6 +23,7 @@ from .formatters import (
 from .garden_asset_thumbnail import GardenAssetThumbnail
 from .icons import garden_icon, garden_icon_pixmap
 from .session_summary import format_growth_units
+from .reward_receipt import build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style
 from .session_summary_card import session_summary_palette
 from .theme import apply_tabular_numerals
 
@@ -206,7 +207,7 @@ def sync_reward_metric_plan(
     if garden_discoveries > 0:
         metrics.append((
             f"+{garden_discoveries:,}",
-            "Garden discovery" if garden_discoveries == 1 else "Garden discoveries",
+            "Discoveries",
             "garden_discovery",
         ))
     return tuple(metrics)
@@ -217,7 +218,7 @@ def sync_reward_subtitle(summary: SyncRewardSummary) -> str:
 
     count = max(0, int(summary.eligible_answer_count or 0))
     noun = "card" if count == 1 else "cards"
-    return "Rewards added after syncing"
+    return "Rewards added during this sync"
 
 
 @dataclass(frozen=True)
@@ -760,102 +761,25 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         """)
 
     def _build_shell(self) -> None:
-        self._shell = QVBoxLayout(self)
-        self._shell.setContentsMargins(16, 12, 16, 0)
-        self._shell.setSpacing(12)
-
-        self._header = QFrame(self)
-        self._header.setProperty("syncFixedHeader", True)
-        header_layout = QHBoxLayout(self._header)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(12)
-
-        emblem = QLabel(self._header)
-        emblem.setProperty("syncEmblem", True)
-        emblem.setFixedSize(24, 24)
-        emblem.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pixmap = garden_icon_pixmap(
-            "sync-sprout",
-            22,
-            color=self._palette["growth_accent"],
-        )
-        if pixmap is not None:
-            emblem.setPixmap(pixmap)
-        emblem.setAccessibleName("Garden sync rewards")
-        header_layout.addWidget(emblem, 0, Qt.AlignmentFlag.AlignTop)
-
-        copy_layout = QVBoxLayout()
-        copy_layout.setContentsMargins(0, 0, 0, 0)
-        copy_layout.setSpacing(2)
-        self._eyebrow = QLabel("Rewards after syncing", self._header)
-        self._eyebrow.setProperty("syncEyebrow", True)
-        self._title = QLabel("", self._header)
-        self._title.setProperty("syncTitle", True)
-        self._title.hide()
-        self._subtitle = QLabel(sync_reward_subtitle(self._summary), self._header)
-        self._subtitle.setProperty("syncSubtitle", True)
-        self._subtitle.setWordWrap(True)
-        self._subtitle.hide()
-        for label in (self._eyebrow, self._title, self._subtitle):
-            label.setTextFormat(Qt.TextFormat.PlainText)
-            copy_layout.addWidget(label)
-        header_layout.addLayout(copy_layout, 1)
-
-        self._close_button = QToolButton(self._header)
-        self._close_button.setProperty("syncClose", True)
-        self._close_button.setAccessibleName("Close sync rewards")
-        self._close_button.setIcon(garden_icon(
-            "close", color=self._palette["receipt_text_secondary"], logical_size=16
-        ))
-        self._close_button.setIconSize(QSize(16, 16))
-        self._close_button.clicked.connect(self._dismiss)
-        header_layout.addWidget(self._close_button, 0, Qt.AlignmentFlag.AlignTop)
-        self._shell.addWidget(self._header)
-
-        self._body_scroll = QScrollArea(self)
+        shell = build_receipt_shell(self, "Rewards after syncing", self._dismiss, self._palette, prefix="ankiGardenSyncReward")
+        self._shell, self._header = shell.root, shell.header
+        self._close_button, self._eyebrow = shell.close, shell.title
+        self._body_scroll, self._footer = shell.scroll, shell.footer
         self._body_scroll.setObjectName("ankiGardenSyncRewardBodyScroll")
         self._body_scroll.setProperty("syncBodyScrollOwner", True)
-        self._body_scroll.setAccessibleName("Sync rewards details")
-        self._body_scroll.setWidgetResizable(True)
-        self._body_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._body_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._body_scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        self._shell.addWidget(self._body_scroll, 1)
-
-        self._footer = QFrame(self)
-        self._footer.setProperty("syncFooter", True)
-        self._footer.setProperty("syncFixedFooter", True)
-        self._footer.setMinimumHeight(48)
-        footer_layout = QHBoxLayout(self._footer)
-        footer_layout.setContentsMargins(0, 10, 0, 10)
-        footer_layout.setSpacing(8)
+        self._title = QLabel("", self._header)
+        self._title.hide()
+        self._subtitle = QLabel(sync_reward_subtitle(self._summary), self._header)
+        self._subtitle.hide()
         self._reassurance = QLabel("", self._footer)
-        self._reassurance.setProperty("syncMuted", True)
-        self._reassurance.setWordWrap(True)
-        self._reassurance.setTextFormat(Qt.TextFormat.PlainText)
-        footer_layout.addWidget(self._reassurance, 1)
         self._reassurance.hide()
-        footer_layout.addStretch(1)
-        self._done_button = QPushButton("Close", self._footer)
-        self._done_button.setProperty("syncSecondaryAction", True)
-        self._done_button.setProperty("syncActionRole", "secondary")
-        self._done_button.setAccessibleName("Close sync rewards")
-        self._done_button.clicked.connect(self._dismiss)
-        footer_layout.addWidget(self._done_button)
-        self._open_button = QPushButton("Open garden", self._footer)
-        self._open_button.setProperty("syncPrimaryAction", True)
-        self._open_button.setProperty("syncActionRole", "primary")
-        self._open_button.setAccessibleName("Open garden")
-        self._open_button.clicked.connect(self._open_garden)
-        footer_layout.addWidget(self._open_button)
-        self._footer.setProperty(
-            "syncActionHierarchy", ["close:secondary", "open_garden:primary"]
-        )
-        self._shell.addWidget(self._footer)
+        shell.actions.addStretch(1)
+        self._done_button = receipt_button(self._footer, "Close", self._dismiss, primary=False)
+        self._open_button = receipt_button(self._footer, "Open garden", self._open_garden, primary=True)
+        shell.actions.addWidget(self._done_button)
+        shell.actions.addWidget(self._open_button)
+        self._footer.setProperty("syncActionHierarchy", ["close:secondary", "open_garden:primary"])
+        self.setStyleSheet(self.styleSheet() + receipt_style(self._palette))
 
     @staticmethod
     def _clear_layout(layout: Any) -> None:
@@ -892,11 +816,12 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             QSizePolicy.Policy.Preferred,
         )
         layout = QVBoxLayout(body)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(16, 8, 16, 8)
         # Six canonical first-fold blocks must fit without partially clipping
         # the first reward row at the fixed 640 px dock height. Ten pixels
         # keeps the section rhythm while leaving the reward fully visible.
         layout.setSpacing(SYNC_REWARD_BODY_SPACING)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._body_scroll.setWidget(body)
         self._body_widget = body
         return layout
@@ -916,70 +841,17 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         *,
         motion: SyncRewardMetricMotion | None = None,
     ) -> QFrame:
-        tile = QFrame(parent)
-        tile.setProperty("syncMetric", True)
-        tile.setMinimumHeight(64)
-        tile.setMaximumHeight(66)
-        layout = QVBoxLayout(tile)
-        layout.setContentsMargins(8, 7, 8, 7)
-        layout.setSpacing(1)
-        value_row = QHBoxLayout()
-        value_row.setContentsMargins(0, 0, 0, 0)
-        value_row.setSpacing(6)
         semantic_icon = {
-            "sync_review_cards": "reviews",
-            "standard_find": "find",
-            "garden_discovery": "environment-discovery",
-            "garden_coin": "coin",
+            "sync_review_cards": "reviews", "standard_find": "find",
+            "garden_discovery": "environment-discovery", "garden_coin": "coin",
             "growth_resource": "growth",
-        }.get(icon_name, "")
-        if semantic_icon:
-            icon = QLabel(tile)
-            icon.setFixedSize(24, 24)
-            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            pixmap = garden_icon_pixmap(
-                semantic_icon,
-                22,
-                color=self._palette[
-                    "coin_accent" if semantic_icon == "coin"
-                    else "growth_accent" if semantic_icon == "growth"
-                    else "text_secondary"
-                ],
-            )
-            if pixmap is not None:
-                icon.setPixmap(pixmap)
-            icon.setProperty("syncMetricSemanticIcon", semantic_icon)
-            icon.setAccessibleName(f"{label} icon")
-        else:
-            icon = GardenAssetThumbnail(
-                tile,
-                engine=self._engine,
-                asset_id=icon_name,
-                asset_type="ui",
-                width=24,
-            )
-        icon.setProperty("syncMetricArtwork", True)
+        }.get(icon_name, "find")
+        metric = receipt_metric(parent, label, value, semantic_icon, self._palette)
+        tile, value_label = metric.widget, metric.value
+        tile.setProperty("syncMetric", True)
         tile.setProperty("syncMetricKey", icon_name)
-        value_label = QLabel(value, tile)
         value_label.setProperty("syncMetricValue", True)
-        value_label.setStyleSheet(f"color:{self._palette['coin_accent' if semantic_icon == 'coin' else 'growth_accent' if semantic_icon == 'growth' else 'text_secondary']};")
-        value_label.setTextFormat(Qt.TextFormat.PlainText)
-        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value_label.setAccessibleName(f"{label}: {value}")
         value_label.setProperty("syncMetricFinalValue", value)
-        apply_tabular_numerals(value_label)
-        value_row.addStretch(1)
-        value_row.addWidget(icon)
-        value_row.addWidget(value_label)
-        value_row.addStretch(1)
-        layout.addLayout(value_row)
-        caption = QLabel(label, tile)
-        caption.setProperty("syncMetricLabel", True)
-        caption.setTextFormat(Qt.TextFormat.PlainText)
-        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        caption.setMinimumWidth(0)
-        caption.setWordWrap(True)
-        layout.insertWidget(0, caption)
         if not self._animations_enabled or motion is None:
             return tile
 
@@ -1125,6 +997,13 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             or bool(row.get("fully_grown", False))
             or stage.casefold() in {"rare", "full_bloom", "full bloom"}
         )
+        if full_bloom and not self._expanded:
+            name = str(row.get("display_name", "Plant") or "Plant")
+            art = self._art_label(parent, kind="plant", identity=str(row.get("species", "") or ""), stage=stage,
+                explicit=str(row.get("artwork_asset", "") or ""), width=36, height=36)
+            event = receipt_event_row(parent, art, f"{name} reached Full Bloom", milestone=True)
+            event.widget.setProperty("syncFullBloom", True)
+            return event.widget
         frame.setProperty("syncPrimaryCard", True)
         frame.setProperty("syncFullBloom", full_bloom)
         transition_source = str(
@@ -1377,48 +1256,16 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         QTimer.singleShot(0, start_pulse)
 
     def _environment_row(self, row: Mapping[str, Any], parent: Any) -> QFrame:
-        frame = QFrame(parent)
-        frame.setProperty("syncRow", True)
-        frame.setProperty("syncRewardKind", "garden_discovery")
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(10)
         identity = str(row.get("environment_id", "") or "")
-        frame.setProperty("syncRewardIdentity", identity)
-        frame.setProperty(
-            "syncRewardEventId",
-            str(row.get("event_id", "") or ""),
-        )
-        layout.addWidget(self._art_label(
-            frame,
-            kind="environment",
-            identity=identity,
-            explicit=str(row.get("preview_asset", "") or ""),
-            width=72,
-            height=48,
-        ))
-        copy = QVBoxLayout()
-        copy.setContentsMargins(0, 0, 0, 0)
-        copy.setSpacing(1)
-        display_name = str(
-            row.get("display_name", "Garden discovery") or "Garden discovery"
-        )
-        name = QLabel(f"{display_name} discovered", frame)
-        name.setProperty("syncPrimary", True)
-        name.setWordWrap(True)
-        name.setTextFormat(Qt.TextFormat.PlainText)
-        copy.addWidget(name)
+        art = self._art_label(parent, kind="environment", identity=identity,
+            explicit=str(row.get("preview_asset", "") or ""), width=36, height=36)
         rarity = str(row.get("rarity", "") or "").replace("_", " ").title()
-        status_text = (
-            f"{rarity} · Garden decoration"
-            if rarity else
-            "Garden decoration"
-        )
-        status = QLabel(status_text, frame)
-        status.setProperty("syncSecondary", True)
-        copy.addWidget(status)
-        layout.addLayout(copy, 1)
-        return frame
+        detail = f"{rarity} · Garden decoration" if rarity else "Garden decoration"
+        event = receipt_event_row(parent, art, str(row.get("display_name", "Garden decoration") or "Garden decoration"), detail=detail)
+        event.widget.setProperty("syncRewardKind", "garden_discovery")
+        event.widget.setProperty("syncRewardIdentity", identity)
+        event.widget.setProperty("syncRewardEventId", str(row.get("event_id", "") or ""))
+        return event.widget
 
     def _find_card(self, row: Mapping[str, Any], parent: Any) -> QFrame:
         frame = QFrame(parent)
@@ -1633,7 +1480,6 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
         section_layout.setSpacing(8)
-        section_layout.addWidget(self._section_heading("Rewards found", section))
         for row in finds:
             section_layout.addWidget(self._find_card(row, section))
         for row in environments:
@@ -1722,7 +1568,12 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         headline = QLabel(f"{count:,} {'card' if count == 1 else 'cards'} studied", self._body_widget)
         headline.setProperty("syncPrimary", True)
         apply_tabular_numerals(headline)
+        headline.setToolTip("Study answers rewarded by this sync; a card may be studied more than once.")
         layout.addWidget(headline)
+        scope = QLabel(sync_reward_subtitle(self._summary), self._body_widget)
+        scope.setProperty("syncSecondary", True)
+        scope.setWordWrap(True)
+        layout.addWidget(scope)
         self.setProperty(
             "syncRewardMetricOrder", [str(metric[1]) for metric in metrics]
         )
@@ -1767,7 +1618,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         allocation_entries = self._growth_allocation_entries()
         has_growth = bool(plan.plant_growth or (self._expanded and allocation_entries))
         if has_growth:
-            layout.addWidget(self._section_heading("Garden progress", self._body_widget))
+
             if plan.plant_growth:
                 for row in plan.plant_growth:
                     plant_frame = self._plant_row(
@@ -1819,7 +1670,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                         + int(self._summary.all_clear_earned))
         if hidden_count > 0 or self._expanded:
             self._disclosure = QToolButton(self._body_widget)
-            self._disclosure.setText("Details")
+            self._disclosure.setText("Reward details")
             self._disclosure.setIcon(garden_icon("chevron-down" if self._expanded else "chevron-right", color=self._palette["text_secondary"]))
             self._disclosure.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             self._disclosure.setProperty("syncDisclosure", True)
@@ -1856,29 +1707,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _natural_height(self) -> int:
         try:
-            body_layout = self._body_widget.layout()
-            if body_layout is not None:
-                body_layout.invalidate()
-                body_layout.activate()
-            self._body_widget.updateGeometry()
-            self.layout().activate()
-            self._body_widget.adjustSize()
-            body_height = max(1, int(self._body_widget.sizeHint().height()))
-            header_height = max(1, int(self._header.sizeHint().height()))
-            footer_height = max(1, int(self._footer.sizeHint().height()))
-            # Native QScrollArea chrome consumes eight logical pixels beyond
-            # the body's size hint on macOS. Reserve that fit allowance so a
-            # fully visible first reward does not create a seven-pixel scroll.
-            return (
-                16
-                + header_height
-                + 12
-                + body_height
-                + 12
-                + footer_height
-                + 8
-            )
-        except Exception:
+            layout = self._body_widget.layout()
+            layout.invalidate()
+            layout.activate()
+            return self._header.height() + self._footer.height() + layout.sizeHint().height() + 4
+        except (AttributeError, RuntimeError):
             return SYNC_REWARD_MIN_HEIGHT
 
     def _schedule_settled_reposition(self) -> None:

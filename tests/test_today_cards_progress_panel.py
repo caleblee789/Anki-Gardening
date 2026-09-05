@@ -112,6 +112,7 @@ def _page_projection_function() -> Any:
             ),
             "_catalog_display_name": lambda catalog, item_id: catalog[item_id].name,
             "_today_cutoff_text": lambda value: f"cutoff:{value}",
+            "scenery_effect_copy": lambda _item_id, fallback="": str(fallback),
             "project_garden_appearance": lambda state: SimpleNamespace(
                 active_bonus_decoration_id=state.selected_garden_feature,
                 displayed_decoration_id=getattr(
@@ -165,9 +166,6 @@ def test_today_page_copy_has_no_goal_or_find_drought_language() -> None:
         "52 / 75",
     ):
         assert forbidden not in literals
-    assert "cards due at the start" in literals
-    assert "resets" in literals
-    assert "scheduled scenery bonus" in literals
 
 
 def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> None:

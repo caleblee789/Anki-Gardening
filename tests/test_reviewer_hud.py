@@ -282,7 +282,7 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     nurture = project_reviewer_hud(engine, state, now_ms=1_000_000).nurture
 
     assert nurture.plant_name == "Juniper of the Moonlit Terrace"
-    assert nurture.stage_label == "Mature · 4 of 6 stages"
+    assert nurture.stage_label == "Mature · Stage 4 of 6"
     assert nurture.species_name == "Bonsai"
     assert nurture.next_answer_value == "+13.5 Growth"
     assert nurture.next_card_line == "Next card: +13.5 Growth"
@@ -433,7 +433,7 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
         full_state,
     ).nurture
     assert projection.fully_grown is True
-    assert projection.stage_label == "Full Bloom · 6 of 6 stages"
+    assert projection.stage_label == "Full Bloom · Stage 6 of 6"
     assert projection.next_checkpoint_percent == 0
     assert projection.next_answer_value == ""
     assert projection.species_name == "Rose"
@@ -1551,7 +1551,6 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
     assert 'setProperty("fullBloomSettled", False)' in WIDGET_SOURCE
     assert "self._reward_dock.hide()" in WIDGET_SOURCE
     assert "divider_visible = scroll_visible and footer_visible" in WIDGET_SOURCE
-    assert 'self.setMinimumHeight(metrics.lineSpacing() * 2 + 3)' in WIDGET_SOURCE
     assert "animate = bool(animate and self._animations_enabled)" in WIDGET_SOURCE
     assert "delta = target - committed_before" in WIDGET_SOURCE
     assert "revision != self._coin_feedback_revision" in WIDGET_SOURCE

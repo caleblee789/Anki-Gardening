@@ -9,10 +9,11 @@ assets.
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from math import isfinite, sqrt
 from pathlib import Path
 from typing import Any
+
+from .render_cache import BoundedLruCache, pixmap_bytes
 
 
 try:  # Projection and source-contract tests run without Anki/Qt installed.
@@ -29,7 +30,9 @@ except Exception as exc:  # pragma: no cover - only outside Anki.
 
 
 _PIXMAP_CACHE_LIMIT = 72
-_PIXMAP_CACHE: "OrderedDict[tuple[Any, ...], Any]" = OrderedDict()
+_PIXMAP_CACHE: BoundedLruCache[tuple[Any, ...], Any] = BoundedLruCache(
+    _PIXMAP_CACHE_LIMIT, max_bytes=12 * 1024 * 1024, size_of=pixmap_bytes,
+)
 
 THUMBNAIL_STAGE_FILL: dict[str, float] = {
     "seed": 0.86,
@@ -205,7 +208,6 @@ def normalized_plant_pixmap(
     )
     cached = _PIXMAP_CACHE.get(cache_key)
     if cached is not None:
-        _PIXMAP_CACHE.move_to_end(cache_key)
         return QPixmap(cached)
 
     source = QPixmap(path) if path else QPixmap()
@@ -299,9 +301,6 @@ def normalized_plant_pixmap(
     result.setDevicePixelRatio(ratio)
 
     _PIXMAP_CACHE[cache_key] = QPixmap(result)
-    _PIXMAP_CACHE.move_to_end(cache_key)
-    while len(_PIXMAP_CACHE) > _PIXMAP_CACHE_LIMIT:
-        _PIXMAP_CACHE.popitem(last=False)
     return result
 
 

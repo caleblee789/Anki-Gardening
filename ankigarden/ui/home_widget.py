@@ -18,7 +18,7 @@ from .copy import (
     HOME_NO_STARTER_ACCESSIBLE,
     HOME_NO_STARTER_TITLE,
 )
-from .formatters import format_growth, format_status_label
+from .formatters import format_growth, format_plant_name, format_stage_progress, format_status_label
 from .landmark_display import (
     GARDEN_LANDMARK_ANCHOR,
     GARDEN_LANDMARK_ANCHORS,
@@ -739,6 +739,16 @@ HOME_WIDGET_STYLE = """
 #ag-home-root[data-motion="reduced"]:hover { transform:none; }
 #ag-home-root[data-motion="reduced"] button:active { transform:none; }
 #ag-home-root[data-motion="reduced"] .ag-home__scene-frame { transition:none; }
+#ag-home-root[data-home-mode="starter"] { height:auto; min-height:0; }
+#ag-home-root[data-home-mode="starter"] .ag-home__body { height:auto; }
+#ag-home-root[data-home-mode="starter"] .ag-home__details { position:relative; inset:auto; padding:16px; }
+#ag-home-root[data-home-mode="starter"] .ag-home__state { min-height:0; padding:16px; }
+#ag-home-root[data-home-mode="starter"] .ag-home__identity-row { align-items:center; }
+@media (max-width:560px) {
+  #ag-home-root[data-home-mode="starter"] .ag-home__identity-row { grid-template-columns:minmax(0,1fr); row-gap:12px; }
+  #ag-home-root[data-home-mode="starter"] .ag-home__identity-row > button { grid-column:1; justify-self:start; }
+  #ag-home-root[data-home-mode="starter"] .ag-home__artwork-zone { display:none; }
+}
 @media (prefers-reduced-motion: reduce) {
   #ag-home-root { transition:none; }
   #ag-home-root:hover { transform:none; }
@@ -1368,12 +1378,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             display_growth_goal = max(1, display_growth_current)
             growth_text = f"{display_growth_current:,} total Growth"
         elif display_growth_goal > 0:
-            growth_text = format_growth(
-                display_growth_current,
-                display_growth_goal,
-            )
-            if data.active_next_stage:
-                growth_text += f" to {format_status_label(data.active_next_stage)}"
+            destination = format_status_label(data.active_next_stage or "the next stage")
+            growth_text = f"To {destination}: {format_growth(display_growth_current, display_growth_goal)}"
         else:
             growth_text = preview.growth_text or "0"
         preview_identity = f"{preview.active_plant_name} · {stage}"
@@ -1415,7 +1421,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     support_class = "ag-home__support ag-home__support--plant" if preview_plant_name else "ag-home__support"
     garden_identity_html = (
         '<div class="ag-home__identity">'
-        '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
         f'<h2 class="ag-home__focus-name" data-testid="home-title" '
         f'aria-label="{escape(preview_title, quote=True)}" '
         f'title="{escape(preview_title, quote=True)}">{escape(preview_title)}</h2>'
@@ -1583,7 +1588,7 @@ def build_home_widget_success_data(
         consumer="home",
         phase="success",
         garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
-        active_plant_name=str(getattr(active_plant, "name", "") or ""),
+        active_plant_name=format_plant_name(active_plant) if active_plant is not None else "",
         active_stage=str(getattr(active_plant, "growth_stage", "") or ""),
         active_growth_points=plant_growth_points(active_plant),
         active_stage_points=active_growth.stage_points if active_plant is not None else 0,
@@ -1594,7 +1599,7 @@ def build_home_widget_success_data(
         garden_currency=max(0, int(getattr(state, "currency_balance", 0) or 0)),
         starter_selected=bool(starter_complete),
         planted_starter_name=(
-            str(getattr(planted_starter, "name", "") or "")
+            format_plant_name(planted_starter)
             if starter_waiting_for_nurture else ""
         ),
         planted_starter_stage=(
@@ -1652,7 +1657,7 @@ def build_home_widget_success_data(
         status_notice=status_notice,
         unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
         collection_count=max(0, len(plants)),
-        active_plant_name=str(getattr(active_plant, "name", "") or ""),
+        active_plant_name=format_plant_name(active_plant) if active_plant is not None else "",
         active_plant_stage=str(getattr(active_plant, "growth_stage", "") or ""),
         active_growth_points=plant_growth_points(active_plant),
         active_stage_points=active_growth.stage_points if active_plant is not None else 0,
@@ -1661,7 +1666,7 @@ def build_home_widget_success_data(
         active_points_remaining=active_growth.points_remaining if active_plant is not None else 0,
         active_fully_grown=active_growth.fully_grown if active_plant is not None else False,
         planted_starter_name=(
-            str(getattr(planted_starter, "name", "") or "")
+            format_plant_name(planted_starter)
             if starter_waiting_for_nurture else ""
         ),
         planted_starter_stage=(

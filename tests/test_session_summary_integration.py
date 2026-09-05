@@ -1553,6 +1553,7 @@ def test_today_snapshot_unifies_new_learn_review_without_using_answer_count(
         mw=SimpleNamespace(
             col=SimpleNamespace(
                 sched=SimpleNamespace(deck_due_tree=lambda: due_tree),
+                decks=SimpleNamespace(get_current_id=lambda: 55),
             ),
         ),
     )
@@ -1572,7 +1573,7 @@ def test_today_snapshot_unifies_new_learn_review_without_using_answer_count(
     assert snapshot.can_continue_reviews
 
 
-def test_today_snapshot_fails_closed_when_all_decks_have_no_single_target(
+def test_today_snapshot_does_not_continue_into_another_deck(
     monkeypatch,
 ):
     reviewer_module = _load_reviewer_module(monkeypatch)
@@ -1582,6 +1583,7 @@ def test_today_snapshot_fails_closed_when_all_decks_have_no_single_target(
         learn_count=0,
         review_count=0,
         children=[
+            SimpleNamespace(deck_id=33, name="Finished", new_count=0, learn_count=0, review_count=0, children=[]),
             SimpleNamespace(
                 deck_id=11,
                 name="New",
@@ -1615,6 +1617,7 @@ def test_today_snapshot_fails_closed_when_all_decks_have_no_single_target(
         mw=SimpleNamespace(
             col=SimpleNamespace(
                 sched=SimpleNamespace(deck_due_tree=lambda: tree),
+                decks=SimpleNamespace(get_current_id=lambda: 33),
             ),
         ),
     )
@@ -1655,6 +1658,7 @@ def test_today_snapshot_hides_continue_when_future_learning_is_outside_target(
         mw=SimpleNamespace(
             col=SimpleNamespace(
                 sched=SimpleNamespace(deck_due_tree=lambda: due_tree),
+                decks=SimpleNamespace(get_current_id=lambda: 55),
             ),
         ),
     )
@@ -1693,6 +1697,7 @@ def test_today_snapshot_keeps_current_learning_cards_reviewable(monkeypatch):
         mw=SimpleNamespace(
             col=SimpleNamespace(
                 sched=SimpleNamespace(deck_due_tree=lambda: due_tree),
+                decks=SimpleNamespace(get_current_id=lambda: 55),
             ),
         ),
     )

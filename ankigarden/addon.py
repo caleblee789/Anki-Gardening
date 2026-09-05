@@ -772,6 +772,7 @@ class AnkiGardenApp:
             )
             return
         candidate = None
+        performance_started = RUNTIME_PERFORMANCE.begin()
         retry_scheduled = False
         try:
             self._run_garden_maintenance("dashboard open")
@@ -952,6 +953,7 @@ class AnkiGardenApp:
                     "Anki Garden could not open its window. No garden progress was changed; please try again."
                 )
         finally:
+            RUNTIME_PERFORMANCE.finish("dashboard.open", performance_started)
             if retry_scheduled:
                 self._schedule_dashboard_open(120)
             else:

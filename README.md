@@ -51,6 +51,12 @@ Appearance and bonuses can come from different items. Previewing an item does no
 
 Your first two garden beds are included. More beds unlock as your plants reach Mature and as more plant types reach Full Bloom. New plant types in the Shop cost 250 Coins.
 
+## While you study
+
+The compact review panel shows today’s cards, your nurtured plant’s stage progress, and the Growth expected from the next card. You can collapse it while studying. Recent rewards and session totals have separate disclosures, so you can inspect the details when you want them.
+
+Session summaries show the rewards from that study session, with today’s progress below them. After syncing, a separate receipt shows the rewards added during that sync. Garden Finds and new garden discoveries are counted separately.
+
 ## Supplies
 
 | Supply | Effect |
@@ -63,7 +69,7 @@ Your first two garden beds are included. More beds unlock as your plants reach M
 | **Standard Growth Charge** | +500 Growth when used · 125 Coins |
 | **Grand Growth Charge** | +2,000 Growth when used · earned through rewards |
 
-Fertilizer and Potions last for cards, not time. The menu shows whether a dose starts now, extends an active supply, or waits its turn. Growth Charges apply to one planted, unfinished plant. The confirmation shows the exact effect before you use one.
+Fertilizer and Potions last for cards, not time. The menu shows whether a dose starts now, extends an active supply, or waits its turn. Growth Charges apply to one planted, unfinished plant. Before you choose **Use 1 charge**, the confirmation shows the plant’s current and resulting stages, Growth, remaining charges, and any earned stage reward. Canceling changes nothing. After use, the matching receipt shows the updated plant and current totals, with **View plant** opening the affected plant.
 
 ## Landmarks and longer-term goals
 

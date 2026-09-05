@@ -124,11 +124,11 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
         ("+520", "Growth", "growth_resource"),
         ("+12", "Coins", "garden_coin"),
         ("+3", "Garden Finds", "standard_find"),
-        ("+2", "Garden discoveries", "garden_discovery"),
+        ("+2", "Discoveries", "garden_discovery"),
     )
     assert sync_reward_metric_plan(
         _summary(environment_discoveries=discovery_rows[:1])
-    )[-1] == ("+1", "Garden discovery", "garden_discovery")
+    )[-1] == ("+1", "Discoveries", "garden_discovery")
     restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
 
     assert restored is not None
@@ -190,10 +190,10 @@ def test_exact_generalized_subtitle_copy() -> None:
         "Rewards from 42 card answers on another device."
     )
     assert sync_reward_subtitle(_summary(eligible_answer_count=1)) == (
-        "Rewards added after syncing"
+        "Rewards added during this sync"
     )
     assert sync_reward_subtitle(_summary()) == (
-        "Rewards added after syncing"
+        "Rewards added during this sync"
     )
 
 
@@ -287,10 +287,12 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     )
 
     texts = {label.text() for label in card.findChildren(QLabel)}
-    assert "SYNC REWARDS" in texts
-    assert "Your garden caught up" in texts
-    assert "Rewards added after syncing" in texts
-    assert "Rewards already applied." in texts
+    assert "Rewards after syncing" in texts
+    assert "42 cards studied" in texts
+    assert "Rewards added during this sync" in texts
+    card._toggle_expanded()
+    application.processEvents()
+    texts = {label.text() for label in card.findChildren(QLabel)}
     assert {
         "Stored Growth added to Garden Landmark",
         "Stored Growth added to Rose Cultivation Mastery",
@@ -545,6 +547,7 @@ def test_current_boost_rows_use_named_item_art_when_qt_is_available(
         engine=engine,
         animations_enabled=False,
     )
+    card._toggle_expanded()
     card.show()
     application.processEvents()
 

@@ -908,8 +908,8 @@ def project_nurture(
         STAGE_NAMES.get(stage_key, stage_key.replace("_", " ").title())
     )
     stage_label = (
-        f"{stage_name} · {canonical_stage.display_ordinal} of "
-        f"{canonical_stage.display_total} stages"
+        f"{stage_name} · Stage {canonical_stage.display_ordinal} of "
+        f"{canonical_stage.display_total}"
         if canonical_stage is not None else
         stage_name
     )

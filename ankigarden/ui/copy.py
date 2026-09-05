@@ -129,51 +129,39 @@ def fertilizer_queue_copy(
 
 
 _GARDEN_BONUS_EFFECT_COPY = {
-    "watering_station": (
-        "+1 Growth every 5 cards, during your first 100 cards each day."
-    ),
-    "wind_chime": "+1 Growth every 10 cards.",
-    "firefly_lantern": (
-        "Every 5 cards, the unfinished plant nearest its next checkpoint gains "
-        "+3 Growth."
-    ),
-    "autumn": (
-        "Finish today’s cards for +4 Coins. Plant checkpoints and first-time "
-        "stage rewards give 50% more Coins."
-    ),
-    "snowy": (
-        "Earn a Small Growth Charge every second day you finish today’s cards with this bonus."
-    ),
-    "full_moon": (
-        "Earn a Booster Potion every sixth day you finish today’s cards with this bonus."
-    ),
-    "herbalist_hourglass": (
-        "Earn a Booster Potion every 30 days you finish today’s cards with this bonus. "
-        "Potions started with this bonus last 25 extra cards."
-    ),
-    "prism_trellis": (
-        "Set aside 1 Growth on each of your first 100 cards per day, up to 300. "
-        "Finish today’s cards with this bonus to release it."
-    ),
+    'watering_station': '+1 Growth every 5 cards, during your first 100 cards each day.',
+    'wind_chime': '+1 Growth every 10 cards.',
+    'firefly_lantern': 'Every 5 cards, the unfinished plant nearest its next checkpoint gains +3 Growth.',
+    'autumn': 'Finish today’s cards: +4 Coins.\nPlant checkpoints award 50% more Coins. Each plant’s first reward for reaching a growth stage also awards 50% more Coins.',
+    'snowy': 'Earn 1 Small Growth Charge for every 2 days you finish today’s cards while this scenery is active.',
+    'full_moon': 'Earn 1 Booster Potion for every 6 days you finish today’s cards while this scenery is active.',
+    'herbalist_hourglass': 'Earn 1 Booster Potion for every 30 days you finish today’s cards while this decoration is active.\nBooster Potions you use while it is active last 25 extra cards, including those waiting to start.',
+    'prism_trellis': 'Set aside 1 Growth on each of your first 100 cards per day, up to 300 Growth. Finish today’s cards while this decoration is active to release it.',
+    'spring': '+2 Growth per card for your first 20 cards each day.',
+    'summer': '+1 Growth every 2 cards, during your first 120 cards each day.',
+    'harvest_bell': 'Finish today’s cards: +5 Coins.',
+    'rainbow_horizon': '+1 Growth per card for your first 75 cards each day.',
+    'halloween': 'Finish today’s cards while this scenery is active to earn 1 gift: Small Growth Charge 95%, Standard Growth Charge 4%, or Booster Potion 1%.',
+    'eclipse': '+1 Growth per card for your first 125 cards each day.',
 }
 
 
 _GARDEN_BONUS_SUMMARIES = {
-    "seedling_sign": "No bonus",
-    "default": "No bonus",
+    "seedling_sign": "No study bonus",
+    "default": "No study bonus",
     "wind_chime": "+1 Growth every 10 cards",
     "harvest_bell": "+5 Coins when today’s cards are complete",
     "watering_station": "+1 Growth every 5 cards\nFirst 100 cards each day",
-    "herbalist_hourglass": "Potion every 30 completed days\n+25 cards for Potions",
+    "herbalist_hourglass": "Booster Potion every 30 completed days with this bonus\nPotions used with this bonus last 25 extra cards",
     "firefly_lantern": "+3 Growth every 5 cards\nPlant nearest a checkpoint",
-    "prism_trellis": "+1 Growth/card · first 100/day\nStores up to 300 Growth\nFinish today’s cards to release",
+    "prism_trellis": "Set aside 1 Growth per card\nFirst 100 cards each day · Up to 300 Growth\nFinish today’s cards to release",
     "spring": "+2 Growth per card\nFirst 20 cards each day",
     "summer": "+1 Growth every 2 cards\nFirst 120 cards each day",
-    "autumn": "+4 Coins for today’s cards\n+50% plant milestone Coins",
-    "snowy": "Small Growth Charge every 2 days you finish today’s cards",
+    "autumn": "+4 Coins when you finish today’s cards\n+50% Coins from checkpoints and each plant’s first reward per growth stage",
+    "snowy": "Small Growth Charge every 2 days you finish today’s cards with this bonus",
     "rainbow_horizon": "+1 Growth per card\nFirst 75 cards each day",
     "halloween": "Growth Charge or Potion when today’s cards are complete",
-    "full_moon": "Booster Potion every 6 days you finish today’s cards",
+    "full_moon": "Booster Potion every 6 days you finish today’s cards with this bonus",
     "eclipse": "+1 Growth per card\nFirst 125 cards each day",
 }
 
@@ -242,3 +230,8 @@ def project_feedback_copy(value: object) -> str:
     text = re.sub(r"\bclaimed\b", "completed", text, flags=re.IGNORECASE)
     text = re.sub(r"\bfunded\b", "in progress", text, flags=re.IGNORECASE)
     return text
+
+
+def scenery_effect_copy(item_id: str, fallback: object = "") -> str:
+    """Use the same source-grounded benefit copy in Shop and Collection."""
+    return garden_bonus_effect_copy(item_id, fallback)

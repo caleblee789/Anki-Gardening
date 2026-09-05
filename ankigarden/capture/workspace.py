@@ -300,6 +300,53 @@ def capture_garden_setup_supplement(runner):
         raise RuntimeError(f"Garden setup verification failed: {checks}")
 
 
+def capture_progress_narrow(runner):
+    """Review one practical narrow size and the reachable final achievement row."""
+    from aqt.qt import QWidget
+    from ..ui.dashboard import achievement_presentations
+
+    dashboard = runner.app.dashboard
+    grid = dashboard.achievement_list
+    scroll = grid.scroll
+    size = dashboard.size()
+    position = scroll.verticalScrollBar().value()
+    output = runner.session_dir / "progress-narrow"
+    output.mkdir(exist_ok=True)
+    checks = {}
+    try:
+        dashboard.resize(860, 580)
+        for _ in range(8):
+            _settle()
+        scroll.verticalScrollBar().setValue(0)
+        _settle()
+        checks["narrow_size"] = dashboard.width() == 860 and dashboard.height() == 580
+        checks["readable_columns"] = grid._columns == 2
+        expected_ids = {view.achievement_id for view in achievement_presentations(runner.app.storage.state)}
+        actual_ids = {str(card.property("achievementId")) for card in grid.container.findChildren(QWidget)
+                      if card.property("achievementId")}
+        checks["all_achievements_present"] = actual_ids == expected_ids
+        checks["no_horizontal_scroll"] = scroll.horizontalScrollBar().maximum() == 0
+        checks["top_saved"] = dashboard.grab().save(str(output / "achievements-top.png"), "PNG")
+        scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+        _settle()
+        last = grid._entries[-1][0]
+        bottom = last.mapTo(scroll.viewport(), last.rect().bottomRight()).y()
+        checks["final_row_reachable"] = 0 <= bottom < scroll.viewport().height()
+        checks["end_saved"] = dashboard.grab().save(str(output / "achievements-end.png"), "PNG")
+        result = {"passed": all(checks.values()), "window": [dashboard.width(), dashboard.height()],
+                  "columns": grid._columns, "last_row_bottom": bottom,
+                  "viewport_height": scroll.viewport().height(), "checks": checks}
+        (output / "layout-audit.json").write_text(json.dumps(result, indent=2))
+    finally:
+        dashboard.resize(size)
+        for _ in range(8):
+            _settle()
+        scroll.verticalScrollBar().setValue(position)
+        _settle()
+    if not checks or not all(checks.values()):
+        raise RuntimeError(f"Progress narrow layout audit failed: {checks}")
+
+
 def capture_workspace_surface(runner, label, route, capture_and_advance):
     def ready():
         from ..models.state import CardEffectBatch
@@ -343,6 +390,8 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             if section == "collection" and subsection in {"scenery", "decorations"}:
                 cleanup = runner._prepare_appearance_capture_fixture(label, dashboard)
             dashboard.open_section(section, subsection)
+            if section == "progress" and subsection == "achievements":
+                capture_progress_narrow(runner)
             if section == "collection" and subsection == "scenery":
                 capture_garden_setup_supplement(runner)
                 from .landmark_audit import capture_landmark_audit
@@ -390,7 +439,7 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
         elif route == "today-details":
             dashboard.open_section("progress", "today")
             _settle()
-            disclosure = next(button for button in dashboard.progress_dialog.findChildren(QPushButton) if button.isVisibleTo(dashboard) and button.text() == "Details")
+            disclosure = next(button for button in dashboard.progress_dialog.findChildren(QPushButton) if button.isVisibleTo(dashboard) and button.parentWidget().property("semanticId") == "progress.today-details")
             disclosure.click()
         elif route == "purchase-fertilizer":
             plant.fertilizer_card_batches = [CardEffectBatch("fertilizer_basic", 100, 100, 100)]
@@ -420,6 +469,14 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
     def capture(widget, cleanup):
         widget.setProperty("captureWorkspaceRoute", route)
         _settle()
+        if route == "diagnostics":
+            if widget._diagnostic_check_pending:
+                QTimer.singleShot(20, lambda: capture(widget, cleanup))
+                return
+            # Captures intentionally reveal the diagnostic result; the real
+            # disclosure preserves the user's scroll position on expansion.
+            widget.behavior_scroll.ensureWidgetVisible(widget.report_details_toggle, 0, 12)
+            _settle()
         capture_and_advance(
             label, widget, close_callback=cleanup,
             cleanup_predicate=(lambda: True) if widget is runner.app.dashboard else None,
@@ -492,7 +549,6 @@ def capture_plant_artwork_audit(runner, hud):
 
     if getattr(runner, "_plant_artwork_audit_captured", False):
         return
-    runner._plant_artwork_audit_captured = True
     output = runner.session_dir / "plant-artwork-audit"
     output.mkdir(exist_ok=True)
     engine = runner.app.engine
@@ -508,7 +564,7 @@ def capture_plant_artwork_audit(runner, hud):
     for row, plant_type in enumerate(species):
         for column, stage in enumerate(stages):
             asset = engine.resolve_plant_asset(plant_type, stage)
-            for size in (28, 40, 44, 48, 56, 72, 88, 128, 136):
+            for size in (28, 40, 44, 48, 56, 72, 88, 112, 128, 136):
                 pixmap = normalized_plant_pixmap(asset, stage=stage, logical_size=size, device_pixel_ratio=2)
                 image = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
                 points = [(x, y) for y in range(image.height()) for x in range(image.width()) if image.pixelColor(x, y).alpha() > 24]
@@ -531,9 +587,17 @@ def capture_plant_artwork_audit(runner, hud):
     try:
         choices = project_plant_choices(engine, runner.app.storage.state)
         hud._projection = replace(original_projection, plant_choices=choices)
+        current_menu = getattr(hud, "_plant_selector_menu", None)
+        if current_menu is not None:
+            current_menu.close()
+        from PyQt6.QtTest import QTest
+        QTest.qWait(60)
         hud._select_another_plant()
-        _settle()
         menu = getattr(hud, "_plant_selector_menu", None)
+        for _ in range(10):
+            QTest.qWait(30)
+            if menu is not None and menu.isVisible() and menu.size().width() > 0:
+                break
         menu_saved = bool(menu and menu.isVisible() and menu.grab().save(str(output / "select-plant-menu.png"), "PNG"))
         icons_visible = bool(menu and menu.actions() and all(
             not action.icon().isNull() and action.isIconVisibleInMenu() for action in menu.actions()
@@ -542,6 +606,9 @@ def capture_plant_artwork_audit(runner, hud):
             menu.close()
     finally:
         hud._projection = original_projection
-    (output / "artwork-audit.json").write_text(json.dumps({"menu_captured": menu_saved, "menu_icons_present": icons_visible, "records": records}, indent=2))
+    (output / "artwork-audit.json").write_text(json.dumps({"menu_captured": menu_saved, "menu_icons_present": icons_visible,
+        "choice_count": len(choices), "choose_callback_available": callable(hud._on_choose_plant),
+        "hud_visible": hud.isVisible(), "records": records}, indent=2))
     if not menu_saved or not icons_visible:
         raise RuntimeError("Plant chooser did not open for its native artwork audit")
+    runner._plant_artwork_audit_captured = True

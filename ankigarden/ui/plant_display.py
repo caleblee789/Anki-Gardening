@@ -925,7 +925,7 @@ class SceneGeometryLayout:
             PLANT_POPOVER_CLEARANCE
         )
         soft = {
-            bed.bed_id: bed.selection_region.expanded(5.0)
+            bed.bed_id: bed.visible_region.expanded(5.0)
             for bed in self.beds
             if bed.bed_id != selected.bed_id
         }
@@ -954,9 +954,9 @@ class SceneGeometryLayout:
                     clamp_shift = abs(rectangle.x - raw.x) + abs(rectangle.y - raw.y)
                     scored.append((
                         (
+                            soft_overlap,
                             0.0 if side == preferred_side else 1.0,
                             max(0.0, shrink_ratio),
-                            soft_overlap,
                             float(side_index),
                             float(size_index),
                             clamp_shift,
