@@ -1251,6 +1251,7 @@ def test_growth_charge_quote_confirm_targets_one_plant_without_fanout_or_buffs(
     target = engine.plant_story(target_id)
     other = next(plant for plant in storage.state.plants if plant.plant_id != target_id)
     target.growth_points = 390
+    target.growth_remainder_units = 50
     target.fertilizer_card_batches = [
         CardEffectBatch("fertilizer_premium", 300, 400, 400)
     ]
@@ -1279,6 +1280,10 @@ def test_growth_charge_quote_confirm_targets_one_plant_without_fanout_or_buffs(
     assert conflicting_reuse.status is GrowthChargeStatus.REQUEST_ID_CONFLICT
     assert outcome.growth_granted == quote.granted_growth
     assert target.growth_points == quote.projected_growth
+    assert quote.current_growth_units == 39_050
+    assert quote.projected_growth_units == 39_050 + quote.granted_growth * 100
+    assert outcome.previous_growth_units == quote.current_growth_units
+    assert outcome.resulting_growth_units == quote.projected_growth_units
     assert other.growth_points == other_before
     assert [transition.source for transition in engine.peek_stage_transitions()] == [
         "charge" for _stage in quote.completed_stages
@@ -2431,7 +2436,7 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
         if event.event_id == f"reward-summary:{first.correlation_id}"
     )
     assert feedback.message == (
-        "+4 Garden Coins and +40 Growth"
+        "+4 Coins and +40 Growth"
     )
     assert feedback.correlation_id == first.correlation_id
     assert feedback.amount == 0

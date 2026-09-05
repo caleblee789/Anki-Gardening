@@ -1377,7 +1377,7 @@ def semantic_component_stylesheet(
             max-height: {TAB_VISUAL_HEIGHT}px;
             padding: 0 {SpacingToken.LG}px;
             color: {t['text_secondary']};
-            background: {t['raised_surface']};
+            background: transparent;
             border: 0;
             border-bottom: 2px solid transparent;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_size_px}px;
@@ -1389,7 +1389,7 @@ def semantic_component_stylesheet(
         }}
         QTabBar[gardenRole='tabs']::tab:selected {{
             color: {t['growth_accent']};
-            background: {t['selected_surface']};
+            background: transparent;
             border-bottom-color: {t['growth_accent']};
             font-weight: 700;
         }}
@@ -1778,7 +1778,7 @@ def secondary_navigation_stylesheet() -> str:
         QPushButton {{min-height:32px;max-height:32px;background:transparent;
             color:{t['text_secondary']};border:0;border-bottom:2px solid transparent;
             border-radius:0;padding:0 12px;font-weight:600;}}
-        QPushButton:checked {{background:{t['selected_surface']};color:{t['growth_accent']};
+        QPushButton:checked {{background:transparent;color:{t['growth_accent']};
             border-bottom-color:{t['growth_accent']};}}
         QPushButton:hover {{background:{t['secondary_hover']};}}
     """

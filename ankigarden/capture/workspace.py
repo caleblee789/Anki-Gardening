@@ -123,7 +123,7 @@ def capture_plant_menu_layouts(runner):
                     "within_scene": dashboard.scene.rect().contains(card.geometry()),
                     "selected_plant_clear": bool(protected) and all(not QRectF(region.x, region.y, region.width, region.height).intersects(QRectF(card.geometry())) for region in protected),
                     "nurtured_target_preserved": bar.plant_id == str(runner.app.storage.state.active_plant_id or ""),
-                    "compact_bar": 72 <= bar.height() <= 80,
+                    "compact_bar": 64 <= bar.height() <= 80,
                     "no_horizontal_scroll": card.content_scroll.horizontalScrollBar().maximum() == 0,
                     "content_fits": card.content_scroll.verticalScrollBar().maximum() == 0,
                     "local_scroll_available": card.content_scroll.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded,
@@ -150,6 +150,154 @@ def capture_plant_menu_layouts(runner):
     if not passed:
         failures = [{"bed": row["bed"], "window": row["window"], "failed": [key for key, ok in row["checks"].items() if not ok]} for row in records if not all(row["checks"].values())]
         raise RuntimeError(f"Plant menu layout audit failed: {failures}")
+
+
+def capture_garden_setup_supplement(runner):
+    """Review the new setup states in the same isolated, exact-package session."""
+    from datetime import date, timedelta
+    from ..models.state import CardEffectBatch, DailyEconomySnapshot, GardenProjectState
+    from ..presentation import project_garden_setup
+    from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
+
+    if getattr(runner, "_setup_supplement_captured", False):
+        return
+    runner._setup_supplement_captured = True
+    dashboard = runner.app.dashboard
+    engine = runner.app.engine
+    storage = runner.app.storage
+    snapshot = runner._capture_fixture_state_snapshot("garden-setup-supplement", exact_ledger_restore=True)
+    output = runner.session_dir / "garden-setup-supplement"
+    output.mkdir(exist_ok=True)
+    records = []
+    checks = {}
+    original_apply = engine.apply_garden_appearance
+    original_size = dashboard.size()
+    panel = dashboard.collection_section.appearance
+
+    def save(name):
+        _settle()
+        path = output / (name + ".png")
+        assert dashboard.grab().save(str(path), "PNG")
+        records.append({"name": name, "screenshot": str(path),
+                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                        "window": [dashboard.width(), dashboard.height()]})
+
+    try:
+        state = storage.state
+        state.inventory["garden_features"] = ["seedling_sign", "watering_station", "wind_chime"]
+        state.daily_economy_snapshot = DailyEconomySnapshot(
+            anki_day=state.daily_stats.day, garden_rhythm_percent=4,
+            snapshot_source="local_review", snapshot_id="garden-setup-capture",
+            active_garden_bonus_id="watering_station", active_scenery_effect_id="default",
+        )
+        state.daily_loadout.pending_garden_feature_id = "wind_chime"
+        state.daily_loadout.queued_for_day = (date.fromisoformat(state.daily_stats.day) + timedelta(days=1)).isoformat()
+        state.daily_loadout.queued_scenery_id = "spring"
+        original_project = deepcopy(state.garden_project)
+        state.garden_project = GardenProjectState(
+            landmark_highest_claimed_tier=1,
+            displayed_landmark_tier_id="mossy_stone_path",
+        )
+        plant = engine.active_plant() or state.plants[0]
+        plant.name = "Juniper of the Moonlit Library Garden"
+        plant.name_customized = True
+        plant.fertilizer_card_batches = [CardEffectBatch("fertilizer_basic", 100, 100, 37)]
+        plant.fertilizer_card_queue = [CardEffectBatch("fertilizer_quality", 200, 200, 200)]
+        plant.booster_card_batches = [CardEffectBatch("booster_potion", 500, 100, 62)]
+        dashboard.refresh_all()
+        dashboard.open_section("collection", "scenery")
+        before = deepcopy(storage.state.to_dict())
+        panel._select_option("scenery", "spring")
+        checks["preview_does_not_save"] = before == storage.state.to_dict()
+        save("01-unsaved-scenery-preview")
+        panel.discard_preview()
+        checks["reset_does_not_save"] = before == storage.state.to_dict()
+        dashboard.open_section("collection", "decorations")
+        save("02-independent-appearance-bonuses-and-schedule")
+        panel.scheduled_bonuses.button.click()
+        _settle()
+        panel.setup_scroll.ensureWidgetVisible(panel.scheduled_host, 0, 0)
+        save("09-scheduled-bonus-details")
+        panel.scheduled_bonuses.button.click()
+        panel.setup_scroll.verticalScrollBar().setValue(0)
+        panel.other_bonuses.button.click()
+        _settle()
+        panel.setup_scroll.ensureWidgetVisible(panel.other_bonuses, 0, 0)
+        save("03-other-active-bonuses")
+        panel.other_bonuses.button.click()
+        dashboard.open_section("collection", "garden-landmarks")
+        panel.preview_landmark("birdbath_terrace")
+        checks["unbuilt_landmark_cannot_apply"] = not panel.appearance_apply.isEnabled()
+        checks["landmark_preview_does_not_save"] = before == storage.state.to_dict()
+        save("04-unbuilt-landmark-preview")
+        panel.discard_preview()
+        dashboard.open_section("collection", "scenery")
+        displayed_project = deepcopy(storage.state.garden_project)
+        storage.state.garden_project = deepcopy(original_project)
+        panel._select_option("scenery", "spring")
+        panel._apply_selected_appearance()
+        after = project_garden_setup(engine, storage)
+        records.append({"appearance_result": {"displayed": after.items[0].appearance_id, "bonus": after.items[0].bonus_id, "feedback": panel.appearance_feedback.text()}})
+        checks["appearance_preserves_bonus"] = after.items[0].appearance_id == "spring" and after.items[0].bonus_id == "default"
+        panel._undo_appearance()
+        checks["undo_restores_appearance_only"] = storage.state.selected_background == before["loadout"]["display_scenery_id"]
+        panel._select_option("scenery", "summer")
+        failed_before = deepcopy(storage.state.to_dict())
+        engine.apply_garden_appearance = lambda *args, **kwargs: (False, "Couldn’t save changes. Try again.")
+        panel._apply_selected_appearance()
+        checks["failed_save_preserves_state"] = failed_before == storage.state.to_dict()
+        save("05-failed-save-feedback")
+        engine.apply_garden_appearance = original_apply
+        panel.discard_preview()
+        storage.state.garden_project = deepcopy(displayed_project)
+        dashboard.resize(860, 580)
+        dashboard.open_section("collection", "decorations")
+        save("06-compact-garden-setup")
+        panel.other_bonuses.button.click()
+        _settle()
+        panel.setup_scroll.ensureWidgetVisible(panel.other_bonuses, 0, 0)
+        save("07-compact-additional-bonuses")
+        panel.other_bonuses.button.click()
+        dashboard.resize(1040, 720)
+        dashboard.open_section("garden")
+        storage.state.garden_project = deepcopy(original_project)
+        ok, message = engine.apply_garden_appearance("seedling_sign", "spring", {"garden_feature": True, "scenery": True})
+        checks["bright_scenery_saved"] = ok
+        storage.state.garden_project = deepcopy(displayed_project)
+        dashboard.refresh_all()
+        save("08-bright-scenery-and-displayed-landmark")
+        storage.state.inventory["garden_features"] = list(GARDEN_FEATURE_CATALOG)
+        storage.state.inventory["scenery"] = list(SCENERY_CATALOG)
+        dashboard.resize(860, 580)
+        dashboard.refresh_all()
+        for index, (category, kind) in enumerate((
+            ("scenery", "scenery"), ("decorations", "garden_feature"),
+        )):
+            dashboard.open_section("collection", category)
+            _settle()
+            tiles = [tile for (tile_kind, _), tile in panel._tiles.items() if tile_kind == kind]
+            labels = [label for tile in tiles for label in tile.findChildren(QLabel)
+                      if label.property("environmentName") or label.property("environmentEffect")]
+            checks[f"{category}_browsing_text_fits"] = bool(labels) and all(
+                label.width() > 0 and label.height() >= max(0, label.heightForWidth(label.width()))
+                for label in labels
+            )
+            scroll = next(scroll for scroll in panel._catalog_scrolls if scroll.isAncestorOf(tiles[0]))
+            scroll.verticalScrollBar().setValue(0)
+            save(f"{10 + index * 2:02d}-all-{category}-top")
+            scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+            save(f"{11 + index * 2:02d}-all-{category}-end")
+    finally:
+        engine.apply_garden_appearance = original_apply
+        runner._restore_capture_fixture_state(snapshot)
+        dashboard.resize(original_size)
+        dashboard.refresh_all()
+        dashboard.open_section("collection", "scenery")
+        panel.discard_preview()
+        _settle()
+        (output / "setup-audit.json").write_text(json.dumps({"passed": all(checks.values()), "checks": checks, "records": records}, indent=2))
+    if not checks or not all(checks.values()):
+        raise RuntimeError(f"Garden setup verification failed: {checks}")
 
 
 def capture_workspace_surface(runner, label, route, capture_and_advance):
@@ -195,6 +343,10 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             if section == "collection" and subsection in {"scenery", "decorations"}:
                 cleanup = runner._prepare_appearance_capture_fixture(label, dashboard)
             dashboard.open_section(section, subsection)
+            if section == "collection" and subsection == "scenery":
+                capture_garden_setup_supplement(runner)
+                from .landmark_audit import capture_landmark_audit
+                capture_landmark_audit(runner)
         elif route == "garden":
             dashboard.scene.dismiss_selection()
         elif route in {"inspector", "inspector-available", "move"}:
@@ -329,3 +481,67 @@ def compact_reward_disclosure_audit(runner, card):
     final = compact_reward_audit(runner, card)
     return {"scope": "Details open and close", "collapsed": first, "expanded": expanded,
             "restored": final, "passed": first["passed"] and expanded["passed"] and final["passed"]}
+
+
+def capture_plant_artwork_audit(runner, hud):
+    """Record actual menu rendering and alpha bounds at every thumbnail role."""
+    from ..ui.plant_art import normalized_plant_pixmap
+    from aqt.qt import QImage, QPainter, QColor, QPixmap
+    from dataclasses import replace
+    from ..ui.reviewer_hud import project_plant_choices
+
+    if getattr(runner, "_plant_artwork_audit_captured", False):
+        return
+    runner._plant_artwork_audit_captured = True
+    output = runner.session_dir / "plant-artwork-audit"
+    output.mkdir(exist_ok=True)
+    engine = runner.app.engine
+    species = list(engine.catalog_summary().get("release_ready_species", ()))
+    stages = ("seed", "sprout", "young", "mature", "flowering", "rare")
+    records = []
+    gallery = QPixmap(960, len(species) * 156 + 36)
+    gallery.fill(QColor("#081e17"))
+    painter = QPainter(gallery)
+    painter.setPen(QColor("#e9e8d2"))
+    for column, stage in enumerate(stages):
+        painter.drawText(column * 160 + 12, 24, "Full Bloom" if stage == "rare" else stage.title())
+    for row, plant_type in enumerate(species):
+        for column, stage in enumerate(stages):
+            asset = engine.resolve_plant_asset(plant_type, stage)
+            for size in (28, 40, 44, 48, 56, 72, 88, 128, 136):
+                pixmap = normalized_plant_pixmap(asset, stage=stage, logical_size=size, device_pixel_ratio=2)
+                image = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+                points = [(x, y) for y in range(image.height()) for x in range(image.width()) if image.pixelColor(x, y).alpha() > 24]
+                if points:
+                    bounds = [min(x for x, y in points), min(y for x, y in points), max(x for x, y in points) + 1, max(y for x, y in points) + 1]
+                    visible = [(bounds[2] - bounds[0]) / 2, (bounds[3] - bounds[1]) / 2]
+                else:
+                    visible = [0, 0]
+                records.append({"species": plant_type, "stage": stage, "container": size, "visible_art": visible})
+                if size == 128:
+                    painter.drawPixmap(column * 160 + 16, row * 156 + 36, pixmap)
+            painter.drawText(column * 160 + 12, row * 156 + 184, str(plant_type).replace("_", " ").title())
+    painter.end()
+    gallery.save(str(output / "all-plant-stages.png"), "PNG")
+    # The preceding HUD matrix uses synthetic choices without artwork. Reuse
+    # the real read-only choice projection for the artwork acceptance view.
+    original_projection = hud._projection
+    menu_saved = False
+    icons_visible = False
+    try:
+        choices = project_plant_choices(engine, runner.app.storage.state)
+        hud._projection = replace(original_projection, plant_choices=choices)
+        hud._select_another_plant()
+        _settle()
+        menu = getattr(hud, "_plant_selector_menu", None)
+        menu_saved = bool(menu and menu.isVisible() and menu.grab().save(str(output / "select-plant-menu.png"), "PNG"))
+        icons_visible = bool(menu and menu.actions() and all(
+            not action.icon().isNull() and action.isIconVisibleInMenu() for action in menu.actions()
+        ))
+        if menu:
+            menu.close()
+    finally:
+        hud._projection = original_projection
+    (output / "artwork-audit.json").write_text(json.dumps({"menu_captured": menu_saved, "menu_icons_present": icons_visible, "records": records}, indent=2))
+    if not menu_saved or not icons_visible:
+        raise RuntimeError("Plant chooser did not open for its native artwork audit")

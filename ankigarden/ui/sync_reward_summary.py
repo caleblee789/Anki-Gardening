@@ -199,14 +199,14 @@ def sync_reward_metric_plan(
     if standard_finds > 0:
         metrics.append((
             f"+{standard_finds:,}",
-            "Find" if standard_finds == 1 else "Finds",
+            "Garden Find" if standard_finds == 1 else "Garden Finds",
             "standard_find",
         ))
     garden_discoveries = len(summary.environment_discoveries)
     if garden_discoveries > 0:
         metrics.append((
             f"+{garden_discoveries:,}",
-            "garden discovery" if garden_discoveries == 1 else "garden discoveries",
+            "Garden discovery" if garden_discoveries == 1 else "Garden discoveries",
             "garden_discovery",
         ))
     return tuple(metrics)
@@ -351,15 +351,12 @@ def _plant_progress_copy(row: Mapping[str, Any]) -> str:
         0,
         min(100, int(row.get("stage_progress_after", 0) or 0)),
     )
-    # Sync commits an integer stage-relative percentage. Canonical stage spans
-    # are divisible by 100, so this remains a presentation conversion rather
-    # than a second Growth or reward calculation.
-    current_growth = (goal * percent) // 100
-    return format_stage_progress(
-        current_growth,
-        goal,
-        destination.display_name,
-    )
+    total_units = row.get("growth_after_units")
+    if total_units is None:
+        return f"{percent}% to {destination.display_name}"
+    relative_units = max(0, min(goal * 100, int(total_units) - current.threshold * 100))
+    return f"{format_growth_units(relative_units)} / {goal:,} Growth to {destination.display_name}"
+
 
 
 def _checkpoint_display_text(checkpoint: Mapping[str, Any]) -> str:
@@ -534,6 +531,10 @@ try:  # Keep pure projection helpers importable without Anki's Qt runtime.
         QEvent,
         QEasingCurve,
         QFrame,
+        QPainter,
+        QColor,
+        QRectF,
+        QPen,
         QGraphicsOpacityEffect,
         QGridLayout,
         QHBoxLayout,
@@ -643,6 +644,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self.setProperty("summaryFixedHeaderFooter", True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAccessibleName("Anki Garden Sync Rewards")
         self.setMinimumWidth(1)
@@ -656,6 +659,15 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             parent.installEventFilter(self)
         except Exception:
             self._filtered_parent = None
+
+    def paintEvent(self, event: Any) -> None:
+        # A translucent child needs an explicit rounded fill; inheriting the
+        # host palette either paints a square backing or loses the shell.
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(self._palette["receipt_panel"]))
+        painter.setPen(QPen(QColor(self._palette["receipt_border_strong"]), 1))
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
 
     @property
     def model(self) -> SyncRewardSummary:
@@ -679,11 +691,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 color:{p['receipt_text_primary']};
                 font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             }}
-            QLabel[syncEyebrow='true'], QLabel[syncSection='true'] {{
-                color:{p['receipt_text_muted']}; font-size:11px; font-weight:650;
-                letter-spacing:0.8px;
+            QLabel[syncSection='true'] {{
+                color:{p['receipt_text_muted']}; font-size:13px; font-weight:600;
             }}
-            QLabel[syncTitle='true'] {{ font-size:20px; font-weight:650; }}
+            QLabel[syncEyebrow='true'] {{font-size:16px;font-weight:600;}}
+            QLabel[syncTitle='true'] {{font-size:14px;font-weight:600;}}
             QLabel[syncSubtitle='true'] {{ color:{p['receipt_text_secondary']}; font-size:13px; }}
             QFrame[syncMetric='true'], QFrame[syncPrimaryCard='true'] {{
                 background:{p['receipt_primary_surface']};
@@ -723,7 +735,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background:transparent; }}
             QPushButton, QToolButton {{
-                min-height:36px; max-height:36px; border-radius:9px;
+                min-height:32px; max-height:32px; border-radius:9px;
                 padding:0 14px; font-size:13px; font-weight:600;
                 color:{p['receipt_text_primary']}; background:transparent; border:0;
             }}
@@ -749,7 +761,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _build_shell(self) -> None:
         self._shell = QVBoxLayout(self)
-        self._shell.setContentsMargins(18, 16, 18, 0)
+        self._shell.setContentsMargins(16, 12, 16, 0)
         self._shell.setSpacing(12)
 
         self._header = QFrame(self)
@@ -760,11 +772,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
         emblem = QLabel(self._header)
         emblem.setProperty("syncEmblem", True)
-        emblem.setFixedSize(40, 40)
+        emblem.setFixedSize(24, 24)
         emblem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pixmap = garden_icon_pixmap(
             "sync-sprout",
-            34,
+            22,
             color=self._palette["growth_accent"],
         )
         if pixmap is not None:
@@ -775,13 +787,15 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         copy_layout = QVBoxLayout()
         copy_layout.setContentsMargins(0, 0, 0, 0)
         copy_layout.setSpacing(2)
-        self._eyebrow = QLabel("SYNC REWARDS", self._header)
+        self._eyebrow = QLabel("Rewards after syncing", self._header)
         self._eyebrow.setProperty("syncEyebrow", True)
-        self._title = QLabel("Your garden caught up", self._header)
+        self._title = QLabel("", self._header)
         self._title.setProperty("syncTitle", True)
+        self._title.hide()
         self._subtitle = QLabel(sync_reward_subtitle(self._summary), self._header)
         self._subtitle.setProperty("syncSubtitle", True)
         self._subtitle.setWordWrap(True)
+        self._subtitle.hide()
         for label in (self._eyebrow, self._title, self._subtitle):
             label.setTextFormat(Qt.TextFormat.PlainText)
             copy_layout.addWidget(label)
@@ -948,6 +962,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         tile.setProperty("syncMetricKey", icon_name)
         value_label = QLabel(value, tile)
         value_label.setProperty("syncMetricValue", True)
+        value_label.setStyleSheet(f"color:{self._palette['coin_accent' if semantic_icon == 'coin' else 'growth_accent' if semantic_icon == 'growth' else 'text_secondary']};")
         value_label.setTextFormat(Qt.TextFormat.PlainText)
         value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         value_label.setAccessibleName(f"{label}: {value}")
@@ -964,7 +979,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
         caption.setMinimumWidth(0)
         caption.setWordWrap(True)
-        layout.addWidget(caption)
+        layout.insertWidget(0, caption)
         if not self._animations_enabled or motion is None:
             return tile
 
@@ -1618,7 +1633,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
         section_layout.setSpacing(8)
-        section_layout.addWidget(self._section_heading("REWARDS FOUND", section))
+        section_layout.addWidget(self._section_heading("Rewards found", section))
         for row in finds:
             section_layout.addWidget(self._find_card(row, section))
         for row in environments:
@@ -1752,7 +1767,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         allocation_entries = self._growth_allocation_entries()
         has_growth = bool(plan.plant_growth or (self._expanded and allocation_entries))
         if has_growth:
-            layout.addWidget(self._section_heading("GARDEN PROGRESS", self._body_widget))
+            layout.addWidget(self._section_heading("Garden progress", self._body_widget))
             if plan.plant_growth:
                 for row in plan.plant_growth:
                     plant_frame = self._plant_row(
@@ -1803,10 +1818,10 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         hidden_count = (plan.hidden_count + len(allocation_entries) + len(effects)
                         + int(self._summary.all_clear_earned))
         if hidden_count > 0 or self._expanded:
-            self._disclosure = QPushButton(
-                "Less detail" if self._expanded else "Details",
-                self._body_widget,
-            )
+            self._disclosure = QToolButton(self._body_widget)
+            self._disclosure.setText("Details")
+            self._disclosure.setIcon(garden_icon("chevron-down" if self._expanded else "chevron-right", color=self._palette["text_secondary"]))
+            self._disclosure.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             self._disclosure.setProperty("syncDisclosure", True)
             self._disclosure.setAccessibleName(
                 "Show less sync reward detail"

@@ -55,8 +55,7 @@ class RewardLine:
 
         amount = max(0, int(self.amount))
         if self.reward_type == "coins":
-            unit = "Garden Coin" if amount == 1 else "Garden Coins"
-            return f"+{amount:,} {unit}"
+            return format_garden_coins(amount, signed=True)
         if self.reward_type == "growth":
             return f"+{amount:,} Growth"
         if self.reward_type == "inventory_item":
@@ -843,8 +842,7 @@ class RecurringRewardPresentation:
     def reward_summary(self) -> str:
         parts: list[str] = []
         if self.reward_coins:
-            label = "Garden Coin" if self.reward_coins == 1 else "Garden Coins"
-            parts.append(f"+{self.reward_coins:,} {label}")
+            parts.append(format_garden_coins(self.reward_coins, signed=True))
         if self.reward_growth:
             parts.append(f"+{self.reward_growth:,} Growth")
         return " and ".join(parts) if parts else "No reward"
@@ -1201,7 +1199,7 @@ def _reward_detail_value(item: RewardItemProjection) -> str:
         )
     if item.garden_coins:
         values.append(
-            f"+{format_quantity(item.garden_coins, 'Garden Coin', 'Garden Coins')}"
+            format_garden_coins(item.garden_coins, signed=True)
         )
     values.extend(item.learner_inventory_labels)
 
@@ -1254,7 +1252,7 @@ def _session_history_row(item: RewardItemProjection) -> RewardDetailRow:
         values = tuple(value for value in (
             str(item.plant_name or item.title).strip(),
             (
-                f"+{format_quantity(item.garden_coins, 'Garden Coin', 'Garden Coins')}"
+                format_garden_coins(item.garden_coins, signed=True)
                 if item.garden_coins
                 else ""
             ),
@@ -1465,7 +1463,7 @@ def _project_compact_reward(
         coin_total = sum(item.garden_coins for item in coin_items)
         ranked_summaries.append((min(item.sequence for item in coin_items), _compact_summary(
             key="coins",
-            label=f"+{format_quantity(coin_total, 'Garden Coin', 'Garden Coins')}",
+            label=format_garden_coins(coin_total, signed=True),
             items=coin_items,
             reward_type="coins",
         )))
@@ -1818,13 +1816,13 @@ def project_committed_reward_bundle(
         coin_title = (
             event.coin_awards[0].source_label
             if len(event.coin_awards) == 1 and event.coin_awards[0].source_label
-            else "Garden Coins"
+            else "Coins"
         )
         items.append(RewardItemProjection(
             event_id=f"{bundle_id}:coins",
             kind=RewardHero.COIN_OR_BOOSTER,
             title=coin_title,
-            category_label="Garden Coin reward",
+            category_label="Coin reward",
             occurred_at=event.occurred_at,
             garden_coins=standalone_coins,
             sequence=len(items),
@@ -2356,11 +2354,10 @@ class AchievementPresentation:
     @property
     def reward_summary(self) -> str:
         if self.persisted_reward_summary:
-            return self.persisted_reward_summary.replace("+", "")
+            return learner_card_copy(self.persisted_reward_summary).replace("+", "")
         parts: list[str] = []
         if self.reward_coins:
-            unit = "Garden Coin" if self.reward_coins == 1 else "Garden Coins"
-            parts.append(f"{self.reward_coins:,} {unit}")
+            parts.append(format_garden_coins(self.reward_coins))
         if self.reward_small_growth_charges:
             count = self.reward_small_growth_charges
             parts.append(

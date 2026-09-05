@@ -102,11 +102,11 @@ def _page_projection_function() -> Any:
             "TodayCardsProjection": _today_cards_factory,
             "project_today_cards": lambda _state, now_ms=None: _today_cards_factory(
                 "in_progress",
-                "TODAY’S CARDS",
-                "18 cards remaining",
+                "Today’s cards",
+                "18 cards left",
                 (
                     "176 cards complete",
-                    "+10 Garden Coins when today’s cards are complete",
+                    "+10 Coins when today’s cards are complete",
                 ),
                 finds_line="Garden Finds · 2 of 3 today",
             ),
@@ -165,9 +165,9 @@ def test_today_page_copy_has_no_goal_or_find_drought_language() -> None:
         "52 / 75",
     ):
         assert forbidden not in literals
-    assert "starting workload" in literals
-    assert "next study day starts" in literals
-    assert "next study day" in literals
+    assert "cards due at the start" in literals
+    assert "resets" in literals
+    assert "scheduled scenery bonus" in literals
 
 
 def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> None:
@@ -213,8 +213,8 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
         "3 / 3 earned today · Daily limit reached"
     )
     assert result.status.finds_detail == ""
-    assert result.status.heading == "TODAY’S CARDS"
-    assert result.status.primary == "18 cards remaining"
+    assert result.status.heading == "Today’s cards"
+    assert result.status.primary == "18 cards left"
     assert result.status.secondary == ("176 cards studied",)
     assert result.weather_name == "Watering Station"
     assert result.scenery_name == "Spring Bloom"
@@ -251,7 +251,7 @@ def test_today_projection_uses_unavailable_copy_when_verification_fails() -> Non
 
     result = project(engine, storage, verification_failed=True)
 
-    assert result.status.heading == "CARD STATUS UNAVAILABLE"
+    assert result.status.heading == "Card status unavailable"
     assert result.status.primary == (
         "Anki Garden could not verify today’s cards. "
         "Normal Garden Growth is unaffected."

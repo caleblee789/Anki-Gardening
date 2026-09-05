@@ -1572,9 +1572,32 @@ PlantGrowthDisplay = StageProgress
 
 
 def growth_display(growth_points: Any) -> PlantGrowthDisplay:
-    """Compatibility wrapper for the shared renderer-neutral projection."""
+    """Keep engine stage boundaries while retaining fractional display Growth."""
 
-    return stage_progress(growth_points)
+    result = stage_progress(growth_points)
+    try:
+        exact = max(0, round(float(growth_points), 2))
+    except (TypeError, ValueError):
+        return result
+    if exact == int(exact):
+        return result
+    current = 0 if result.fully_grown else round(exact - result.stage_start, 2)
+    return replace(result, total_growth=exact, projected_total=exact,
+        stage_points=current,
+        points_remaining=round(max(0, (result.next_threshold or exact) - exact), 2),
+        progress=1.0 if result.fully_grown else current / result.stage_goal)
+
+
+def plant_growth_points(plant: Any) -> int | float:
+    """Read exact hundredths; support compatibility snapshots with whole points."""
+    if plant is None:
+        return 0
+    units = getattr(plant, "growth_units", None)
+    if units is None:
+        value = getattr(plant, "growth_points", 0) or 0
+    else:
+        value = max(0, int(units)) / 100
+    return int(value) if int(value) == value else round(float(value), 2)
 
 
 def _number(value: Any, default: float, low: float, high: float) -> float:

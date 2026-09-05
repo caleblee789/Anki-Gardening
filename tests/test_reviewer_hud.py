@@ -107,15 +107,15 @@ def test_today_cards_is_global_compact_and_has_no_find_cap_copy() -> None:
     in_progress = project_today_cards(state_for("in_progress"))
     assert in_progress.heading == "Today’s cards"
     assert in_progress.primary == "176 / 194"
-    assert in_progress.secondary == ("18 cards remaining",)
+    assert in_progress.secondary == ("18 cards left",)
     assert (in_progress.progress_value, in_progress.progress_maximum) == (176, 194)
     assert in_progress.remaining_count == 18
     assert in_progress.finds_line == ""
     assert in_progress.finds_detail == ""
 
     complete = project_today_cards(state_for("complete"))
-    assert complete.heading == "All cards complete"
-    assert complete.primary == "+10 Garden Coins"
+    assert complete.heading == "Today’s cards complete"
+    assert complete.primary == "+10 Coins"
     assert complete.secondary == ("176 cards studied today",)
     assert complete.progress_percent == 100
 
@@ -144,7 +144,7 @@ def test_today_cards_counts_new_only_obligations_once() -> None:
     ))
 
     assert projection.primary == "0 / 20"
-    assert projection.secondary == ("20 cards remaining",)
+    assert projection.secondary == ("20 cards left",)
     assert (projection.progress_value, projection.progress_maximum) == (0, 20)
     assert projection.remaining_count == 20
 
@@ -159,7 +159,7 @@ def test_today_cards_reconciles_mixed_new_review_and_learning_obligations() -> N
     ))
 
     assert projection.primary == "176 / 194"
-    assert projection.secondary == ("18 cards remaining",)
+    assert projection.secondary == ("18 cards left",)
     assert (projection.progress_value, projection.progress_maximum) == (176, 194)
     assert projection.remaining_count == 18
 
@@ -174,13 +174,13 @@ def test_complete_today_card_uses_engine_confirmed_coin_reward() -> None:
         state_for("complete"),
     )
 
-    assert projection.today.primary == "+15 Garden Coins"
+    assert projection.today.primary == "+15 Coins"
     assert projection.today.completion_reward_coins == 15
     singular = project_today_cards(
         state_for("complete"),
         completion_reward_coins=1,
     )
-    assert singular.primary == "+1 Garden Coin"
+    assert singular.primary == "+1 Coin"
     unawarded = state_for("complete", reward_claimed=False)
     unawarded.daily_stats.completed_due_cards = False
     pending = project_today_cards(unawarded)
@@ -200,7 +200,7 @@ def test_incomplete_today_progress_retains_an_end_gap_at_175_of_176() -> None:
     ))
 
     assert projection.primary == "175 / 176"
-    assert projection.secondary == ("1 card remaining",)
+    assert projection.secondary == ("1 card left",)
     assert projection.progress_percent == 99
     assert (_TODAY_PROGRESS_SCALE, _TODAY_INCOMPLETE_VISUAL_MAX) == (1_000, 985)
 
@@ -230,7 +230,7 @@ def test_waiting_and_unavailable_states_remain_concise() -> None:
     ineligible = project_today_cards(state_for("not_eligible"))
     assert (ineligible.heading, ineligible.primary) == (
         "Today’s cards",
-        "No cards due right now",
+        "No cards due",
     )
     unavailable = project_today_cards(state_for("unavailable"))
     assert unavailable.primary == "Card status unavailable"
@@ -305,7 +305,7 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
         "Booster Potion · 38 cards remaining",
         "Garden decoration · +0.5 Growth",
         "Scenery · +0.25 Growth",
-        "Streak bonus · +1 Growth",
+        "Garden Rhythm · +1 Growth",
     )
     assert nurture.visible_effect_art_refs == (
         "fertilizer_quality",
@@ -637,7 +637,7 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
     assert _session_metric_labels(1_800, 0, 0) == ("+18 Growth",)
     assert _session_metric_labels(1_800, 2, 1) == (
         "+18 Growth",
-        "+2 Garden Coins",
+        "+2 Coins",
         "1 Garden Find",
     )
     # A rapid answer may arrive while the prior Coin count-up is still showing

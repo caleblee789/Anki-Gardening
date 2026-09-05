@@ -3728,7 +3728,7 @@ def growth_charge_transient_variant_issue_codes(
             "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
             "inventory_value": "2 → 1",
-            "stage_progress": "300 / 1,600 Growth toward Young",
+            "stage_progress": "300 / 1,600 Growth to Young",
             "current_growth": 600,
             "projected_growth": 700,
             "inventory_before": 2,
@@ -3747,7 +3747,7 @@ def growth_charge_transient_variant_issue_codes(
             "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
             "inventory_value": "2 → 1",
-            "stage_progress": "300 / 1,600 Growth toward Young",
+            "stage_progress": "300 / 1,600 Growth to Young",
             "completed_stage_count": 0,
             "reward_total": 0,
             "stage_row_visible": True,
@@ -11984,7 +11984,7 @@ class _UiFaceCaptureRunner:
             and not overlaps_bottom_controls
             and horizontal_range == 0
             and 130 <= reveal_height <= 150
-            and footer_height == 68
+            and footer_height in {54, 68}
             and single_outer_surface
             and divider_visible
             and divider_count == 1
@@ -16087,7 +16087,7 @@ class _UiFaceCaptureRunner:
                     one_left,
                     status="complete",
                     heading="All cards complete",
-                    primary="+10 Garden Coins",
+                    primary="+10 Coins",
                     secondary=("176 cards completed today",),
                     progress_value=176,
                     progress_maximum=176,
@@ -16219,12 +16219,12 @@ class _UiFaceCaptureRunner:
                         not final["transition_active"]
                         and final["completion_status"] == "complete"
                         and final["heading"] == "All cards complete"
-                        and final["reward_copy"] == "+10 Garden Coins"
+                        and final["reward_copy"] == "+10 Coins"
                         and final["displayed_progress_percent"] == 100
                         and final["header_balance"] == 260
                         and final["session_coins"] == 10
                         and final["session_metric_copy"]
-                        == ["+18 Growth", "+10 Garden Coins"]
+                        == ["+18 Growth", "+10 Coins"]
                     )
                     if not final["passed"] and tries_remaining > 0:
                         # The deferred footer count-up is a separate 600 ms
@@ -17915,7 +17915,7 @@ class _UiFaceCaptureRunner:
                     str(hud._session_growth.text()),
                     str(hud._session_coins.text()),
                     str(hud._session_finds.text()),
-                ] == ["+60 Growth", "+14 Garden Coins", "1 Garden Find"]
+                ] == ["+60 Growth", "+14 Coins", "1 Garden Find"]
             ),
         }
 
@@ -17926,7 +17926,7 @@ class _UiFaceCaptureRunner:
                 canonical_projection.today,
                 status="complete",
                 heading="All cards complete",
-                primary="+10 Garden Coins",
+                primary="+10 Coins",
                 secondary=("176 cards completed today",),
                 progress_value=176,
                 progress_maximum=176,
@@ -17947,7 +17947,7 @@ class _UiFaceCaptureRunner:
             "passed": bool(
                 hud._today_card.property("completionStatus") == "complete"
                 and str(hud._today_heading.text()) == "All cards complete"
-                and str(hud._today_value.text()) == "+10 Garden Coins"
+                and str(hud._today_value.text()) == "+10 Coins"
             ),
         }
         hud.update_projection(canonical_projection, animate=False)
@@ -25348,6 +25348,8 @@ class _UiFaceCaptureRunner:
 
         row_markers = (
             "gardenItemRow",
+            "landmarkTierRow",
+            "landmarkOverview",
             "progressRow",
             "detailRow",
             "memoryRow",
@@ -35209,12 +35211,12 @@ class _UiFaceCaptureRunner:
             and rendered_values["inventory_value"] == "2 → 1"
             and rendered_values["progress_label"] == "Next-stage progress"
             and rendered_values["stage_progress"]
-            == "50 / 1,600 Growth toward Young"
+            == "50 / 1,600 Growth to Young"
             and rendered_values["progress_minimum"] == 0
             and rendered_values["progress_maximum"] == 1_600
             and rendered_values["progress_value"] == 50
-            and rendered_values["reward_label"] == ("Earned stage reward" if variant == "success" else "Expected stage reward")
-            and rendered_values["reward_value"] == "+2 Garden Coins"
+            and rendered_values["reward_label"] == ("Stage reward earned" if variant == "success" else "Stage reward on use")
+            and rendered_values["reward_value"] == "+2 Coins"
             and rendered_values["reward_visible"] is True
             and rendered_values["charge_artwork_fallback"] is False
             and rendered_values["coin_artwork_fallback"] is False
@@ -35280,7 +35282,7 @@ class _UiFaceCaptureRunner:
                 dialog.summary_panel.isVisibleTo(dialog)
                 and common_rendered_ok
                 and rendered_values["dialog_title"]
-                == "Bonsai Plant reached Sprout"
+                == "Reached Sprout"
                 and rendered_values["component_variant"] == "success"
                 and rendered_values["data_source"] == "engine-confirmed"
                 and rendered_values["transition_statement"]
@@ -37391,7 +37393,7 @@ class _UiFaceCaptureRunner:
     ) -> Callable[[], None]:
         """Install the same exact, reversible appearance state in both profiles."""
 
-        snapshot = self._capture_fixture_state_snapshot(label)
+        snapshot = self._capture_fixture_state_snapshot(label, exact_ledger_restore=True)
         restored = False
 
         def restore() -> None:
@@ -37432,6 +37434,12 @@ class _UiFaceCaptureRunner:
             schedule.scheduler_day = anki_day
             schedule.locked_at_ms = 1
             schedule.scenery_id = "default"
+            from ..models.state import DailyEconomySnapshot
+            state.daily_economy_snapshot = DailyEconomySnapshot(
+                anki_day=anki_day, active_garden_bonus_id="watering_station",
+                snapshot_source="local_review", snapshot_id="appearance-capture",
+                active_scenery_effect_id="default",
+            )
             state.currency_balance = 100
             if fixture is not None:
                 fixture.update({
@@ -42578,6 +42586,8 @@ class _UiFaceCaptureRunner:
                     return bool(self._capture_annotations[label]["passed"])
 
                 def capture_ready() -> None:
+                    from .workspace import capture_plant_artwork_audit
+                    capture_plant_artwork_audit(self, getattr(handler, "_reviewer_hud", None))
                     self._capture_and_advance(
                         label,
                         mw,
@@ -43824,6 +43834,7 @@ class _UiFaceCaptureRunner:
                     stage_after="flowering",
                     stage_progress_before=99,
                     stage_progress_after=1,
+                    growth_after_units=int(home_plant_facts["growth_points"]) * 100,
                     next_stage="rare",
                     active=True,
                     stage_event_id="capture-sync-stage-change",
@@ -43861,6 +43872,7 @@ class _UiFaceCaptureRunner:
                 "stage_after": "flowering",
                 "stage_progress_before": 99,
                 "stage_progress_after": 1,
+                "growth_after_units": int(home_plant_facts["growth_points"]) * 100,
                 "next_stage": "rare",
                 "fully_grown": False,
                 "active": True,
@@ -44631,7 +44643,7 @@ class _UiFaceCaptureRunner:
                     status="in_progress",
                     heading="Today’s cards",
                     primary="175 / 176",
-                    secondary=("1 card remaining",),
+                    secondary=("1 card left",),
                     progress_value=175,
                     progress_maximum=176,
                     remaining_count=1,

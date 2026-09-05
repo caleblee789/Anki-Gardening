@@ -129,7 +129,7 @@ def _plural_cards(count: int, *, completed: bool = False) -> str:
 
 
 def _remaining_cards(count: int) -> str:
-    return f"{_plural_cards(count)} remaining"
+    return f"{_plural_cards(count)} left"
 
 
 def _due_time(seconds: int) -> str:
@@ -298,7 +298,7 @@ class TodayCardsSnapshot:
         if self.display_lines:
             return self.display_lines
         if self.status == "complete":
-            return ("All of today’s cards complete",)
+            return ("Today’s cards complete",)
         if self.status == "waiting_for_learning":
             count = self.waiting_cards
             return (
@@ -306,7 +306,7 @@ class TodayCardsSnapshot:
                 f"Next card in {_due_time(self.next_due_in_seconds)}",
             )
         if self.status == "not_eligible":
-            return ("No cards were due today",)
+            return ("No cards due",)
         if self.status == "unavailable":
             return (
                 "Card status unavailable",
@@ -1544,7 +1544,7 @@ def project_today_cards(
     completed = max(0, int(end.cards_completed))
 
     if is_complete:
-        status_text = "All of today’s cards complete"
+        status_text = "Today’s cards complete"
     elif end.status in {"in_progress", "waiting_for_learning"}:
         if end.kind == "daily_target":
             status_text = f"{remaining:,} to goal"
@@ -1555,12 +1555,12 @@ def project_today_cards(
             )
             status_text = f"{_remaining_cards(remaining)}{suffix}"
     elif end.status == "not_eligible":
-        status_text = "No cards were due today"
+        status_text = "No cards due"
     else:
         status_text = "Card status unavailable"
 
     supporting = (
-        f"{completed:,} of {format_quantity(total, 'card')} completed"
+        f"{completed:,} / {total:,} completed"
         if total > 0 else ""
     )
     if end.status == "waiting_for_learning" and end.next_due_in_seconds > 0:
@@ -1800,7 +1800,7 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
     if summary.garden_coins_total:
         rows.append(ResultRow(
             "garden_coins",
-            "Garden Coins",
+            "Coins",
             f"+{summary.garden_coins_total:,}",
             summary.coin_sources_reconciled and bool(summary.coin_sources),
         ))
@@ -2121,7 +2121,7 @@ class SessionSummaryAccumulator:
                     "fertilizer",
                     effect_id,
                     final.name,
-                    f"{_plural_cards(final.remaining_cards)} remaining",
+                    f"{_plural_cards(final.remaining_cards)} left",
                     plant_id=final.plant_id,
                     remaining_cards=final.remaining_cards,
                 ))
@@ -2158,7 +2158,7 @@ class SessionSummaryAccumulator:
                     "booster",
                     effect_id,
                     final.name,
-                    f"{_plural_cards(final.remaining_cards)} remaining",
+                    f"{_plural_cards(final.remaining_cards)} left",
                     plant_id=final.plant_id,
                     remaining_cards=final.remaining_cards,
                 ))

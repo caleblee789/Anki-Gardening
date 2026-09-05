@@ -153,10 +153,10 @@ def format_garden_coins(
     """Format a Garden Coin value once for every renderer."""
 
     number = int(_to_decimal(value))
-    amount = _signed_integer(number) if signed else f"{number:,}"
+    amount = (_signed_integer(number) if signed else f"{number:,}").replace("-", "−")
     if not include_unit:
         return amount
-    unit = "Garden Coin" if abs(number) == 1 else "Garden Coins"
+    unit = "Coin" if abs(number) == 1 else "Coins"
     return f"{amount} {unit}"
 
 
@@ -182,7 +182,7 @@ def format_stage_progress(value: Any, maximum: Any, destination: str) -> str:
     """Format the one visible progress expression used by Garden surfaces."""
 
     return (
-        f"{format_growth(value, maximum, include_unit=False)} Growth toward "
+        f"{format_growth(value, maximum, include_unit=False)} Growth to "
         f"{format_status_label(destination)}"
     )
 

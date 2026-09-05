@@ -123,16 +123,16 @@ def fertilizer_queue_copy(
     predecessor = str(predecessor_name or "the active Fertilizer").strip()
     return (
         f"{fertilizer_effect_copy(growth_per_card)} for "
-        f"{card_count_label(card_count)} once it starts.\n"
+        f"{card_count_label(card_count)}.\n"
         f"Starts after {predecessor}."
     )
 
 
 _GARDEN_BONUS_EFFECT_COPY = {
     "watering_station": (
-        "Earn +1 bonus Growth every 5 cards during your first 100 cards each day."
+        "+1 Growth every 5 cards, during your first 100 cards each day."
     ),
-    "wind_chime": "Earn +1 bonus Growth every 10 cards.",
+    "wind_chime": "+1 Growth every 10 cards.",
     "firefly_lantern": (
         "Every 5 cards, the unfinished plant nearest its next checkpoint gains "
         "+3 Growth."
@@ -158,11 +158,41 @@ _GARDEN_BONUS_EFFECT_COPY = {
 }
 
 
+_GARDEN_BONUS_SUMMARIES = {
+    "seedling_sign": "No bonus",
+    "default": "No bonus",
+    "wind_chime": "+1 Growth every 10 cards",
+    "harvest_bell": "+5 Coins when today’s cards are complete",
+    "watering_station": "+1 Growth every 5 cards\nFirst 100 cards each day",
+    "herbalist_hourglass": "Potion every 30 completed days\n+25 cards for Potions",
+    "firefly_lantern": "+3 Growth every 5 cards\nPlant nearest a checkpoint",
+    "prism_trellis": "+1 Growth/card · first 100/day\nStores up to 300 Growth\nFinish today’s cards to release",
+    "spring": "+2 Growth per card\nFirst 20 cards each day",
+    "summer": "+1 Growth every 2 cards\nFirst 120 cards each day",
+    "autumn": "+4 Coins for today’s cards\n+50% plant milestone Coins",
+    "snowy": "Small Growth Charge every 2 days you finish today’s cards",
+    "rainbow_horizon": "+1 Growth per card\nFirst 75 cards each day",
+    "halloween": "Growth Charge or Potion when today’s cards are complete",
+    "full_moon": "Booster Potion every 6 days you finish today’s cards",
+    "eclipse": "+1 Growth per card\nFirst 125 cards each day",
+}
+
+
+def garden_bonus_summary(item_id: str, full_effect: str = "") -> str:
+    """Compact browsing copy; the selected item retains every full condition."""
+    return _GARDEN_BONUS_SUMMARIES.get(str(item_id), full_effect or "No bonus")
+
+
 def learner_card_copy(value: object) -> str:
     """Remove internal eligibility/review cadence terms from visible copy only."""
 
     text = str(value or "")
     replacements = (
+        (r"\beach Anki day\b", "each day"),
+        (r"\bone Anki day\b", "one day"),
+        (r"\b(\d+)-Day Anki Streak\b", r"\1-day Anki streak"),
+        (r"\bnext study day\b", "tomorrow"),
+        (r"\bNext study day\b", "Tomorrow"),
         (r"\beligible card answers\b", "cards"),
         (r"\beligible card answer\b", "card"),
         (r"\beligible cards\b", "cards"),

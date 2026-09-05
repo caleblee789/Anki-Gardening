@@ -59,6 +59,8 @@ def _release_background(manifest: dict) -> dict:
     [
         (0, "seed", "sprout", 400),
         (399, "seed", "sprout", 1),
+        (399.5, "seed", "sprout", 0.5),
+        (450.25, "sprout", "young", 1549.75),
         (400, "sprout", "young", 1_600),
         (5_999, "young", "mature", 1),
         (15_000, "flowering", "rare", 20_000),

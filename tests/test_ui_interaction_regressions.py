@@ -29,6 +29,7 @@ from ankigarden.ui.plant_display import (
     chronological_memories,
     move_badge_label,
     move_target_state,
+    plant_growth_points,
     plant_layout,
     repair_unique_slot_items,
     story_is_just_beginning,
@@ -772,6 +773,7 @@ def test_story_escape_cancels_rename_and_restores_focus_to_edit_button() -> None
 
     story = SimpleNamespace(
         name_heading=Widget(),
+        rename_host=Widget(),
         name_edit=Widget(),
         save_name_btn=Widget(),
         cancel_name_btn=Widget(),
@@ -805,6 +807,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
         "_settings_scene_snapshot",
         {
             "growth_display": lambda _points: SimpleNamespace(progress=0.37),
+            "plant_growth_points": plant_growth_points,
             "project_garden_appearance": lambda _state: SimpleNamespace(
                 active_bonus_decoration_id="watering_station",
                 visual_effects_enabled=True,

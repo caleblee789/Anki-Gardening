@@ -523,8 +523,8 @@ def test_secondary_reward_priority_is_semantic_stable_and_metadata_rich() -> Non
         RewardItemProjection(
             "coins:daily",
             RewardHero.COIN_OR_BOOSTER,
-            "Garden Coins",
-            "Garden Coin reward",
+            "Coins",
+            "Coin reward",
             garden_coins=10,
             sequence=16,
         ),
@@ -716,7 +716,7 @@ def test_session_history_names_meaningful_events_and_aggregates_routine_growth()
         "Firefly Evening",
         "Growth applied",
     )
-    assert rows[0].value == "Rose · +14 Garden Coins"
+    assert rows[0].value == "Rose · +14 Coins"
     assert rows[1].category_label == "Garden Find"
     assert rows[1].value == "+40 Growth"
     assert rows[2].category_label == "Discovery"
@@ -749,8 +749,8 @@ def test_detail_action_tracks_structured_rows_instead_of_hidden_count() -> None:
         (RewardItemProjection(
             "coins:daily",
             RewardHero.COIN_OR_BOOSTER,
-            "Garden Coins",
-            "Garden Coin reward",
+            "Coins",
+            "Coin reward",
             garden_coins=3,
         ),),
     )
@@ -819,7 +819,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
         RewardDetailRow(
             category_label="Full Bloom",
             name="Rose",
-            value="Reached Full Bloom · +14 Garden Coins",
+            value="Reached Full Bloom · +14 Coins",
             event_ids=("bloom:rose",),
             artwork_ref="rose-rare.webp",
         ),
@@ -846,7 +846,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
         RewardDetailRow(
             category_label="Checkpoint reached",
             name="Rose",
-            value="75% toward Flowering · +2 Garden Coins",
+            value="75% toward Flowering · +2 Coins",
             event_ids=("checkpoint:rose:75",),
         ),
     )

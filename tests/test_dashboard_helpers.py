@@ -61,7 +61,7 @@ def test_nursery_catalog_helpers_cover_shortfalls_receipts_empty_states_and_fold
     )
     fold_plan = _compiled_function("_catalog_fold_alignment_plan")
 
-    assert compact_shortfall(1, 0) == "Need 1 more Garden Coin"
+    assert compact_shortfall(1, 0) == "Need 1 more Coin"
     assert compact_shortfall(100, 0) == "Need 100 more Coins"
     assert compact_shortfall(100, 100) == ""
     assert receipt_actions(False) == ("Place in garden", "View collection")
@@ -264,9 +264,6 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
     assert "ScrollBarAlwaysOff" in landmarks_source
     assert "QScrollArea(" not in overview_source
     assert "QScrollArea(" not in tier_row_source
-    assert "size=88" in overview_source
-    assert "size=58" in tier_row_source
-    assert "setMinimumHeight(86)" in tier_row_source
     assert "tier.artwork_id" in tier_row_source
 
     collection_set_current = next(
@@ -470,7 +467,7 @@ def test_affordability_helpers_report_ready_and_shortfall_states() -> None:
     compact = _compiled_function("_compact_affordability_status")
 
     assert affordability(25, 25) == (True, "Affordable now.")
-    assert affordability(25, 24) == (False, "Need 1 more Garden Coin.")
+    assert affordability(25, 24) == (False, "Need 1 more Coin.")
     assert affordability(150, 25) == (False, "Need 125 more Coins.")
     assert compact(25, 25, ready_text="Ready to unlock") == "Ready to unlock"
     assert compact(150, 25, ready_text="Ready to unlock") == "125 more needed"

@@ -63,7 +63,7 @@ def test_reviewer_effect_rows_use_cards_and_garden_rhythm() -> None:
         "Basic Fertilizer · 23 cards remaining",
         "fertilizer_basic",
     ) in rows
-    assert ("Streak bonus · +0.2 Growth", "") in rows
+    assert ("Garden Rhythm · +0.2 Growth", "") in rows
     assert not any(" h" in label or " min" in label for label, _asset in rows)
 
 

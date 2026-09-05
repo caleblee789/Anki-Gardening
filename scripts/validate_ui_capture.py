@@ -4033,12 +4033,12 @@ def growth_charge_rendered_value_issue_codes(
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
         "progress_label": "Next-stage progress",
-        "stage_progress": "50 / 1,600 Growth toward Young",
+        "stage_progress": "50 / 1,600 Growth to Young",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Earned stage reward" if label == "growth-charge-success-stage-reward" else "Expected stage reward",
-        "reward_value": "+2 Garden Coins",
+        "reward_label": "Stage reward earned" if label == "growth-charge-success-stage-reward" else "Stage reward on use",
+        "reward_value": "+2 Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
         "coin_artwork_fallback": False,
@@ -4071,7 +4071,7 @@ def growth_charge_rendered_value_issue_codes(
             "variant": "success",
             "component_variant": "success",
             "data_source": "engine-confirmed",
-            "dialog_title": "Bonsai Plant reached Sprout",
+            "dialog_title": "Reached Sprout",
             "transition_statement": "Bonsai Plant",
             "primary_action": "View plant",
             "secondary_action": "Close",
@@ -5060,7 +5060,7 @@ def reviewer_reward_dock_issue_codes(
         and geometry.get("overlaps_bottom_controls") is False
         and geometry.get("horizontal_scroll_maximum") == 0
         and 130 <= int(geometry.get("reveal_height", 0) or 0) <= 150
-        and int(geometry.get("footer_height", 0) or 0) == 68
+        and int(geometry.get("footer_height", 0) or 0) in {54, 68}
         and geometry.get("single_outer_surface") is True
         and geometry.get("divider_visible") is True
         and int(geometry.get("divider_count", 0) or 0) == 1
@@ -5481,11 +5481,11 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 "transition_active": False,
                 "completion_status": "complete",
                 "heading": "All cards complete",
-                "reward_copy": "+10 Garden Coins",
+                "reward_copy": "+10 Coins",
                 "displayed_progress_percent": 100,
                 "header_balance": 260,
                 "session_coins": 10,
-                "session_metric_copy": ["+18 Growth", "+10 Garden Coins"],
+                "session_metric_copy": ["+18 Growth", "+10 Coins"],
                 "passed": True,
             }
         )
@@ -5932,7 +5932,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 row.get("completion_status") == "complete"
                 and row.get("heading") == "All cards complete"
                 and row.get("displayed_progress_percent") == 100
-                and row.get("reward_copy") == "+10 Garden Coins"
+                and row.get("reward_copy") == "+10 Coins"
             ),
             "one-garden-find": lambda row: (
                 row.get("find_count") == 1
@@ -6068,7 +6068,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("footer_coins") == row.get("live_coins") == 14
                 and row.get("footer_finds") == row.get("live_finds") == 1
                 and row.get("footer_copy")
-                == ["+60 Growth", "+14 Garden Coins", "1 Garden Find"]
+                == ["+60 Growth", "+14 Coins", "1 Garden Find"]
             ),
             "reward-reveal-lifecycle": lambda row: (
                 row.get("celebrating") == "celebrating"

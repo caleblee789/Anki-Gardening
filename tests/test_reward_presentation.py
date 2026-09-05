@@ -68,7 +68,7 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
         "", "growth_charge_small", "fertilizer_basic", "",
     ]
     assert summaries[0].learner_text == (
-        "+100 Garden Coins, +1 Small Growth Charge, +1 Basic Fertilizer, and "
+        "+100 Coins, +1 Small Growth Charge, +1 Basic Fertilizer, and "
         "+5 Growth"
     )
     assert summaries[1].event_key == "bundle:2"
@@ -199,7 +199,7 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
         reward_small_growth_charges=2,
         reward_standard_growth_charges=1,
     ).reward_summary == (
-        "1 Garden Coin and 2 Small Growth Charges and 1 Standard Growth Charge"
+        "1 Coin and 2 Small Growth Charges and 1 Standard Growth Charge"
     )
 
     assert "retention_90" not in {
@@ -248,17 +248,17 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
         for item in recurring_reward_presentations(state, engine)
     }
 
-    assert rules["daily_activity"].reward_summary == "+2 Garden Coins"
+    assert rules["daily_activity"].reward_summary == "+2 Coins"
     assert rules["daily_activity"].title == "First card today"
     assert rules["daily_activity"].trigger == "Complete your first card today."
     assert rules["daily_activity"].status == "Earned today"
     assert rules["all_due"].title == "Today’s Cards"
     assert rules["all_due"].trigger == "Complete today’s cards."
     assert rules["all_due"].reward_summary == (
-        "+12 Garden Coins and +5 Growth"
+        "+12 Coins and +5 Growth"
     )
     assert all_due_calls == [True]
-    assert rules["weekly_streak"].reward_summary == "+10 Garden Coins"
+    assert rules["weekly_streak"].reward_summary == "+10 Coins"
     assert rules["weekly_streak"].next_streak_day == 7
     assert rules["weekly_streak"].streak_days_remaining == 1
 
@@ -297,7 +297,7 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
     }
     assert committed_rules["all_due"].awarded_today is True
     assert committed_rules["all_due"].reward_summary == (
-        "+12 Garden Coins and +5 Growth"
+        "+12 Coins and +5 Growth"
     )
     assert all_due_calls == []
 

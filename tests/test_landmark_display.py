@@ -16,7 +16,9 @@ from ankigarden.ui.home_widget import (
 )
 from ankigarden.ui.landmark_display import (
     GARDEN_LANDMARK_ANCHOR,
+    GARDEN_LANDMARK_ANCHORS,
     project_garden_landmark_rect,
+    project_landmark_artwork_rect,
 )
 
 
@@ -77,7 +79,23 @@ def test_home_and_main_scene_project_the_same_fixed_landmark_anchor() -> None:
         assert top / height == GARDEN_LANDMARK_ANCHOR.top
         assert projected_width / width == GARDEN_LANDMARK_ANCHOR.width
         assert projected_height / height == GARDEN_LANDMARK_ANCHOR.height
-    assert GARDEN_LANDMARK_ANCHOR.identity == "0.360,0.180,0.280,0.520"
+    assert set(GARDEN_LANDMARK_ANCHORS) == {
+        "mossy_stone_path", "birdbath_terrace", "lily_pond",
+        "wooden_footbridge", "garden_pergola", "glasshouse_conservatory",
+    }
+    for landmark_id in GARDEN_LANDMARK_ANCHORS:
+        for width, height in ((1000.0, 420.0), (1260.0, 840.0)):
+            left, top, projected_width, projected_height = project_landmark_artwork_rect(
+                0.0, 0.0, width, height, landmark_id,
+            )
+            assert 0.0 <= top < top + projected_height <= height * 0.41
+            assert left + projected_width / 2 == width / 2
+            if landmark_id in {"mossy_stone_path", "lily_pond"}:
+                assert projected_width > projected_height
+            else:
+                assert projected_width == projected_height
+    assert (GARDEN_LANDMARK_ANCHORS["mossy_stone_path"].height
+            < GARDEN_LANDMARK_ANCHORS["glasshouse_conservatory"].height)
 
 
 def test_home_landmark_remains_absent_after_landmarks_move_to_collection() -> None:

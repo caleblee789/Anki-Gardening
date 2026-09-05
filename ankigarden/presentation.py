@@ -25,6 +25,115 @@ def _read(source: Any, key: str, default: Any = None) -> Any:
     return getattr(source, key, default)
 
 
+@dataclass(frozen=True)
+class GardenSetupItem:
+    kind: str
+    appearance_id: str
+    appearance_name: str
+    visible: bool
+    bonus_id: str = ""
+    bonus_name: str = ""
+    effect: str = "No bonus"
+    timing: str = ""
+    scheduled_id: str = ""
+    scheduled_name: str = ""
+    scheduled_effect: str = ""
+
+
+@dataclass(frozen=True)
+class GardenSupplyEffect:
+    name: str
+    effect: str
+    plant_id: str = ""
+    plant_name: str = ""
+    remaining_cards: int = 0
+    pending: bool = False
+
+
+@dataclass(frozen=True)
+class GardenSetupProjection:
+    items: tuple[GardenSetupItem, ...]
+    effects: tuple[GardenSupplyEffect, ...]
+    next_day_start_ms: int
+
+
+def project_garden_setup(engine: Any, storage: Any) -> GardenSetupProjection:
+    """Read committed appearance and engine-resolved effects without transactions.
+
+    In particular, previewing this projection must never start a review session,
+    quote an item, roll the day, or lock the daily bonus.
+    """
+    from .balance_catalog import COSMETIC_BY_ID
+    from .ui.copy import garden_bonus_effect_copy
+    from .ui.economy_presenters import growth_points
+
+    state = storage.state
+    schedule = state.daily_loadout
+    snapshot = _read(state, "daily_economy_snapshot")
+    today = state.daily_stats.day
+    snapshot_locked = snapshot is not None and snapshot.anki_day == today
+    items = []
+    for kind, appearance_id, catalog, pending_id in (
+        ("scenery", str(state.selected_background), SCENERY_CATALOG,
+         str(schedule.queued_scenery_id or "")),
+        ("garden_feature", str(state.displayed_garden_feature), GARDEN_FEATURE_CATALOG,
+         str(schedule.pending_garden_feature_id or "")),
+    ):
+        active_id = str(engine.locked_environment_id(kind))
+        active = catalog.get(active_id)
+        pending = catalog.get(pending_id) if pending_id != active_id else None
+        def effect(item: Any) -> str:
+            return (garden_bonus_effect_copy(item.item_id, item.effect).strip()
+                    if item is not None and item.effects else "No bonus")
+        items.append(GardenSetupItem(
+            kind, appearance_id, (COSMETIC_BY_ID[appearance_id].display_name
+                if appearance_id in COSMETIC_BY_ID else _catalog_name(catalog, appearance_id)),
+            bool(state.loadout.visibility.get(kind, True)),
+            active_id, _catalog_name(catalog, active_id), effect(active),
+            "Active today" if snapshot_locked else "Ready today",
+            pending_id if pending else "", pending.name if pending else "",
+            effect(pending) if pending else "",
+        ))
+    landmarks = engine.landmark_catalog_summary().get("items", ())
+    displayed = next((row for row in landmarks if row.get("displayed")), None)
+    items.append(GardenSetupItem(
+        "landmark", str(displayed["landmark_id"]) if displayed else "",
+        str(displayed["display_name"]) if displayed else "No landmark displayed",
+        bool(displayed), effect="Cosmetic · No bonus",
+    ))
+    effects = []
+    for plant in state.plants:
+        identity = plant_identity(plant)
+        for field, pending in (("fertilizer_card_batches", False),
+                               ("booster_card_batches", False),
+                               ("fertilizer_card_queue", True),
+                               ("booster_card_queue", True)):
+            grouped: dict[tuple[str, int], int] = {}
+            for batch in _read(plant, field, ()) or ():
+                if batch.remaining_cards > 0:
+                    key = (batch.effect_id, batch.growth_per_card_units)
+                    grouped[key] = grouped.get(key, 0) + batch.remaining_cards
+            for (effect_id, units), cards in grouped.items():
+                tier = effect_id.removeprefix("fertilizer_")
+                spec = getattr(engine, "FERTILIZERS", {}).get(tier)
+                name = "Booster Potion" if effect_id == "booster_potion" else str(
+                    getattr(spec, "name", "") or _identifier_display_name(effect_id))
+                effects.append(GardenSupplyEffect(
+                    name, f"+{growth_points(units)} Growth per card",
+                    identity.plant_id, identity.display_name, cards, pending,
+                ))
+    bonus = engine.current_streak_bonus_percent()
+    if bonus:
+        # This compatibility accessor now returns Garden Rhythm, not a streak
+        # multiplier. Keep the source name faithful to the current economy.
+        effects.append(GardenSupplyEffect("Garden Rhythm", f"+{bonus}% Growth"))
+    cutoff = int(_read(_read(state, "daily_completion"), "cutoff_at_ms", 0) or 0)
+    if not cutoff:
+        resolver = getattr(storage, "current_day_end_ms", None)
+        cutoff = int(resolver() or 0) if callable(resolver) else 0
+    return GardenSetupProjection(tuple(items), tuple(effects), cutoff)
+
+
 def _identifier_display_name(value: Any) -> str:
     return str(value or "").replace("_", " ").strip().title()
 

@@ -426,6 +426,9 @@ class GrowthChargeQuote:
     quote_token: str
     message: str = ""
 
+    current_growth_units: int | None = None
+    projected_growth_units: int | None = None
+
     @property
     def ready(self) -> bool:
         return self.status is GrowthChargeStatus.READY
@@ -489,6 +492,9 @@ class GrowthChargeOutcome:
     inventory_remaining: int
     message: str
 
+    previous_growth_units: int | None = None
+    resulting_growth_units: int | None = None
+
     @property
     def success(self) -> bool:
         return self.status is GrowthChargeStatus.SUCCESS
@@ -501,6 +507,8 @@ class GrowthChargeOutcome:
             "target_id": self.target_id,
             "target_name": self.target_name,
             "previous_growth": self.previous_growth,
+            "previous_growth_units": self.previous_growth_units,
+            "resulting_growth_units": self.resulting_growth_units,
             "resulting_growth": self.resulting_growth,
             "growth_granted": self.growth_granted,
             "previous_stage": self.previous_stage,
@@ -543,6 +551,12 @@ class GrowthChargeOutcome:
             for key in integers
         ):
             return None
+        exact_units = {}
+        for field in ("previous_growth_units", "resulting_growth_units"):
+            raw = value.get(field)
+            if raw is not None and (not isinstance(raw, int) or isinstance(raw, bool) or raw < 0):
+                return None
+            exact_units[field] = raw
         stages = value.get("completed_stages", [])
         raw_rewards = value.get("rewards", [])
         if (
@@ -565,6 +579,7 @@ class GrowthChargeOutcome:
             target_id=str(value["target_id"]),
             target_name=str(value["target_name"]),
             previous_growth=int(value["previous_growth"]),
+            **exact_units,
             resulting_growth=int(value["resulting_growth"]),
             growth_granted=int(value["growth_granted"]),
             previous_stage=str(value["previous_stage"]),

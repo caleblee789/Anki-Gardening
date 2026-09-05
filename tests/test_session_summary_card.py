@@ -78,7 +78,7 @@ def test_session_summary_compact_density_covers_measured_macos_host_heights():
 def test_session_summary_typography_keeps_the_approved_title_and_hero_scale():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     assert "font-size:13px" in source
-    assert "summaryTitle='true'] {font-size:18px" in source
+    assert "summaryTitle='true'] {font-size:16px" in source
     assert "summaryHero='true'] {font-size:40px" in source
     assert "summaryHeroLabel='true']" in source
     assert "font-size:14px;font-weight:520" in source

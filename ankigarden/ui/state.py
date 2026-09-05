@@ -5,7 +5,7 @@ from typing import Any
 from weakref import WeakMethod
 
 from .formatters import format_garden_coins, format_growth, format_integer
-from .plant_display import growth_display
+from .plant_display import growth_display, plant_growth_points
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,7 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
             name=str(getattr(plant, "name", "Plant") or "Plant"),
             species=str(getattr(plant, "species", "plant") or "plant"),
             stage=str(getattr(plant, "growth_stage", "seed") or "seed"),
-            growth_points=max(0, int(getattr(plant, "growth_points", 0) or 0)),
+            growth_points=plant_growth_points(plant),
             slot_index=getattr(plant, "slot_index", None),
             is_active=str(getattr(plant, "plant_id", "") or "") == active_id,
             planted=bool(getattr(plant, "planted", False)),
@@ -351,19 +351,19 @@ def garden_preview_from_values(
         if active_fully_grown:
             summary = (
                 f"{active_name} · {stage_label} · "
-                f"{max(0, int(active_growth_points or 0)):,}"
+                f"{max(0, (active_growth_points or 0)):,}"
             )
         elif int(active_stage_goal or 0) > 0:
             summary = (
                 f"{active_name} · {stage_label} · "
-                f"{max(0, int(active_stage_points or 0)):,} / "
+                f"{max(0, (active_stage_points or 0)):,} / "
                 f"{max(0, int(active_stage_goal or 0)):,} Growth"
             )
         else:
             summary = f"{active_name} · {stage_label}"
     elif planted_starter_name:
         planted_stage = str(planted_starter_stage or "seed").replace("_", " ").title()
-        starter_points = max(0, int(active_stage_points or 0))
+        starter_points = max(0, (active_stage_points or 0))
         starter_goal = max(0, int(active_stage_goal or 0))
         summary = (
             f"{planted_starter_name} · {planted_stage} · "
@@ -381,12 +381,12 @@ def garden_preview_from_values(
         status_text = "Refreshing…"
     elif normalized_phase == "disabled":
         status_text = "Preview hidden"
-    growth_current = max(0, int(active_stage_points or 0))
+    growth_current = max(0, (active_stage_points or 0))
     growth_goal = max(0, int(active_stage_goal or 0))
     growth_text = (
         format_growth(growth_current, growth_goal)
         if growth_goal > 0 and not active_fully_grown
-        else format_growth(max(0, int(active_growth_points or 0)))
+        else format_growth(max(0, (active_growth_points or 0)))
         if active_name
         else ""
     )
@@ -402,7 +402,7 @@ def garden_preview_from_values(
             ),
             GardenPreviewMetric(
                 "coins",
-                "Garden Coins",
+                "Coins",
                 format_garden_coins(max(0, int(garden_currency or 0))),
             ),
         )

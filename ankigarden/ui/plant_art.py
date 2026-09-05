@@ -32,9 +32,9 @@ _PIXMAP_CACHE_LIMIT = 72
 _PIXMAP_CACHE: "OrderedDict[tuple[Any, ...], Any]" = OrderedDict()
 
 THUMBNAIL_STAGE_FILL: dict[str, float] = {
-    "seed": 0.66,
-    "sprout": 0.73,
-    "young": 0.80,
+    "seed": 0.86,
+    "sprout": 0.82,
+    "young": 0.86,
     "mature": 0.87,
     "flowering": 0.91,
     "rare": 1.00,
@@ -45,8 +45,8 @@ THUMBNAIL_STAGE_FILL: dict[str, float] = {
 # scene-calibrated early plant can grow larger than the next stage in Reviewer
 # and Nursery thumbnails even though the surrounding canvas never changes.
 THUMBNAIL_STAGE_MAX_FILL: dict[str, float] = {
-    "seed": 0.76,
-    "sprout": 0.73,
+    "seed": 0.90,
+    "sprout": 0.90,
     "young": 0.90,
     "mature": 0.96,
     "flowering": 0.98,

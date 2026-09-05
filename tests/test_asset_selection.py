@@ -578,11 +578,11 @@ def test_thumbnail_optical_scale_stays_inside_the_stage_canvas_envelope() -> Non
     assert calibrated_thumbnail_fill(
         "sprout",
         {"visual_scale_correction": 0.78},
-    ) == pytest.approx(0.73)
+    ) == pytest.approx(0.90)
     assert calibrated_thumbnail_fill(
         "sprout",
         {"visual_scale_correction": 1.05},
-    ) == pytest.approx(0.73 / math.sqrt(1.05))
+    ) == pytest.approx(0.82 / math.sqrt(1.05))
     assert calibrated_thumbnail_fill(
         "rare",
         {"visual_scale_correction": 0.55},

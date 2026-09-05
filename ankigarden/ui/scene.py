@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from aqt.qt import (
-    QColor, QEvent, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
+    QColor, QEvent, QFont, QImage, QLinearGradient, QRadialGradient, QPainter, QPainterPath, QPen, QPixmap,
     QPointF, QRectF, QTimer, QToolButton, QToolTip, QLabel, QWidget, Qt, pyqtSignal,
 )
 
@@ -29,8 +29,10 @@ from .formatters import format_percent
 from .garden_feature_layout import garden_feature_layout
 from .landmark_display import (
     landmark_asset_identity_matches,
+    landmark_scene_lighting,
     mastery_asset_identity_matches,
-    project_garden_landmark_rect,
+    project_landmark_artwork_rect,
+    project_landmark_contact_shadow_rect,
 )
 from .accessibility import AccessibilityAnnouncer, AnnouncementPriority
 from ..build_capabilities import CAPTURE_HARNESS_ENABLED
@@ -140,6 +142,9 @@ class GardenSceneWidget(QWidget):
         )
         self._highlight_pixmap_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
             BoundedLruCache(HIGHLIGHT_CACHE_LIMIT)
+        )
+        self._landmark_lighting_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
+            BoundedLruCache(SURFACE_CACHE_LIMIT)
         )
         self._file_identity_cache: BoundedLruCache[
             str, tuple[int, int, int, int] | None
@@ -623,6 +628,7 @@ class GardenSceneWidget(QWidget):
             "_raster_cache",
             "_graded_raster_cache",
             "_highlight_pixmap_cache",
+            "_landmark_lighting_cache",
         ):
             cache = getattr(self, name, None)
             if cache is not None:
@@ -1558,6 +1564,22 @@ class GardenSceneWidget(QWidget):
                     0,
                     0,
                 )
+            # Blend only the background perimeter. Foreground artwork and hit
+            # geometry are painted afterwards and retain their original anchors.
+            edge = min(36.0, r.width() / 12.0, r.height() / 12.0)
+            base = QColor(GARDEN_THEME["garden_background"])
+            clear = QColor(base)
+            clear.setAlpha(0)
+            for x1, y1, x2, y2, area in (
+                (r.left(), r.top(), r.left() + edge, r.top(), QRectF(r.left(), r.top(), edge, r.height())),
+                (r.right(), r.top(), r.right() - edge, r.top(), QRectF(r.right() - edge, r.top(), edge, r.height())),
+                (r.left(), r.top(), r.left(), r.top() + edge, QRectF(r.left(), r.top(), r.width(), edge)),
+                (r.left(), r.bottom(), r.left(), r.bottom() - edge, QRectF(r.left(), r.bottom() - edge, r.width(), edge)),
+            ):
+                fade = QLinearGradient(x1, y1, x2, y2)
+                fade.setColorAt(0, base)
+                fade.setColorAt(1, clear)
+                painter.fillRect(area, fade)
             plant_rows = self._layout_plants(self.width(), self.height())
             self._feature_layer_trace = ["background"]
             self._draw_garden_feature(painter, r)
@@ -1736,7 +1758,7 @@ class GardenSceneWidget(QWidget):
                     painter,
                     layout,
                     plant,
-                    selected=selected,
+                    selected=False,
                     hovered=0.0,
                     keyboard_focused=keyboard_focused,
                 )
@@ -1906,8 +1928,8 @@ class GardenSceneWidget(QWidget):
             streak_label = "Study today to start your Anki streak"
         elif streak_bonus > 0:
             streak_label = (
-                f"{streak_days}-day Anki streak with "
-                f"+{streak_bonus}% Growth"
+                f"{streak_days}-day Anki streak · "
+                f"Garden Rhythm +{streak_bonus}% Growth"
             )
         else:
             streak_label = f"{streak_days}-day Anki streak"
@@ -3919,6 +3941,34 @@ class GardenSceneWidget(QWidget):
             self._feature_layer_trace.append("garden-feature")
         return feature_drawn
 
+    def _landmark_pixmap(self, path: str) -> QPixmap | None:
+        """Light a cached copy for the scene, keeping the cutout fully opaque."""
+        brightness, saturation = landmark_scene_lighting(
+            str(self.scene.get("visible_scenery", "default")),
+        )
+        key = (path, self._file_identity_for(path), brightness, saturation)
+        cached = self._landmark_lighting_cache.get(key)
+        if cached is not None:
+            return cached
+        source = self._pixmap_for(path)
+        if source is None:
+            return None
+        image = source.scaled(
+            512, 512, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        ).toImage().convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+        gray = image.convertToFormat(QImage.Format.Format_Grayscale8)
+        tone = QPainter(image)
+        tone.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
+        tone.setOpacity(1.0 - saturation)
+        tone.drawImage(0, 0, gray)
+        tone.setOpacity(1.0)
+        tone.fillRect(image.rect(), QColor(0, 0, 0, round(255 * (1.0 - brightness))))
+        tone.end()
+        result = QPixmap.fromImage(image)
+        self._landmark_lighting_cache[key] = result
+        return result
+
     def _draw_garden_landmark(self, painter: QPainter, rect: QRectF) -> bool:
         """Paint the exact completed Landmark at the Home-shared anchor."""
 
@@ -3934,24 +3984,37 @@ class GardenSceneWidget(QWidget):
         path, _placement = self._asset_record("landmark", value)
         if not path:
             return False
-        x, y, width, height = project_garden_landmark_rect(
+        pixmap = self._landmark_pixmap(path)
+        if pixmap is None:
+            return False
+        x, y, width, height = project_landmark_artwork_rect(
             rect.x(),
             rect.y(),
             rect.width(),
             rect.height(),
+            landmark_id,
         )
         painter.save()
         painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
-        drawn = self._draw_asset_contain(
-            painter,
-            path,
-            QRectF(x, y, width, height),
-            opacity=1.0,
-        )
+        shadow = QRectF(*project_landmark_contact_shadow_rect(
+            rect.x(), rect.y(), rect.width(), rect.height(), landmark_id,
+        ))
+        painter.save()
+        painter.translate(shadow.center())
+        painter.scale(shadow.width() / 2, shadow.height() / 2)
+        gradient = QRadialGradient(0, 0, 1)
+        gradient.setColorAt(0, QColor(3, 20, 11, 68))
+        gradient.setColorAt(0.55, QColor(3, 20, 11, 32))
+        gradient.setColorAt(1, QColor(3, 20, 11, 0))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawEllipse(QRectF(-1, -1, 2, 2))
         painter.restore()
-        if drawn:
-            self._feature_layer_trace.append("garden-landmark")
-        return drawn
+        target = QRectF(x, y, width, height)
+        painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))
+        painter.restore()
+        self._feature_layer_trace.append("garden-landmark")
+        return True
 
     def _draw_surface_occlusion_asset(
         self, painter: QPainter, rect: Any, *, layer: str | None = None

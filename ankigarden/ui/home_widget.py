@@ -21,7 +21,10 @@ from .copy import (
 from .formatters import format_growth, format_status_label
 from .landmark_display import (
     GARDEN_LANDMARK_ANCHOR,
+    GARDEN_LANDMARK_ANCHORS,
     landmark_asset_identity_matches,
+    landmark_ground_compression,
+    landmark_scene_lighting,
     mastery_asset_identity_matches,
 )
 from .state import (
@@ -30,6 +33,7 @@ from .state import (
     preview_with_phase,
 )
 from .plant_display import (
+    plant_growth_points,
     compact_plant_layout,
     growth_display,
     plant_layout,
@@ -164,8 +168,8 @@ def home_surface_view_model(data: HomeWidgetData) -> HomeSurfaceViewModel:
         )
 
     if not str(data.active_plant_name or ""):
-        starter_progress = growth_display(max(0, int(data.active_growth_points)))
-        current = max(0, int(starter_progress.stage_points))
+        starter_progress = growth_display(max(0, data.active_growth_points))
+        current = max(0, starter_progress.stage_points)
         maximum = max(0, int(starter_progress.stage_goal))
         mode = (
             HomeSurfaceMode.ACTIVE_ZERO
@@ -183,7 +187,7 @@ def home_surface_view_model(data: HomeWidgetData) -> HomeSurfaceViewModel:
         )
 
     if bool(data.active_fully_grown):
-        total = max(0, int(data.active_growth_points))
+        total = max(0, data.active_growth_points)
         return HomeSurfaceViewModel(
             HomeSurfaceMode.ACTIVE_COMPLETE,
             HOME_ACTIVE_ACTION,
@@ -192,7 +196,7 @@ def home_surface_view_model(data: HomeWidgetData) -> HomeSurfaceViewModel:
             max(1, total),
         )
 
-    current = max(0, int(data.active_stage_points))
+    current = max(0, data.active_stage_points)
     maximum = max(0, int(data.active_stage_goal))
     mode = (
         HomeSurfaceMode.ACTIVE_ZERO
@@ -667,6 +671,9 @@ HOME_WIDGET_STYLE = """
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+.ag-home__support--plant { display:flex; gap:4px; }
+.ag-home__plant-name { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.ag-home__plant-stage { flex:none; }
 .ag-home__growth-track {
   position:relative;
   left:0;
@@ -860,14 +867,18 @@ def _home_landmark_markup(
         or not landmark_asset_identity_matches(data.landmark_asset, landmark_id)
     ):
         return ""
-    anchor = GARDEN_LANDMARK_ANCHOR
+    anchor = GARDEN_LANDMARK_ANCHORS.get(landmark_id, GARDEN_LANDMARK_ANCHOR)
+    brightness, saturation = landmark_scene_lighting(data.visible_scenery)
+    compression = landmark_ground_compression(landmark_id)
     return (
         '<img class="ag-home__landmark" data-testid="home-garden-landmark" '
         f'data-landmark="{escape(landmark_id, quote=True)}" '
         f'data-landmark-anchor="{anchor.identity}" '
         f'src="{escape(landmark_url, quote=True)}" alt="" aria-hidden="true" '
         f'style="left:{anchor.left * 100:.3f}%;top:{anchor.top * 100:.3f}%;'
-        f'width:{anchor.width * 100:.3f}%;height:{anchor.height * 100:.3f}%" '
+        f'width:{anchor.width * 100:.3f}%;height:{anchor.height * 100:.3f}%;'
+        f'filter:saturate({saturation:.2f}) brightness({brightness:.2f});'
+        f'transform:scaleY({compression:.2f});transform-origin:center bottom" '
         'onerror="this.onerror=null;this.style.display=\'none\';">'
     )
 
@@ -1342,16 +1353,18 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     garden_name_value = str(preview.garden_name or FALLBACK_GARDEN_NAME)
     garden_name = escape(garden_name_value)
     preview_title = preview.title
-    display_growth_current = max(0, int(preview.growth_current))
+    display_growth_current = max(0, preview.growth_current)
     display_growth_goal = max(0, int(preview.growth_goal))
     display_fully_grown = bool(data.active_fully_grown)
     preview_identity = ""
+    preview_plant_name = ""
+    preview_plant_stage = ""
     preview_progress = ""
     preview_support_progress = ""
     if preview.active_plant_name:
         stage = format_status_label(preview.active_stage or preview.stage_text or "Plant")
         if display_fully_grown:
-            display_growth_current = max(0, int(data.active_growth_points))
+            display_growth_current = max(0, data.active_growth_points)
             display_growth_goal = max(1, display_growth_current)
             growth_text = f"{display_growth_current:,} total Growth"
         elif display_growth_goal > 0:
@@ -1360,10 +1373,11 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 display_growth_goal,
             )
             if data.active_next_stage:
-                growth_text += f" toward {format_status_label(data.active_next_stage)}"
+                growth_text += f" to {format_status_label(data.active_next_stage)}"
         else:
             growth_text = preview.growth_text or "0"
         preview_identity = f"{preview.active_plant_name} · {stage}"
+        preview_plant_name, preview_plant_stage = preview.active_plant_name, stage
         preview_progress = growth_text
         preview_support_progress = (
             format_growth(display_growth_current, display_growth_goal)
@@ -1372,13 +1386,14 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
         preview_support = f"{preview_identity} · {preview_support_progress}"
     elif data.planted_starter_name:
-        starter_progress = growth_display(max(0, int(data.active_growth_points)))
-        display_growth_current = max(0, int(starter_progress.stage_points))
+        starter_progress = growth_display(max(0, data.active_growth_points))
+        display_growth_current = max(0, starter_progress.stage_points)
         display_growth_goal = max(0, int(starter_progress.stage_goal))
         starter_stage = format_status_label(
             data.planted_starter_stage or starter_progress.stage or "Seed"
         )
         preview_identity = f"{data.planted_starter_name} · {starter_stage}"
+        preview_plant_name, preview_plant_stage = data.planted_starter_name, starter_stage
         preview_support_progress = format_growth(
             display_growth_current,
             display_growth_goal,
@@ -1386,20 +1401,26 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         preview_progress = preview_support_progress
         if starter_progress.next_stage:
             preview_progress += (
-                f" toward {format_status_label(starter_progress.next_stage)}"
+                f" to {format_status_label(starter_progress.next_stage)}"
             )
         preview_support = f"{preview_identity} · {preview_support_progress}"
     else:
         preview_support = HOME_NO_STARTER_BODY if not starter_selected else preview.summary
         preview_identity = preview_support
+    identity_content = (
+        f'<span class="ag-home__plant-name">{escape(preview_plant_name)}</span> '
+        f'<span class="ag-home__plant-stage">· {escape(preview_plant_stage)}</span>'
+        if preview_plant_name else escape(preview_identity)
+    )
+    support_class = "ag-home__support ag-home__support--plant" if preview_plant_name else "ag-home__support"
     garden_identity_html = (
         '<div class="ag-home__identity">'
         '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
         f'<h2 class="ag-home__focus-name" data-testid="home-title" '
         f'aria-label="{escape(preview_title, quote=True)}" '
         f'title="{escape(preview_title, quote=True)}">{escape(preview_title)}</h2>'
-        f'<span class="ag-home__support" data-testid="home-support" '
-        f'title="{escape(preview_support, quote=True)}">{escape(preview_identity)}</span>'
+        f'<span class="{support_class}" data-testid="home-support" '
+        f'title="{escape(preview_support, quote=True)}">{identity_content}</span>'
         + (
             f'<span class="ag-home__progress-copy" data-testid="home-progress-copy">'
             f'{escape(preview_progress)}</span>'
@@ -1532,7 +1553,7 @@ def build_home_widget_success_data(
     starter_waiting_for_nurture = bool(
         starter_complete and active_plant is None and planted_starter is not None
     )
-    active_growth = growth_display(getattr(active_plant, "growth_points", 0))
+    active_growth = growth_display(plant_growth_points(active_plant))
     environment_visibility = getattr(state, "environment_visibility", {})
     weather_visible = (
         bool(environment_visibility.get(
@@ -1564,7 +1585,7 @@ def build_home_widget_success_data(
         garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
         active_plant_name=str(getattr(active_plant, "name", "") or ""),
         active_stage=str(getattr(active_plant, "growth_stage", "") or ""),
-        active_growth_points=max(0, int(getattr(active_plant, "growth_points", 0) or 0)),
+        active_growth_points=plant_growth_points(active_plant),
         active_stage_points=active_growth.stage_points if active_plant is not None else 0,
         active_stage_goal=active_growth.stage_goal if active_plant is not None else 0,
         active_fully_grown=active_growth.fully_grown if active_plant is not None else False,
@@ -1633,7 +1654,7 @@ def build_home_widget_success_data(
         collection_count=max(0, len(plants)),
         active_plant_name=str(getattr(active_plant, "name", "") or ""),
         active_plant_stage=str(getattr(active_plant, "growth_stage", "") or ""),
-        active_growth_points=max(0, int(getattr(active_plant, "growth_points", 0) or 0)),
+        active_growth_points=plant_growth_points(active_plant),
         active_stage_points=active_growth.stage_points if active_plant is not None else 0,
         active_stage_goal=active_growth.stage_goal if active_plant is not None else 0,
         active_next_stage=str(active_growth.next_stage or "") if active_plant is not None else "",

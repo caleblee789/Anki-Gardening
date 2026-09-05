@@ -63,9 +63,10 @@ def _summary(**changes) -> SyncRewardSummary:
 def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> None:
     assert _plant_progress_copy({
         "stage_after": "flowering",
+        "growth_after_units": 1520050,
         "stage_progress_after": 1,
         "next_stage": "rare",
-    }) == "200 / 20,000 Growth toward Full Bloom"
+    }) == "200.5 / 20,000 Growth to Full Bloom"
     assert _checkpoint_display_text({
         "percent": 75,
         "stage_name": "flowering",
@@ -122,12 +123,12 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
         ("42", "cards", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Coins", "garden_coin"),
-        ("+3", "Finds", "standard_find"),
-        ("+2", "garden discoveries", "garden_discovery"),
+        ("+3", "Garden Finds", "standard_find"),
+        ("+2", "Garden discoveries", "garden_discovery"),
     )
     assert sync_reward_metric_plan(
         _summary(environment_discoveries=discovery_rows[:1])
-    )[-1] == ("+1", "garden discovery", "garden_discovery")
+    )[-1] == ("+1", "Garden discovery", "garden_discovery")
     restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
 
     assert restored is not None

@@ -19,6 +19,7 @@ from ankigarden.ui.home_widget import (
 )
 from ankigarden.models.state import Achievement
 from ankigarden.ui.state import garden_preview_from_values
+from ankigarden.ui.landmark_display import GARDEN_LANDMARK_ANCHORS
 
 
 def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str = "sunny") -> HomeWidgetData:
@@ -276,7 +277,8 @@ def test_success_state_uses_resolved_background_as_compact_scene() -> None:
     assert 'data-preview-crop="0.000,0.080,1.000,0.840"' in html
     assert "aspect-ratio:var(--ag-source-aspect, 2.4)" in html
     assert 'data-landmark="mossy_stone_path"' in html
-    assert 'data-landmark-anchor="0.360,0.180,0.280,0.520"' in html
+    anchor = GARDEN_LANDMARK_ANCHORS["mossy_stone_path"]
+    assert f'data-landmark-anchor="{anchor.identity}"' in html
     assert 'data-plant-id="plant-bonsai" data-slot-index="0" data-mastery-rank="gold"' in html
 
     mismatched = HomeWidgetData(**{
@@ -398,8 +400,9 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
 
     assert f'title="{name} · Flowering · 30 / 500 Growth"' in html
-    assert f'>{name} · Flowering</span>' in html
-    assert '>30 / 500 Growth toward Full Bloom</span>' in html
+    assert f'class="ag-home__plant-name">{name}</span>' in html
+    assert 'class="ag-home__plant-stage">· Flowering</span>' in html
+    assert '>30 / 500 Growth to Full Bloom</span>' in html
     assert "white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 400px)" in html
@@ -1136,10 +1139,10 @@ def test_shared_preview_coin_metric_pluralizes_the_unit() -> None:
 
     assert next(
         metric for metric in one_coin.metrics if metric.metric_id == "coins"
-    ).value == "1 Garden Coin"
+    ).value == "1 Coin"
     assert next(
         metric for metric in two_coins.metrics if metric.metric_id == "coins"
-    ).value == "2 Garden Coins"
+    ).value == "2 Coins"
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:

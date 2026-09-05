@@ -295,7 +295,7 @@ def _session_item_source_label(source: Any) -> str:
     if "completion_cycle" in normalized:
         return "Garden Cycle"
     if normalized in {"all_due", "all_clear", "todays_cards_completion"}:
-        return "Today’s Cards"
+        return "Today’s cards"
     return "Garden reward"
 
 
@@ -855,7 +855,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             f"QLabel {{color:{t['text_primary']};font-size:13px;"
             "font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', "
             "'Helvetica Neue', sans-serif;}"
-            "QLabel[summaryTitle='true'] {font-size:18px;font-weight:650;}"
+            "QLabel[summaryTitle='true'] {font-size:16px;font-weight:600;}"
             "QLabel[summaryHero='true'] {font-size:40px;font-weight:700;}"
             "QLabel[summaryHeroLabel='true'] {"
             f"color:{t['text_secondary']};font-size:14px;font-weight:520;}}"
@@ -965,7 +965,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         leaf.setAccessibleName("Garden leaf")
         header_layout.addWidget(leaf, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        title = QLabel("Session Summary", self._header)
+        title = QLabel("Session summary", self._header)
         title.setProperty("summaryTitle", True)
         title.setAccessibleName("Session Summary")
         header_layout.addWidget(title, 1, Qt.AlignmentFlag.AlignVCenter)
@@ -1302,7 +1302,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         kind = str(getattr(today, "kind", "reviewable") or "reviewable")
         band.setProperty("todayCardsKind", kind)
         band.setProperty("todayCardsScope", str(getattr(today, "scope", "") or ""))
-        heading = QLabel("Daily Target" if kind == "daily_target" else "Today’s Cards")
+        heading = QLabel("Daily Target" if kind == "daily_target" else "Today’s cards")
         heading.setProperty("summaryStatusTitle", True)
         heading_row.addWidget(heading, 1)
         is_complete = bool(getattr(today, "is_complete", end.status == "complete"))
@@ -1316,7 +1316,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     status_text = f"{remaining:,} to goal"
                 else:
                     status_text = (
-                        f"{format_quantity(remaining, 'card')} remaining"
+                        f"{format_quantity(remaining, 'card')} left"
                     )
             else:
                 status_text = _title_case(end.status)
@@ -1370,7 +1370,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 ),
             )
             progress.setAccessibleName(
-                f"{'Daily Target' if kind == 'daily_target' else 'Today’s Cards'}: "
+                f"{'Daily Target' if kind == 'daily_target' else 'Today’s cards'}: "
                 f"{progress_value:,} of "
                 f"{format_quantity(progress_max, 'card')} completed"
             )
@@ -1389,7 +1389,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if not supporting_text:
             if total > 0:
                 supporting_text = (
-                    f"{completed:,} of {format_quantity(total, 'card')} completed"
+                    f"{completed:,} / {total:,} completed"
                 )
             else:
                 _heading, lines = self._status_copy(projection)
@@ -1818,7 +1818,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if total_finds:
             metrics.append((
                 "standard_finds",
-                "Finds",
+                "Garden Finds",
                 f"+{total_finds:,}",
                 "find",
             ))
@@ -2152,14 +2152,14 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     def _add_breakdown(self, layout: Any, summary: SessionDaySummary, projection: Any) -> None:
         toggle = QToolButton()
         toggle.setObjectName("ankiGardenSessionBreakdownToggle")
-        toggle.setText("Less detail" if self._details_expanded else "Details")
+        toggle.setText("Details")
         toggle.setIcon(garden_icon(
-            "chevron-up" if self._details_expanded else "chevron-down",
+            "chevron-down" if self._details_expanded else "chevron-right",
             color=self._summary_theme["text_secondary"],
         ))
         toggle.setIconSize(QSize(16, 16))
         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        toggle.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        toggle.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         toggle.setFixedHeight(32)
         toggle.setStyleSheet("text-align:left;padding-left:12px;padding-right:12px;")
         toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -2393,7 +2393,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 row.addLayout(copy, 1)
                 layout.addWidget(row_widget)
         if summary.coin_sources:
-            layout.addWidget(self._section_heading("Garden Coins"))
+            layout.addWidget(self._section_heading("Coins"))
             for award in summary.coin_sources:
                 source_key = str(
                     getattr(award, "source_type", "")

@@ -15,6 +15,7 @@ from typing import Any
 
 from ..growth import GROWTH_UNITS_PER_POINT, stage_presentation, stage_progress
 from ..presentation import PlantIdentity
+from .plant_display import growth_display, plant_growth_points
 from ..environment import GARDEN_FEATURE_CATALOG
 from ..garden_features import FEATURE_EFFECT_KEYS
 from .formatters import format_approximate_cards, format_garden_coins, format_quantity
@@ -126,6 +127,8 @@ class NurtureProjection:
     bed_label: str = ""
     stage_label: str = ""
     progress_percent: int = 0
+    stage_points: int = 0
+    stage_goal: int = 0
     checkpoint_line: str = ""
     next_stage_line: str = ""
     estimate_line: str = ""
@@ -286,8 +289,8 @@ def project_today_cards(
         earned_coins = reward_coins if awarded else 0
         return TodayCardsProjection(
             status="complete",
-            heading="All cards complete",
-            primary=format_garden_coins(earned_coins, signed=True) if awarded else "Today’s workload is complete",
+            heading="Today’s cards complete",
+            primary=format_garden_coins(earned_coins, signed=True) if awarded else "Today’s cards complete",
             secondary=(f"{format_quantity(reviewed, 'card')} studied today",),
             progress_value=max(maximum, cleared),
             progress_maximum=max(maximum, cleared),
@@ -299,7 +302,7 @@ def project_today_cards(
         return TodayCardsProjection(
             status="not_eligible",
             heading="Today’s cards",
-            primary="No cards due right now",
+            primary="No cards due",
             reviewed_count=reviewed,
         )
     if status == "unavailable":
@@ -314,10 +317,10 @@ def project_today_cards(
     primary = (
         f"{cleared:,} / {maximum:,}"
         if maximum > 0
-        else plural_cards(remaining, suffix=" remaining")
+        else plural_cards(remaining, suffix=" left")
     )
     secondary: tuple[str, ...] = (
-        plural_cards(remaining, suffix=" remaining"),
+        plural_cards(remaining, suffix=" left"),
     )
     if status == "waiting_for_learning":
         current_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
@@ -442,13 +445,13 @@ def _active_effect_rows(
             f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 5 cards to next +3 Growth"
         ),
         "completion_coins_plus_5": (
-            f"{format_garden_coins(5, signed=True)} when Today’s Cards are complete"
+            f"{format_garden_coins(5, signed=True)} when Today’s cards are complete"
         ),
         "booster_cards_multiplier_1_25": "Booster Potions add 25% more cards",
         "hourglass_completion_booster": (
             f"{max(0, int(getattr(state, 'hourglass_completion_progress', 0) or 0))} / 30 completions to a Booster Potion"
         ),
-        "none": "No mechanical bonus",
+        "none": "No bonus",
     }.get(effect, "")
     if effect in {"prism_bank_per_answer_1_5", "prism_bank_per_answer_1"}:
         day = str(getattr(getattr(state, "daily_stats", None), "day", "") or "")
@@ -527,7 +530,7 @@ def _active_effect_rows(
     streak_units = max(0, int(getattr(award, "streak_growth_units", 0) or 0))
     if streak_units:
         rows.append((
-            f"Streak bonus · {format_growth_units(streak_units, signed=True)} Growth",
+            f"Garden Rhythm · {format_growth_units(streak_units, signed=True)} Growth",
             "",
         ))
     if feature_row is not None and effect == "none":
@@ -843,8 +846,8 @@ def project_nurture(
             growth_destination=full_bloom_destination,
         )
 
-    total_growth = max(0, int(getattr(target, "growth_points", 0) or 0))
-    progress = stage_progress(total_growth)
+    total_growth = plant_growth_points(target)
+    progress = growth_display(total_growth)
     fully_grown = bool(getattr(target, "fully_grown", False) or progress.fully_grown)
     stage_key = "rare" if fully_grown else str(
         getattr(target, "growth_stage", "") or progress.stage or "seed"
@@ -943,6 +946,8 @@ def project_nurture(
         ),
         stage_label=stage_label,
         progress_percent=100 if fully_grown else max(0, min(100, round(progress.progress * 100))),
+        stage_points=progress.stage_points,
+        stage_goal=progress.stage_goal,
         checkpoint_line=checkpoint_line,
         next_stage_line=(
             f"Checkpoint reward · {format_garden_coins(checkpoint_reward, signed=True)}"

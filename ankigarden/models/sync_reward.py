@@ -200,6 +200,8 @@ class SyncPlantResult:
     full_bloom: bool = False
     transition_source: str = ""
 
+    growth_after_units: int | None = None
+
     @property
     def stage_changed(self) -> bool:
         before = _stage_id(self.stage_before)
@@ -315,6 +317,7 @@ class SyncPlantResult:
             "stage_after": _text(self.stage_after, limit=64),
             "stage_progress_before": max(0, min(100, _nonnegative(self.stage_progress_before))),
             "stage_progress_after": max(0, min(100, _nonnegative(self.stage_progress_after))),
+            "growth_after_units": _nonnegative(self.growth_after_units) if self.growth_after_units is not None else None,
             "next_stage": _text(self.next_stage, limit=64),
             "fully_grown": bool(self.fully_grown),
             "active": bool(self.active),
@@ -364,6 +367,7 @@ class SyncPlantResult:
             stage_progress_after=max(
                 0, min(100, _nonnegative(raw.get("stage_progress_after")))
             ),
+            growth_after_units=_nonnegative(raw.get("growth_after_units")) if raw.get("growth_after_units") is not None else None,
             next_stage=_text(raw.get("next_stage"), limit=64),
             fully_grown=bool(raw.get("fully_grown", False)),
             active=bool(raw.get("active", False)),
@@ -773,6 +777,7 @@ def _group_legacy_plant_results(
             "stage_progress_after": max(
                 0, min(100, _nonnegative(item.get("stage_progress_after")))
             ),
+            "growth_after_units": _nonnegative(item.get("growth_after_units")) if item.get("growth_after_units") is not None else None,
             "next_stage": _text(item.get("next_stage"), limit=64),
             "fully_grown": bool(item.get("fully_grown", False)),
             "active": bool(item.get("active", False)),
@@ -877,6 +882,7 @@ def _merge_plant_results(
             ),
             stage_after=item.stage_after or current.stage_after,
             stage_progress_after=item.stage_progress_after,
+            growth_after_units=item.growth_after_units,
             next_stage=item.next_stage,
             fully_grown=current.fully_grown or item.fully_grown,
             active=item.active,
@@ -954,6 +960,7 @@ def _merge_growth_rows(
                 "plant_image",
                 "stage_after",
                 "stage_progress_after",
+                "growth_after_units",
             ):
                 if item.get(key) not in (None, ""):
                     current[key] = item[key]

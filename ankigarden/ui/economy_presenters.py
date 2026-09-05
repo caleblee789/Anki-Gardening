@@ -164,7 +164,7 @@ def catalog_item_projections() -> tuple[CatalogItemProjection, ...]:
             str(item.display_name),
             "species",
             "Plant species; economically identical to every other species.",
-            "Choose one starter species free; buy each other species for 250 Garden Coins.",
+            "Choose one starter species free; buy each other species for 250 Coins.",
             str(SPECIES_ARTWORK_IDS[item_id]),
             True,
             int(item.purchase_price_coins or 0),
@@ -211,7 +211,7 @@ def catalog_item_projections() -> tuple[CatalogItemProjection, ...]:
             else ACHIEVEMENT_BY_ID[_id(item.source_achievement_id)]
         )
         acquisition = (
-            f"Nursery for {int(item.price_coins):,} Garden Coins."
+            f"Nursery for {int(item.price_coins):,} Coins."
             if item.acquisition is AcquisitionKind.PURCHASE
             else f"Achievement: {achievement.display_name}."
             if achievement is not None

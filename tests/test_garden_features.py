@@ -464,6 +464,12 @@ def test_locked_day_blocks_event_switching_and_undo_clears_only_the_queue() -> N
     assert engine.use_booster_potion("p1")[0]
     assert engine.last_booster_result.hourglass_bonus_cards == 0
     assert engine.active_garden_feature_id() == "wind_chime"
+    storage.state.daily_loadout.queued_scenery_id = "spring"
+    storage.state.daily_loadout.queued_for_day = "2026-08-29"
+    assert engine.undo_queued_garden_bonus("scenery")[0]
+    assert storage.state.daily_loadout.queued_scenery_id == ""
+    assert storage.state.daily_loadout.queued_for_day == ""
+    assert storage.state.daily_loadout.pending_garden_feature_id == "herbalist_hourglass"
     assert engine.undo_queued_garden_bonus()[0]
     assert storage.state.daily_loadout.pending_garden_feature_id == ""
     assert engine.active_garden_feature_id() == "wind_chime"

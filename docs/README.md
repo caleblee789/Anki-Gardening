@@ -7,10 +7,13 @@ implementation disagree.
 
 ## Current product and release contracts
 
+- [Development guide](development.md): source installation, packaging, and local checks.
+- [UI release-quality review](ui/release-quality-20260904.md): the current 36-surface review, screenshots, package identities, and completion checklist.
+
 - `feature-evidence-matrix.md`: feature behavior and automated/live acceptance
   gates.
 - `release-notes-2.2.0.md`: learner-visible 2.2.0 changes and migration notes.
-- `progression-rewards-effects-reference.md`: current Growth, Garden Coin,
+- `progression-rewards-effects-reference.md`: current Growth, Coins,
   consumable, purchase, Garden Cycle, achievement, Collection, Landmark,
   Mastery, Legacy, persistence, and replay authority.
 - `display-validation-matrix.md`: prominent values and their authoritative
@@ -27,8 +30,7 @@ implementation disagree.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current UI architecture, routing,
   transaction, responsive, accessibility, and capture contract.
-- `ui-surface-inventory.md`: registry-derived v26 release inventory and the
-  automated/manual acceptance boundary.
+- `ui-surface-inventory.md`: historical v26 inventory; the current v27 topology is recorded in the UI release-quality review.
 - `garden-features.md`: the active registry, fixed layout, migration boundary,
   and static Home/native rendering contract.
 - `references/garden-decorations-reference.docx`: illustrated current Garden
@@ -49,17 +51,6 @@ audit ledgers remain available through Git history or preserved raw local
 evidence. They are not active product or release evidence. Raw runs, manifests,
 archives, and lineage may remain under ignored `build/`.
 
-The active UI evidence contract is v26, contract schema 2 and scenario schema
-3. It derives 18 representative surfaces on two sheets and 34 full surfaces on
-five sheets. State schema 27 changes the product data and economy without
-changing that topology; v25 capture evidence remains frozen historical
-material and is never reused as v26 evidence.
+The active UI evidence contract is **v27**, with 18 representative surfaces on two sheets and 36 full surfaces on five sheets. The [current UI review](ui/release-quality-20260904.md) identifies the exact production and capture packages, native checks, supplemental artwork and Landmark reviews, and final contact sheets. These checks record Codex visual review separately from human and platform release acceptance.
 
-The retained [2.1.0 UI audit](ui/final-ui-audit-2.1.0.md) and
-[184547 five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260830-184547/contact-sheet-set.json)
-form a frozen v26 baseline only. They do not certify the integrated 2.2.0
-package and are not current release evidence. The fresh evidence is recorded in
-the [final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and indexed by the
-[155312 five-page contact-sheet set](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
-Automated evidence continues to leave human, platform, accessibility, and
-mixed-DPI gates open.
+The [September 4 polish report](ui/release-polish-20260904.md), [earlier 2.2.0 audit](ui/final-ui-audit-2.2.0.md), and [2.1.0 audit](ui/final-ui-audit-2.1.0.md) remain historical evidence. Their package identities and captures are preserved; they do not certify the current candidate.

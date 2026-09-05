@@ -454,7 +454,7 @@ def _effect_display_text(value: Any) -> str:
         return f"Booster Potion · {text[len('Booster '):]}"
     for prefix in (
         "Garden decoration",
-        "Streak bonus",
+        "Garden Rhythm",
         "Fertilizer",
         "Booster Potion",
         "Scenery",
@@ -2475,6 +2475,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _set_decoration(self._reward_art)
         hero.addWidget(self._reward_art)
         hero_copy = QVBoxLayout()
+        self._reward_hero_copy = hero_copy
+        self._reward_heading_milestone = False
         hero_copy.setSpacing(2)
         self._reward_title = _TwoLineLabel(self._reward_reveal)
         self._reward_title.setProperty("hudRewardTitle", True)
@@ -2861,7 +2863,17 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             menu.setObjectName("reviewerHudPlantSelector")
             menu.setProperty("semanticId", "reviewer.hud.plant-selector")
             menu.setAccessibleName("Choose next plant")
-            menu.setIconSize(QSize(32, 32))
+            from aqt.qt import QProxyStyle, QStyle
+
+            class PlantMenuStyle(QProxyStyle):
+                def pixelMetric(self, metric, option=None, widget=None):
+                    if metric == QStyle.PixelMetric.PM_SmallIconSize:
+                        return 40
+                    return super().pixelMetric(metric, option, widget)
+
+            # QMenu has no setIconSize API. Its style owns the icon envelope.
+            menu._plant_icon_style = PlantMenuStyle()
+            menu.setStyle(menu._plant_icon_style)
             menu.setStyleSheet(
                 "QMenu#reviewerHudPlantSelector {"
                 f"background:{GARDEN_THEME['reviewer_hud_shell']};"
@@ -2869,7 +2881,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 "border-radius:10px;padding:6px;}"
                 "QMenu#reviewerHudPlantSelector::item {"
                 f"color:{GARDEN_THEME['text_primary']};"
-                "min-height:32px;padding:5px 12px 5px 7px;"
+                "min-height:40px;padding:5px 12px 5px 7px;"
                 "border-radius:6px;}"
                 "QMenu#reviewerHudPlantSelector::item:selected {"
                 f"background:{GARDEN_THEME['reviewer_hud_surface_hover']};"
@@ -2902,11 +2914,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                             choice.art_path,
                             choice.art_placement,
                             stage=choice.stage_key,
-                            logical_size=32,
+                            logical_size=40,
                             device_pixel_ratio=pixel_ratio,
                         )
                         if not pixmap.isNull():
                             action.setIcon(QIcon(pixmap))
+                            action.setIconVisibleInMenu(True)
                     except Exception:
                         pass
                 action.triggered.connect(
@@ -3679,7 +3692,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.setProperty("fullBloomAccent", bool(nurture.fully_grown))
         _repolish(self._stage)
         self._stage.setVisible(bool(nurture.stage_label))
-        self._percent.setText(f"{nurture.progress_percent}% toward {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else f"{nurture.progress_percent}%")
+        self._percent.setText(f"{nurture.stage_points:,} / {nurture.stage_goal:,} Growth to {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else "Full Bloom")
         self._percent.setVisible(normal)
         self._checkpoint_track.set_milestones(
             tuple(
@@ -3731,7 +3744,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._checkpoint_reward_row.setVisible(bool(nurture.next_checkpoint_reward_coins))
         if str(self._next_answer.property("resultState") or "") != "applied":
-            self._next_answer_label.setText("Next answer:")
+            self._next_answer_label.setText("Next card:")
             self._next_answer_value.setText(nurture.next_answer_value)
             self._next_answer.setVisible(bool(nurture.next_answer_value))
         message = "\n".join(
@@ -5186,6 +5199,16 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             initial_state,
         )
         self._reward_eyebrow.setText(_reward_eyebrow(bundle))
+        compact_milestone = _hero_kind(bundle).replace("-", "_") in {"full_bloom", "stage_change"}
+        if compact_milestone != self._reward_heading_milestone:
+            heading = self._reward_heading.layout()
+            heading.removeWidget(self._reward_title if self._reward_heading_milestone else self._reward_eyebrow)
+            self._reward_hero_copy.removeWidget(self._reward_eyebrow if self._reward_heading_milestone else self._reward_title)
+            heading.insertWidget(0, self._reward_title if compact_milestone else self._reward_eyebrow, 1 if compact_milestone else 0)
+            self._reward_hero_copy.insertWidget(0, self._reward_eyebrow if compact_milestone else self._reward_title)
+            heading.setStretch(1, 0 if compact_milestone else 1)
+            self._reward_heading_milestone = compact_milestone
+        self._reward_eyebrow.setVisible(not compact_milestone)
         self._reward_title.set_full_text(_reward_hero_title(bundle))
         self._sync_reward_identity_visibility()
         rarity = _hero_rarity(bundle)

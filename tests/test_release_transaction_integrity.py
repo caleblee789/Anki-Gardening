@@ -1702,3 +1702,62 @@ def test_production_addon_ignores_capture_environment_without_build_capability(
     maybe_start_capture(app)
 
     assert app._ui_face_capture_active is False
+
+
+def test_garden_setup_reads_independent_saved_facts_without_writing() -> None:
+    from copy import deepcopy
+    from ankigarden.models.state import CardEffectBatch, DailyEconomySnapshot
+    from ankigarden.presentation import project_garden_setup
+
+    engine, storage = _make_engine()
+    state = storage.state
+    state.loadout.displayed_garden_feature_id = "seedling_sign"
+    state.loadout.visibility["garden_feature"] = False
+    state.daily_loadout.garden_bonus_anki_day_id = state.daily_stats.day
+    state.daily_loadout.garden_bonus_locked_at_ms = 100
+    state.daily_loadout.garden_feature_id = "watering_station"
+    state.daily_loadout.pending_garden_feature_id = "wind_chime"
+    state.plants[0].fertilizer_card_batches.append(
+        CardEffectBatch("fertilizer_basic", 100, 100, 37)
+    )
+    state.daily_economy_snapshot = DailyEconomySnapshot(
+        anki_day=state.daily_stats.day, active_garden_bonus_id="watering_station",
+    )
+    before = deepcopy(state)
+    saves = storage.save_count
+
+    setup = project_garden_setup(engine, storage)
+
+    assert state == before
+    assert storage.save_count == saves
+    scenery, decoration, landmark = setup.items
+    assert decoration.appearance_id == "seedling_sign"
+    assert not decoration.visible
+    assert decoration.bonus_id == "watering_station"
+    assert decoration.timing == "Active today"
+    assert decoration.scheduled_id == "wind_chime"
+    assert landmark.appearance_id == ""
+    assert landmark.effect == "Cosmetic · No bonus"
+    assert setup.effects[0].plant_id == "p1"
+    assert setup.effects[0].remaining_cards == 37
+    assert setup.effects[0].effect == "+1 Growth per card"
+
+
+def test_landmark_appearance_undo_preserves_construction_and_rolls_back_failed_save() -> None:
+    engine, storage = _make_engine()
+    project = storage.state.garden_project
+    project.completed_project_ids = ["mossy_stone_path"]
+    project.landmark_highest_claimed_tier = 1
+    project.displayed_project_id = project.displayed_landmark_tier_id = "mossy_stone_path"
+    project.selected_project_id = "birdbath_terrace"
+    project.landmark_growth_units_funded = 2_512_500
+    project.contributed_growth_units = 12500
+    storage.fail_save = True
+    assert not engine.undo_landmark_appearance("", "mossy_stone_path")[0]
+    assert storage.state.garden_project.displayed_project_id == "mossy_stone_path"
+    storage.fail_save = False
+    assert engine.undo_landmark_appearance("", "mossy_stone_path")[0]
+    assert storage.state.garden_project.displayed_project_id == ""
+    assert storage.state.garden_project.selected_project_id == "birdbath_terrace"
+    assert storage.state.garden_project.contributed_growth_units == 12500
+    assert not engine.undo_landmark_appearance("", "mossy_stone_path")[0]

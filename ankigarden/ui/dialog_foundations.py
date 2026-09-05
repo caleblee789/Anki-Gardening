@@ -764,13 +764,13 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
     DialogSizeClass.SETTINGS: {
         # The Display page no longer carries a 100 px live preview. Keep the
         # shell content-fit around the remaining identity and appearance rows.
-        "display": DialogHeightProfile(400, 480, 520, 560, 600, 660),
+        "display": DialogHeightProfile(400, 520, 580, 560, 600, 660),
         # Advanced adds four compact setting rows beneath the same preview-free
         # Display content. The pinned shell consumes about 217 logical px, so
         # reserve the measured content height plus breathing room rather than
         # opening with the final row behind the emergency scroll viewport.
         # Shorter screens still retain the outer scroll owner.
-        "advanced": DialogHeightProfile(400, 480, 520, 560, 600, 660),
+        "advanced": DialogHeightProfile(400, 520, 580, 560, 600, 660),
         "diagnostics-clean": DialogHeightProfile(260, 320, 460, 560, 600, 660),
         "diagnostics-warning": DialogHeightProfile(260, 320, 460, 560, 600, 660),
         "diagnostics-expanded": DialogHeightProfile(400, 480, 700, 560, 600, 660),

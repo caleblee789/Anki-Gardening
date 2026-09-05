@@ -253,7 +253,7 @@ def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
     assert summary.stored_growth.delta_units == 1_250
     assert [(row.key, row.label, row.value) for row in projection.reward_metrics] == [
         ("growth_applied", "Growth applied", "+2,092.5"),
-        ("garden_coins", "Garden Coins", "+67"),
+        ("garden_coins", "Coins", "+67"),
         ("standard_finds", "Garden Finds", "+3"),
     ]
     assert not any(row.key == "shared_growth" for row in projection.result_rows)
@@ -423,7 +423,7 @@ def test_milestone_coin_component_has_an_explicit_total_inclusion_link():
     assert payload.segments[0].garden_coins_earned == 20
     assert highlight.coin_award_event_ids == ("coin:bloom",)
     assert highlight.coin_included_in_total is True
-    assert highlight.reward_text == "+20 Garden Coins bonus included"
+    assert highlight.reward_text == "+20 Coins bonus included"
     assert payload.segments[0].milestones[0].reward is not None
     assert (
         payload.segments[0].milestones[0].reward.component_type
@@ -484,7 +484,7 @@ def test_additional_milestone_coin_component_names_the_displayed_total():
     assert summary.additional_coins_earned == 50
     assert summary.garden_coins_total == 67
     assert highlight.reward_text == (
-        "+50 Garden Coins bonus · included in +67 Garden Coins total"
+        "+50 Coins bonus · included in +67 Coins total"
     )
 
 
@@ -657,7 +657,7 @@ def test_authoritative_reversal_removes_whole_card_or_selected_reward_once():
         plant_growth=(PlantGrowthDelta("rose", "Rose", 1_000),),
         coins=(CoinAward("coin:1", "stage", "Mature stage", 10),),
         finds=(StandardFind(
-            "find:1", "dew", "Morning Dew", "common", "coins", "+4 Garden Coins", 4
+            "find:1", "dew", "Morning Dew", "common", "coins", "+4 Coins", 4
         ),),
     ))
     accumulator.accept_committed(_event(
@@ -759,14 +759,14 @@ def test_today_cards_projection_uses_approved_cards_language_only():
         cards_total=176,
         reward_coins=10,
     )
-    assert completed.player_lines == ("All of today’s cards complete",)
+    assert completed.player_lines == ("Today’s cards complete",)
     waiting = TodayCardsSnapshot(
         "waiting_for_learning",
         waiting_cards=2,
         next_due_in_seconds=6 * 60,
     )
     assert waiting.player_lines == (
-        "2 cards remaining",
+        "2 cards left",
         "Next card in 6 minutes",
     )
     progress = project_today_cards(
@@ -774,8 +774,8 @@ def test_today_cards_projection_uses_approved_cards_language_only():
         _today(remaining=18, complete=142, total=160),
     )
     assert progress.lines == (
-        "18 cards remaining",
-        "142 of 160 cards completed",
+        "18 cards left",
+        "142 / 160 completed",
     )
     assert (progress.progress_value, progress.progress_max) == (142, 160)
     assert progress.progress_fraction == pytest.approx(0.8875)
@@ -787,15 +787,15 @@ def test_today_cards_projection_uses_approved_cards_language_only():
         completed,
     )
     assert completed_during_session.lines == (
-        "All of today’s cards complete",
-        "176 of 176 cards completed",
+        "Today’s cards complete",
+        "176 / 176 completed",
     )
     assert completed_during_session.progress_fraction == 1.0
     assert completed_during_session.can_continue_reviews is False
     complete_at_both = project_today_cards(completed, completed)
     assert complete_at_both.lines == (
-        "All of today’s cards complete",
-        "176 of 176 cards completed",
+        "Today’s cards complete",
+        "176 / 176 completed",
     )
 
     all_copy = " ".join((
@@ -822,8 +822,8 @@ def test_today_cards_progress_is_semantic_across_exit_states():
             currently_due=0,
         ),
     )
-    assert waiting.status_text == "2 cards remaining"
-    assert waiting.supporting_text == "18 of 20 cards completed · Next card in 6 minutes"
+    assert waiting.status_text == "2 cards left"
+    assert waiting.supporting_text == "18 / 20 completed · Next card in 6 minutes"
     assert (waiting.progress_value, waiting.progress_max) == (18, 20)
     assert waiting.can_continue_reviews is False
 
@@ -831,16 +831,16 @@ def test_today_cards_progress_is_semantic_across_exit_states():
         _today(remaining=144, complete=0, total=144),
         _today("complete", remaining=None, complete=144, total=144),
     )
-    assert complete.status_text == "All of today’s cards complete"
-    assert complete.supporting_text == "144 of 144 cards completed"
+    assert complete.status_text == "Today’s cards complete"
+    assert complete.supporting_text == "144 / 144 completed"
     assert complete.progress_fraction == 1.0
 
     increased = project_today_cards(
         _today(remaining=2, complete=0, total=2),
         _today(remaining=4, complete=0, total=4, currently_due=4),
     )
-    assert increased.status_text == "4 cards remaining"
-    assert increased.supporting_text == "0 of 4 cards completed"
+    assert increased.status_text == "4 cards left"
+    assert increased.supporting_text == "0 / 4 completed"
     assert increased.progress_fraction == 0.0
     assert increased.animate_progress is False
 
@@ -877,8 +877,8 @@ def test_second_session_keeps_session_work_separate_from_today_progress():
     assert summary.cards_completed == 42
     assert projection.cards_completed_value == "42"
     assert projection.today_cards.lines == (
-        "18 cards remaining",
-        "126 of 144 cards completed",
+        "18 cards left",
+        "126 / 144 completed",
     )
     assert projection.today_cards.start_progress_value == 84
     assert projection.today_cards.progress_value == 126
@@ -911,7 +911,7 @@ def test_today_kind_scope_and_continuation_are_explicit():
         _today(remaining=60, complete=84, total=144, contributing_decks=3),
         _today(remaining=18, complete=126, total=144, contributing_decks=3),
     )
-    assert multi_deck.status_text == "18 cards remaining across all decks"
+    assert multi_deck.status_text == "18 cards left across all decks"
     assert multi_deck.continuation_target == ReviewContinuationTarget(
         "deck", 1, "Default"
     )
@@ -995,7 +995,7 @@ def test_find_quantities_reconcile_to_explicit_total_and_limit_by_occurrence():
             ),
             StandardFind(
                 "find:coins", "coins", "Garden Coin Cache", "common",
-                "coins", "Garden Coins",
+                "coins", "Coins",
             ),
             StandardFind(
                 "find:stored", "stored", "Stored Growth Charge", "common",
@@ -1320,9 +1320,9 @@ def test_effect_rows_are_frozen_exit_snapshots_and_exclude_external_new_effects(
     assert payload is not None
     rows = payload.segments[0].effects_remaining
     assert [(row.effect_id, row.value, row.secondary) for row in rows] == [
-        ("fert:earned", "40 cards remaining", ""),
-        ("fert:quality", "25 cards remaining", ""),
-        ("boost:1", "31 cards remaining", ""),
+        ("fert:earned", "40 cards left", ""),
+        ("fert:quality", "25 cards left", ""),
+        ("boost:1", "31 cards left", ""),
     ]
     assert all(not row.ended_during_session for row in rows)
     assert "fert:manual" not in {row.effect_id for row in rows}
@@ -1481,6 +1481,6 @@ def test_effect_snapshots_follow_full_bloom_transfer_without_false_end():
         (row.effect_id, row.value, row.ended_during_session)
         for row in payload.segments[0].effects_remaining
     ] == [
-        ("fert:plant-b", "39 cards remaining", False),
-        ("boost:plant-b", "39 cards remaining", False),
+        ("fert:plant-b", "39 cards left", False),
+        ("boost:plant-b", "39 cards left", False),
     ]

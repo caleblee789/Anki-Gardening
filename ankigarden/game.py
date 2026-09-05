@@ -8344,9 +8344,16 @@ class GardenGameEngine:
             return False, "Couldn’t save changes. Your garden is unchanged."
         return True, f"{scenery.name} displayed in Garden."
 
-    def undo_queued_garden_bonus(self) -> tuple[bool, str]:
+    def undo_queued_garden_bonus(self, kind: str = "garden_feature") -> tuple[bool, str]:
+        """Cancel a scheduled selection without touching today's locked effect."""
+        if kind not in {"garden_feature", "scenery"}:
+            return False, "Choose scenery or a decoration."
         snapshot = self._state_snapshot()
-        self.state.daily_loadout.pending_garden_feature_id = ""
+        if kind == "scenery":
+            self.state.daily_loadout.queued_scenery_id = ""
+            self.state.daily_loadout.queued_for_day = ""
+        else:
+            self.state.daily_loadout.pending_garden_feature_id = ""
         try:
             self._persist_or_restore(snapshot)
         except Exception:
@@ -8534,6 +8541,9 @@ class GardenGameEngine:
             target_stage=self._growth_stage_for_points(current_growth),
             target_state=target_state,
             current_growth=current_growth,
+            current_growth_units=self._plant_growth_units(plant) if plant is not None else 0,
+            projected_growth_units=min(GROWTH_THRESHOLDS[-1] * GROWTH_UNITS_PER_POINT,
+                (self._plant_growth_units(plant) if plant is not None else 0) + granted * GROWTH_UNITS_PER_POINT),
             requested_growth=requested,
             granted_growth=granted,
             projected_growth=projected,
@@ -8695,6 +8705,8 @@ class GardenGameEngine:
                 target_id=quote.target_id,
                 target_name=quote.target_name,
                 previous_growth=quote.current_growth,
+                previous_growth_units=quote.current_growth_units,
+                resulting_growth_units=self._plant_growth_units(plant),
                 resulting_growth=int(plant.growth_points),
                 growth_granted=awarded,
                 previous_stage=quote.target_stage,
@@ -9144,6 +9156,22 @@ class GardenGameEngine:
         except Exception:
             return False, "Couldn’t change the displayed Landmark."
         return True, f"Displaying {LANDMARK_BY_ID[item_id].display_name}."
+
+    def undo_landmark_appearance(self, previous_id: str, expected_id: str) -> tuple[bool, str]:
+        """Restore only the displayed artwork while preserving later project work."""
+        project = self.state.garden_project
+        if project.displayed_project_id != expected_id:
+            return False, "Landmark appearance has changed since then."
+        if previous_id and previous_id not in project.completed_project_ids:
+            return False, "That Landmark is no longer available."
+        snapshot = self._state_snapshot()
+        project.displayed_project_id = previous_id
+        project.displayed_landmark_tier_id = previous_id
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "Couldn’t restore the Landmark appearance. Try again."
+        return True, "Landmark appearance restored."
 
     def mastery_catalog_summary(self) -> dict[str, Any]:
         projects = self.growth_projects_snapshot()
