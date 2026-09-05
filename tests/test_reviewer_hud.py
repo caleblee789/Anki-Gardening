@@ -116,7 +116,7 @@ def test_today_cards_is_global_compact_and_has_no_find_cap_copy() -> None:
     complete = project_today_cards(state_for("complete"))
     assert complete.heading == "All cards complete"
     assert complete.primary == "+10 Garden Coins"
-    assert complete.secondary == ("176 cards completed today",)
+    assert complete.secondary == ("176 cards studied today",)
     assert complete.progress_percent == 100
 
     visible = " ".join((
@@ -181,6 +181,12 @@ def test_complete_today_card_uses_engine_confirmed_coin_reward() -> None:
         completion_reward_coins=1,
     )
     assert singular.primary == "+1 Garden Coin"
+    unawarded = state_for("complete", reward_claimed=False)
+    unawarded.daily_stats.completed_due_cards = False
+    pending = project_today_cards(unawarded)
+    assert pending.completion_reward_coins == 0
+    assert "Coin" not in pending.primary
+
 
 
 def test_incomplete_today_progress_retains_an_end_gap_at_175_of_176() -> None:
@@ -224,7 +230,7 @@ def test_waiting_and_unavailable_states_remain_concise() -> None:
     ineligible = project_today_cards(state_for("not_eligible"))
     assert (ineligible.heading, ineligible.primary) == (
         "Today’s cards",
-        "No cards due today",
+        "No cards due right now",
     )
     unavailable = project_today_cards(state_for("unavailable"))
     assert unavailable.primary == "Card status unavailable"
@@ -632,7 +638,7 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
     assert _session_metric_labels(1_800, 2, 1) == (
         "+18 Growth",
         "+2 Garden Coins",
-        "1 Standard Find",
+        "1 Garden Find",
     )
     # A rapid answer may arrive while the prior Coin count-up is still showing
     # an intermediate value. Change detection must use the last committed
@@ -827,7 +833,7 @@ def test_reward_amounts_stay_on_the_hero_and_overflow_remains_inspectable() -> N
     assert len(_all_secondary_items(bundle)) == 4
     assert len(bundle.visible_summaries) == 2
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
-        "1 Standard Find",
+        "1 Garden Find",
         "Checkpoint reached",
     )
     booster_summary = next(
@@ -923,7 +929,7 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     assert bundle.compact.hero_title == "Full Bloom reached"
     assert bundle.compact.hero_subtitle == "Rose"
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
-        "1 Standard Find",
+        "1 Garden Find",
         "2 Garden discoveries",
     )
     assert bundle.more_label == "Details ›"

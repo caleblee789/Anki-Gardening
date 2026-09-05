@@ -171,7 +171,7 @@ def fertilizer_action_label(
     except (TypeError, ValueError):
         resolved = PurchaseDisposition.APPLIED
     if resolved in {PurchaseDisposition.EXTENDED, PurchaseDisposition.QUEUED}:
-        return "Queue" if owned else "Buy and queue"
+        return "Use next" if owned else "Buy and use next"
     return "Use"
 
 
@@ -435,7 +435,7 @@ def _priced_action(
     short = {
         PurchaseAction.PURCHASE: "Buy",
         PurchaseAction.PURCHASE_APPLY: "Buy and apply",
-        PurchaseAction.PURCHASE_QUEUE: "Buy and queue",
+        PurchaseAction.PURCHASE_QUEUE: "Buy and use next",
         PurchaseAction.EXTEND: "Extend",
         PurchaseAction.PURCHASE_REPLACE: "Buy and replace",
         PurchaseAction.UNLOCK: "Unlock",
@@ -457,7 +457,7 @@ def _canonical_action_text(quote: PurchaseQuote, action: PurchaseAction) -> str:
         return str(getattr(item, "purchase_action_text", "") or "Buy charge")
     if quote.kind is PurchaseKind.FERTILIZER and action is PurchaseAction.PURCHASE_QUEUE:
         item = CONSUMABLE_BY_ID.get(canonical_consumable_id(quote.item_id))
-        return str(getattr(item, "queued_purchase_action_text", "") or "Buy and queue")
+        return str(getattr(item, "queued_purchase_action_text", "") or "Buy and use next")
     if quote.kind is PurchaseKind.BED:
         _before, bed_number = _bed_unlock_counts(quote)
         definition = BED_UNLOCK_BY_NUMBER.get(bed_number)
@@ -547,7 +547,7 @@ def purchase_presentation(
             _without_period(quote.descriptor.buff).lstrip("+"),
             flags=re.IGNORECASE,
         )
-        outcome = f"Adds {growth_effect or 'Growth'} to one plant."
+        outcome = f"Adds {growth_effect or 'Growth'} to one plant when used."
         # The title already carries the item identity. Repeating it beside the
         # artwork creates a visually duplicated heading in the compact dialog.
         show_item_name = False
@@ -555,7 +555,7 @@ def purchase_presentation(
         next_actions = ("Use growth charge", "Keep browsing")
         facts.append(PurchaseFact(
             "inventory",
-            "Inventory",
+            "You own",
             f"{max(0, int(quote.inventory_before)):,} → "
             f"{max(0, int(quote.inventory_after)):,}",
         ))
@@ -569,7 +569,7 @@ def purchase_presentation(
             next_actions = ("Keep browsing",)
         elif quote.disposition is PurchaseDisposition.QUEUED:
             action = PurchaseAction.PURCHASE_QUEUE
-            title = f"Queue {item_name}?"
+            title = f"Buy {item_name}?"
             outcome = (
                 f"Starts after {quote.current_item_name or 'the active Fertilizer'} "
                 f"ends, then lasts {_effect_duration(quote.descriptor.duration)}. "
@@ -880,7 +880,7 @@ def purchase_projection(
     action_text = str(presentation.primary_label)
     if quote.kind is PurchaseKind.FERTILIZER and stored_item is not None:
         action_text = (
-            "Buy and queue"
+            "Buy and use next"
             if stored_item.disposition is FertilizerStoredItemDisposition.QUEUE
             and quote.total_price > 0
             else stored_item.action_text

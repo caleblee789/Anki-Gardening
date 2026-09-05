@@ -84,18 +84,18 @@ def session_summary_palette(background_lightness: int | None = None) -> dict[str
         "chip_surface": GARDEN_THEME["session_summary_chip_surface"],
         "today_surface": GARDEN_THEME["session_summary_card_bg_raised"],
         "boost_surface": GARDEN_THEME["session_summary_card_bg"],
-        "receipt_panel": "#062C25",
-        "receipt_primary_surface": "#0C3A31",
-        "receipt_secondary_surface": "#0A342C",
-        "receipt_hover_surface": "#11463A",
-        "receipt_text_primary": "#F2F7F4",
-        "receipt_text_secondary": "#BDCDC5",
-        "receipt_text_muted": "#91A59B",
-        "receipt_primary_mint": "#62DCAA",
-        "receipt_coin": "#E2C05D",
-        "receipt_milestone": "#D9BC68",
-        "receipt_border": "rgba(128, 211, 177, 51)",
-        "receipt_border_strong": "rgba(128, 211, 177, 82)",
+        "receipt_panel": GARDEN_THEME["session_summary_panel_bg"],
+        "receipt_primary_surface": GARDEN_THEME["surface_1"],
+        "receipt_secondary_surface": GARDEN_THEME["surface_1"],
+        "receipt_hover_surface": GARDEN_THEME["surface_2"],
+        "receipt_text_primary": GARDEN_THEME["text_primary"],
+        "receipt_text_secondary": GARDEN_THEME["text_secondary"],
+        "receipt_text_muted": GARDEN_THEME["text_muted"],
+        "receipt_primary_mint": GARDEN_THEME["growth_accent"],
+        "receipt_coin": GARDEN_THEME["coin_accent"],
+        "receipt_milestone": GARDEN_THEME["coin_accent"],
+        "receipt_border": GARDEN_THEME["subtle_border"],
+        "receipt_border_strong": GARDEN_THEME["subtle_border"],
     }
     return shared
 
@@ -285,7 +285,7 @@ class SessionEarnedItem:
 def _session_item_source_label(source: Any) -> str:
     normalized = str(source or "").replace("-", "_").casefold()
     if normalized.startswith("garden_find"):
-        return "Standard Find"
+        return "Garden Find"
     if "full_bloom" in normalized:
         return "Full Bloom"
     if "achievement" in normalized:
@@ -302,7 +302,7 @@ def _session_item_source_label(source: Any) -> str:
 def session_earned_item_plan(summary: Any) -> tuple[SessionEarnedItem, ...]:
     """Consolidate item grants by stable item ID without changing quantities.
 
-    Standard Find outcomes and typed reward receipts are two presentations of
+    Garden Find outcomes and typed reward receipts are two presentations of
     the same committed event in production. Find-linked receipts are therefore
     represented by the reconciled Find row once. Distinct committed events for
     the same item retain their quantities but share one earned-item row with
@@ -375,7 +375,7 @@ def session_earned_item_plan(summary: Any) -> tuple[SessionEarnedItem, ...]:
                     getattr(item, "art_asset", "") or item_id
                 ),
                 quantity=max(0, int(getattr(item, "quantity", 0) or 0)),
-                source_label="Standard Find",
+                source_label="Garden Find",
                 source_find_id=find_id,
                 event_ids=linked_event_ids,
             )
@@ -1217,9 +1217,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         number.setFixedHeight(32)
         apply_tabular_numerals(number)
         noun = "card" if count == 1 else "cards"
-        number.setAccessibleName(f"{value} {noun} completed this session")
+        number.setAccessibleName(f"{value} {noun} studied this session")
         hero_layout.addWidget(number)
-        label = QLabel(f"{noun} completed this session", hero)
+        label = QLabel(f"{noun} studied this session", hero)
         label.setObjectName("ankiGardenSessionHeroLabel")
         label.setProperty("summaryHeroLabel", True)
         label.setFixedHeight(19)
@@ -1555,7 +1555,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             supporting = supporting or unlock_supporting
         elif isinstance(source, StandardFind):
             eyebrow = eyebrow or "STANDARD FIND"
-            title = title or source.find_name or "Standard Find"
+            title = title or source.find_name or "Garden Find"
             supporting = supporting or source.reward_label
         return eyebrow, title, supporting, reward
 
@@ -1843,7 +1843,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             projected = tuple(
                 (
                     str(getattr(item, "find_id", "") or getattr(item, "item_id", "") or "find"),
-                    str(getattr(item, "find_name", "") or "Standard Find"),
+                    str(getattr(item, "find_name", "") or "Garden Find"),
                     str(getattr(item, "art_asset", "") or getattr(item, "item_id", "") or ""),
                     max(0, int(getattr(item, "quantity", 0) or 0)),
                 )
@@ -1870,7 +1870,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 first = values[0]
                 records.append((
                     identity,
-                    str(getattr(first, "find_name", "") or "Standard Find"),
+                    str(getattr(first, "find_name", "") or "Garden Find"),
                     str(
                         getattr(first, "art_asset", "")
                         or getattr(first, "item_id", "")
@@ -2075,7 +2075,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             identity, name, art, quantity = item
             rows.addWidget(self._find_row_widget(
                 identity,
-                f"Standard Find · {name}",
+                f"Garden Find · {name}",
                 art,
                 quantity,
                 compact=True,

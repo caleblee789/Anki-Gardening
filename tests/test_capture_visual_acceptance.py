@@ -331,7 +331,7 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
 def test_sync_reward_capture_geometry_is_right_docked_and_viewport_bounded() -> None:
     canonical = sync_reward_summary_geometry(1280, 720, 900)
 
-    assert canonical == (800, 24, 456, 640)
+    assert canonical == (856, 24, 400, 520)
     assert canonical[0] + canonical[2] + 24 == 1280
     assert canonical[1] == 24
 
@@ -492,8 +492,8 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "summary_semantic_id": "growth-charge.summary",
         "shared_component": True,
         "shared_markup_tree": True,
-        "before_label": "Before · Seed",
-        "after_label": "After · Sprout",
+        "before_label": "Seed",
+        "after_label": "Sprout",
         "impact_name": "Small Growth Charge",
         "impact_value": "+100 Growth",
         "growth_label": "Total Growth",
@@ -501,11 +501,11 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
         "progress_label": "Next-stage progress",
-        "stage_progress": "50 / 1,600 Growth to Young",
+        "stage_progress": "50 / 1,600 Growth toward Young",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Stage reward",
+        "reward_label": "Expected stage reward",
         "reward_value": "+2 Garden Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
@@ -531,7 +531,7 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "component_variant": "confirmation",
         "data_source": "engine-preview",
         "dialog_title": "Use Small Growth Charge?",
-        "transition_statement": "Bonsai Plant will reach Sprout",
+        "transition_statement": "Bonsai Plant",
         "primary_action": "Use charge",
         "secondary_action": "Cancel",
     }
@@ -553,8 +553,9 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "variant": "success",
         "component_variant": "success",
         "data_source": "engine-confirmed",
-        "dialog_title": "Small Growth Charge applied",
-        "transition_statement": "Bonsai Plant reached Sprout",
+        "dialog_title": "Bonsai Plant reached Sprout",
+        "transition_statement": "Bonsai Plant",
+        "reward_label": "Earned stage reward",
         "primary_action": "View plant",
         "secondary_action": "Close",
         "resulting_growth": 450,
@@ -602,7 +603,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "bundle_id": "answer:committed:1",
         "rendered_bundle_id": "answer:committed:1",
         "hero_event_id": "reward:full-bloom",
-        "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
+        "visible_summary_labels": ["1 Garden Find", "2 Garden discoveries"],
         "visible_summary_reward_types": [
             "garden_find",
             "environment_discovery",
@@ -1196,7 +1197,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             ("Garden Coins", "Garden Coins", "+14 Garden Coins", "event:3"),
             ("Discovery", "Firefly Evening", "New", "event:4"),
             ("Discovery", "Morning Dew", "New", "event:5"),
-            ("Standard Find", "Moonlit Seed", "Common", "event:6"),
+            ("Garden Find", "Moonlit Seed", "Common", "event:6"),
             ("Additional effect", "Fertilizer", "1h 24m", "event:7"),
         )
     ]
@@ -1217,10 +1218,10 @@ def _reviewer_reward_content() -> dict[str, object]:
         },
         "one-garden-find": {
             "find_count": 1,
-            "footer_copy": "1 Standard Find",
+            "footer_copy": "1 Garden Find",
         },
         "discovery-new-wording": {
-            "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
+            "visible_summary_labels": ["1 Garden Find", "2 Garden discoveries"],
             "discovery_summary": "2 Garden discoveries",
         },
         "full-bloom": {
@@ -1283,10 +1284,10 @@ def _reviewer_reward_content() -> dict[str, object]:
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "visible_summary_count": 2,
-            "visible_summary_labels": ["1 Standard Find", "2 Garden discoveries"],
+            "visible_summary_labels": ["1 Garden Find", "2 Garden discoveries"],
             "visible_summary_rows": [
                 {
-                    "label": "1 Standard Find",
+                    "label": "1 Garden Find",
                     "reward_type": "garden_find",
                     "artwork_ref": "morning_dew",
                     "uses_item_art": True,
@@ -1358,7 +1359,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "live_coins": 14,
             "footer_finds": 1,
             "live_finds": 1,
-            "footer_copy": ["+60 Growth", "+14 Garden Coins", "1 Standard Find"],
+            "footer_copy": ["+60 Growth", "+14 Garden Coins", "1 Garden Find"],
         },
         "reward-reveal-lifecycle": {
             "celebrating": "celebrating",

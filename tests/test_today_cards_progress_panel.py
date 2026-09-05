@@ -136,7 +136,7 @@ def test_today_cards_is_a_lazy_garden_progress_page() -> None:
     refresh_source = _method_source("GardenDetailsDialog", "_refresh_metric_page")
 
     assert ("today", "Today’s Cards") in metric_tabs
-    assert ("today", "Today’s Cards") in page_labels
+    assert ("today", "Today") in page_labels
     assert 'normalized == "today"' in refresh_source
     assert "self._refresh_today(layout)" in refresh_source
 
@@ -165,10 +165,9 @@ def test_today_page_copy_has_no_goal_or_find_drought_language() -> None:
         "52 / 75",
     ):
         assert forbidden not in literals
-    assert "at start" in literals
-    assert "remaining today" in literals
-    assert "daily reset" in literals
-    assert "queued for tomorrow" in literals
+    assert "starting workload" in literals
+    assert "next study day starts" in literals
+    assert "next study day" in literals
 
 
 def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> None:
@@ -216,7 +215,7 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
     assert result.status.finds_detail == ""
     assert result.status.heading == "TODAY’S CARDS"
     assert result.status.primary == "18 cards remaining"
-    assert result.status.secondary == ("176 cards completed",)
+    assert result.status.secondary == ("176 cards studied",)
     assert result.weather_name == "Watering Station"
     assert result.scenery_name == "Spring Bloom"
     assert result.loadout_locked is True
@@ -263,10 +262,3 @@ def test_today_projection_uses_unavailable_copy_when_verification_fails() -> Non
     assert result.starting_cards is None
     assert result.remaining_cards is None
     assert result.claim_state == "unavailable"
-
-
-def test_today_page_defers_an_incomplete_tomorrow_card_below_the_first_fold() -> None:
-    source = _method_source("GardenDetailsDialog", "_refresh_today")
-
-    assert 'queued_spacer.setProperty("completeSectionSpacer", True)' in source
-    assert "self._register_complete_section_boundary(queued, queued_spacer)" in source

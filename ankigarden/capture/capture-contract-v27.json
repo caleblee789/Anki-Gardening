@@ -1,5 +1,5 @@
 {
-  "contract_digest": "da6da6a874154abf2ff9925c1844574c5423d654926b2f1163941f087e7b7176",
+  "contract_digest": "03d59f079066f9ff52e026a9ed72452a2556b3ce19f1c3868bc2b9adb0a52aa4",
   "contract_version": 27,
   "profiles": {
     "full": {
@@ -9235,7 +9235,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "447fa1a7ed3b6b9c5df4117f81c5f80e0aa5297f9f6b95f46caf23f8eae808b3",
+      "dependency_digest": "1b27fa491d1296ca09722e49111e9ce8dd2fbb1613c8d476911ac9c0ed1024ff",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9254,7 +9254,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9325,7 +9328,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "91fbd3bdaf70763a71e9beae3e0c47863a2daa63c1ee11c58f7e8f4c73ffa190",
+      "dependency_digest": "57951bc5be679a11a2af7d46d15fe272901b5e4511adaaf8c26949f2eee0ab54",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9344,7 +9347,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9409,7 +9415,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4c1710c1dd174eefc7d3071b874d2713e93bb5775ca214dd1801272f25d5e219",
+      "dependency_digest": "495b77af846ce8fadf319eeaace95cb1a272fe7488b0920ca3f4e24354bbdaef",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9428,7 +9434,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9501,7 +9510,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "5cf51e7e5c1ca1f99850449a102ca67e565008d3617f5e6f55f3a5d46b283ab7",
+      "dependency_digest": "22022c4984a6481cbdd40a303bb256a57dcfc9002ceb89f532720081159c7c82",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9520,7 +9529,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9589,7 +9601,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "6a14d67db2b5d8a2f8473487dafaeaa5fedd560d1ffb6719c4018012924b9b3b",
+      "dependency_digest": "ddbc0e53eec3883e889926f929e5c06d826d780649bbb9fd62f69fcc76f2de28",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9608,7 +9620,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9677,7 +9692,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "61182acdf0f1b510cc3341ac1593683e28c016a1153e5c2e67358e95c7a83682",
+      "dependency_digest": "5e9755004a17eba8b8662cb8d9c1efdefeacc7a6d09f7fd9a175b8674b59f26d",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9696,7 +9711,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9758,7 +9776,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3ce341a22c24bfcd9a2f0f574a23d3f09d5a1d95e95d145d5571fa2f527dc66f",
+      "dependency_digest": "b9cbfdd22a9ed86e193caaff4a66385421e089cb40387fcaab9cfd031f68fbe6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9777,7 +9795,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9839,7 +9860,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "886610193a49cff6e7c186732c49c408da6216dcbaa5c540f260be7559abe876",
+      "dependency_digest": "7d7361ed4556508bf5236ffbd3567d1bb282b0e0bb797d7fa9a1e1133cc0a281",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9858,7 +9879,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -9927,7 +9951,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0229537eaf64e0f3bc14e8abad6acebb2686048ccb7736a66ebbb5df21b75f32",
+      "dependency_digest": "707f3b84cef1f15adff4c0e36aef341522940d968d68d416f01d545c4bce9e82",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9946,7 +9970,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10008,7 +10035,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "2a019f10898b69c4ba8db3a355323709ad7bdd63a53d483b421f5294108ba419",
+      "dependency_digest": "15f73b68c0b57e46843df7c47993508863f2a1d0dafb9ff7503d29743ecf5d31",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10027,7 +10054,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10096,7 +10126,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "e58c8118fad5f34bf7fa6ab1003c06986f20c66e31133634ef15197a96481cb2",
+      "dependency_digest": "875cc95c75b1251832c041fc6c7c2b1f6dfb05dc600d1293562cdc84d5dcc1d7",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10115,7 +10145,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10177,7 +10210,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0d930154ea89954b821473dddfeb1a7ba6b1cb71bb11df51317ffa5a421ab844",
+      "dependency_digest": "7a6c12c176f5d4a944646f00383b2fa02551c0a6d3376768c1664e66c96cc507",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10196,7 +10229,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10265,7 +10301,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "fc4d10e40137d2354c3619585b802c151eaf57484bb43ec6c70a67e3d1f43065",
+      "dependency_digest": "c98394ea1d56c9944b31eaaba01dc67b7be3fbb91e1799c093843f72fb58b1e6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10284,7 +10320,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10353,7 +10392,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "e7bf1f433a1617601fb03a742390daefe43748b8d78c096f3f0aa2a41ed69276",
+      "dependency_digest": "4d05f6be94826cee71ab6a51745ae0c60994e182b3b10056f18b93eed1b380c1",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10372,7 +10411,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10434,7 +10476,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "23f3c5e62f93a0f8e7edbb1ff4b2aa027a97b9eac5251c53d1ec278a864ab9b9",
+      "dependency_digest": "4a1b346ffc0a61fcbeb377796cc306deb38f1d933760bfb01e65268b53feb8fe",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10453,7 +10495,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10522,7 +10567,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "1f1aaeab34885e4e98334dbf6c95ad60e627863b176a43b4d8433d3a1348396a",
+      "dependency_digest": "b389149186d9ee140eee7f40beb6c1475fce622fddee86ffcbbd148718a6ca42",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10541,7 +10586,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10603,7 +10651,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "1dbfec9845c33a4759cfb90d07073bbac4522b7672ec5de74f3d69d040f991ab",
+      "dependency_digest": "569c52b574fcd92dc34cc15d5f3e458f109549740fdf73225222064f9bbfbb07",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10622,7 +10670,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10691,7 +10742,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "e86dc37dd9c0d37e8cfe62d61daa61fdd30141c65cd0c02fffb48dc9208a988d",
+      "dependency_digest": "99ff411c0d06aab074fa8feffd609963aad4ff5d12ce5c38d746e6d968096137",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10711,7 +10762,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10773,7 +10827,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "a22662c34f515f2a0b94f213442d4478c1f3cbb1d4662fb86f5f1342fc7200b9",
+      "dependency_digest": "c4dcd99afc52f71e71afb2c50f07614d990d0242c756fc6ae123f0637ecbcd07",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10792,7 +10846,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -10861,7 +10918,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "fb3aca5aaa53679edac1b447b7410e7349789b0e6063a6ae467388282b4effe6",
+      "dependency_digest": "862be381c10605cdbce05a3584e23f71a30601c8ba41605cadeb6d5b1935458b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10880,7 +10937,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -11024,7 +11084,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0dd85742b5e7f883467023ab22ed4e51438c3a27a85524afb85c570ddc6d2317",
+      "dependency_digest": "6ef1967665f67c245e36f8a33f50fd04b83b1f41e101a46c2d66552f4c154a58",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11043,7 +11103,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -11105,7 +11168,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "2ec0abadebe0a91bbcdc86d3b065276e5dbc7bb0783b04f7905c55961bd18cf0",
+      "dependency_digest": "d13caafd6eb2ce6e886559f0bdeb707bd0f38eb0699c142eabacdc446c4ce4fb",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11124,7 +11187,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -11193,7 +11259,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "23409a661fd91134c03ad80ca1cb7d7fc13a9c989c283ee1e85bb2c4fad3b439",
+      "dependency_digest": "3a00bb692f6dee83ce03db86c80de67f4d49e4b0e42fd825b702cf4840c925b6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11212,7 +11278,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -11274,7 +11343,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c15ad77383b3e93caede8abeed1ec57b10fb625149a5b1d2f8b252a5a11cf309",
+      "dependency_digest": "3b16fcc7e4dc64a516596df8f181da159225df8ac0fc632046dc35d4a43bd73d",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11293,7 +11362,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -11355,7 +11427,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "1794a00aec7e0c9a9ae10da96367adab8d52cdf594eeae33e1d7bf23403aa736",
+      "dependency_digest": "04761610729442405f1111845cc2ea651d551b931f91f8857b1146ef7a7ab350",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11374,7 +11446,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -11436,7 +11511,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0884e03e80e7a9ce2581ad7c58b80a9a3579f770f45dbd4b60b7a2f4ba1b91bf",
+      "dependency_digest": "d827b821ce46e0e5a4062bae5f11e171a5c17580e220d5fbf5ffc60542d17a09",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11455,7 +11530,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {
@@ -11524,7 +11602,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "9836bb51f85510345047b3e28faebde10864c7b46511310b70e9788e24b283e2",
+      "dependency_digest": "dd1086414a0c93f0f68ec4d7e605813ae453e12e8f329df3dc27ed2e6f40754a",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11543,7 +11621,10 @@
         "ui/dialog_foundations.py",
         "ui/theme.py",
         "ui/copy.py",
-        "ui/garden_studio.py"
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py"
       ],
       "placements": [
         {

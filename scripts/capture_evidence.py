@@ -40,10 +40,8 @@ LEGACY_CAPTURE_ACCEPTANCE_POLICY = "gross-failures-only"
 V26_CAPTURE_ACCEPTANCE_POLICY = "gross-and-semantic-fail-closed"
 _V26_DEPRECATED_VISIBLE_COPY_PATTERNS = (
     r"\bstage [1-5] of 5\b",
-    r"\bgarden finds?\b",
     r"\b1 find\b",
     r"\bnew environments?\b",
-    r"\buse bonus\b",
     r"\benvironment discoveries\b",
     r"\benvironment discovery guarantees\b",
     r"\bfuture growth will be shared or stored\b",

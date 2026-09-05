@@ -285,7 +285,7 @@ def visible_reward_term(internal_id: Any) -> VisibleRewardTerm:
     raw_id = str(internal_id or "").strip()
     normalized = raw_id.casefold()
     if normalized in _STANDARD_FIND_IDS:
-        return VisibleRewardTerm(raw_id, "Standard Find", "Standard Finds")
+        return VisibleRewardTerm(raw_id, "Garden Find", "Garden Finds")
     if normalized in _GARDEN_DISCOVERY_IDS:
         return VisibleRewardTerm(
             raw_id,

@@ -169,10 +169,12 @@ def format_growth(
 ) -> str:
     """Format one Growth value or one current/goal pair."""
 
-    number = int(_to_decimal(value))
-    amount = _signed_integer(number) if signed else f"{number:,}"
+    number = _to_decimal(value)
+    amount = format(number, "+,f" if signed else ",f")
+    if "." in amount:
+        amount = amount.rstrip("0").rstrip(".")
     if maximum is not None:
-        amount = f"{amount} / {format_integer(maximum)}"
+        amount = f"{amount} / {format_growth(maximum, include_unit=False)}"
     return f"{amount} Growth" if include_unit else amount
 
 
@@ -180,7 +182,7 @@ def format_stage_progress(value: Any, maximum: Any, destination: str) -> str:
     """Format the one visible progress expression used by Garden surfaces."""
 
     return (
-        f"{format_growth(value, maximum, include_unit=False)} Growth to "
+        f"{format_growth(value, maximum, include_unit=False)} Growth toward "
         f"{format_status_label(destination)}"
     )
 

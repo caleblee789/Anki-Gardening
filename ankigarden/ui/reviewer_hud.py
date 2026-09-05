@@ -282,22 +282,24 @@ def project_today_cards(
         maximum = cleared + remaining
 
     if status == "complete":
+        awarded = bool(getattr(completion, "reward_claimed", False) or getattr(stats, "completed_due_cards", False))
+        earned_coins = reward_coins if awarded else 0
         return TodayCardsProjection(
             status="complete",
             heading="All cards complete",
-            primary=format_garden_coins(reward_coins, signed=True),
-            secondary=(f"{format_quantity(reviewed, 'card')} completed today",),
+            primary=format_garden_coins(earned_coins, signed=True) if awarded else "Today’s workload is complete",
+            secondary=(f"{format_quantity(reviewed, 'card')} studied today",),
             progress_value=max(maximum, cleared),
             progress_maximum=max(maximum, cleared),
             reviewed_count=reviewed,
             remaining_count=0,
-            completion_reward_coins=reward_coins,
+            completion_reward_coins=earned_coins,
         )
     if status == "not_eligible":
         return TodayCardsProjection(
             status="not_eligible",
             heading="Today’s cards",
-            primary="No cards due today",
+            primary="No cards due right now",
             reviewed_count=reviewed,
         )
     if status == "unavailable":

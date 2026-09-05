@@ -408,6 +408,10 @@ def test_shared_scenery_and_unusable_consumables_follow_production_routing():
     capped_state.fertilizer_activation_order_by_plant[0] = [
         "fertilizer_quality",
     ] * 5
+    capped_state.inventory["booster_potion"] = 1
+    capped_state.consumable_active_batches["booster_potion"] = [
+        [50, 0, 0] for _ in range(5)
+    ]
     _consume_inventory_growth(
         capped_state,
         facts,
@@ -420,6 +424,8 @@ def test_shared_scenery_and_unusable_consumables_follow_production_routing():
     )
     assert capped_state.inventory["fertilizer_basic"] == 1
     assert capped_state.consumable_units_activated["fertilizer_basic"] == 0
+    assert capped_state.inventory["booster_potion"] == 1
+    assert capped_state.consumable_units_activated["booster_potion"] == 0
 
 
 def test_repeated_seven_day_run_uses_recurring_streak_source_after_gap():
@@ -520,10 +526,6 @@ def test_firefly_instant_growth_targets_the_closest_checkpoint_plant():
 
 
 def test_halloween_gift_uses_the_production_reward_seed_and_anki_day():
-    from scripts.balance_analysis.annual_parity import (
-        generate_primitive_annual_trace,
-    )
-
     facts = load_catalog_facts()
     scenario = next(
         row for row in approved_scenarios()
@@ -534,12 +536,17 @@ def test_halloween_gift_uses_the_production_reward_seed_and_anki_day():
         days=337,
         checkpoint_days=(337,),
     )
-    event = generate_primitive_annual_trace(
-        facts,
-        scenario,
-        config,
-        0,
-    ).days[-1].kernel_event
+    # Fixed production seed/day keep this outcome independent of catalog copy.
+    event = DayEvents(
+        day=337,
+        study=True,
+        answers=10,
+        scheduler_day_id="2027-08-01",
+        production_reward_seed=(
+            "86d82db0f8d0e434f1cb9912e6bfcad71"
+            "fd3de654a1361eb4bef3da46b1c7737"
+        ),
+    )
     state = _initial_state(facts, scenario)
     state.active_scenery_id = "halloween"
 

@@ -2179,6 +2179,12 @@ def _consume_inventory_growth(
             # Production keeps the stored dose when the target's active plus
             # queued Fertilizer schedule has reached its five-dose cap.
             continue
+        if consumable.consumable_kind.lower() == "booster" and sum(
+            int(batch[0]) > 0 and int(batch[2]) == target_plant_index
+            for batch in state.consumable_active_batches.get(item_id, ())
+        ) >= 5:
+            # Keep stored Booster doses when the same production cap is full.
+            continue
         state.inventory[item_id] -= 1
         state.consumable_units_activated[item_id] += 1
         card_count = consumable.card_count

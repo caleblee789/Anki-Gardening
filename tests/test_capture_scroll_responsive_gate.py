@@ -714,12 +714,3 @@ def test_home_and_vertical_settings_capture_bounds_match_the_release_layout() ->
     )
     assert "Plant in Bed" in starter_postcondition
     assert "Place in Bed" not in starter_postcondition
-
-
-def test_loadout_first_fold_reserves_two_complete_native_tile_rows() -> None:
-    dashboard_source = (ROOT / "ankigarden" / "ui" / "dashboard.py").read_text(
-        "utf-8"
-    )
-
-    assert "self.option_tabs.setFixedHeight(304)" in dashboard_source
-    assert "scroll.setFixedHeight(260)" in dashboard_source

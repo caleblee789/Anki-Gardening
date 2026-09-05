@@ -34,8 +34,8 @@ def test_nursery_uses_registered_copy_and_manifest_geometry() -> None:
     nursery = landmarks[0]
     assert nursery.landmark_id == "nursery_entrance"
     assert nursery.action_id == "garden.nursery.open"
-    assert nursery.accessible_name == "Nursery"
-    assert nursery.tooltip == "Open nursery"
+    assert nursery.accessible_name == "Shop"
+    assert nursery.tooltip == "Open shop"
     assert nursery.bounds == (0.076, 0.142, 0.146, 0.178)
     assert len(nursery.polygon) == 13
     house = landmarks[1]

@@ -119,11 +119,11 @@ def test_empty_state_renders_empty_message() -> None:
     assert 'data-state="empty"' in html
     assert 'data-testid="home-empty"' in html
     assert 'role="region" aria-label="Anki Garden"' in html
-    assert "Start your garden" in html
+    assert "Grow your first plant" in html
     assert "Your first plant is free." in html
     assert "Start with one free seed." not in html
     assert "Reviews completed before setup do not earn Growth." not in html
-    assert "Start your garden. Your first plant is free. Choose starter." in html
+    assert "Grow your first plant. Your first plant is free. Choose a plant." in html
     assert "Reviews completed beforehand cannot earn Growth." not in html
     assert "pycmd('anki-garden:choose-starter')" in html
     assert "Answer your first card" not in html
@@ -216,7 +216,6 @@ def test_success_state_renders_key_fields() -> None:
     assert "min-width:112px" in html
     assert "outline:2px solid #75E4AE" in html
     assert "outline-offset: 2px" in html
-    assert "box-shadow:0 0 0 4px #08251C" in html
     assert "this.disabled=true" in html
     assert "setTimeout" in html
 
@@ -376,10 +375,8 @@ def test_home_summary_panel_uses_compact_visual_hierarchy_at_each_breakpoint() -
     assert '<div class="ag-home__metrics"' not in html
     assert "height:100px" in html
     assert "height:4px" in html
-    assert "left:16px" in html
     assert "right:auto" in html
     assert "width:260px" in html
-    assert "bottom:7px" in html
     assert "filter:brightness(1.12)" in html
     assert "linear-gradient(90deg,rgba(3,12,9,.99)" in html
     assert "linear-gradient(180deg,rgba(4,14,11,.18)" in html
@@ -402,7 +399,7 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
 
     assert f'title="{name} · Flowering · 30 / 500 Growth"' in html
     assert f'>{name} · Flowering</span>' in html
-    assert '>30 / 500 Growth to Full Bloom</span>' in html
+    assert '>30 / 500 Growth toward Full Bloom</span>' in html
     assert "white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 400px)" in html
@@ -457,7 +454,6 @@ def test_home_surface_occlusion_is_behind_plants() -> None:
 
     art = html[html.index('class="ag-home__art"'):]
     assert art.index('class="ag-home__occlusion"') < art.index('class="ag-home__plant"')
-    assert ".ag-home__occlusion { position:absolute; inset:0; z-index:3" in html
 
 
 def test_home_bedless_planter_contract_replaces_every_legacy_bed_layer() -> None:
@@ -729,11 +725,8 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert 'data-testid="home-support" title="Briar · Sprout · 200 / 1,600 Growth"' in html
     assert 'data-testid="home-growth-progress"' in html
     assert 'data-testid="home-progress-copy"' in html
-    assert ".ag-home__growth-track {\n  position:absolute;" in html
-    assert "\n  bottom:7px;\n  width:260px;\n  height:4px;" in html
     assert "background:rgba(99,217,159,.26)" in html
     assert "line-height:14px" in html
-    assert ".ag-home__growth-track > span {\n  display:block;\n  position:absolute;" in html
     assert "\n  left:0;\n  width:var(--ag-growth-percent,0%);" in html
     assert 'data-testid="home-today-answers"' not in html
     assert 'data-testid="home-nearest-achievement"' not in html

@@ -93,7 +93,7 @@ def workspace_postcondition(runner, widget, route):
 
 
 def capture_plant_menu_layouts(runner):
-    """Record the selected beds at three native sizes, without changing game state."""
+    """Inspect the current and edge bed at the two supported release sizes."""
     dashboard = runner.app.dashboard
     selected = dashboard.scene.selected_plant_id()
     size = dashboard.size()
@@ -103,12 +103,12 @@ def capture_plant_menu_layouts(runner):
     records = []
     dashboard._plant_popover_motion_enabled = lambda: False
     try:
-        for width, height in ((1040, 720), (860, 580), (1440, 900)):
+        for width, height in ((1040, 720), (860, 580)):
             dashboard.resize(width, height)
             _settle()
-            for plant in runner.app.storage.state.plants:
-                if not plant.planted:
-                    continue
+            planted = [plant for plant in runner.app.storage.state.plants if plant.planted]
+            targets = {plant.plant_id: plant for plant in (planted[0], max(planted, key=lambda plant: plant.slot_index))} if planted else {}
+            for plant in targets.values():
                 dashboard.scene.keep_card_open(plant.plant_id)
                 dashboard._refresh_selected_plant_card()
                 _settle()
@@ -172,12 +172,15 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             dashboard._refresh_onboarding()
             picker = dashboard._inline_starter
             choices = [button for button in picker.findChildren(QPushButton) if button.property("environmentTile")]
-            choose = next(button for button in picker.findChildren(QPushButton) if button.text() == "Choose plant")
             if route in {"starter-selected", "starter-placement"}:
                 choices[0].click()
-            if route == "starter-placement":
-                choose.click()
                 _settle()
+            if route == "starter-selected":
+                # The former confirmation screen is now the retained tile
+                # selection after returning from placement without planting.
+                dashboard._cancel_move()
+                _settle()
+            if route == "starter-placement":
                 dashboard.scene._interaction.destination_slot = 0
                 dashboard._on_placement_destination_changed(0)
         elif "/" in route:

@@ -6,7 +6,7 @@ from collections import deque
 import re
 from typing import Any, Callable, Literal, Mapping, Optional
 
-from .formatters import format_garden_coins, format_quantity
+from .formatters import format_garden_coins, format_quantity, format_status_label
 from .plant_art import normalized_plant_pixmap
 from .reviewer_hud import (
     FULL_BLOOM_GROWTH_ROUTE_COPY,
@@ -599,7 +599,7 @@ def _session_metric_text(index: int, value: Any) -> str:
         return f"{format_growth_units(normalized, signed=True)} Growth"
     if index == 1:
         return format_garden_coins(normalized, signed=True)
-    return format_quantity(normalized, "Standard Find")
+    return format_quantity(normalized, "Garden Find")
 
 
 def _session_coin_count(snapshot: Any) -> int:
@@ -2159,8 +2159,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._percent.setProperty("hudMuted", True)
         apply_tabular_numerals(self._percent)
         _set_decoration(self._percent)
-        stage_row.addWidget(self._percent)
         layout.addLayout(stage_row)
+        layout.addWidget(self._percent)
         self._checkpoint_track = CheckpointTrack(self._plant_card)
         layout.addWidget(self._checkpoint_track)
         self._checkpoint_distance_row = QFrame(self._plant_card)
@@ -3679,7 +3679,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.setProperty("fullBloomAccent", bool(nurture.fully_grown))
         _repolish(self._stage)
         self._stage.setVisible(bool(nurture.stage_label))
-        self._percent.setText(f"{nurture.progress_percent}%")
+        self._percent.setText(f"{nurture.progress_percent}% toward {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else f"{nurture.progress_percent}%")
         self._percent.setVisible(normal)
         self._checkpoint_track.set_milestones(
             tuple(
@@ -3731,7 +3731,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._checkpoint_reward_row.setVisible(bool(nurture.next_checkpoint_reward_coins))
         if str(self._next_answer.property("resultState") or "") != "applied":
-            self._next_answer_label.setText("Next card:")
+            self._next_answer_label.setText("Next answer:")
             self._next_answer_value.setText(nurture.next_answer_value)
             self._next_answer.setVisible(bool(nurture.next_answer_value))
         message = "\n".join(
@@ -5218,6 +5218,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._sync_current_reward_secondary()
         retained_plant_art = self._reward_full_pixmap if mode == "history" else None
         self._set_reward_art(_bundle_hero(bundle), _hero_kind(bundle))
+        # The completed plant already has the primary artwork region. Keep
+        # separate artwork for rewards about other items or historical plants.
+        self._reward_art.setVisible(not (active_milestone and mode != "history"))
         if mode == "history":
             # The reveal can display historical art, but the plant-card
             # override must continue to reference the live milestone art.
@@ -6140,13 +6143,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 # reward dock and the 44px header so the dock never steals
                 # height from the daily/plant body at its natural size.
                 content_height = 46 + body_height + reward_height
-                if self._full_bloom_bundle is not None:
-                    content_height = min(content_height, 560)
-                elif (
-                    self._settled_full_bloom_bundle is not None
-                    or bool(self._plant_card.property("fullBloomSettled"))
-                ):
-                    content_height = min(content_height, 560)
                 self.setProperty("hudBodyNaturalHeight", body_height)
                 self.setProperty(
                     "hudBodyUncompactedHeight", uncompacted_body_height

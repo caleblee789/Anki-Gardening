@@ -59,15 +59,15 @@ def onboarding_state_display(
             OnboardingStep.INTRODUCTION: (
                 OnboardingState.NO_STARTER,
                 "No plant selected",
-                "Choose starter",
+                "Choose a plant",
                 False,
                 False,
                 1,
             ),
             OnboardingStep.NURSERY: (
                 OnboardingState.STARTER_SELECTED,
-                "Choose a starter",
-                "Choose starter",
+                "Choose a plant",
+                "Choose a plant",
                 False,
                 False,
                 2,
@@ -159,7 +159,7 @@ def onboarding_state_display(
         return OnboardingStateDisplay(
             OnboardingState.NO_STARTER,
             "No plant selected",
-            "Choose starter",
+            "Choose a plant",
             False,
             False,
         )

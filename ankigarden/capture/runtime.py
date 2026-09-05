@@ -1610,7 +1610,7 @@ SESSION_SUMMARY_REQUIRED_CONTENT_STATES: tuple[str, ...] = (
 # source-only contract tests, so capture review can verify the claimed model
 # without starting Anki.
 SYNC_REWARD_CAPTURE_SUBTITLE = (
-    "42 cards completed on another device"
+    "Rewards added after syncing"
 )
 SYNC_REWARD_CAPTURE_MODEL_FACTS: dict[str, Any] = {
     "anki_days": ("2026-08-28", "2026-08-29"),
@@ -3333,10 +3333,8 @@ COMPACT_HOME_BANNED_COPY: tuple[str, ...] = (
 
 CAPTURE_DEPRECATED_VISIBLE_COPY_PATTERNS: tuple[str, ...] = (
     r"\bstage [1-5] of 5\b",
-    r"\bgarden finds?\b",
     r"\b1 find\b",
     r"\bnew environments?\b",
-    r"\buse bonus\b",
     r"\benvironment discoveries\b",
     r"\benvironment discovery guarantees\b",
     r"\bfuture growth will be shared or stored\b",
@@ -3726,11 +3724,11 @@ def growth_charge_transient_variant_issue_codes(
         "ready-no-transition": {
             "transition_statement": "Bonsai Plant",
             "before_label": "Sprout",
-            "after_label": "After · Sprout",
+            "after_label": "Sprout",
             "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
             "inventory_value": "2 → 1",
-            "stage_progress": "300 / 1,600 Growth to Young",
+            "stage_progress": "300 / 1,600 Growth toward Young",
             "current_growth": 600,
             "projected_growth": 700,
             "inventory_before": 2,
@@ -3745,11 +3743,11 @@ def growth_charge_transient_variant_issue_codes(
         "success-no-stage-reward": {
             "transition_statement": "Bonsai Plant",
             "before_label": "Sprout",
-            "after_label": "After · Sprout",
+            "after_label": "Sprout",
             "impact_value": "+100 Growth",
             "growth_value": "600 → 700",
             "inventory_value": "2 → 1",
-            "stage_progress": "300 / 1,600 Growth to Young",
+            "stage_progress": "300 / 1,600 Growth toward Young",
             "completed_stage_count": 0,
             "reward_total": 0,
             "stage_row_visible": True,
@@ -3851,7 +3849,7 @@ def nursery_supplement_state_matrix_issue_codes(
             "engine_tier": "basic",
             "item_id": "fertilizer_basic",
             "inventory_copy": "2 available · 0 queued",
-            "action": "Queue",
+            "action": "Use next",
             "action_disposition": "queue",
             "status_phase": "active",
             "status_copy": "+1 Growth per card · 100 cards remaining",
@@ -3865,12 +3863,12 @@ def nursery_supplement_state_matrix_issue_codes(
             "engine_tiers": ["quality"],
             "item_id": "fertilizer_quality",
             "inventory_copy": "1 available · 1 queued",
-            "action": "Queue another",
+            "action": "Use another next",
             "action_disposition": "queue",
-            "final_basic_action": "Queue",
+            "final_basic_action": "Use next",
             "final_basic_action_disposition": "queue",
             "final_basic_painted": True,
-            "final_quality_action": "Queue another",
+            "final_quality_action": "Use another next",
             "final_quality_action_disposition": "queue",
             "final_quality_painted": True,
             "meta_copy": "+2 Growth per card · Lasts for 200 cards",
@@ -3935,7 +3933,7 @@ def sync_reward_discovery_state_matrix_issue_codes(
             "metric_projection": {
                 **base_metrics,
                 "standard_find": {
-                    "label": "Standard Finds",
+                    "label": "Garden Finds",
                     "value": "+3",
                 },
                 "garden_discovery": {
@@ -10422,7 +10420,7 @@ class _UiFaceCaptureRunner:
                 and balance_text == "Balance: 500"
                 and balance_icon_present
                 and extend_evidence.get("contained") is True
-                and extend_text == "Queue"
+                and extend_text == "Use next"
                 and not extend_cost_visible
                 and action_card_queue_delta == 100
                 and action_expires_at_ms is None
@@ -12115,7 +12113,7 @@ class _UiFaceCaptureRunner:
             "Rose",
             "+420 Growth",
             "Reached Flowering",
-            "200 / 20,000 Growth to Full Bloom",
+            "200 / 20,000 Growth toward Full Bloom",
             "+80 Shared Growth",
             "+20",
             "Garden Landmark",
@@ -13002,7 +13000,7 @@ class _UiFaceCaptureRunner:
             and "Small Growth Charge" in canonical_small_charge_item["copy"]
             and "×2" in canonical_small_charge_item["copy"]
             and canonical_small_charge_item["sources"]
-            == ["Standard Find", "Full Bloom"]
+            == ["Garden Find", "Full Bloom"]
             and canonical_small_charge_item["event_ids"]
             == ["capture-find-small-charge", "capture-full-bloom-item"]
             and "more standard finds" not in normalized
@@ -13573,7 +13571,7 @@ class _UiFaceCaptureRunner:
         cards_complete_copy = bool(re.search(r"\bcards complete\b", normalized))
         required_copy = (
             "session summary",
-            "24 cards completed this session",
+            "24 cards studied this session",
             "today’s cards",
             "19 cards remaining",
             "126 of 145 cards completed",
@@ -16830,11 +16828,11 @@ class _UiFaceCaptureRunner:
             and not compact["hero_title_clamped"]
             and compact["visible_summary_count"] == 2
             and compact["visible_summary_labels"]
-            == ["1 Standard Find", "2 Garden discoveries"]
+            == ["1 Garden Find", "2 Garden discoveries"]
             and compact["visible_summary_rows"]
             == [
                 {
-                    "label": "1 Standard Find",
+                    "label": "1 Garden Find",
                     "reward_type": "garden_find",
                     "artwork_ref": compact["visible_summary_rows"][0]["artwork_ref"],
                     "uses_item_art": True,
@@ -16879,7 +16877,7 @@ class _UiFaceCaptureRunner:
                 "",
             ),
             "passed": bool(
-                summary_labels == ["1 Standard Find", "2 Garden discoveries"]
+                summary_labels == ["1 Garden Find", "2 Garden discoveries"]
                 and summary_rows[0]["icon_kind"] == "item-art"
                 and summary_rows[1]["icon_kind"]
                 == "environment-discovery"
@@ -17875,7 +17873,7 @@ class _UiFaceCaptureRunner:
                     item.kind is RewardHero.GARDEN_FIND
                     for item in bundle.all_items
                 ) == 1
-                and str(hud._session_finds.text()) == "1 Standard Find"
+                and str(hud._session_finds.text()) == "1 Garden Find"
             ),
         }
         history_bundle_ids = tuple(
@@ -17917,7 +17915,7 @@ class _UiFaceCaptureRunner:
                     str(hud._session_growth.text()),
                     str(hud._session_coins.text()),
                     str(hud._session_finds.text()),
-                ] == ["+60 Growth", "+14 Garden Coins", "1 Standard Find"]
+                ] == ["+60 Growth", "+14 Garden Coins", "1 Garden Find"]
             ),
         }
 
@@ -18598,7 +18596,7 @@ class _UiFaceCaptureRunner:
             evidence.update({
                 "complete_copy": bool(
                     "all of today’s cards complete" in normalized
-                    and "144 cards completed this session" in normalized
+                    and "144 cards studied this session" in normalized
                     and "144 of 144 cards completed" in normalized
                 ),
                 "complete_progress": bool(
@@ -18641,7 +18639,7 @@ class _UiFaceCaptureRunner:
                 ),
                 "six_digit_totals_present": all(
                     value in normalized for value in (
-                        "123,456 cards completed this session",
+                        "123,456 cards studied this session",
                         "111,111 cards remaining",
                         "123,456 of 234,567 cards completed",
                         "+987,791.5",
@@ -18655,7 +18653,7 @@ class _UiFaceCaptureRunner:
                     and expected_long_find_name in small_charge_item["copy"]
                     and "×123,457" in small_charge_item["copy"]
                     and small_charge_item["sources"]
-                    == ["Standard Find", "Full Bloom"]
+                    == ["Garden Find", "Full Bloom"]
                     and long_find_name is not None
                     and long_find_name.wordWrap()
                     and str(long_find_name.toolTip())
@@ -18720,7 +18718,7 @@ class _UiFaceCaptureRunner:
                     and small_charge_item is not None
                     and "×4" in small_charge_item["copy"]
                     and small_charge_item["sources"]
-                    == ["Standard Find", "Full Bloom"]
+                    == ["Garden Find", "Full Bloom"]
                     and not more_finds_copy
                     and [
                         int(getattr(item, "quantity", 0) or 0)
@@ -18748,8 +18746,8 @@ class _UiFaceCaptureRunner:
                     and {
                         row["name"] for row in find_row_records
                     } == {
-                        "Standard Find · Garden Pouch",
-                        "Standard Find · Morning Dew",
+                        "Garden Find · Garden Pouch",
+                        "Garden Find · Morning Dew",
                     }
                     and all(
                         row["quantity"] == "×1"
@@ -18759,7 +18757,7 @@ class _UiFaceCaptureRunner:
                     and "Small Growth Charge" in small_charge_item["copy"]
                     and "×2" in small_charge_item["copy"]
                     and small_charge_item["sources"]
-                    == ["Standard Find", "Full Bloom"]
+                    == ["Garden Find", "Full Bloom"]
                     and not more_finds_copy
                 ),
                 "distinct_find_art_provenance": bool(
@@ -18883,8 +18881,8 @@ class _UiFaceCaptureRunner:
                         for row in find_row_records
                     }
                     and {
-                        "Standard Find · Garden Pouch",
-                        "Standard Find · Morning Dew",
+                        "Garden Find · Garden Pouch",
+                        "Garden Find · Morning Dew",
                     } <= {
                         str(row["name"])
                         for row in find_row_records
@@ -18897,7 +18895,7 @@ class _UiFaceCaptureRunner:
                     and "Small Growth Charge" in small_charge_item["copy"]
                     and "×2" in small_charge_item["copy"]
                     and small_charge_item["sources"]
-                    == ["Standard Find", "Full Bloom"]
+                    == ["Garden Find", "Full Bloom"]
                 ),
             })
         elif state_name == "dark-appearance":
@@ -21552,7 +21550,7 @@ class _UiFaceCaptureRunner:
                 normalized_summary_copy = summary_copy.casefold()
                 summary_copy_passed = bool(
                     "session summary" in normalized_summary_copy
-                    and "24 cards completed this session"
+                    and "24 cards studied this session"
                     in normalized_summary_copy
                     and "today’s cards" in normalized_summary_copy
                     and "19 cards remaining" in normalized_summary_copy
@@ -33868,8 +33866,8 @@ class _UiFaceCaptureRunner:
                     and int(quote.current_seconds_remaining) == 0
                     and int(quote.duration_seconds) == 0
                     and int(quote.resulting_seconds_remaining) == 0
-                    and str(dialog.windowTitle()) == "Queue Magical Fertilizer?"
-                    and primary_action == "Buy and queue"
+                    and str(dialog.windowTitle()) == "Buy Magical Fertilizer?"
+                    and primary_action == "Buy and use next"
                     and str(dialog.outcome_label.text()).strip()
                     == (
                         "Starts after Basic Fertilizer.\n"
@@ -35201,8 +35199,8 @@ class _UiFaceCaptureRunner:
             rendered_values["summary_semantic_id"] == "growth-charge.summary"
             and rendered_values["shared_component"] is True
             and rendered_values["shared_markup_tree"] is True
-            and rendered_values["before_label"] == "Before · Seed"
-            and rendered_values["after_label"] == "After · Sprout"
+            and rendered_values["before_label"] == "Seed"
+            and rendered_values["after_label"] == "Sprout"
             and rendered_values["impact_name"] == "Small Growth Charge"
             and rendered_values["impact_value"] == "+100 Growth"
             and rendered_values["growth_label"] == "Total Growth"
@@ -35211,11 +35209,11 @@ class _UiFaceCaptureRunner:
             and rendered_values["inventory_value"] == "2 → 1"
             and rendered_values["progress_label"] == "Next-stage progress"
             and rendered_values["stage_progress"]
-            == "50 / 1,600 Growth to Young"
+            == "50 / 1,600 Growth toward Young"
             and rendered_values["progress_minimum"] == 0
             and rendered_values["progress_maximum"] == 1_600
             and rendered_values["progress_value"] == 50
-            and rendered_values["reward_label"] == "Stage reward"
+            and rendered_values["reward_label"] == ("Earned stage reward" if variant == "success" else "Expected stage reward")
             and rendered_values["reward_value"] == "+2 Garden Coins"
             and rendered_values["reward_visible"] is True
             and rendered_values["charge_artwork_fallback"] is False
@@ -35241,7 +35239,7 @@ class _UiFaceCaptureRunner:
                 and rendered_values["component_variant"] == "confirmation"
                 and rendered_values["data_source"] == "engine-preview"
                 and rendered_values["transition_statement"]
-                == "Bonsai Plant will reach Sprout"
+                == "Bonsai Plant"
                 and rendered_values["primary_action"] == "Use charge"
                 and rendered_values["secondary_action"] == "Cancel"
             )
@@ -35282,11 +35280,11 @@ class _UiFaceCaptureRunner:
                 dialog.summary_panel.isVisibleTo(dialog)
                 and common_rendered_ok
                 and rendered_values["dialog_title"]
-                == "Small Growth Charge applied"
+                == "Bonsai Plant reached Sprout"
                 and rendered_values["component_variant"] == "success"
                 and rendered_values["data_source"] == "engine-confirmed"
                 and rendered_values["transition_statement"]
-                == "Bonsai Plant reached Sprout"
+                == "Bonsai Plant"
                 and rendered_values["primary_action"] == "View plant"
                 and rendered_values["secondary_action"] == "Close"
                 and rendered_values["resulting_growth"] == 450
@@ -35696,7 +35694,7 @@ class _UiFaceCaptureRunner:
             cleanup_holder["callback"] = restore
             # Keep the release collection projection at its canonical 30/37:
             # all built-in/purchasable environments are owned, while the six
-            # Standard Find environments remain mysteries.
+            # Garden Find environments remain mysteries.
             state.inventory["garden_features"] = [
                 item_id for item_id, item in GARDEN_FEATURE_CATALOG.items()
                 if str(item.acquisition) != "drop"
@@ -41390,7 +41388,7 @@ class _UiFaceCaptureRunner:
                 return False
             note[field_names[0]] = "What did this review uncover?"
             if len(field_names) > 1:
-                note[field_names[1]] = "A Standard Find."
+                note[field_names[1]] = "A Garden Find."
             add_note = getattr(collection, "add_note", None)
             if callable(add_note):
                 add_note(note, int(deck_id))
@@ -41754,7 +41752,7 @@ class _UiFaceCaptureRunner:
                 raise RuntimeError(
                     "canonical Reviewer reward feedback could not be projected"
                 )
-            expected_title = "Standard Find"
+            expected_title = "Garden Find"
             receipt_correlations = {
                 receipt.correlation_id for receipt in all_receipts
             }
@@ -41850,7 +41848,7 @@ class _UiFaceCaptureRunner:
                         feedback,
                         event_id=f"{feedback.event_id}:find:{index}",
                         event_ids=(f"{feedback.event_id}:find:{index}",),
-                        title="Standard Find",
+                        title="Garden Find",
                         message=str(presentation.description),
                         asset_category=(
                             "environment"
@@ -44519,7 +44517,7 @@ class _UiFaceCaptureRunner:
             and compact.hero_title == "Full Bloom reached"
             and compact.hero_subtitle == plant.name
             and [summary.label for summary in compact.visible_summaries]
-            == ["1 Standard Find", "2 Garden discoveries"]
+            == ["1 Garden Find", "2 Garden discoveries"]
             and len(compact.visible_summaries) == 2
             and compact.visible_summaries[0].reward_type == "garden_find"
             and bool(compact.visible_summaries[0].artwork_ref)
@@ -44774,7 +44772,7 @@ class _UiFaceCaptureRunner:
                     ]
                     and bundle_evidence["secondary_summary_count"] == 2
                     and bundle_evidence["visible_summary_labels"]
-                    == ["1 Standard Find", "2 Garden discoveries"]
+                    == ["1 Garden Find", "2 Garden discoveries"]
                     and bundle_evidence["visible_summary_reward_types"]
                     == ["garden_find", "environment_discovery"]
                     and all(bundle_evidence["visible_summary_artwork_refs"])

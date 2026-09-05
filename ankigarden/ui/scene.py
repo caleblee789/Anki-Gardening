@@ -939,6 +939,7 @@ class GardenSceneWidget(QWidget):
         self.set_keyboard_hint_suppressed(False)
         self._card_connector_rect = None
         self._card_connector_plant_id = ""
+        self._sync_landmark_occlusion()
         self._inline_message = ""
         self._announce_focused_plant()
         self.selectionChanged.emit("")
@@ -1101,7 +1102,19 @@ class GardenSceneWidget(QWidget):
             )
             self._landmark_labels[landmark.landmark_id] = landmark.accessible_name
         self._landmark_action_id = next(iter(self._landmark_action_by_id.values()), "")
+        self._sync_landmark_occlusion()
         self.landmarksChanged.emit()
+
+    def _sync_landmark_occlusion(self) -> None:
+        # Transparent building targets must not remain clickable underneath
+        # the inspector. Dismissal restores their ordinary scene behavior.
+        for landmark_id, rect in self._landmark_rects.items():
+            button = self._landmark_hotspots.get(landmark_id)
+            if button is not None:
+                button.setVisible(
+                    self._card_connector_rect is None
+                    or not self._card_connector_rect.intersects(rect)
+                )
 
     def _activate_landmark_by_id(self, landmark_id: str) -> None:
         self._activate_landmark(self._landmark_action_by_id.get(str(landmark_id), ""))
@@ -1135,6 +1148,7 @@ class GardenSceneWidget(QWidget):
         extra_obstacles: tuple[QRectF, ...] = (),
     ) -> QRectF | None:
         plant_id = self._interaction.pinned_id
+        previous = self._card_popover_placement if self._card_connector_plant_id == plant_id else None
         if not plant_id or self._interaction.placing:
             self._card_popover_placement = None
             return None
@@ -1235,12 +1249,14 @@ class GardenSceneWidget(QWidget):
             ),
             obstacles,
             allow_docked=None,
+            preferred_side=previous.chosen_side if previous is not None else None,
         )
         self._card_popover_placement = placement
         box = placement.rectangle
         result = QRectF(box.x, box.y, box.width, box.height)
         self._card_connector_rect = result
         self._card_connector_plant_id = plant_id
+        self._sync_landmark_occlusion()
         self.update()
         return result
 
@@ -1345,6 +1361,7 @@ class GardenSceneWidget(QWidget):
     def set_card_connector_geometry(self, geometry: QRectF | None, plant_id: str = "") -> None:
         self._card_connector_rect = QRectF(geometry) if geometry is not None else None
         self._card_connector_plant_id = str(plant_id) if geometry is not None else ""
+        self._sync_landmark_occlusion()
         self.update()
 
     def animate_plant_move(self, plant_id: str, origin_slot: int, destination_slot: int) -> None:
@@ -1837,6 +1854,7 @@ class GardenSceneWidget(QWidget):
             or card is None
             or placement is None
             or placement.docked
+            or not placement.connector_visible
         ):
             return
         side = str(placement.chosen_side)

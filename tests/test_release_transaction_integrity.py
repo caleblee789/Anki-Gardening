@@ -334,10 +334,10 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         )
     )
     if kind is PurchaseKind.GROWTH_CHARGE:
-        assert presentation.outcome == "Adds 100 Growth to one plant."
+        assert presentation.outcome == "Adds 100 Growth to one plant when used."
         assert [
             (fact.label, fact.value) for fact in presentation.facts
-        ] == [("Inventory", "0 → 1")]
+        ] == [("You own", "0 → 1")]
 
 
 def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
@@ -355,7 +355,7 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     assert extension.action is PurchaseAction.EXTEND
     assert extension.title == "Extend Basic Fertilizer?"
     assert extension.primary_label == "Extend"
-    assert extension_projection.action_text == "Buy and queue"
+    assert extension_projection.action_text == "Buy and use next"
     assert extension_quote.current_cards_remaining == 100
     assert extension_quote.resulting_cards_remaining == 200
     assert extension_quote.card_queue_delta == 100
@@ -373,9 +373,9 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     assert queued_quote.disposition is PurchaseDisposition.QUEUED
     assert not queued_quote.replacement_required
     assert queued.action is PurchaseAction.PURCHASE_QUEUE
-    assert queued.title == "Queue Magical Fertilizer?"
-    assert queued.primary_label == "Buy and queue"
-    assert queued_projection.action_text == "Buy and queue"
+    assert queued.title == "Buy Magical Fertilizer?"
+    assert queued.primary_label == "Buy and use next"
+    assert queued_projection.action_text == "Buy and use next"
     assert queued.outcome == (
         "Starts after Basic Fertilizer ends, then lasts 400 eligible cards. "
         "+3 Growth per eligible card."
@@ -544,12 +544,12 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
     assert [
         (fact.key, fact.label, fact.value)
         for fact in presentation.facts
-    ] == [("inventory", "Inventory", "0 → 1")]
+    ] == [("inventory", "You own", "0 → 1")]
     assert presentation.primary_label == "Buy charge"
     if status is PurchaseStatus.STALE_BALANCE:
         assert presentation.title == "Buy Small Growth Charge?"
         assert presentation.update_label == "Balance updated"
-        assert presentation.outcome == "Adds 100 Growth to one plant."
+        assert presentation.outcome == "Adds 100 Growth to one plant when used."
     else:
         assert presentation.update_label == ""
     if status is PurchaseStatus.STALE_PRICE:

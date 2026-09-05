@@ -598,7 +598,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         100,
         30,
         "Common",
-        "Nursery: 30 Garden Coins; daily Scenery; achievements; or Standard Finds.",
+        "Nursery: 30 Garden Coins; daily Scenery; achievements; or Garden Finds.",
     ),
     "growth_charge_standard": GrowthChargeSpec(
         "growth_charge_standard",
@@ -606,7 +606,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         500,
         125,
         "Rare",
-        "Nursery: 125 Garden Coins; Halloween Garden; achievements; or Standard Finds.",
+        "Nursery: 125 Garden Coins; Halloween Garden; achievements; or Garden Finds.",
     ),
     "growth_charge_grand": GrowthChargeSpec(
         "growth_charge_grand",

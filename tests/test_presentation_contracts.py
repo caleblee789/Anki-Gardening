@@ -135,7 +135,7 @@ def test_find_vocabulary_changes_visible_copy_without_changing_internal_ids() ->
     discovery = visible_reward_term(GARDEN_DISCOVERY_INTERNAL_ID)
 
     assert standard.internal_id == STANDARD_FIND_INTERNAL_ID
-    assert standard.label(2, include_quantity=True) == "2 Standard Finds"
+    assert standard.label(2, include_quantity=True) == "2 Garden Finds"
     assert discovery.internal_id == GARDEN_DISCOVERY_INTERNAL_ID
     assert discovery.label(1, include_quantity=True) == "1 Garden discovery"
     assert discovery.label(2) == "Garden discoveries"
@@ -163,4 +163,4 @@ def test_environment_pool_unlock_copy_never_calls_a_discovery_a_standard_find() 
         assert visible_copy == projected_copy
         assert visible_copy.endswith("Garden discovery.")
         assert "standard" not in visible_copy.casefold()
-        assert "Standard Find" not in visible_copy
+        assert "Garden Find" not in visible_copy

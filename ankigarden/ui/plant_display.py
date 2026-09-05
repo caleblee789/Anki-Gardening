@@ -499,6 +499,7 @@ class PopoverPlacement:
     maximum_content_height: float
     avoided_beds: tuple[int, ...] = ()
     docked: bool = False
+    connector_visible: bool = True
 
 
 @dataclass(frozen=True)
@@ -770,6 +771,7 @@ class SceneGeometryLayout:
         *,
         selected_accessory_regions: Iterable[Rect] = (),
         allow_docked: bool | None = None,
+        preferred_side: str | None = None,
     ) -> PopoverPlacement:
         """Place one bounded plant panel clear of its selected plant.
 
@@ -952,6 +954,7 @@ class SceneGeometryLayout:
                     clamp_shift = abs(rectangle.x - raw.x) + abs(rectangle.y - raw.y)
                     scored.append((
                         (
+                            0.0 if side == preferred_side else 1.0,
                             max(0.0, shrink_ratio),
                             soft_overlap,
                             float(side_index),
@@ -1110,6 +1113,12 @@ class SceneGeometryLayout:
             maximum_content_height=chosen.height,
             avoided_beds=avoided,
             docked=docked,
+            connector_visible=(not docked and (
+                (chosen_side == "right" and chosen.x >= selected_target.right and selected_target.y <= end[1] <= selected_target.bottom)
+                or (chosen_side == "left" and chosen.right <= selected_target.x and selected_target.y <= end[1] <= selected_target.bottom)
+                or (chosen_side == "above" and chosen.bottom <= selected_target.y and selected_target.x <= end[0] <= selected_target.right)
+                or (chosen_side == "below" and chosen.y >= selected_target.bottom and selected_target.x <= end[0] <= selected_target.right)
+            )),
         )
 
 
@@ -3092,13 +3101,13 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
     if reviews == 0:
         return OnboardingDisplay(
             True,
-            "Choose a starter",
+            "Choose a plant",
             "Pick a free plant for your garden.",
-            "Choose starter",
+            "Choose a plant",
         )
     return OnboardingDisplay(
         True,
-        "Choose a starter",
+        "Choose a plant",
         "Pick a free plant for your garden.",
-        "Choose starter",
+        "Choose a plant",
     )

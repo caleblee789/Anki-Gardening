@@ -213,8 +213,8 @@ def test_growth_charge_preview_and_success_share_one_markup_tree() -> None:
         '"View plant"',
         '"Charges remaining"',
         '"Next-stage progress"',
-        'f"Before · {format_status_label(data.before_stage_name)}"',
-        'f"After · {format_status_label(data.after_stage_name)}"',
+        'format_status_label(data.before_stage_name)',
+        'format_status_label(data.after_stage_name)',
     ):
         assert required_copy in owner_source
     for obsolete_copy in (

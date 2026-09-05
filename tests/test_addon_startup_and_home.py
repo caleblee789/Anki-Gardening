@@ -840,7 +840,7 @@ def test_reviewer_exit_summary_is_local_card_based_and_nonmodal(monkeypatch):
     assert payload.cards_completed == 126
     projection = project_session_day(payload.segments[0])
     assert projection.cards_completed_value == "126"
-    assert projection.cards_completed_label == "cards completed this session"
+    assert projection.cards_completed_label == "cards studied this session"
     assert projection.result_rows == ()
 
 
@@ -926,7 +926,7 @@ def test_reviewer_reward_feedback_keeps_delayed_correlations_separate_with_find_
         SimpleNamespace(
             event_id="reward-summary:answer:abc",
             kind="garden_find",
-            title="Standard Find: Morning Dew",
+            title="Garden Find: Morning Dew",
             message="+40 Growth; +4 coins; Unlocked stale display copy",
             occurred_at="2026-08-10T10:01:00",
             amount=44,
@@ -1020,7 +1020,7 @@ def test_reviewer_reward_feedback_keeps_delayed_correlations_separate_with_find_
     assert earlier.event_ids == (events[0].event_id,)
     assert earlier.message == "+2 Garden Coins"
     assert feedback.event_ids == (events[1].event_id, events[2].event_id)
-    assert feedback.title == "Standard Find"
+    assert feedback.title == "Garden Find"
     assert feedback.message == "+5 Garden Coins · +40 Growth"
     assert feedback.reward_detail == ""
     assert (feedback.coins_total, feedback.growth_total) == (5, 40)
@@ -1069,7 +1069,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
         SimpleNamespace(
             event_id=f"garden-find:{index}",
             kind="garden_find",
-            title="Standard Find",
+            title="Garden Find",
             message="",
             occurred_at=f"2026-08-10T10:0{index}:00",
             plant_id="plant:1",
@@ -1112,7 +1112,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     grouped = handler._consolidated_reward_feedback(events)
 
     assert grouped is not None
-    assert grouped.title == "Standard Finds"
+    assert grouped.title == "Garden Finds"
     assert grouped.message == "+6 Garden Coins · +80 Growth"
 
     handler._typed_reward_totals = lambda _events: (1, 0, 0)

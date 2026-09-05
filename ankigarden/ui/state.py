@@ -345,7 +345,7 @@ def garden_preview_from_values(
     if not starter_selected and normalized_phase == "success":
         normalized_phase = "empty"
     if normalized_phase == "empty":
-        title = "Choose a starter"
+        title = "Grow your first plant"
         summary = ""
     elif active_name and stage_label:
         if active_fully_grown:

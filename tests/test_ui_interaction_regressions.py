@@ -516,6 +516,8 @@ def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -
         _interaction=SimpleNamespace(pinned_id="selected", placing=False),
         _layout_plants=lambda _width, _height: [],
         _plant_anchors={"selected": (200.0, 160.0)},
+        _card_connector_plant_id="",
+        _card_popover_placement=None,
         _plant_hit_rects={
             "selected": Hit(100, 100, 80, 120),
             "neighbor": Hit(250, 120, 90, 110),
@@ -2135,7 +2137,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     assert rearrange.retry.focused is True
     assert rearrange.heading == "Move Aster"
     assert rearrange.instruction == (
-        "Select a destination bed. Occupied beds will swap plants."
+        "Choose an empty bed, or swap with another plant."
     )
 
 

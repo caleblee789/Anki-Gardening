@@ -22,20 +22,20 @@ CAPTURE_SOURCE = ROOT / "ankigarden" / "capture" / "runtime.py"
 NON_CREAM_RGBA = (9, 19, 29, 255)
 
 
-def test_compiled_v26_contract_reports_current_surface_requirement(
+def test_compiled_v27_contract_reports_current_surface_requirement(
     tmp_path: Path,
 ) -> None:
-    contract_path = ROOT / "ankigarden" / "capture" / "capture-contract-v26.json"
+    contract_path = ROOT / "ankigarden" / "capture" / "capture-contract-v27.json"
     payload = json.loads(contract_path.read_text(encoding="utf-8"))
     payload["surface_count"] = 37
-    stale_path = tmp_path / "capture-contract-v26.json"
+    stale_path = tmp_path / "capture-contract-v27.json"
     stale_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(CaptureValidationError) as error:
         _load_current_contract_payload(stale_path)
 
     assert (
-        "compiled v26 contract must contain 34 active surfaces"
+        "compiled v27 contract must contain 36 active surfaces"
         in error.value.issues
     )
     assert all("38 active surfaces" not in issue for issue in error.value.issues)

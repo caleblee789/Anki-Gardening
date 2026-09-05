@@ -142,7 +142,7 @@ def test_today_progress_is_native_semantic_and_animation_ready():
     assert "QProgressBar" in method
     assert 'setObjectName("ankiGardenSessionTodayProgress")' in method
     assert 'setProperty("progressFraction"' in method
-    assert "completed this session" in source
+    assert "studied this session" in source
     assert 'QPropertyAnimation(progress, b"value"' in source
     assert "setDuration(320)" in source
     assert "setStartValue(progress_start)" in source
@@ -422,7 +422,7 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
     assert len(plan) == 1
     assert plan[0].item_id == "growth_charge_small"
     assert plan[0].quantity == 2
-    assert plan[0].source_labels == ("Standard Find", "Full Bloom")
+    assert plan[0].source_labels == ("Garden Find", "Full Bloom")
 
     receipt_only = session_earned_item_plan(SimpleNamespace(
         find_items_reconciled=False,
@@ -441,7 +441,7 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
         ),),
     ))
     assert tuple((item.quantity, item.source_labels) for item in receipt_only) == (
-        (1, ("Standard Find",)),
+        (1, ("Garden Find",)),
     )
 
 

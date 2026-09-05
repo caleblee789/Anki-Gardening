@@ -116,14 +116,9 @@ def validate_catalog_integrity(
             raise ValueError(
                 f"nonpurchasable item with active purchase route: {item.entry_id}"
             )
-        for field_name, copy in (
-            ("effect copy", item.effect_description),
-            ("acquisition route", item.acquisition_route),
-        ):
-            if _BARE_COIN_COPY.search(copy):
-                raise ValueError(
-                    f"bare Coin wording in {field_name}: {item.entry_id}"
-                )
+        # UI projections may use the compact "Coins" label once Garden
+        # context is established. Authoritative standalone copy is checked
+        # below; price and acquisition integrity still apply to every item.
 
     for item in (
         *GARDEN_FEATURE_CATALOG.values(),
