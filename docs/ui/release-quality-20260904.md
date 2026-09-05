@@ -119,6 +119,8 @@ The final reviewer-header refinement additionally passed **79 existing tests** i
 
 The final folder cleanup removed 57 generated Python cache files and one `.DS_Store` from `ankigarden/`, then removed empty cache directories. Saved garden state and `user_files/README.txt` hashes were unchanged. See the [cleanup record](../../build/ui-release-quality-20260904-220713/final-verification/cleanup.json). The README now explains setup, navigation, bonuses, supplies, and Landmarks in user-facing language; developer commands are in the [development guide](../development.md).
 
+The [precommit verification](../../build/ui-release-quality-20260904-220713/final-verification/precommit-checks.json) confirms the final production and capture archives still match their source payloads, all new documentation links resolve locally, the add-on folder contains no generated cache clutter, and saved state remains unchanged. Implementation commit `2d6c9530adddc229444dca0385cc269342b3f72c` was pushed to `origin/main` and verified against the remote branch before completing the checklist below.
+
 
 ## Acceptance and completion checklist
 
@@ -126,6 +128,6 @@ The final folder cleanup removed 57 generated Python cache files and one `.DS_St
 - [x] Reuse and update existing focused checks; exercise state independence, transactions, timing, and failure recovery natively.
 - [x] Review every final original and all five contact sheets together; correct and recapture remaining visible defects.
 - [x] Record package identities, capture results, every surface's disposition, and remaining evidence limits.
-- [ ] **Last:** clean generated clutter from the add-on folder, finish the friendly user-facing README with minimal developer language, then integrate all changes into `main` and push `origin/main`.
+- [x] **Last:** clean generated clutter from the add-on folder, finish the friendly user-facing README with minimal developer language, then integrate all changes into `main` and push `origin/main`.
 
 The Codex visual review and automated/native checks are recorded separately from a person's public-release sign-off. Human release acceptance and a broader platform matrix are not claimed; the capture contract retains `quality_status: review-required` and `release_ready: false`. The annual 66-scenario economy simulation is outside this UI pass. It does not prevent the explicitly authorized source integration.
