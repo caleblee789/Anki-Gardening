@@ -59,6 +59,9 @@ Progression thresholds, prices, reward amounts, inventory accounting, acquisitio
 Evidence lives in `build/ui-release-polish-20260904-191901/`:
 
 - Focused existing tests: **484 passed, 8 skipped** (`focused-tests.log`).
+- Final scoped fast suite: **1,565 passed, 21 skipped** (`merge-fast-final.log`). The full annual release simulation was explicitly excluded; its affected scenario passed all 365 checkpoints and 2,610 answers (`merge-bounded-parity.log`).
+- Final local release-evidence checks: **779 passed, 16 skipped** (`merge-release-evidence.log`). Native Qt behavior was separately exercised in the proof and capture runs below.
+- Production ZIP integrity, all 322 source/archive entries, artwork audit, compilation, documentation links, and patch whitespace passed. GitHub Actions could not start because of the account's billing/spending limit; remote CI is not represented as passing.
 - Existing Qt inspector and selection regressions: **2 passed, 17 deselected** (`qt-tests.log`).
 - Native Qt proof: 1040 × 720 and 860 × 580 Garden windows, selection versus nurturing, edge placement, long names, child dialogs, settings, and compact purchase/supplies geometry (`qt-proof.log`, `nav-probe.log`).
 - Native action walkthrough: starter Back/reselection/single commit, selection and nurturing, move/swap/cancel/Undo, settings Save/Cancel, and purchase cancellation/commit passed (`native-walkthrough.json`).

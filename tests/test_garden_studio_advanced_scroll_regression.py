@@ -240,8 +240,8 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
 
 
 def test_dialog_state_preserves_the_declared_ready_focus_contract() -> None:
-    shell = _class_source(DASHBOARD_PATH, "DialogShell")
-    dialog = _class_source(DASHBOARD_PATH, "GardenDialog")
+    shell = _class_source(DASHBOARD_PATH, "_ShellBehavior")
+    dialog = _class_source(DASHBOARD_PATH, "_GardenContent")
 
     assert "def _policy_focus_target" in shell
     assert "InitialFocusPolicy.FIRST_EDITABLE" in shell

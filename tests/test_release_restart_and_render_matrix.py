@@ -856,6 +856,7 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                                     ),
                                     _card_popover_placement=SimpleNamespace(
                                         docked=False,
+                                        connector_visible=True,
                                         chosen_side=connector_side,
                                         connector_end=connector_end,
                                     ),
