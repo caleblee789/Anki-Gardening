@@ -284,9 +284,8 @@ def test_collection_uses_persistent_plant_and_landmark_subtabs() -> None:
         if isinstance(node, ast.FunctionDef) and node.name == "open_collection"
     )
     progress_open_source = ast.get_source_segment(source, progress_open) or ""
-    assert progress_open_source.index('self.open_page("collection")') < (
-        progress_open_source.index("QTimer.singleShot(0, focuser)")
-    )
+    assert 'self._dialog_owner.open_section("collection"' in progress_open_source
+    assert "item_id=focus_tier_id" in progress_open_source
 
 
 def test_landmark_tier_ui_state_keeps_progress_claims_and_selection_independent() -> None:
