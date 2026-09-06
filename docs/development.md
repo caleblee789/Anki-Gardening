@@ -130,4 +130,4 @@ The runtime target is Anki 25.07 through 26.08. Release acceptance installs the 
 
 The full product and QA contracts are in [`feature-evidence-matrix.md`](feature-evidence-matrix.md), [`ui/data_contracts.md`](ui/data_contracts.md), and [`ui/state_scenarios.md`](ui/state_scenarios.md).
 
-The [UI review report](ui/release-quality-20260904.md) records the latest screenshots and verification.
+The [UI review report](ui/comprehensive-ui-review-20260906.md) records the latest screenshots and verification.

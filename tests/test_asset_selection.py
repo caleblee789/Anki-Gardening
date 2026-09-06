@@ -638,6 +638,16 @@ def test_current_production_plants_use_alpha_aware_grounding_metadata():
         assert thumbnail["thumbnail_bounds"][2] > 0
         assert thumbnail["thumbnail_bounds"][3] > 0
         assert len(thumbnail["thumbnail_optical_center"]) == 2
+        # A compact preview is centered on the painted silhouette, not the
+        # original transparent canvas. Permit authored optical balancing while
+        # preventing off-center Seed/Sprout artwork after a source replacement.
+        for coordinate, origin, extent in zip(
+            thumbnail["thumbnail_optical_center"],
+            thumbnail["thumbnail_bounds"][:2],
+            thumbnail["thumbnail_bounds"][2:],
+        ):
+            relative_center = (coordinate - origin) / extent
+            assert 0.20 <= relative_center <= 0.80, row["asset_id"]
         assert thumbnail["visual_scale_correction"] == placement[
             "visual_scale_correction"
         ]
@@ -652,6 +662,38 @@ def test_current_production_plants_use_alpha_aware_grounding_metadata():
         assert 0.5 <= thumbnail["thumbnail_scale"] <= 1.5
         assert 0.0 <= thumbnail["thumbnail_safe_padding"] <= 0.3
         assert len(thumbnail["bed_anchors"]) == 6
+
+
+@pytest.mark.release_evidence
+def test_production_plant_thumbnails_keep_a_clear_edge_at_compact_and_retina_sizes():
+    pytest.importorskip("aqt.qt")
+    from aqt.qt import QApplication
+    from ankigarden.ui.plant_art import normalized_plant_pixmap
+
+    application = QApplication.instance() or QApplication([])
+    addon = Path(__file__).resolve().parents[1] / "ankigarden"
+    assets = json.loads((addon / "assets/manifest.json").read_text())["assets"]
+    for row in assets:
+        if row.get("category") != "plants":
+            continue
+        placement = AssetPlacement.from_manifest(row["placement"], category="plants")
+        for size in (16, 40, 128):
+            for ratio in (1, 2):
+                pixmap = normalized_plant_pixmap(
+                    addon / row["file"], placement,
+                    stage=row["slot"]["stage"], logical_size=size,
+                    device_pixel_ratio=ratio,
+                )
+                image = pixmap.toImage()
+                assert not image.isNull(), row["asset_id"]
+                assert image.width() == image.height() == size * ratio
+                last = image.width() - 1
+                for offset in range(image.width()):
+                    for x, y in ((offset, 0), (offset, last), (0, offset), (last, offset)):
+                        assert image.pixelColor(x, y).alpha() == 0, (
+                            row["asset_id"], size, ratio, x, y,
+                        )
+    assert application is not None
 
 
 def test_runtime_catalog_contains_one_current_asset_per_species_and_stage():

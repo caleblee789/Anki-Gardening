@@ -1,0 +1,227 @@
+{
+  "schema": 1,
+  "target_dimensions": [
+    1448,
+    1086
+  ],
+  "generator": "Built-in ImageGen",
+  "encoding": "lossless WebP, quality=100, method=6, exact=True",
+  "images": {
+    "summer": {
+      "theme": "summer",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-790f481e-f56b-4d15-a394-821784253bdc.png",
+      "prompt": "Edit reference 1, the Summer garden. Reference 2 is only the continuous-ground quality reference; do not transfer its twilight palette. Produce exactly 1448 x 1086 pixels, landscape 4:3. Preserve Summer's existing composition, greenhouse at left, cottage at right including precise silhouettes and doorway positions, horizon, connecting path, blue sky, warm summer light, butterflies and edge flowers. Refine the image at the higher resolution with professionally painted storybook gouache detail. Make the open central planting lawn continuous and naturally textured, with no horizontal lawn bands, seams, painted beds, pots, added plants, characters, text, or UI. Keep all central planting space open. Preserve normalized positions and proportions of every architectural feature; do not zoom, reframe, or change scene geometry. Return one finished full-frame image.",
+      "generated_sha256": "40459a98eba21a562c4b708c6b0e68da8838d8e9a33c30b791e79112b0340069",
+      "generated_dimensions": [
+        1449,
+        1086
+      ],
+      "normalization": "sips -z 1086 1448; one-pixel width normalization only",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3.webp",
+          "sha256": "43d852151342c83a844008b5b16cea4fca4e75037dee08192892d683a5d9865a"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/summer_garden_continuous.png",
+      "master_sha256": "b5fe2c3213deaf9a2926c230ae03bf53bf0edb410d627f85d2c1ce320ec53f22",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_garden_continuous.webp",
+      "runtime_sha256": "2ed8837846235f134e8938063e3d147af47c12114cfc613a6eeba5706e7191c7",
+      "runtime_bytes": 2063644,
+      "lossless_pixel_parity": true
+    },
+    "spring": {
+      "theme": "spring",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-5ab10d7a-bdad-4963-9421-0acf65908b67.png",
+      "prompt": "Edit reference 1, the Spring garden. Reference 2 is only the continuous-ground quality reference; do not transfer its twilight palette or architecture. Output exactly 1448 x 1086 pixels, landscape 4:3. Preserve Spring's existing composition, left greenhouse, right cottage including precise silhouettes and door positions, connecting path, horizon, blue sky, pink blossom trees, edge flowers and petal details. Refine into professionally painted storybook gouache artwork at the higher resolution. Make the large open central lawn continuous, softly textured and coherent, with no horizontal lawn bands, seams, painted beds, pots, added plants, characters, text or UI. Preserve normalized positions and proportions of architecture, path and horizon. Do not zoom or reframe. Return one finished full-frame image.",
+      "generated_sha256": "9e1ebb7848dda9ddb864bd5cb6141e518280c20e824ab6f00ccab4509b4ca900",
+      "generated_dimensions": [
+        1449,
+        1086
+      ],
+      "normalization": "sips -z 1086 1448; one-pixel width normalization only",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3.webp",
+          "sha256": "25e6423327d7c89811f69942c8879bb11d458c2d0f0fbab674b01b33a395f9ac"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/spring_garden_continuous.png",
+      "master_sha256": "ef7fa8376bf97c23ceb9f8d886bfe396c0561e68255da2e2a9231551c2c0da5b",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_garden_continuous.webp",
+      "runtime_sha256": "e47d5bdf84d40dce718461b886f3cec7f3799c0aa0da4d78a11727db4e30eb77",
+      "runtime_bytes": 2030768,
+      "lossless_pixel_parity": true
+    },
+    "autumn": {
+      "theme": "autumn",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-f4214dd8-cbc5-4791-a712-0b0dbb98b8f8.png",
+      "prompt": "Edit reference 1, the Autumn garden. Reference 2 is only the continuous-ground quality reference; do not transfer twilight colors, grass color, or architecture. Output exactly 1448 x 1086 pixels, landscape 4:3. Preserve Autumn's own warm orange sunset, orange/red foliage, pumpkins, door wreath, left greenhouse and right cottage, the exact cottage silhouette and doorway position, horizon, path and leaf-strewn edges. Refine into professionally painted storybook gouache artwork with true higher-resolution detail. The large open central ground must read as one uninterrupted naturally textured autumn lawn, without horizontal painted bands, seams, separate beds, pots, added plants, people, text or UI. Preserve normalized placement and proportions of every architectural feature and the path. Do not zoom, crop, reframe or rearrange the scene. Return one finished full-frame image.",
+      "generated_sha256": "1e6be7a45a62e968408d50b9c4b11faeb2dcd7b697c9de3fe3dc2fb8533778d5",
+      "generated_dimensions": [
+        1448,
+        1086
+      ],
+      "normalization": "exact target dimensions",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3.webp",
+          "sha256": "b7dde4effa845669598799feebe5e4642c90c3eed5dbd8dc42006eb5f8efbd11"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/autumn_garden_continuous.png",
+      "master_sha256": "1e6be7a45a62e968408d50b9c4b11faeb2dcd7b697c9de3fe3dc2fb8533778d5",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_garden_continuous.webp",
+      "runtime_sha256": "cac226c045ce7365fa1d77d5bec66c3f432066ef37b6563fc89ada68d0cbdd28",
+      "runtime_bytes": 2109802,
+      "lossless_pixel_parity": true
+    },
+    "snowy": {
+      "theme": "snowy",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-3ddc3289-2d13-4a31-94fa-51e404bbe4e8.png",
+      "prompt": "Edit reference 1, the Snowy garden. Reference 2 is only the continuous-ground quality reference; do not transfer its twilight palette, grass or architecture. Produce exactly 1448 x 1086 pixels, landscape 4:3. Preserve the Snowy scene's own composition, blue-grey winter sky, snow-covered trees and roofs, left greenhouse, right cottage with its precise silhouette and doorway position, horizon, connecting path and warm glowing windows. Refine the scene with professionally painted storybook gouache detail at the higher resolution. Make the open central ground one continuous softly textured blanket of snow, with subtle natural undulations but no horizontal bands or seams, footprints, grass, beds, pots, added plants, people, text or UI. Preserve normalized positions and proportions of every architectural feature and path; do not zoom, reframe or rearrange the scene. Return one finished full-frame image.",
+      "generated_sha256": "d2dbcc7b04d1ee9e724e27a305115af84cf100b8ac3a2afe0ed9e585de8700b3",
+      "generated_dimensions": [
+        1449,
+        1086
+      ],
+      "normalization": "sips -z 1086 1448; one-pixel width normalization only",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3.webp",
+          "sha256": "d42e65f99fee1e5274b7a87b9c963c3131072dcf2e80d7e2f5ce08fee9cfe375"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/snowy_garden_continuous.png",
+      "master_sha256": "67926917eae1d7bc1fb55626fbdda1c2334280295f779f270d51a96544dc8203",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_garden_continuous.webp",
+      "runtime_sha256": "b054b4cae3782c8d219ea0d39cbc10b7aa74460aabaa5e9127cb824d881770bd",
+      "runtime_bytes": 1719610,
+      "lossless_pixel_parity": true
+    },
+    "rainbow_horizon": {
+      "theme": "rainbow_horizon",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-878b9e58-90e8-4ea6-98b7-ec65c7c55550.png",
+      "prompt": "Edit reference 1, the Rainbow Horizon garden. Reference 2 is only the continuous-ground quality reference; do not transfer its twilight colors or architecture. Produce exactly 1448 x 1086 pixels, landscape 4:3. Preserve Rainbow Horizon's own composition, the large seven-color rainbow arc in the upper sky, soft clouds and bright blue sky, vivid green lawn, glossy multicolored edge leaves, left greenhouse and right cottage, precise silhouettes and doorway positions, horizon and connecting path. Refine the original scene with professionally painted storybook gouache detail at the higher resolution. Make the large open central lawn one naturally textured uninterrupted surface, with no horizontal bands, seams, planted beds, pots, added plants, characters, text or UI. Preserve normalized placement and proportions of all architectural features, path, horizon and rainbow. Do not zoom, crop, reframe or rearrange the scene. Return one finished full-frame image.",
+      "generated_sha256": "104cab8e07ea02b287dcefba7f68d9555d393d57c5276b202306cd2bfaaaa7a7",
+      "generated_dimensions": [
+        1449,
+        1086
+      ],
+      "normalization": "sips -z 1086 1448; one-pixel width normalization only",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3.webp",
+          "sha256": "f75459c7321f8f07309c8bc3a4cdf1b9517e95f513ffee44426aa240de49e10c"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/rainbow_horizon_garden_continuous.png",
+      "master_sha256": "7ad560786732b4c410359974ece157c5c4d4e5bc0142cce52cb641cbdc23bffa",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_garden_continuous.webp",
+      "runtime_sha256": "397371d3013a496db0185638c9ea0fac9c3c6119bc9e7dac360097b3ee06afc3",
+      "runtime_bytes": 2063126,
+      "lossless_pixel_parity": true
+    },
+    "halloween": {
+      "theme": "halloween",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-a0ce7d9a-a6af-486b-9a34-a79bec744449.png",
+      "prompt": "Edit reference 1, the Halloween garden. Reference 2 is only the continuous-ground quality reference; do not transfer its palette or architecture. Produce exactly 1448 x 1086 pixels, landscape 4:3. Preserve Halloween's own purple sunset sky, flying bats, dark autumn trees and leaves, jack-o-lanterns and purple lantern accents near the buildings, muted earthy grass, left greenhouse and right cottage, their exact silhouettes and doorway positions, horizon and connecting path. Refine into professionally painted storybook gouache artwork with true higher-resolution detail. The large open central planting ground must read as one uninterrupted naturally textured autumn lawn, with no horizontal painted bands or seams, painted beds, pots, added plants, characters, text or UI. Preserve normalized positions and proportions of every architectural feature and path. Do not zoom, crop, reframe or rearrange the scene. Return one finished full-frame image.",
+      "generated_sha256": "948bb3a804c87fd26c220c5a6ff58937a510e28b8126e54cc5dced104dc0db35",
+      "generated_dimensions": [
+        1449,
+        1085
+      ],
+      "normalization": "sips -z 1086 1448; normalization of at most one pixel per dimension",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3.webp",
+          "sha256": "9545e1abee08e7fe3025b2eb3069d917eb8cb859fb0011a0373b2bbff25e9118"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/halloween_garden_continuous.png",
+      "master_sha256": "745dc18bc26bea209b7bde1fc7539809f413c3ee0a4b3012c0ae440ed7644d8d",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_garden_continuous.webp",
+      "runtime_sha256": "3072f296083258b3c250c3a2e9432152c109a523e671ad87966839a5f0e625fd",
+      "runtime_bytes": 1972456,
+      "lossless_pixel_parity": true
+    },
+    "full_moon": {
+      "theme": "full_moon",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-a8a2a20d-1cbd-40a2-91a8-84867e9e626d.png",
+      "prompt": "Edit reference 1, the Full Moon garden. Reference 2 is only the continuous-ground quality reference; do not transfer its smaller moon, palette or architecture. Produce exactly 1448 x 1086 pixels, landscape 4:3. Preserve Full Moon's own huge warm full moon centered high in the sky, stars and deep blue night sky, cool blue moonlit lawn and foliage, warm glowing windows, left greenhouse and right cottage, their exact silhouettes and doorway positions, horizon and connecting path. Refine into professionally painted storybook gouache artwork with true higher-resolution detail. Remove the conspicuous straight horizontal lawn bands in reference 1: the entire large open central planting lawn must be one uninterrupted naturally textured blue moonlit surface from the path to the foreground, without seams, bands, painted beds, pots, added plants, characters, text or UI. Preserve normalized positions and proportions of architecture, path, horizon and moon. Do not zoom, crop, reframe or rearrange the scene. Return one finished full-frame image.",
+      "generated_sha256": "9da87d1af4e8ccbdda1b74bfea4913cd2405de61dc0f1180649ec73ab2fe505f",
+      "generated_dimensions": [
+        1449,
+        1086
+      ],
+      "normalization": "sips -z 1086 1448; normalization of at most one pixel per dimension",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3.webp",
+          "sha256": "81b792a7563449ab868c52964a4378f0f6a2e3af70fe16d883360921e6310557"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/full_moon_garden_continuous.png",
+      "master_sha256": "389757362b4430b4c11bd5b6b38c50273d5c7ac87326e6f1aa8928b9e2b4d6bf",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_garden_continuous.webp",
+      "runtime_sha256": "b469c3bf2874882b45147c5195b84a3ef72d5dc40cbfc5ba45dc22896f676c37",
+      "runtime_bytes": 2042888,
+      "lossless_pixel_parity": true
+    },
+    "eclipse": {
+      "theme": "eclipse",
+      "generated": "/Users/test/.codex/generated_images/01a076a9-a676-7332-8920-126671a314ee/exec-b2f097b4-0b17-45b4-8ce5-bb2a002f6f62.png",
+      "prompt": "Edit reference 1, the Eclipse garden. Reference 2 is only the continuous-ground quality reference; do not transfer its ordinary moon, palette or architecture. Produce exactly 1448 x 1086 pixels, landscape 4:3. Preserve Eclipse's own black solar disc with glowing golden corona centered high in the sky, teal and purple aurora, stars, violet night sky, dark green lawn and foliage, warm glowing windows, left greenhouse and right cottage, their exact silhouettes and doorway positions, horizon and connecting path. Refine into professionally painted storybook gouache artwork with true higher-resolution detail. Make the entire large open central planting lawn one uninterrupted naturally textured night surface, without horizontal bands, seams, painted beds, pots, added plants, characters, text or UI. Preserve normalized positions and proportions of all architectural features, path, horizon and eclipse. Do not zoom, crop, reframe or rearrange the scene. Return one finished full-frame image.",
+      "generated_sha256": "53d1bd7051086f4fb1547249e5b83b456e03fc2e86850009eb9b2b681dd8ab23",
+      "generated_dimensions": [
+        1449,
+        1085
+      ],
+      "normalization": "sips -z 1086 1448; normalization of at most one pixel per dimension",
+      "references": [
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3.webp",
+          "sha256": "e7831a68f2563b79acab0214fa3ef2b6c1fac760f3e05fb896c2114f27d5f995"
+        },
+        {
+          "path": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+          "sha256": "289b592e65f0fe09cbb23532f6846f5ebe5ca30035cbbd9d1f734fcd8c15184a"
+        }
+      ],
+      "master": "artwork_source/backgrounds/continuous/eclipse_garden_continuous.png",
+      "master_sha256": "c99f2299e6aeb3eb26fb086c5b3006b64f483c21fd3470444a0084bef91d25aa",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_garden_continuous.webp",
+      "runtime_sha256": "4d8899d70288d27a266174c0995dfcd248481e34fa1829a52868c77f8e33191c",
+      "runtime_bytes": 1848052,
+      "lossless_pixel_parity": true
+    }
+  }
+}

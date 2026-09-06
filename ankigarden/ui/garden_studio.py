@@ -403,6 +403,8 @@ class GardenStudioWidget(QWidget):
         layout.setSpacing(5)
         heading = QLabel(title)
         heading.setProperty("settingsHeading", True)
+        heading.setWordWrap(True)
+        heading.setMinimumWidth(0)
         layout.addWidget(heading)
         if description:
             note = QLabel(description)
@@ -723,7 +725,9 @@ class GardenStudioWidget(QWidget):
 
     def _sync_switch_copy(self, checked: bool) -> None:
         sender = self.sender()
-        if isinstance(sender, QCheckBox):
+        if isinstance(sender, GardenToggleSwitch):
+            sender._sync_accessible_description()
+        elif isinstance(sender, QCheckBox):
             sender.setAccessibleDescription("Enabled" if checked else "Disabled")
 
     def set_preview_garden_name(self, name: str) -> None:

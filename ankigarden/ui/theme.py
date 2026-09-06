@@ -268,7 +268,7 @@ SEMANTIC_COLORS = {
     "divider": "#2A5041",
     "text_primary": "#F2F0E2",
     "text_secondary": "#B5C7BC",
-    "text_muted": "#8CA397",
+    "text_muted": "#A3B8AC",
     "text_disabled": "#7F9289",
     "primary": "#62D6A1",
     "primary_hover": "#75E4AE",

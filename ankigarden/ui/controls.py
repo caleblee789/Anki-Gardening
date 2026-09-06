@@ -14,12 +14,15 @@ from aqt.qt import (
     QColor,
     QEvent,
     QIcon,
+    QLabel,
     QPainter,
     QPen,
     QPointF,
     QPixmap,
     QRectF,
     QSize,
+    QSizePolicy,
+    QTimer,
     Qt,
     QWidget,
 )
@@ -103,15 +106,23 @@ class GardenToggleSwitch(QCheckBox):
         self.setIcon(_switch_icon(bool(checked), self.isEnabled()))
         self.setProperty("switchState", "on" if checked else "off")
         self.setProperty("switchThumbTone", "light")
-        name = str(self.accessibleName() or self.text() or "Garden setting")
-        self.setAccessibleDescription(
-            f"{name} is {'on' if checked else 'off'}."
-        )
+        self._sync_accessible_description()
         style = self.style()
         if style is not None:
             style.unpolish(self)
             style.polish(self)
         self.setFixedSize(TOGGLE_VISUAL_WIDTH, TOGGLE_VISUAL_HEIGHT)
+
+    def setAccessibleDescription(self, description: str) -> None:
+        """Keep the setting explanation when its checked state changes."""
+
+        self._setting_description = str(description or "").strip()
+        self._sync_accessible_description()
+
+    def _sync_accessible_description(self) -> None:
+        description = str(getattr(self, "_setting_description", "") or "").rstrip(". ")
+        state = "On" if self.isChecked() else "Off"
+        super().setAccessibleDescription(f"{description}. {state}." if description else f"{state}.")
 
     def setChecked(self, checked: bool) -> None:
         """Refresh the icon even when callers temporarily block signals."""
@@ -164,7 +175,40 @@ class GardenToggleSwitch(QCheckBox):
             painter.end()
 
 
+class GardenWrappingLabel(QLabel):
+    """Reserve every wrapped line when a scroll page is narrower than its text."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.setWordWrap(True)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def _fit_height(self) -> None:
+        if self.width() > 0:
+            # QLabel.heightForWidth includes its current minimum. Release the
+            # previous measurement before measuring a wider line, otherwise a
+            # briefly narrow parent permanently leaves oversized blank rows.
+            self.setMinimumHeight(0)
+            height = max(int(self.property("textLineHeight") or 0),
+                         self.fontMetrics().height(), self.heightForWidth(self.width()))
+            self.setMinimumHeight(height)
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        self._fit_height()
+
+    def changeEvent(self, event: Any) -> None:
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            QTimer.singleShot(0, self._fit_height)
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self._fit_height()
+
+
 GardenSwitch = GardenToggleSwitch
 
 
-__all__ = ["GardenSwitch", "GardenToggleSwitch"]
+__all__ = ["GardenSwitch", "GardenToggleSwitch", "GardenWrappingLabel"]

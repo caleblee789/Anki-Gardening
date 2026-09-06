@@ -357,6 +357,15 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
     background = backgrounds[0]
     if background.get("release_preferred") is not True:
         raise ValueError("the V6 background must be release preferred")
+    for row, item_id in zip(backgrounds, ("verdant_twilight", *SCENERY)):
+        expected_file = (
+            f"assets/v6_storybook_gouache/backgrounds/{item_id}/soil_master/"
+            f"{item_id}_garden_continuous.webp"
+        )
+        if row.get("file") != expected_file or row.get("native_garden_file") != expected_file:
+            raise ValueError(f"scenery must use its continuous Garden painting: {item_id}")
+        if (row.get("width"), row.get("height")) != (1448, 1086):
+            raise ValueError(f"continuous Garden dimensions drifted: {item_id}")
     expected_profile = json.loads(SURFACE_FIXTURE.read_text(encoding="utf-8"))
     background_placement = background.get("placement") or {}
     actual_profile = background_placement.get("surface_profile")
@@ -377,7 +386,7 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
         context="the normalized canonical V6 background",
         require_surface_identity=True,
     )
-    expected_sizes = {"4:3": (1280, 960), "16:9": (1672, 941), "home": (1942, 809)}
+    expected_sizes = {"4:3": (1448, 1086), "16:9": (1672, 941), "home": (1942, 809)}
     source_root = "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master"
     for row, item_id in zip(backgrounds[1:], SCENERY):
         slot = row.get("slot") or {}
@@ -408,7 +417,8 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
             files = surface_files.get(variant)
             if not isinstance(files, dict):
                 raise ValueError(f"scenery surface files are invalid: {item_id}/{variant}")
-            expected_file = f"{target_root}/{item_id}_{filename_variant}.webp"
+            painting_variant = "garden_continuous" if variant == "4:3" else filename_variant
+            expected_file = f"{target_root}/{item_id}_{painting_variant}.webp"
             if files.get("file") != expected_file:
                 raise ValueError(f"scenery background path is noncanonical: {item_id}/{variant}")
             with Image.open(ADDON / expected_file) as image:

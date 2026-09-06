@@ -668,11 +668,23 @@ def _reserve_button_text_fit(button: QPushButton) -> None:
             int(button.property("horizontalPadding") or 0),
         )
         # The extra two pixels reserve the visible one-pixel border on each
-        # edge. Minimum width may only grow as native styling settles.
+        # edge, beyond the icon and the visible label.
         icon_width = 0 if button.icon().isNull() else button.iconSize().width() + 6
         required_width = text_width + icon_width + (2 * horizontal_padding) + 2
-        button.setMinimumWidth(max(int(button.minimumWidth()), required_width))
-        button.setProperty("textFitMinimumWidth", required_width)
+        # Keep explicit caller floors, but release our previous measurement
+        # when an action label becomes shorter or the font returns to normal.
+        previous = int(button.property("textFitMinimumWidth") or 0)
+        floor = int(button.property("textFitWidthFloor") or 0)
+        if button.minimumWidth() != previous:
+            floor = max(floor, int(button.minimumWidth()))
+        button.setProperty("textFitWidthFloor", floor)
+        button.setMinimumWidth(max(floor, required_width))
+        button.setProperty("textFitMinimumWidth", max(floor, required_width))
+        base_height = int(button.property("visualControlSize") or PRIMARY_BUTTON_VISUAL_HEIGHT)
+        fitted_height = max(base_height, button.fontMetrics().lineSpacing() + 10)
+        button.setMaximumHeight(fitted_height)
+        button.setMinimumHeight(fitted_height)
+        button.setProperty("textFitMinimumHeight", fitted_height)
         button.updateGeometry()
     except (AttributeError, RuntimeError, TypeError, ValueError):
         return
@@ -731,7 +743,7 @@ def set_button_size(
 
     normalized = size if isinstance(size, ButtonSize) else ButtonSize(str(size))
     apply_button_size(button, normalized)
-    button.setProperty("textFitAction", not allow_horizontal_stretch)
+    button.setProperty("textFitAction", normalized is not ButtonSize.ICON)
     if normalized is ButtonSize.ICON:
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         button.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)
@@ -9120,11 +9132,16 @@ class StatSummary(QFrame):
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 10, 12, 10)
         grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
+        self._metric_cells = []
+        self._metric_stacked = False
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         for column, row in enumerate(rows):
             label_text, value_text = row[:2]
             icon_name = row[2] if len(row) > 2 else ""
             label = QLabel(label_text)
             label.setProperty("summaryLabel", True)
+            label.setWordWrap(True)
             value = QLabel(value_text)
             value.setProperty("summaryValue", True)
             apply_text_role(value, TextRole.NUMERIC_DISPLAY)
@@ -9152,8 +9169,43 @@ class StatSummary(QFrame):
                 value_layout.addStretch(1)
                 grid.addWidget(value_host, 1, column)
             else:
+                value_host = value
                 grid.addWidget(value, 1, column)
+            self._metric_cells.append((label, value_host))
             grid.setColumnStretch(column, 1)
+
+    def _fit_metrics(self) -> None:
+        grid = self.layout()
+        margins = grid.contentsMargins()
+        available = max(1, self.width() - margins.left() - margins.right())
+        count = len(self._metric_cells)
+        needed = max((max(label.sizeHint().width(), value.minimumSizeHint().width())
+                      for label, value in self._metric_cells), default=0)
+        stacked = needed * count + max(0, count - 1) * grid.horizontalSpacing() > available
+        if stacked == self._metric_stacked:
+            return
+        self._metric_stacked = stacked
+        while grid.count():
+            grid.takeAt(0)
+        for column in range(count):
+            grid.setColumnStretch(column, 0)
+        for index, (label, value) in enumerate(self._metric_cells):
+            row, column = (index * 2, 0) if stacked else (0, index)
+            grid.addWidget(label, row, column)
+            grid.addWidget(value, row + 1, column)
+            grid.setColumnStretch(column, 1)
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        self._fit_metrics()
+
+    def event(self, event: Any) -> bool:
+        result = super().event(event)
+        if hasattr(self, "_metric_cells") and event.type() in {
+            QEvent.Type.LayoutRequest, QEvent.Type.FontChange,
+        }:
+            self._fit_metrics()
+        return result
 
 
 GardenStat = StatSummary
@@ -11020,7 +11072,7 @@ class PlantCollectionPane(ProgressCardGrid):
             parent,
             wide_columns=2,
             minimum_item_width=140,
-            minimum_card_height=148,
+            minimum_card_height=128,
         )
         self.setProperty("collectionPane", CollectionTab.PLANTS.value)
 
@@ -17603,10 +17655,10 @@ class PlantInfoCard(QFrame):
         self.story.setText("Details")
         self.story.setAccessibleName("Plant details")
         self.story.setProperty("navigationRow", False)
-        self.popover_actions.addWidget(primary, 0, 0)
+        self.popover_actions.addWidget(primary, 1)
         if not fully_grown:
-            self.popover_actions.addWidget(self.story, 0, 1)
-        self.popover_actions.addWidget(self.more, 0, 2)
+            self.popover_actions.addWidget(self.story)
+        self.popover_actions.addWidget(self.more)
         menu = self.more.menu()
         if not hasattr(self, "_more_use_item"):
             menu.clear()
@@ -17626,11 +17678,22 @@ class PlantInfoCard(QFrame):
             action.setProperty("plantPrimaryAction", action is primary)
             action.setProperty("plantPopoverAction", True)
             action.setProperty("horizontalPadding", 10)
-            action.setProperty("textFitAction", False)
+            action.setProperty("textFitAction", True)
+            action.setProperty("textFitWidthFloor", 0)
+            action.setProperty("textFitMinimumWidth", 0)
             action.setMinimumWidth(0)
             action.setMaximumWidth(16777215)
+            # Native macOS buttons otherwise retain an 80 px minimum even
+            # for Details and More. Reserve the complete painted label and
+            # icon instead, so the row still fits beside a vertical scrollbar.
             action.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             self._repolish(action)
+            action.ensurePolished()
+            icon_width = action.iconSize().width() + 4 if not action.icon().isNull() else 0
+            measured_width = action.fontMetrics().horizontalAdvance(action.text()) + 22 + icon_width
+            action.setMinimumWidth(measured_width)
+            action.setProperty("textFitMinimumWidth", measured_width)
+            _observe_button_text_fit(action)
             action.show()
             action.setFixedHeight(32)
         self.growth_charge.hide()
@@ -17973,10 +18036,9 @@ class PlantInfoCard(QFrame):
         self.progress_region.show()
         self.action_region.hide()
         self.action_grid_host = QWidget(self.content)
-        self.popover_actions = QGridLayout(self.action_grid_host)
+        self.popover_actions = QHBoxLayout(self.action_grid_host)
         self.popover_actions.setContentsMargins(0, 0, 0, 0)
         self.popover_actions.setSpacing(8)
-        self.popover_actions.setColumnStretch(0, 1)
         self.more = QPushButton("More", self.action_grid_host)
         self.more.setMenu(QMenu(self.more))
         self.more.setIcon(garden_icon("chevron-down", color=GARDEN_THEME["text_secondary"]))
@@ -19434,7 +19496,7 @@ class GardenDetailsDialog(GardenPage):
             }
             QLabel[landmarkRouting='true'] {
                 color:#8ecfab;
-                font-size:11.5px;
+                font-size:12px;
             }
             QProgressBar[landmarkMilestoneProgress='true'] {
                 min-height:8px; max-height:8px;
@@ -19458,7 +19520,7 @@ class GardenDetailsDialog(GardenPage):
                 border:1px solid #39745c;
                 border-radius:7px;
                 padding:3px 7px;
-                font-size:11.5px;
+                font-size:12px;
                 font-weight:600;
             }
             QFrame[landmarkTierRow='true'] {
@@ -19490,7 +19552,7 @@ class GardenDetailsDialog(GardenPage):
             }
             QLabel[landmarkTierSupport='true'] {
                 color:#91bda7;
-                font-size:11.5px;
+                font-size:12px;
             }
             QProgressBar[landmarkTierPartialProgress='true'] {
                 min-height:3px; max-height:3px;
@@ -19971,7 +20033,7 @@ class GardenDetailsDialog(GardenPage):
             reward_label.setAccessibleDescription(rhythm_tip)
             body.addWidget(reward_label)
             body.addWidget(self._label(
-                f"Five-completion bonus · {reward['cycle_progress']} / {reward['cycle_goal']} · "
+                f"Bonus every 5 completions · {reward['cycle_progress']} / {reward['cycle_goal']} · "
                 f"+{reward['cycle_coins']:,} Coins", "detailSupport"))
         streak_host = QWidget()
         streak_layout = QVBoxLayout(streak_host)
@@ -19986,7 +20048,7 @@ class GardenDetailsDialog(GardenPage):
         metrics = StatSummary([
             ("Cards studied", f"{state.daily_stats.reviewed:,}"),
             ("Growth earned", format_growth(state.daily_stats.growth_earned, include_unit=False), "growth"),
-            ("Garden Finds", f"{projection.finds_count:,} Finds today"),
+            ("Garden Finds", f"{projection.finds_count:,}"),
         ])
         metrics.layout().setContentsMargins(0, 4, 0, 0)
         metrics.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
@@ -20524,7 +20586,7 @@ class GardenDetailsDialog(GardenPage):
         if currency_scroll is not None:
             currency_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         if not all_transactions:
-            empty = EmptyState("No coin history yet", "New coin earnings and purchases will appear here.")
+            empty = EmptyState("No activity yet", "Coins you earn and spend will appear here.")
             empty.layout().setContentsMargins(16, 12, 16, 12)
             empty.setMinimumHeight(0)
             empty.setProperty("semanticId", "progress.coins-empty-guidance")
@@ -26253,7 +26315,7 @@ class GardenDashboard(DialogShell):
                 QPushButton[collectionSpeciesCard='true']:pressed {{background:{GARDEN_THEME['selected_surface']};}}
                 QPushButton[collectionSpeciesCard='true']:focus {{border:2px solid {GARDEN_THEME['growth_accent']};}}
             """)
-            card.setMinimumHeight(148)
+            card.setMinimumHeight(128)
             card.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Minimum,
@@ -26265,7 +26327,7 @@ class GardenDashboard(DialogShell):
                 self.engine,
                 species,
                 highest_stage if collected_species else "seed",
-                size=76,
+                size=60,
             )
             artwork.setStyleSheet("background:transparent;border:0;")
             artwork_row = QWidget(card)
@@ -26300,7 +26362,7 @@ class GardenDashboard(DialogShell):
             title.setWordWrap(True)
             layout.addWidget(title)
             highest_label = QLabel(
-                f"Current stage: {format_status_label(highest_stage)}"
+                format_status_label(highest_stage)
                 if instances else "In your collection" if collected_species else
                 "Available in Shop"
             )
@@ -26535,6 +26597,9 @@ class GardenDashboard(DialogShell):
             ),
             ("Visual effects", appearance.visual_effects_text, ""),
         )
+        summary = SectionCard()
+        summary_layout = QVBoxLayout(summary)
+        summary_layout.setContentsMargins(12, 10, 12, 10)
         facts = QWidget(summary)
         facts.setProperty("appearanceDefinitionList", True)
         facts_layout = QGridLayout(facts)
@@ -26849,7 +26914,7 @@ class GardenDashboard(DialogShell):
             action.setAccessibleDescription(
                 "Return to the garden and choose a plant."
                 if view.owned else
-                "Open the Nursery to review available Growth items."
+                "Open the Shop to browse plant supplies."
             )
             action.clicked.connect(
                 self._return_to_garden_from_collection
@@ -27054,8 +27119,10 @@ class GardenDashboard(DialogShell):
                                 1 if progress.fully_grown else max(1, progress.stage_goal),
                                 value_text="Full Bloom" if progress.fully_grown else format_stage_progress(progress.stage_points, progress.stage_goal, progress.next_stage))
             growth.label.hide()
-            growth.value_label.setWordWrap(False)
-            growth.layout().itemAt(0).layout().setStretch(1, 1)
+            growth.value_label.setWordWrap(True)
+            labels = growth.layout().itemAt(0).layout()
+            labels.setAlignment(growth.value_label, Qt.AlignmentFlag(0))
+            labels.setStretch(1, 1)
             growth.value_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
             growth.bar.setFixedHeight(5)
             summary_layout.addWidget(growth)

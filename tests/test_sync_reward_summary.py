@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -226,7 +227,8 @@ def test_current_boost_projection_keeps_names_and_art_references_aligned() -> No
     )
 
 
-def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("text_scale", (1.0, 1.5, 2.0))
+def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch, text_scale: float) -> None:
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
         from aqt.qt import QApplication, QLabel, QPushButton, QScrollArea, QWidget, Qt
@@ -265,6 +267,14 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
         ),
         animations_enabled=False,
     )
+    # Exercise actual Qt font metrics, including each metric's local stylesheet.
+    for widget in (card, *card.findChildren(QWidget)):
+        if widget.styleSheet():
+            widget.setStyleSheet(re.sub(
+                r"font-size:\s*(\d+(?:\.\d+)?)px",
+                lambda match: f"font-size:{float(match[1]) * text_scale:g}px",
+                widget.styleSheet(),
+            ))
     card.show()
     application.processEvents()
     application.processEvents()
@@ -289,8 +299,15 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
 
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "Rewards after syncing" in texts
-    assert "42 cards studied" in texts
-    assert "Rewards added during this sync" in texts
+    assert "From 42 synced reviews" in texts
+    for label in card.findChildren(QLabel):
+        if label.property("receiptMetricLabel") or label.property("receiptMetricValue"):
+            assert label.fontMetrics().horizontalAdvance(label.text()) <= label.contentsRect().width()
+            assert label.fontMetrics().lineSpacing() <= label.contentsRect().height()
+    for button in card._footer.findChildren(QPushButton):
+        assert button.width() >= button.sizeHint().width()
+        assert button.fontMetrics().lineSpacing() <= button.contentsRect().height()
+        assert card._footer.rect().contains(button.geometry())
     card._toggle_expanded()
     application.processEvents()
     texts = {label.text() for label in card.findChildren(QLabel)}

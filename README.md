@@ -6,7 +6,9 @@ Turn your Anki study sessions into a growing, hand-painted garden. Choose a plan
 
 Release is on hold while the progression pacing guardrail is resolved. The combined changes are available for development and UI review; they are not approved for public distribution. See the [integration report](docs/ui/combined-integration-20260906.md).
 
-![Anki Garden with six plants at different growth stages](docs/images/garden-overview-20260906.png)
+![Anki Garden with six plants at different growth stages](docs/images/garden-overview-ui-20260906.png)
+
+The [September 6 UI review](docs/ui/comprehensive-ui-review-20260906.md) includes five fresh contact sheets covering all 50 native surfaces at 100% scale. This pass improves text fit, contrast, compact layouts, accessible controls, reward consistency, and plant artwork placement.
 
 ## Get started
 
@@ -35,7 +37,6 @@ Collection has two areas: **Plants** and **Appearance**. Select a species to see
 
 - Selecting an item previews it. **Equip** saves its artwork and bonus together; **Cancel preview** returns to your saved equipment.
 - **Equipped** shows your saved scenery and decoration with their effects. **Undo** restores your previous equipment.
-- **Show artwork** only changes visibility. Hiding an item keeps its bonus active.
 
 Previewing an item does not spend Coins, use supplies, or save changes. Cosmetic decorations have no study bonus. Purchases add items to your collection; choose **Equip** to use them.
 

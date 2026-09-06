@@ -1315,8 +1315,8 @@
           0.299043
         ],
         "thumbnail_optical_center": [
-          0.5,
-          0.5
+          0.50598,
+          0.79067
         ],
         "thumbnail_safe_padding": 0.1
       }
@@ -1416,8 +1416,8 @@
           0.53748
         ],
         "thumbnail_optical_center": [
-          0.5,
-          0.5
+          0.483254,
+          0.671451
         ],
         "thumbnail_safe_padding": 0.1
       }

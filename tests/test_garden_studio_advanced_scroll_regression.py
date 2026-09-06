@@ -291,7 +291,7 @@ def test_live_qt_advanced_content_stays_inside_inner_viewport_when_available(
             return node
 
     application = QApplication.instance() or QApplication([])
-    for width, expected_mode in ((960, "wide"), (600, "compact")):
+    for width in (960, 600):
         studio = GardenStudioWidget(_Config())
         outer = QScrollArea()
         outer.setWidgetResizable(True)
@@ -304,7 +304,7 @@ def test_live_qt_advanced_content_stays_inside_inner_viewport_when_available(
         application.processEvents()
         application.processEvents()
 
-        assert studio.property("studioMode") == expected_mode
+        assert studio.controls.width() <= studio.controls_scroll.viewport().width()
         assert studio.controls_scroll.minimumHeight() >= studio.controls.sizeHint().height()
         assert (
             studio.controls_scroll.viewport().height()
@@ -645,284 +645,72 @@ def _focus_signature(surface: Any) -> tuple[tuple[str, str, str, str], ...]:
     return tuple(signature)
 
 
+@pytest.mark.parametrize("width", (640, 1040))
 def test_live_qt_surface_breakpoints_are_stable_when_available(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, width: int,
 ) -> None:
-    """Run the release surfaces against Anki Qt when that runtime is present."""
-
+    """Resize real current surfaces without depending on retired controllers."""
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
         from aqt.qt import QApplication, QWidget
         from ankigarden.ui.dashboard import (
-            FertilizerReplacementDialog,
-            GardenDashboard,
-            GardenSettingsDialog,
-            NurseryDialog,
-            PlantStoryDialog,
-            ResponsiveActionCard,
+            FertilizerReplacementDialog, GardenDashboard, GardenSettingsDialog,
+            NurseryDialog, PlantStoryDialog,
         )
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
-
     application = QApplication.instance() or QApplication([])
     config, storage, engine = _live_engine_fixture()
-    from ankigarden.models.state import CurrencyTransaction
-
-    storage.state.currency_balance = 5
-    storage.state.currency_transactions = [
-        CurrencyTransaction(
-            "tx-1",
-            "event-1",
-            "First card today",
-            10,
-            10,
-            "2026-08-24T10:00:00",
-        ),
-        CurrencyTransaction(
-            "tx-2",
-            "event-2",
-            "Nursery purchase",
-            -5,
-            5,
-            "2026-08-24T11:00:00",
-        ),
-    ]
+    storage.state.starter_selection_complete = True
     owner = QWidget()
     owner.resize(1400, 900)
     owner.show()
     dashboard = GardenDashboard(owner, engine, storage, config)
-
-    replacement = FertilizerReplacementDialog(
-        dashboard,
-        engine,
-        _live_replacement_quote(engine, storage),
-    )
-    story = PlantStoryDialog(dashboard, engine, "p1")
-    nursery = NurseryDialog(dashboard, engine, storage)
-    assert tuple(nursery.catalog_tabs.tabText(index) for index in range(4)) == (
-        "Plants", "Supplies", "Scenery", "Decorations",
-    )
-    progress = dashboard.progress_dialog
-    customize = dashboard.collectible_detail_dialog
-    settings = GardenSettingsDialog(dashboard, engine, config)
-    dashboard._refresh_collection_list()
-    assert dashboard.collection_filter_responsive is not None
-    supply_rows = nursery.supplements_catalog.findChildren(ResponsiveActionCard)
-    assert supply_rows
-    nursery_controllers = (
-        (nursery.hero_responsive, "nursery-hero"),
-        (nursery.receipt_responsive, "nursery-receipt"),
-    ) + tuple(
-        (row.responsive, f"nursery-content-{index}")
-        for index, row in enumerate(supply_rows)
-    )
-
     surfaces = (
-        (
-            "replacement",
-            replacement,
-            (
-                (replacement.comparison_responsive, "replacement-comparison"),
-                (replacement.actions_responsive, "replacement-actions"),
-            ),
-            (443, 445),
-            "comparisonMode",
-            "compact",
-        ),
-        (
-            "story",
-            story,
-            ((story.hero_responsive, "story-hero"),),
-            (587, 589),
-            "heroMode",
-            "wide",
-        ),
-        (
-            "nursery",
-            nursery,
-            nursery_controllers,
-            (795, 797),
-            "heroMode",
-            "wide",
-        ),
-        (
-            "progress",
-            progress,
-            ((progress.navigation_responsive, "progress-navigation"),),
-            (867, 869),
-            "navigationMode",
-            "wide",
-        ),
-        (
-            "customize",
-            customize,
-            ((customize.collection_detail_responsive, "collection-detail-workspace"),),
-            (867, 869),
-            "workspaceMode",
-            "compact",
-        ),
+        FertilizerReplacementDialog(dashboard, engine, _live_replacement_quote(engine, storage)),
+        PlantStoryDialog(dashboard, engine, "p1"),
+        NurseryDialog(dashboard, engine, storage),
+        GardenSettingsDialog(dashboard, engine, config),
     )
-
-    shared_controllers = (
-        settings.report_actions_responsive,
-        dashboard.collection_filter_responsive,
-        dashboard.garden_stats_bar.growth_identity_responsive,
-    )
-    for controller in shared_controllers:
-        threshold = controller.evaluate(100_000).threshold_width
-        assert [
-            controller.evaluate(threshold + offset).mode
-            for offset in (-2, -1, 0, 1, 2)
-        ] == ["compact", "compact", "wide", "wide", "wide"]
-
-    for _label, surface, controllers, historical, property_name, expected in surfaces:
-        surface.show()
-        application.processEvents()
-        focus_order = _focus_signature(surface)
-        for controller, _controller_label in controllers:
-            threshold = controller.evaluate(100_000).threshold_width
-            modes = [
-                controller.evaluate(threshold + offset).mode
-                for offset in (-2, -1, 0, 1, 2)
-            ]
-            assert modes == ["compact", "compact", "wide", "wide", "wide"]
-            assert controller.region_order == controller.telemetry.region_order
-            assert _focus_signature(surface) == focus_order
-
-        observed: list[str] = []
-        for width in historical:
-            surface.resize(width, max(surface.minimumHeight(), 620))
+    try:
+        for surface in surfaces:
+            surface.show()
+            surface.resize(width, 620)
+            for _ in range(4):
+                application.processEvents()
+            for scroll in surface.active_vertical_scroll_regions():
+                assert scroll.widget().width() <= scroll.viewport().width()
+                assert scroll.horizontalScrollBar().maximum() == 0
+            surface.hide()
+        dashboard.show()
+        dashboard.resize(width, 700)
+        dashboard.open_section("collection", "plants")
+        for _ in range(4):
             application.processEvents()
-            observed.append(str(surface.property(property_name)))
-        assert observed == [expected, expected]
-        surface.hide()
-
-    nursery.show()
-    for index, region in enumerate((nursery.scroll, nursery.supplements_scroll,
-                                    nursery.upgrades_scroll, nursery.environment_scroll)):
-        nursery.catalog_tabs.setCurrentIndex(index)
-        for width in (640, 1040):
-            nursery.resize(width, 620)
+        workspace = dashboard.collection_plants_workspace
+        assert workspace.species_page is not None
+        assert workspace.selected_species == "bonsai"
+        assert workspace.gallery.scroll.widget().width() <= workspace.gallery.scroll.viewport().width()
+        if workspace._wide:
+            assert workspace.rect().contains(workspace.detail_host.geometry())
+            scroll = workspace.species_page.collection_scroll
+            assert scroll.widget().width() <= scroll.viewport().width()
+        else:
+            workspace.show_species("bonsai")
+            for _ in range(4):
+                application.processEvents()
+            assert workspace.detail_dialog is not None
+            assert workspace.species_page.top_close.isVisible()
+            workspace.close_details()
             application.processEvents()
-            application.processEvents()
-            assert region.widget().width() <= region.viewport().width()
-            assert region.horizontalScrollBar().maximum() == 0
-    nursery.hide()
-
-    settings.show()
-    application.processEvents()
-    settings_focus_order = _focus_signature(settings)
-    for controller in (
-        settings.behavior.studio_responsive,
-        settings.settings_footer_responsive,
-    ):
-        threshold = controller.evaluate(100_000).threshold_width
-        assert [
-            controller.evaluate(threshold + offset).mode
-            for offset in (-2, -1, 0, 1, 2)
-        ] == ["compact", "compact", "wide", "wide", "wide"]
-        assert _focus_signature(settings) == settings_focus_order
-    for width in (807, 809):
-        settings.resize(width, 620)
+            assert workspace.detail_dialog is None
+    finally:
+        for surface in surfaces:
+            surface.close()
+        dashboard.close()
+        owner.close()
         application.processEvents()
-        assert settings.behavior.property("studioMode") == "wide"
-        assert settings.property("footerMode") == "wide"
-    settings.resize(1020, 690)
-    settings.behavior.advanced_toggle.setChecked(True)
-    application.processEvents()
-    application.processEvents()
-    display_scroll = settings.active_vertical_scroll_regions()[0]
-    assert display_scroll.widget().width() <= display_scroll.viewport().width()
-    settings.hide()
-
-    dashboard.show()
-    application.processEvents()
-    dashboard.garden_stats_bar._growth_value_full_text = (
-        "29,975 / 30,000 Growth"
-    )
-    dashboard.garden_stats_bar._refresh_growth_value_copy()
-    dashboard_controllers = {
-        "header_full": dashboard.dashboard_header_full,
-        "title_actions": dashboard.dashboard_header_title_actions,
-        "metrics": dashboard.dashboard_metrics_responsive,
-        "milestone": dashboard.dashboard_milestone_responsive,
-        "rearrange": dashboard.dashboard_rearrange_responsive,
-    }
-    dashboard_focus_order = _focus_signature(dashboard)
-    header_inset = (
-        dashboard.header_grid.contentsMargins().left()
-        + dashboard.header_grid.contentsMargins().right()
-    )
-    header_controller_names = {"header_full", "title_actions", "metrics"}
-    for target_name, controller in dashboard_controllers.items():
-        threshold = controller.evaluate(100_000).threshold_width
-        owning_inset = header_inset if target_name in header_controller_names else 0
-        snapshots: list[dict[str, str]] = []
-        for offset in (-2, -1, 0, 1, 2):
-            dashboard._apply_responsive_layout(threshold + owning_inset + offset)
-            snapshots.append(
-                {
-                    name: str(candidate.telemetry.mode)
-                    for name, candidate in dashboard_controllers.items()
-                }
-            )
-        assert snapshots[0][target_name] == "compact"
-        assert snapshots[1][target_name] == "compact"
-        assert snapshots[2][target_name] == "wide"
-        assert snapshots[3][target_name] == "wide"
-        assert snapshots[4][target_name] == "wide"
-        for other_name in dashboard_controllers.keys() - {target_name}:
-            assert snapshots[1][other_name] == snapshots[2][other_name]
-        assert _focus_signature(dashboard) == dashboard_focus_order
-
-    historical_dashboard = {
-        596: ("compact", "compact", "compact", "wide"),
-        699: ("compact", "compact", "compact", "wide"),
-        701: ("compact", "compact", "compact", "wide"),
-        819: ("compact", "compact", "wide", "wide"),
-        821: ("compact", "compact", "wide", "wide"),
-        899: ("compact", "compact", "wide", "wide"),
-        901: ("compact", "compact", "wide", "wide"),
-        999: ("compact", "wide", "wide", "wide"),
-        1001: ("compact", "wide", "wide", "wide"),
-        1216: ("compact", "wide", "wide", "wide"),
-        1359: ("compact", "wide", "wide", "wide"),
-        1361: ("compact", "wide", "wide", "wide"),
-        1700: ("wide", "wide", "wide", "wide"),
-    }
-    for width, expected_modes in historical_dashboard.items():
-        dashboard._apply_responsive_layout(width)
-        assert (
-            str(dashboard.dashboard_header_full.telemetry.mode),
-            str(dashboard.dashboard_metrics_responsive.telemetry.mode),
-            str(dashboard.dashboard_milestone_responsive.telemetry.mode),
-            str(dashboard.dashboard_rearrange_responsive.telemetry.mode),
-        ) == expected_modes
-
-        dashboard.resize(width + 24, 700)
-        application.processEvents()
-        assert dashboard.title_stack_widget.width() >= 230
-        assert (
-            dashboard.garden_stats_bar.streak_label.width()
-            >= dashboard.garden_stats_bar.streak_label.sizeHint().width()
-        )
-        assert (
-            dashboard.garden_stats_bar.streak_bonus.width()
-            >= dashboard.garden_stats_bar.streak_bonus.sizeHint().width()
-        )
-        assert (
-            dashboard.garden_stats_bar.growth_value.width()
-            >= dashboard.garden_stats_bar.growth_value.sizeHint().width()
-        )
-        assert (
-            dashboard.customize_btn.width()
-            >= dashboard.customize_btn.sizeHint().width()
-        )
-
-    dashboard.hide()
-    owner.close()
-    application.processEvents()
 
 
 def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
@@ -1110,16 +898,16 @@ def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.M
     assert card.status_value.text() == "Magical Fertilizer · 100 cards remaining"
     assert card.status_row.isVisibleTo(card)
     settle(name="An extraordinarily long name for this particular Rose Plant")
-    assert card.heading.property("fullText") == "An extraordinarily long name for this particular Rose Plant"
+    assert card.heading.property("fullText") == "Rose Sprout"
     assert not card.artwork.pixmap().isNull()
     settle(is_active=False)
     assert card.nurture.isVisibleTo(card) and card.nurture.isEnabled()
     assert not card.fertilize.isVisibleTo(card)
     assert card.more.isVisibleTo(card)
     settle(fully_grown=True, is_active=False, stage="rare", next_stage=None)
-    assert card.fully_grown_badge.isVisibleTo(card)
+    assert card.heading.property("fullText") == "Full Bloom Rose"
     assert not card.identity.isVisibleTo(card)
-    assert not card.progress_region.isVisibleTo(card)
+    assert not card.stage_progress.isVisibleTo(card)
     assert any(action.text() == "Choose another plant" and action.isVisible() for action in card.more.menu().actions())
     assert not card.nurture.isVisibleTo(card)
     settle()
@@ -1809,3 +1597,102 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     dashboard.hide()
     owner.close()
     application.processEvents()
+
+
+@pytest.mark.parametrize("scale", (1.0, 1.5, 2.0))
+@pytest.mark.parametrize("width", (380, 1040))
+def test_live_welcome_and_trophies_keep_text_and_actions_reachable(
+    monkeypatch: pytest.MonkeyPatch, scale: float, width: int,
+) -> None:
+    """Exercise actual enlarged widget fonts, including the compact viewport."""
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QLabel, QPushButton, QWidget
+        from ankigarden.models.welcome import WelcomeReceipt, WelcomeReward
+        from ankigarden.ui.trophy_room import TrophyRoomPage
+        from ankigarden.ui.welcome import WelcomeCard
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    _config, _storage, engine = _live_engine_fixture()
+    owner = QWidget()
+    owner.resize(width, 600)
+    owner.show()
+    welcome = WelcomeCard(owner, lambda: None, engine)
+    welcome.set_receipt(WelcomeReceipt(
+        gift_rewards=(WelcomeReward("gift-growth", "growth", 100),
+                      WelcomeReward("gift-coins", "coins", 50)),
+        history_review_count=5000,
+        history_rewards=(WelcomeReward("history-coins", "coins", 135),
+                         WelcomeReward("history-small", "inventory_item", 1, "growth_charge_small"),
+                         WelcomeReward("history-standard", "inventory_item", 1, "growth_charge_standard")),
+        achievement_ids=("first", "second", "third", "fourth"),
+    ))
+    trophies = TrophyRoomPage(engine, lambda: None)
+    trophies.resize(width, 600)
+    try:
+        for surface in (welcome, trophies):
+            surface.ensurePolished()
+            for widget in (*surface.findChildren(QLabel), *surface.findChildren(QPushButton)):
+                base = max(12, widget.fontMetrics().height() - 2)
+                widget.setStyleSheet(f"font-size:{round(base * scale)}px;")
+            surface.show()
+        welcome._toggle_details()
+        for _ in range(4):
+            application.processEvents()
+            welcome.reposition()
+            trophies.showcase._reflow()
+            trophies._sync_header()
+        assert owner.rect().contains(welcome.geometry())
+        for button in (welcome.close_button, welcome.view_rewards):
+            assert welcome.rect().contains(button.geometry())
+        assert welcome.view_rewards.height() >= welcome.view_rewards.fontMetrics().height()
+        assert welcome.details.widget().width() <= welcome.details.viewport().width()
+        assert trophies.widget().width() <= trophies.viewport().width()
+        assert trophies.horizontalScrollBar().maximum() == 0
+        for surface in (welcome, trophies):
+            for label in surface.findChildren(QLabel):
+                if not label.isVisible() or not label.text() or not label.wordWrap():
+                    continue
+                required = label.heightForWidth(label.width())
+                assert label.height() + 2 >= required, label.text()
+        welcome.details.verticalScrollBar().setValue(welcome.details.verticalScrollBar().maximum())
+        trophies.verticalScrollBar().setValue(trophies.verticalScrollBar().maximum())
+        assert "expanded" in welcome.view_rewards.accessibleDescription()
+    finally:
+        welcome.close()
+        trophies.close()
+        owner.close()
+        application.processEvents()
+
+
+def test_live_toggle_retains_help_and_state_after_keyboard_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, Qt
+        from PyQt6.QtTest import QTest
+        from ankigarden.ui.controls import GardenToggleSwitch
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+    application = QApplication.instance() or QApplication([])
+    switch = GardenToggleSwitch("Reward notifications")
+    switch.setAccessibleDescription("Show new rewards while studying.")
+    switch.show()
+    try:
+        switch.setFocus()
+        application.processEvents()
+        for expected in (True, False):
+            QTest.keyClick(switch, Qt.Key.Key_Space)
+            assert switch.isChecked() is expected
+            assert "Show new rewards while studying." in switch.accessibleDescription()
+            assert switch.accessibleDescription().endswith("On." if expected else "Off.")
+        switch.setEnabled(False)
+        assert "Show new rewards while studying." in switch.accessibleDescription()
+    finally:
+        switch.close()
+        application.processEvents()

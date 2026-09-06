@@ -542,6 +542,10 @@ def test_action_palettes_keep_legible_contrast_in_every_interaction_state() -> N
             "secondary_hover",
             "secondary_pressed",
         )),
+        *((garden[role], garden[surface])
+          for role in ("text_primary", "text_secondary", "text_muted")
+          for surface in ("dialog_surface", "raised_surface", "selected_surface",
+                          "surface_hover", "shop_surface_1", "shop_surface_2")),
         (garden["disabled_text"], garden["disabled_surface"]),
         *((nursery["action_text"], nursery[key]) for key in (
             "action_accent",

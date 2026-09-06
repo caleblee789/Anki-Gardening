@@ -53,10 +53,9 @@ def test_home_container_ranges_are_deterministic_at_every_boundary(
 
 
 def test_home_breakpoints_are_container_scoped_and_have_no_viewport_width_cliffs() -> None:
-    assert HOME_WIDGET_STYLE.count("@container") == 3
+    assert HOME_WIDGET_STYLE.count("@container") == 2
     assert "@container (max-width: 400px)" in HOME_WIDGET_STYLE
     assert "@container (max-width:340px)" in HOME_WIDGET_STYLE
-    assert "@container (max-width:300px)" in HOME_WIDGET_STYLE
     # Preserve the reviewed starter-only exception without permitting viewport
     # breakpoints to change the regular Home banner.
     starter_breakpoint = '''@media (max-width:560px) {
@@ -71,21 +70,20 @@ def test_home_breakpoints_are_container_scoped_and_have_no_viewport_width_cliffs
     assert "height:176px" not in HOME_WIDGET_STYLE
 
 
-def test_home_banner_preserves_cta_before_hiding_optional_metadata() -> None:
+def test_home_banner_keeps_progress_and_action_readable_on_narrow_containers() -> None:
     assert "width:min(calc(100% - 48px), 520px)" in HOME_WIDGET_STYLE
     assert "max-width:520px" in HOME_WIDGET_STYLE
     assert "margin:24px auto 18px" in HOME_WIDGET_STYLE
     assert (
-        "grid-template-columns:minmax(0,260px) minmax(0,1fr) 112px"
+        "grid-template-columns:minmax(0,260px) minmax(0,1fr) max-content"
         in HOME_WIDGET_STYLE
     )
     assert "min-width:112px !important" in HOME_WIDGET_STYLE
-    assert "bottom:7px" in HOME_WIDGET_STYLE
     assert "width:260px" in HOME_WIDGET_STYLE
-    assert "right:140px; bottom:7px; width:auto" in HOME_WIDGET_STYLE
+    assert "bottom:auto; width:100%" in HOME_WIDGET_STYLE
     assert (
         ".ag-home__support,.ag-home__progress-copy,.ag-home__growth-track { display:none; }"
-        in HOME_WIDGET_STYLE
+        not in HOME_WIDGET_STYLE
     )
     assert HOME_WIDGET_STYLE.index(
         "@container (max-width: 400px)"

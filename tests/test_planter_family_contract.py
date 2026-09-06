@@ -229,7 +229,14 @@ def test_every_scenery_and_aspect_uses_an_approved_bedless_master() -> None:
             "ankigarden/" + variant["file"]
             for variant in profile["variants"].values()
         )
-    assert resolved_files == {row["runtime"] for row in report["assets"]}
+    # Native Gardens now share one continuous painting across window aspects.
+    # The immutable report still proves retained Home/wide source provenance.
+    continuous = {"ankigarden/" + row["native_garden_file"] for row in scenery}
+    for row in scenery:
+        assert row["file"] == row["native_garden_file"]
+        assert Image.open(ADDON / row["native_garden_file"]).size == (1448, 1086)
+    retained = {row["runtime"] for row in report["assets"] if row["variant"] != "4x3"}
+    assert resolved_files == retained | continuous
 
 
 def test_bedless_planter_scene_never_draws_legacy_surface_occlusion() -> None:

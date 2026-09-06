@@ -19,13 +19,15 @@ def build_receipt_shell(owner: Any, title: str, close: Any, palette: dict[str, s
     header = QFrame(owner)
     header.setObjectName(f"{prefix}Header")
     header.setProperty("receiptHeader", True)
-    header.setFixedHeight(44)
+    header.setMinimumHeight(44)
     row = QHBoxLayout(header)
     row.setContentsMargins(16, 6, 16, 6)
     row.setSpacing(8)
     label = QLabel(title, header)
     label.setProperty("receiptTitle", True)
     label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setWordWrap(True)
+    label.setMinimumWidth(0)
     row.addWidget(label, 1)
     close_button = QPushButton("", header)
     close_button.setObjectName(f"{prefix}Close")
@@ -49,7 +51,7 @@ def build_receipt_shell(owner: Any, title: str, close: Any, palette: dict[str, s
     footer = QFrame(owner)
     footer.setObjectName(f"{prefix}Footer")
     footer.setProperty("receiptFooter", True)
-    footer.setFixedHeight(48)
+    footer.setMinimumHeight(48)
     actions = QHBoxLayout(footer)
     actions.setContentsMargins(16, 8, 16, 8)
     actions.setSpacing(8)
@@ -63,7 +65,7 @@ def receipt_button(parent: Any, text: str, callback: Any, *, primary: bool) -> A
     button = QPushButton(text, parent)
     button.setProperty("receiptPrimary" if primary else "receiptSecondary", True)
     button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-    button.setFixedHeight(32)
+    button.setMinimumHeight(32)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     button.clicked.connect(callback)
     return button
@@ -126,6 +128,10 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
             super().resizeEvent(event)
             self._fit_text()
 
+        def changeEvent(self, event: Any) -> None:
+            super().changeEvent(event)
+            self._fit_text()
+
     color = (palette["coin_accent"] if icon_name == "coin" else
              palette["growth_accent"] if icon_name == "growth" else
              palette.get("find_accent", palette["text_secondary"]))
@@ -144,7 +150,8 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
     caption = QLabel(label, tile)
     caption.setProperty("receiptMetricLabel", True)
     caption.setMinimumWidth(0)
-    caption.setWordWrap(False)
+    caption.setWordWrap(True)
+    caption.setTextFormat(Qt.TextFormat.PlainText)
     caption.setStyleSheet(f"color:{palette['text_secondary']};font-size:11px;font-weight:500;background:transparent;border:0;")
     layout.addWidget(caption)
     number_row = QHBoxLayout()
@@ -169,6 +176,44 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
     return SimpleNamespace(widget=tile, value=amount, caption=caption, icon=icon)
 
 
+
+def receipt_metrics_layout(parent: Any = None) -> Any:
+    """Keep reward totals in a row, stacking them when larger text needs space."""
+    from aqt.qt import QBoxLayout, QHBoxLayout, QLabel
+
+    class MetricsLayout(QHBoxLayout):
+        def setGeometry(self, rect: Any) -> None:
+            minimum_widths = []
+            for index in range(self.count()):
+                tile = self.itemAt(index).widget()
+                if tile is None:
+                    continue
+                labels = tile.findChildren(QLabel)
+                caption = next((label for label in labels if label.property("receiptMetricLabel")), None)
+                amount = next((label for label in labels if label.property("receiptMetricValue")), None)
+                if caption is None or amount is None:
+                    continue
+                margins = tile.layout().contentsMargins()
+                caption_width = caption.fontMetrics().horizontalAdvance(caption.text())
+                number_row = tile.layout().itemAt(1).layout()
+                icon = number_row.itemAt(0).widget()
+                # AmountLabel already compacts large totals; measure that visible
+                # value so ordinary rewards keep their compact three-column row.
+                amount_width = (amount.fontMetrics().horizontalAdvance(amount.text())
+                                + icon.width() + number_row.spacing())
+                minimum_widths.append(max(caption_width, amount_width) + margins.left() + margins.right())
+            margins = self.contentsMargins()
+            needed = (max(minimum_widths, default=0) * len(minimum_widths)
+                      + max(0, len(minimum_widths) - 1) * self.spacing()
+                      + margins.left() + margins.right())
+            direction = (QBoxLayout.Direction.TopToBottom if needed > rect.width()
+                         else QBoxLayout.Direction.LeftToRight)
+            if self.direction() != direction:
+                self.setDirection(direction)
+            super().setGeometry(rect)
+
+    return MetricsLayout(parent) if parent is not None else MetricsLayout()
+
 def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = "", milestone: bool = False, reward: Any = None, eyebrow: str = "", rarity_badge: bool = False) -> Any:
     from aqt.qt import QFrame, QHBoxLayout, QLabel, QVBoxLayout, Qt
     frame = QFrame(parent)
@@ -184,6 +229,9 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
         if eyebrow:
             category = QLabel(eyebrow.upper(), frame)
             category.setProperty("receiptRewardHeading", True)
+            category.setTextFormat(Qt.TextFormat.PlainText)
+            category.setWordWrap(True)
+            category.setMinimumWidth(0)
             category.setStyleSheet("color:#AEBFB7;font-size:11px;font-weight:650;background:transparent;border:0;")
             heading.addWidget(category, 1)
         else:
@@ -208,6 +256,7 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
     name = QLabel(title, frame)
     name.setProperty("receiptEventTitle", True)
     name.setWordWrap(True)
+    name.setMinimumWidth(0)
     name.setTextFormat(Qt.TextFormat.PlainText)
     copy.addWidget(name)
     if treatment.notable and not milestone and not rarity_badge and treatment.label.casefold() not in detail.casefold():
@@ -216,6 +265,7 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
         secondary = QLabel(detail, frame)
         secondary.setProperty("receiptEventDetail", True)
         secondary.setWordWrap(True)
+        secondary.setMinimumWidth(0)
         secondary.setTextFormat(Qt.TextFormat.PlainText)
         copy.addWidget(secondary)
     row.addLayout(copy, 1)
@@ -255,3 +305,23 @@ def receipt_body_height(body: Any, width: int) -> int:
     layout.activate()
     wrapped = layout.totalHeightForWidth(max(1, int(width)))
     return max(1, wrapped if wrapped >= 0 else layout.sizeHint().height())
+
+
+def fit_receipt_chrome(header: Any, footer: Any, width: int) -> None:
+    """Keep receipt titles and actions visible at narrow widths and larger text."""
+    from aqt.qt import QBoxLayout
+
+    actions = footer.layout()
+    margins = actions.contentsMargins()
+    controls = [actions.itemAt(index).widget() for index in range(actions.count())]
+    controls = [control for control in controls if control is not None and not control.isHidden()]
+    required = (sum(control.sizeHint().width() for control in controls)
+                + max(0, len(controls) - 1) * actions.spacing()
+                + margins.left() + margins.right())
+    actions.setDirection(QBoxLayout.Direction.TopToBottom if required > width
+                         else QBoxLayout.Direction.LeftToRight)
+    for frame, minimum in ((header, 44), (footer, 48)):
+        layout = frame.layout()
+        layout.invalidate()
+        measured = layout.totalHeightForWidth(max(1, int(width)))
+        frame.setFixedHeight(max(minimum, measured if measured >= 0 else layout.sizeHint().height()))

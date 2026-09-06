@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ankigarden.asset_manager import AssetPlacement
 import scripts.package_addon as package_addon
 from scripts.package_addon import (
     ADDON,
@@ -109,6 +110,7 @@ def test_package_contains_runtime_and_excludes_mutable_data(
         names = set(archive.namelist())
         capabilities = _archive_capabilities(archive)
         packaged_game = archive.read("game.py").decode("utf-8")
+        asset_manifest = json.loads(archive.read("assets/manifest.json"))
         expected = {
             path.relative_to(ADDON).as_posix(): package_payload(path)
             for path in package_files()
@@ -148,7 +150,6 @@ def test_package_contains_runtime_and_excludes_mutable_data(
     assert capabilities["DEVELOPMENT_MUTATION_ENABLED"] is False
     assert "if not build_capabilities.DEVELOPMENT_MUTATION_ENABLED:" in packaged_game
 
-    asset_manifest = json.loads((ADDON / "assets" / "manifest.json").read_text("utf-8"))
     canonical_v6_plants = {
         row["file"]
         for row in asset_manifest["assets"]
@@ -165,6 +166,30 @@ def test_package_contains_runtime_and_excludes_mutable_data(
     assert OBSOLETE_ROSE_V6_ALIASES.isdisjoint(names)
     packaged_assets = {name for name in names if name.startswith("assets/")}
     assert packaged_assets == runtime_asset_paths()
+    assert not any(
+        "/backgrounds/" in name and "_16x9" in name for name in packaged_assets
+    )
+    assert not any(
+        "/backgrounds/" in name
+        and (name.endswith("_4x3.webp") or "/masks/" in name)
+        for name in packaged_assets
+    )
+    backgrounds = [
+        row for row in asset_manifest["assets"] if row.get("category") == "backgrounds"
+    ]
+    for row in backgrounds:
+        assert row["file"] == row["native_garden_file"]
+        assert row["file"] in packaged_assets
+        assert (row["width"], row["height"]) == (1448, 1086)
+    background = next(
+        row for row in asset_manifest["assets"]
+        if row.get("category") == "backgrounds" and "placement" in row
+    )
+    placement = AssetPlacement.from_manifest(
+        background["placement"], category="backgrounds"
+    )
+    assert placement.surface_profile is not None
+    assert set(placement.surface_profile.variants) == {"4:3", "home"}
     assert not any("fallback" in name.lower() for name in packaged_assets)
     assert not any(
         name.startswith(f"assets/v{version}_storybook_gouache/")
@@ -172,12 +197,12 @@ def test_package_contains_runtime_and_excludes_mutable_data(
         for name in packaged_assets
     )
     assert "assets/migration_manifest_v2.json" not in packaged_assets
-    # The current release ships all nine responsive scenery plates, the
-    # complete six-stage plant library, the geometry-matched planter set, and
-    # the canonical Rich Compost reward artwork.
+    # Ship the active Garden/Home layouts for all nine scenery plates, the
+    # complete six-stage plant library, the geometry-matched planter set,
+    # and the canonical Rich Compost reward artwork.
     # Keep the reviewed plant catalog, continuous lawn, and discovery icon
-    # within the existing 110 MiB budget using lossless artwork encodings.
-    assert production_output.stat().st_size < 110 * 1024 * 1024
+    # within a 100 MiB budget using lossless artwork encodings.
+    assert production_output.stat().st_size < 100 * 1024 * 1024
 
 
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(

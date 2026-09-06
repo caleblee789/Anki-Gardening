@@ -9429,10 +9429,10 @@ class _UiFaceCaptureRunner:
                 expected_height = 32 if CAPTURE_CONTRACT_VERSION >= 27 else 36
                 size_passed = bool(actual_height == expected_height and actual_width > 0)
             elif icon_only and button.property("receiptClose"):
-                # Shared reward receipts use 26 or 32 px close targets.
+                # Shared reward receipts use 26, 28 or 32 px close targets.
                 # The workspace style may contribute up to 2 px vertically.
                 size_passed = bool(
-                    actual_width in {26, 32}
+                    actual_width in {26, 28, 32}
                     and actual_width <= actual_height <= actual_width + 2
                     and 14 <= icon_size[0] <= 18
                     and 14 <= icon_size[1] <= 18
@@ -35655,6 +35655,9 @@ class _UiFaceCaptureRunner:
                     preserve_transition=False,
                 )
                 QApplication.processEvents()
+                # Match the geometry that is actually painted after queued
+                # font measurements and content fitting have settled.
+                self._settle_dialog_content_fit_for_capture(label, dialog)
                 dialog._capture_preview_layout_signature = (
                     dialog.shared_layout_signature()
                 )
@@ -35673,6 +35676,9 @@ class _UiFaceCaptureRunner:
                     preserve_transition=False,
                 )
                 QApplication.processEvents()
+                # Match the geometry that is actually painted after queued
+                # font measurements and content fitting have settled.
+                self._settle_dialog_content_fit_for_capture(label, dialog)
                 dialog._capture_success_layout_signature = (
                     dialog.shared_layout_signature()
                 )

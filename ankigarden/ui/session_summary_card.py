@@ -28,7 +28,7 @@ from .environment_art import environment_preview_pixmap
 from .formatters import format_garden_coins, format_quantity
 from .icons import garden_icon
 from .reward_rarity import apply_reward_treatment, reward_treatment
-from .reward_receipt import build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height, reward_discovery_count
+from .reward_receipt import fit_receipt_chrome, receipt_metrics_layout, build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height, reward_discovery_count
 from .plant_art import normalized_plant_pixmap
 from .session_summary import (
     EnvironmentDiscovery,
@@ -649,7 +649,7 @@ def _alpha_bounded_thumbnail(source: Any, size: int) -> Any:
 
 
 class _WrappedNameLabel(QLabel):  # type: ignore[misc,valid-type]
-    """A full-copy label that may wrap to two lines instead of truncating."""
+    """A full-copy label that grows with wrapped text instead of truncating."""
 
     def __init__(self, text: str) -> None:
         super().__init__(str(text or ""))
@@ -658,7 +658,8 @@ class _WrappedNameLabel(QLabel):  # type: ignore[misc,valid-type]
         self.setAccessibleName(self._full_text)
         self.setWordWrap(True)
         self.setProperty("summaryTwoLineName", True)
-        self.setMaximumHeight(max(1, int(self.fontMetrics().lineSpacing())) * 2 + 4)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setMinimumWidth(0)
 
 
 class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
@@ -1654,7 +1655,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         container = QFrame()
         container.setObjectName("ankiGardenSessionRewards")
         container.setProperty("summaryCanonicalMetricCount", len(metrics))
-        row = QHBoxLayout(container)
+        row = receipt_metrics_layout(container)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(6)
         for key, label, value, icon in metrics:
@@ -2516,6 +2517,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             reserved_top=resolved_reserved_top,
         )
         self.setFixedWidth(provisional[2])
+        fit_receipt_chrome(self._header, self._footer, provisional[2])
         try:
             # Reserve the styled 6 px scrollbar width even when it is absent.
             # This is the native-QScrollArea equivalent of scrollbar-gutter:

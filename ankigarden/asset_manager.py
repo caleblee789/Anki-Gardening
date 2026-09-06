@@ -389,7 +389,7 @@ class SceneSurfaceProfile:
                 "planting_zone": dict(raw.get("planting_zone", {})),
                 "surfaces": [dict(surface) for surface in surfaces if isinstance(surface, dict)],
             }
-        if set(variants) != {"4:3", "16:9", "home"}:
+        if not {"4:3", "home"}.issubset(variants):
             return None
         geometry_version = max(1, int(number(row.get("geometry_version"), 1, 1, 99)))
         if geometry_version >= 5 and not _surface_contract_is_valid(variants, geometry_version):

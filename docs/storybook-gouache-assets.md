@@ -10,8 +10,15 @@ glossy, photorealistic, neon, or geometrically flat.
 ## Verdant Twilight V6 environment
 
 `verdant_twilight_surface_v6` is the release-preferred canonical environment.
-Opaque 4:3, 16:9, and home masters use high-quality WebP and locked composition
-so cover-cropping never shifts a planting space.
+All nine scenery themes use dedicated 1448 × 1086 lossless WebP paintings with
+continuous planting ground. The native 3:2 Garden covers these 4:3 source images;
+scenery previews use the same paintings. Home retains its separate 1942 × 809
+banners and composition.
+
+The installable archive contains 72 background images: nine continuous Garden
+paintings, nine Home banners, and 54 reachable occlusion overlays. The source
+catalog retains the 16:9 layouts, older 4:3 paintings (`source_garden_file`), and
+authoring masks. Packaging omits those source-only references and files.
 
 The same V6 profile is authoritative for background resolution, the full
 Garden, the noninteractive home preview, the Settings scenery thumbnail, hit
@@ -26,7 +33,7 @@ Snow-Covered Garden, Rainbow Horizon, Halloween Garden, Full Moon Garden, and
 Celestial Eclipse—preserve the camera, path, cottage, Nursery, all six spaces,
 anchors, alpha masks, landmark geometry, and occlusion topology. Compact
 manifest rows use `placement_ref` to inherit the canonical V6 contract and
-substitute responsive background/occlusion files. An artwork-specific
+substitute the theme's continuous Garden and Home artwork/occlusion files. An artwork-specific
 `landmark_overrides` entry may refine only a visual contour and its forgiving
 hit bounds when a scenery repaint shifts the visible building edge; planting
 surfaces and saved geometry remain canonical. Garden Decorations are independent

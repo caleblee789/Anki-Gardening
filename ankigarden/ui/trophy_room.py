@@ -4,12 +4,13 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from aqt.qt import (
-    QColor, QFrame, QGridLayout, QHBoxLayout, QLabel, QLinearGradient,
+    QBoxLayout, QColor, QEvent, QFrame, QGridLayout, QHBoxLayout, QLabel, QLinearGradient,
     QPainter, QPen, QPixmap, QPushButton, QRadialGradient, QRectF, QScrollArea,
-    QSize, QSizePolicy, Qt, QVBoxLayout, QWidget,
+    QSize, QSizePolicy, QTimer, Qt, QVBoxLayout, QWidget,
 )
 
 from ..trophies import TrophyPresentation, trophy_presentations
+from .controls import GardenWrappingLabel
 from .copy import inline_detail_copy, learner_card_copy
 from .formatters import GardenDateService
 from .theme import (
@@ -160,7 +161,7 @@ class TrophyShowcase(QFrame):
             panel_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
             labels = []
             for row_index in range(5):
-                label = QLabel()
+                label = GardenWrappingLabel()
                 label.setWordWrap(True)
                 label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
                 label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -185,7 +186,11 @@ class TrophyShowcase(QFrame):
         self._reflow()
 
     def _reflow(self) -> None:
-        stacked = self.width() < 720
+        # The three descriptions need room for their natural text size even
+        # when the host width itself has not changed (for example larger text).
+        detail_width = max((label.fontMetrics().horizontalAdvance("Bonus when unlocked") + 28
+                            for labels in self._labels for label in labels[1:4]), default=0)
+        stacked = self.width() < max(720, detail_width * 3 + 56)
         if stacked == self._stacked:
             return
         self._stacked = stacked
@@ -204,6 +209,11 @@ class TrophyShowcase(QFrame):
             else:
                 self.details.addWidget(panel, 1, column)
         self.updateGeometry()
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            QTimer.singleShot(0, self._reflow)
 
     def refresh(self) -> None:
         trophies = trophy_presentations(self.engine.state)
@@ -243,19 +253,23 @@ class TrophyRoomPage(QScrollArea):
         outer.setContentsMargins(24, 12, 24, 20)
         outer.setSpacing(12)
         header = QHBoxLayout()
-        title = QLabel("Gardening Trophies")
+        self.header_layout = header
+        header.setSpacing(12)
+        title = GardenWrappingLabel("Gardening Trophies")
+        self.title = title
+        title.setMinimumWidth(0)
         title.setWordWrap(True)
         apply_text_role(title, TextRole.SCREEN_TITLE)
-        header.addWidget(title)
-        header.addStretch()
+        header.addWidget(title, 1)
         self.back_button = QPushButton("Back to Garden")
+        self.back_button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
         self.back_button.setAccessibleName("Back to Garden")
         self.back_button.clicked.connect(back)
         apply_control_variant(self.back_button, BUTTON_VARIANT_SECONDARY)
         apply_button_size(self.back_button, ButtonSize.SECONDARY)
         header.addWidget(self.back_button)
         outer.addLayout(header)
-        intro = QLabel("Unlocked trophies grant permanent bonuses that work together.")
+        intro = GardenWrappingLabel("Unlocked trophies grant permanent bonuses that work together.")
         intro.setWordWrap(True)
         apply_text_role(intro, TextRole.SECONDARY)
         intro.setStyleSheet(f"color:{GARDEN_THEME['text_secondary']};")
@@ -263,6 +277,18 @@ class TrophyRoomPage(QScrollArea):
         self.showcase = TrophyShowcase(engine, parent=host)
         outer.addWidget(self.showcase)
         outer.addStretch(1)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._sync_header()
+
+    def _sync_header(self) -> None:
+        needed = self.title.fontMetrics().horizontalAdvance(self.title.text()) + self.back_button.sizeHint().width() + 12
+        compact = self.viewport().width() - 48 < needed
+        self.header_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight
+        )
+        self.header_layout.setAlignment(self.back_button, Qt.AlignmentFlag.AlignLeft if compact else Qt.AlignmentFlag.AlignVCenter)
 
     def refresh(self) -> None:
         self.showcase.refresh()

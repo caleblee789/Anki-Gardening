@@ -30,9 +30,33 @@ EXCLUDED_PARTS = {"__pycache__", "cache", "metadata"}
 EXCLUDED_NAMES = {"meta.json", "garden_state.json", "asset_metadata.json", ".DS_Store"}
 
 
-def runtime_asset_paths() -> set[str]:
-    """Return the complete, manifest-owned runtime asset set."""
+def runtime_asset_manifest() -> dict[str, Any]:
+    """Keep dormant background layouts and authoring assets in the source only."""
+
     payload = json.loads((ADDON / "assets" / "manifest.json").read_text("utf-8"))
+
+    def active_layouts(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: active_layouts(nested)
+                for key, nested in value.items()
+                if key not in {"16:9", "source_garden_file", "surface_masks", "layer_masks"}
+            }
+        if isinstance(value, list):
+            return [active_layouts(nested) for nested in value]
+        return value
+
+    payload["assets"] = [
+        active_layouts(row) if row.get("category") == "backgrounds" else row
+        for row in payload["assets"]
+    ]
+    return payload
+
+
+def runtime_asset_paths() -> set[str]:
+    """Return the complete asset set owned by the packaged manifest."""
+
+    payload = runtime_asset_manifest()
     referenced: set[str] = {"assets/manifest.json"}
 
     def collect(value: object) -> None:
@@ -86,6 +110,8 @@ def package_payload(path: Path, mode: str = PRODUCTION_BUILD) -> bytes:
     archive_name = path.relative_to(ADDON).as_posix()
     if archive_name == CAPABILITY_MODULE:
         return build_capabilities_source(normalized).encode("utf-8")
+    if archive_name == "assets/manifest.json":
+        return (json.dumps(runtime_asset_manifest(), indent=2) + "\n").encode("utf-8")
     return path.read_bytes()
 
 

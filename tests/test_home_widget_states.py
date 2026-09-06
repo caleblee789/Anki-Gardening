@@ -214,7 +214,7 @@ def test_success_state_renders_key_fields() -> None:
     assert '<div class="ag-home__metrics"' not in html
     assert ".ag-home__garden-context,.ag-home__status-notice { display:none; }" in html
     assert "min-height:36px" in html
-    assert "max-height:36px" in html
+    assert "max-height:36px" not in html
     assert "min-width:112px" in html
     assert "outline:2px solid #75E4AE" in html
     assert "outline-offset: 2px" in html
@@ -370,7 +370,7 @@ def test_home_does_not_draw_a_duplicate_soil_ellipse_over_empty_beds() -> None:
 def test_home_summary_panel_uses_compact_visual_hierarchy_at_each_breakpoint() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=_sample_data()))
 
-    assert "grid-template-columns:minmax(0,260px) minmax(0,1fr) 112px" in html
+    assert "grid-template-columns:minmax(0,260px) minmax(0,1fr) max-content" in html
     assert "column-gap:12px" in html
     assert 'class="ag-home__artwork-zone" aria-hidden="true"' in html
     assert "#ag-home-root button,.ag-home__open" in html
@@ -746,7 +746,7 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert 'data-testid="home-growth-progress"' in html
     assert 'data-testid="home-progress-copy"' in html
     assert "background:rgba(99,217,159,.26)" in html
-    assert "line-height:14px" in html
+    assert "line-height:1.35" in html
     assert "\n  left:0;\n  width:var(--ag-growth-percent,0%);" in html
     assert 'data-testid="home-today-answers"' not in html
     assert 'data-testid="home-nearest-achievement"' not in html
@@ -1101,7 +1101,7 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     assert "Refreshing…" in stale_html
     assert "--ag-scene-opacity:0.720" in stale_html
     assert '#ag-home-root[data-state="stale"] .ag-home__partial-message' in stale_html
-    assert "top:52px" in stale_html
+    assert "top:52px" not in stale_html
 
 
 @pytest.mark.parametrize(

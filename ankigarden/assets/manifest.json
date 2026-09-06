@@ -995,9 +995,9 @@
         "direct_soil",
         "aspect_locked"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -11507,7 +11507,7 @@
           },
           "variants": {
             "4:3": {
-              "file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3.webp",
+              "file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
               "occlusion_file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3_occlusion.webp",
               "occlusion_layers": {
                 "rear": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3_rear_occlusion.webp",
@@ -11529,8 +11529,8 @@
                 "cottage_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_cottage_light.png",
                 "nursery_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_nursery_light.png"
               },
-              "width": 1280,
-              "height": 960,
+              "width": 1448,
+              "height": 1086,
               "focal_point": [
                 0.5,
                 0.5
@@ -13018,7 +13018,8 @@
           }
         }
       },
-      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp"
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3.webp"
     },
     {
       "asset_id": "bg_spring_any_soil_master_v6",
@@ -13036,9 +13037,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -13050,7 +13051,7 @@
       "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_rear_occlusion.webp",
@@ -13091,7 +13092,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#28372a",
         "cast_shadow_color": "#344738"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3.webp"
     },
     {
       "asset_id": "bg_summer_any_soil_master_v6",
@@ -13109,9 +13112,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -13123,7 +13126,7 @@
       "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_rear_occlusion.webp",
@@ -13164,7 +13167,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#363727",
         "cast_shadow_color": "#41432c"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3.webp"
     },
     {
       "asset_id": "bg_autumn_any_soil_master_v6",
@@ -13182,9 +13187,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -13640,7 +13645,7 @@
       },
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_rear_occlusion.webp",
@@ -13681,7 +13686,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#3b2925",
         "cast_shadow_color": "#49342a"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3.webp"
     },
     {
       "asset_id": "bg_snowy_any_soil_master_v6",
@@ -13699,9 +13706,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -13713,7 +13720,7 @@
       "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_rear_occlusion.webp",
@@ -13754,7 +13761,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#253444",
         "cast_shadow_color": "#34475d"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3.webp"
     },
     {
       "asset_id": "bg_rainbow_horizon_any_soil_master_v6",
@@ -13772,9 +13781,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -13786,7 +13795,7 @@
       "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_rear_occlusion.webp",
@@ -13827,7 +13836,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#29362a",
         "cast_shadow_color": "#374530"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3.webp"
     },
     {
       "asset_id": "bg_halloween_any_soil_master_v6",
@@ -13845,9 +13856,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -13859,7 +13870,7 @@
       "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_rear_occlusion.webp",
@@ -13900,7 +13911,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#251d31",
         "cast_shadow_color": "#302339"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3.webp"
     },
     {
       "asset_id": "bg_full_moon_any_soil_master_v6",
@@ -13918,9 +13931,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -13932,7 +13945,7 @@
       "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_rear_occlusion.webp",
@@ -13973,7 +13986,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#16283c",
         "cast_shadow_color": "#21354c"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3.webp"
     },
     {
       "asset_id": "bg_eclipse_any_soil_master_v6",
@@ -13991,9 +14006,9 @@
         "aspect_locked",
         "scenery_reskin"
       ],
-      "file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3.webp",
-      "width": 1280,
-      "height": 960,
+      "file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_garden_continuous.webp",
+      "width": 1448,
+      "height": 1086,
       "format": "webp",
       "alpha": false,
       "style_family": "storybook_gouache",
@@ -14005,7 +14020,7 @@
       "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
       "surface_files": {
         "4:3": {
-          "file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3.webp",
+          "file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_garden_continuous.webp",
           "occlusion_file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_occlusion.webp",
           "occlusion_layers": {
             "rear": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_rear_occlusion.webp",
@@ -14046,7 +14061,9 @@
         "front_base_ao": 0.04,
         "contact_shadow_color": "#211c30",
         "cast_shadow_color": "#30283c"
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_garden_continuous.webp",
+      "source_garden_file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3.webp"
     },
     {
       "asset_id": "plant_bonsai_seed_twilight_v6",
@@ -15647,8 +15664,8 @@
           0.299043
         ],
         "thumbnail_optical_center": [
-          0.5,
-          0.5
+          0.50598,
+          0.79067
         ],
         "thumbnail_safe_padding": 0.1
       }
@@ -15770,8 +15787,8 @@
           0.53748
         ],
         "thumbnail_optical_center": [
-          0.5,
-          0.5
+          0.483254,
+          0.671451
         ],
         "thumbnail_safe_padding": 0.1
       }

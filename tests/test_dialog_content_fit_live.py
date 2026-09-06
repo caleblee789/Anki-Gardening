@@ -91,3 +91,73 @@ def test_live_qt_small_screen_content_keeps_one_safety_scroll_when_available(
     dialog.deleteLater()
     owner.deleteLater()
     application.processEvents()
+
+
+@pytest.mark.parametrize("font_pixels", (13, 20, 26))
+def test_shared_actions_fit_enlarged_text_and_release_unused_width(monkeypatch, font_pixels):
+    """Ordinary and stretched actions keep their complete label readable."""
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from aqt.qt import QApplication, QPushButton, QVBoxLayout, QWidget
+        from ankigarden.ui.dashboard import set_button_size
+        from ankigarden.ui.theme import ButtonSize, foundation_stylesheet
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+    app = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    owner.setStyleSheet(foundation_stylesheet())
+    layout = QVBoxLayout(owner)
+    buttons = []
+    for stretch in (False, True):
+        button = QPushButton("Buy and use next", owner)
+        set_button_size(button, ButtonSize.PRIMARY, allow_horizontal_stretch=stretch)
+        button.setStyleSheet(f"font-size: {font_pixels}px;")
+        layout.addWidget(button)
+        buttons.append(button)
+    owner.show()
+    try:
+        for _ in range(6):
+            app.processEvents()
+        for button in buttons:
+            assert button.font().pixelSize() == font_pixels
+            assert button.height() >= button.fontMetrics().lineSpacing() + 8
+            assert button.width() >= button.fontMetrics().horizontalAdvance(button.text()) + 32
+        initial = buttons[0].minimumWidth()
+        buttons[0].setText("Buy")
+        buttons[0].setStyleSheet(f"font-size: {font_pixels}px; font-weight: 600;")
+        for _ in range(6):
+            app.processEvents()
+        assert buttons[0].minimumWidth() < initial
+    finally:
+        owner.close()
+        owner.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("font_pixels", (14, 21, 28))
+def test_today_totals_reflow_without_clipping_at_larger_text(monkeypatch, font_pixels):
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from aqt.qt import QApplication, QLabel
+        from ankigarden.ui.dashboard import StatSummary
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+    app = QApplication.instance() or QApplication([])
+    summary = StatSummary([("Cards studied", "120"), ("Growth earned", "6,840", "growth"), ("Garden Finds", "5")])
+    summary.setStyleSheet(f"QLabel {{ font-size: {font_pixels}px; }}")
+    summary.resize(340, 480)
+    summary.show()
+    try:
+        for _ in range(6):
+            app.processEvents()
+        for label in summary.findChildren(QLabel):
+            if label.text():
+                assert label.width() >= label.fontMetrics().horizontalAdvance(label.text())
+                assert label.height() >= label.fontMetrics().tightBoundingRect(label.text()).height()
+                assert summary.rect().contains(label.rect().translated(label.mapTo(summary, label.rect().topLeft())))
+    finally:
+        summary.close()
+        summary.deleteLater()
+        app.processEvents()

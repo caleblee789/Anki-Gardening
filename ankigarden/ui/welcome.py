@@ -11,6 +11,7 @@ from aqt.qt import (
 
 from ..models.state import GROWTH_UNITS_PER_POINT
 from ..welcome_presentation import present_welcome
+from .controls import GardenWrappingLabel
 from .copy import WELCOME_BODY, WELCOME_REWARDS_ACTION, WELCOME_TITLE
 from .formatters import format_stage_progress, format_status_label
 from .icons import garden_icon
@@ -18,6 +19,7 @@ from .plant_display import growth_display
 from .reward_receipt import receipt_event_row, receipt_style
 from .session_summary_card import _alpha_bounded_thumbnail, _source_pixmap, session_summary_palette
 from .welcome_animation import WELCOME_DURATION
+from .theme import TextRole, apply_text_role, typography_stylesheet
 
 
 class WelcomeCard(QFrame):
@@ -30,7 +32,7 @@ class WelcomeCard(QFrame):
         self.setProperty("rewardReceipt", True)
         self.setAccessibleName(WELCOME_TITLE)
         self._palette = session_summary_palette()
-        self.setStyleSheet(receipt_style(self._palette) + f"""
+        self.setStyleSheet(receipt_style(self._palette) + typography_stylesheet() + f"""
             QFrame#gardenWelcomeCard {{ border-radius:16px; }}
             QLabel {{ background:transparent; border:0; color:{self._palette['text_primary']}; }}
             QScrollArea, QScrollArea > QWidget > QWidget {{ background:transparent; border:0; }}
@@ -42,14 +44,14 @@ class WelcomeCard(QFrame):
         heading = QHBoxLayout()
         self._heading_layout = heading
         heading.setSpacing(10)
-        title = self._label(WELCOME_TITLE, 19, bold=True)
+        title = self._label(WELCOME_TITLE, TextRole.SCREEN_TITLE)
         heading.addWidget(title, 1)
         self.close_button = QPushButton(self)
         self.close_button.setObjectName("gardenWelcomeClose")
         self.close_button.setProperty("receiptClose", True)
         self.close_button.setIcon(garden_icon("close", color=self._palette["text_secondary"]))
         self.close_button.setIconSize(QSize(14, 14))
-        self.close_button.setFixedSize(26, 26)
+        self.close_button.setFixedSize(28, 28)
         self.close_button.setAutoDefault(False)
         self.close_button.setDefault(False)
         self.close_button.setAccessibleName("Close welcome")
@@ -57,10 +59,12 @@ class WelcomeCard(QFrame):
         self.close_button.clicked.connect(dismiss)
         heading.addWidget(self.close_button, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(heading)
-        self.body = self._label(WELCOME_BODY, 13)
+        self.body = self._label(WELCOME_BODY, TextRole.SECONDARY)
         root.addWidget(self.body)
         self.details = QScrollArea(self)
         self.details.setObjectName("gardenWelcomeRewards")
+        self.details.setProperty("dialogLocalScrollRegion", True)
+        self.details.setAccessibleName("Welcome rewards")
         self.details.setWidgetResizable(True)
         self.details.setFrameShape(QFrame.Shape.NoFrame)
         self.details.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -73,7 +77,7 @@ class WelcomeCard(QFrame):
         self.view_rewards = QPushButton(WELCOME_REWARDS_ACTION, self)
         self.view_rewards.setObjectName("gardenWelcomeViewRewards")
         self.view_rewards.setProperty("receiptPrimary", True)
-        self.view_rewards.setFixedHeight(34)
+        self.view_rewards.setMinimumHeight(32)
         self.view_rewards.setAutoDefault(False)
         self.view_rewards.setDefault(False)
         self.view_rewards.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -84,13 +88,13 @@ class WelcomeCard(QFrame):
         self.expanded = False
         self.hide()
 
-    def _label(self, text: str, size: int, *, bold: bool = False) -> QLabel:
-        label = QLabel(text, self)
+    def _label(self, text: str, role: TextRole) -> QLabel:
+        label = GardenWrappingLabel(text, self)
         label.setTextFormat(Qt.TextFormat.PlainText)
         label.setWordWrap(True)
         label.setMinimumWidth(0)
         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        label.setStyleSheet(f"font-size:{size}px;font-weight:{600 if bold else 400};")
+        apply_text_role(label, role)
         return label
 
     def set_receipt(self, receipt: Any) -> None:
@@ -99,13 +103,13 @@ class WelcomeCard(QFrame):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 2, 10, 6)
         layout.setSpacing(8)
-        layout.addWidget(self._label("Welcome gift", 14, bold=True))
+        layout.addWidget(self._label("Welcome gift", TextRole.CARD_TITLE))
         for reward in presentation.gift:
             layout.addWidget(self._reward_row(reward))
         if presentation.show_history:
             layout.addSpacing(10)
-            layout.addWidget(self._label("Past Anki study", 14, bold=True))
-            intro = self._label(presentation.history_intro, 13)
+            layout.addWidget(self._label("Past Anki study", TextRole.CARD_TITLE))
+            intro = self._label(presentation.history_intro, TextRole.SECONDARY)
             intro.setObjectName("gardenWelcomePastStudy")
             layout.addWidget(intro)
             for reward in presentation.history:
@@ -113,7 +117,7 @@ class WelcomeCard(QFrame):
             if presentation.achievement_count:
                 count = presentation.achievement_count
                 layout.addWidget(self._label(
-                    f"{count} {'achievement' if count == 1 else 'achievements'} earned", 13, bold=True,
+                    f"{count} {'achievement' if count == 1 else 'achievements'} earned", TextRole.CARD_TITLE,
                 ))
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.details.setWidget(content)
@@ -121,6 +125,7 @@ class WelcomeCard(QFrame):
         self.body.show()
         self.details.hide()
         self.view_rewards.setText(WELCOME_REWARDS_ACTION)
+        self.view_rewards.setAccessibleDescription("Show the rewards already added to your garden.")
 
     def _reward_row(self, reward: Any) -> QWidget:
         art = QLabel(self)
@@ -154,7 +159,12 @@ class WelcomeCard(QFrame):
         self.body.setVisible(not self.expanded)
         self.details.setVisible(self.expanded)
         self.view_rewards.setText("Hide rewards" if self.expanded else WELCOME_REWARDS_ACTION)
+        self.view_rewards.setAccessibleDescription(
+            "Welcome rewards expanded." if self.expanded else
+            "Show the rewards already added to your garden."
+        )
         self.reposition()
+        QTimer.singleShot(0, self.reposition)
 
     def reposition(self) -> None:
         parent = self.parentWidget()
@@ -176,6 +186,9 @@ class WelcomeCard(QFrame):
             if content_height < 0:
                 content_height = content.sizeHint().height()
             content_height = max(content_height, content.minimumSizeHint().height())
+            # This overlay owns its overflow independently of the canvas shell.
+            # Reserve the complete receipt so its final reward stays scrollable.
+            content.setMinimumHeight(content_height)
             heading_height = self._heading_layout.totalHeightForWidth(inner_width)
             if heading_height < 0:
                 heading_height = self._heading_layout.sizeHint().height()
@@ -199,7 +212,9 @@ class WelcomeController(QObject):
         self.skip.setObjectName("gardenWelcomeSkip")
         self.skip.setProperty("receiptSecondary", True)
         self.skip.setStyleSheet(receipt_style(session_summary_palette()))
-        self.skip.setFixedSize(126, 32)
+        self.skip.setMinimumSize(126, 32)
+        self.skip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        self.skip.adjustSize()
         self.skip.setAutoDefault(False)
         self.skip.setDefault(False)
         self.skip.clicked.connect(self.settle)

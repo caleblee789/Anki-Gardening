@@ -244,7 +244,7 @@ def normalized_plant_pixmap(
     # Reviewer art uses a stable logical canvas. Stage fill and per-asset
     # optical calibration change only the art inside that unchanged region.
     stage_fill = calibrated_thumbnail_fill(stage, placement)
-    target = max(16, min(logical_size, round(logical_size * stage_fill)))
+    target = max(1, min(logical_size, round(logical_size * stage_fill)))
     max_visible_width = max(
         0.1,
         min(1.0, _number(_placement_value(placement, "max_visible_width", 1.0), 1.0)),
@@ -254,10 +254,16 @@ def normalized_plant_pixmap(
         min(1.0, _number(_placement_value(placement, "max_visible_height", 1.0), 1.0)),
     )
     pixel_canvas = max(1, round(logical_size * ratio))
+    # A complete silhouette still needs a clear physical pixel at the edge of
+    # compact menu icons. Rounding a full-canvas crop to 16 px can otherwise
+    # paint the outermost row/column and make leaves look cut off.
+    edge_padding = min(1, (pixel_canvas - 1) // 2)
+    inner_canvas = max(1, pixel_canvas - edge_padding * 2)
     target_width = max(
         1,
         min(
             round(target * ratio),
+            inner_canvas,
             cropped.width(),
             round(pixel_canvas * max_visible_width),
         ),
@@ -266,6 +272,7 @@ def normalized_plant_pixmap(
         1,
         min(
             round(target * ratio),
+            inner_canvas,
             cropped.height(),
             round(pixel_canvas * max_visible_height),
         ),
@@ -290,8 +297,8 @@ def normalized_plant_pixmap(
     relative_y = max(0.0, min(1.0, (optical_y - top) / max(height, 0.0001)))
     draw_x = round(pixel_canvas / 2 - relative_x * scaled.width())
     draw_y = round(pixel_canvas / 2 - relative_y * scaled.height())
-    draw_x = max(0, min(pixel_canvas - scaled.width(), draw_x))
-    draw_y = max(0, min(pixel_canvas - scaled.height(), draw_y))
+    draw_x = max(edge_padding, min(pixel_canvas - scaled.width() - edge_padding, draw_x))
+    draw_y = max(edge_padding, min(pixel_canvas - scaled.height() - edge_padding, draw_y))
 
     result = QPixmap(pixel_canvas, pixel_canvas)
     result.fill(Qt.GlobalColor.transparent)

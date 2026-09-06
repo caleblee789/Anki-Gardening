@@ -26,7 +26,7 @@ from .reviewer_hud import (
     reviewer_hud_width,
 )
 from .reward_rarity import apply_reward_treatment, reward_treatment, rarity_badge_style, rarity_art_style, RewardTreatment
-from .reward_receipt import receipt_metric, reward_discovery_count
+from .reward_receipt import receipt_metric, receipt_metrics_layout, reward_discovery_count
 from .theme import GARDEN_THEME, apply_tabular_numerals
 
 
@@ -2716,7 +2716,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         heading_row.addWidget(self._session_history_chevron)
         footer.addLayout(heading_row)
         from .session_summary_card import session_summary_palette
-        metrics = QHBoxLayout()
+        metrics = receipt_metrics_layout()
         metrics.setSpacing(6)
         self._session_metrics_layout = metrics
         self._session_metric_tiles = []

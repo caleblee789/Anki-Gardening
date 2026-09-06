@@ -846,7 +846,7 @@ class GardenGameEngine:
         if profile is None:
             fallback = tuple(("direct_soil",) for _slot in range(MAX_GARDEN_SLOTS))
             return 0, fallback
-        variant = profile.variants.get("16:9", {})
+        variant = profile.variants.get("4:3", {})
         raw_surfaces = variant.get("surfaces", []) if isinstance(variant, dict) else []
         allowed: list[tuple[str, ...]] = []
         for surface in raw_surfaces:

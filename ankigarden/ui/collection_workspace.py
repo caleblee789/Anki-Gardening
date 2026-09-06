@@ -1,7 +1,9 @@
 """Collection browsing with one detail panel for each owned species."""
 from __future__ import annotations
 
-from aqt.qt import QHBoxLayout, QLabel, QStackedWidget, QTimer, QVBoxLayout, QWidget
+from aqt.qt import QEvent, QHBoxLayout, QLabel, QStackedWidget, QTimer, QVBoxLayout, QWidget
+
+from .responsive import measured_minimum_width, stable_threshold
 
 
 class CollectionPlantWorkspace(QWidget):
@@ -12,7 +14,8 @@ class CollectionPlantWorkspace(QWidget):
         self.selected_species = ""
         self.species_page = None
         self.detail_dialog = None
-        self._wide = True
+        self._wide = None
+        self._layout_pending = False
         self.gallery.setMinimumWidth(344)
         self.row = QHBoxLayout(self)
         self.row.setContentsMargins(20, 12, 20, 16)
@@ -20,6 +23,7 @@ class CollectionPlantWorkspace(QWidget):
         self.row.addWidget(gallery, 2)
         self.detail_host = QWidget(self)
         self.detail_host.setMinimumWidth(0)
+        self.detail_host.setAccessibleName("Selected plant details")
         detail = QVBoxLayout(self.detail_host)
         detail.setContentsMargins(0, 0, 0, 0)
         detail.setSpacing(8)
@@ -92,6 +96,7 @@ class CollectionPlantWorkspace(QWidget):
         self.stack.setCurrentWidget(self.species_page)
         self._select_card(reveal=present)
         self._sync_close_buttons()
+        self._sync_layout()
         if present and not self._wide:
             self._present_dialog()
 
@@ -140,17 +145,38 @@ class CollectionPlantWorkspace(QWidget):
             if page is not None:
                 page.top_close.setVisible(self.detail_dialog is not None)
 
-    def resizeEvent(self, event):
-        wide = event.size().width() >= 860
+    def _sync_layout(self):
+        self._layout_pending = False
+        # Measure the contents, not the host whose previous wide-mode minimum
+        # would otherwise prevent a return to the compact layout.
+        detail_width = max(440, measured_minimum_width(self.species_page))
+        card_width = max((measured_minimum_width(card) for card, _ in self.gallery._entries
+                          if card.property("collectionSpeciesId")), default=0)
+        gallery_width = max(344, 2 * card_width + self.gallery.grid.horizontalSpacing() + 8)
+        margins = self.row.contentsMargins()
+        available = max(0, self.width() - margins.left() - margins.right())
+        wide = available >= stable_threshold((gallery_width, detail_width), spacing=self.row.spacing())
+        self.setProperty("collectionLayoutMode", "wide" if wide else "compact")
+        self.gallery.setMinimumWidth(gallery_width if wide else 0)
+        self.detail_host.setMinimumWidth(detail_width if wide else 0)
         if wide != self._wide:
             self._wide = wide
-            self.gallery.setMinimumWidth(344 if wide else 0)
-            self.detail_host.setMinimumWidth(440 if wide else 0)
             if wide and self.detail_dialog is not None:
                 self.detail_dialog.reject()
             if self.detail_dialog is None:
                 self.detail_host.setVisible(wide)
             self.gallery._wide_columns = 2 if wide else 4
             self.gallery._reflow()
+
+    def event(self, event):
+        result = super().event(event)
+        if (event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.FontChange)
+                and hasattr(self, "row") and not self._layout_pending):
+            self._layout_pending = True
+            QTimer.singleShot(0, self._sync_layout)
+        return result
+
+    def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._sync_layout()
 

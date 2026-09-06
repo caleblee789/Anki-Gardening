@@ -1,7 +1,7 @@
 # Anki Garden UI surface inventory
 
 The current capture contract is **v29**, schema 2, scenario schema 3. The full
-profile contains **51 active surfaces on five explicit sheets**. Representative
+profile contains **50 active surfaces on five explicit sheets**. Representative
 preflight covers 22 surfaces across those same five assignments. Both use
 canonical 100% UI scale; macOS Retina pixels remain at the native device ratio.
 
@@ -13,7 +13,7 @@ carries `handoff.sheet`, `handoff.sheet_name` and `handoff.display_order`.
 
 ## Coverage and ownership
 
-All 35 active v28 surfaces are retained, plus 16 new views. Collection and Shop
+All 35 active v28 surfaces are retained, plus 15 active new views. Collection and Shop
 remain separate assignments. Item-use dialogs and Growth Charge outcomes belong
 to Shop so the complete purchase/use flow has one owner. The Garden/onboarding
 owner integrates shared navigation, theme and copy changes. Agents should own
@@ -40,7 +40,7 @@ historical evidence remain preserved; the disabled view is not counted as missin
 | 11 | `garden-move-plant` | Garden → plant inspector → More → Move | Retained |
 | 12 | `workspace-decoration-inspector` | Garden → select displayed decoration | New in v29 |
 
-## Sheet 2: Collection and appearance (10)
+## Sheet 2: Collection and appearance (9)
 
 | Order | Stable surface ID | Native path | Coverage |
 |---:|---|---|---|
@@ -49,11 +49,10 @@ historical evidence remain preserved; the disabled view is not counted as missin
 | 3 | `collection-plant-details` | Collection → Plants → species → plant name | Retained |
 | 4 | `workspace-collection-plant-menu` | Collection → Plants → species → planted row overflow icon | New in v29 |
 | 5 | `workspace-collection-storage-confirmation` | Collection → Plants → species → More → Move to storage | New in v29 |
-| 6 | `collection-scenery-page` | Collection → Scenery | Retained |
-| 7 | `workspace-scenery-preview` | Collection → Scenery → select Spring | New in v29 |
-| 8 | `workspace-scenery-applied-undo` | Collection → Scenery → select Spring → card Equip → Undo visible | New in v29 |
-| 9 | `collection-decorations-page` | Collection → Decorations | Retained |
-| 10 | `workspace-additional-bonuses-expanded` | Collection → Decorations → Other active bonuses → scroll to lower content | New in v29 |
+| 6 | `collection-scenery-page` | Collection → Appearance → Scenery | Retained |
+| 7 | `workspace-scenery-preview` | Collection → Appearance → Scenery → select Spring | New in v29 |
+| 8 | `workspace-scenery-applied-undo` | Collection → Appearance → Scenery → select Spring → card Equip → Undo visible | New in v29 |
+| 9 | `collection-decorations-page` | Collection → Appearance → Decorations | Retained |
 
 ## Sheet 3: Shop and item use (12)
 
@@ -103,7 +102,7 @@ historical evidence remain preserved; the disabled view is not counted as missin
 
 Acquisition order is independent of sheet placement. Preserve the first-run
 scenario prerequisites and transaction sequence even when their images appear
-in different sheet groups. The 16 additional IDs use deterministic isolated
+in different sheet groups. The 15 active additional IDs use deterministic isolated
 fixtures and per-surface postconditions. Onboarding, purchases and item use show
 native actions and committed engine results. The expanded welcome fixture
 reconciles 5,000 eligible past reviews through the engine; its gift and historical

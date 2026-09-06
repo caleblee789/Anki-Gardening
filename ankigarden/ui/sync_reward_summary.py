@@ -26,7 +26,7 @@ from .garden_asset_thumbnail import GardenAssetThumbnail
 from .icons import garden_icon, garden_icon_pixmap
 from .session_summary import format_growth_units
 from .reward_rarity import apply_reward_treatment, reward_treatment
-from .reward_receipt import build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height
+from .reward_receipt import fit_receipt_chrome, receipt_metrics_layout, build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height
 from .session_summary_card import session_summary_palette
 from .theme import apply_tabular_numerals
 
@@ -714,7 +714,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background:transparent; }}
             QPushButton, QToolButton {{
-                min-height:32px; max-height:32px; border-radius:9px;
+                min-height:32px; border-radius:9px;
                 padding:0 14px; font-size:13px; font-weight:600;
                 color:{p['receipt_text_primary']}; background:transparent; border:0;
             }}
@@ -1500,10 +1500,9 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
         metrics_frame = QFrame(self._body_widget)
         metrics_frame.setProperty("syncMetricStrip", True)
-        metrics_layout = QGridLayout(metrics_frame)
+        metrics_layout = receipt_metrics_layout(metrics_frame)
         metrics_layout.setContentsMargins(0, 0, 0, 0)
-        metrics_layout.setHorizontalSpacing(6)
-        metrics_layout.setVerticalSpacing(8)
+        metrics_layout.setSpacing(6)
         all_metrics = sync_reward_metric_plan(self._summary)
         metrics = tuple(metric for metric in all_metrics if metric[2] != "sync_review_cards")
         count = max(0, int(self._summary.eligible_answer_count))
@@ -1521,26 +1520,13 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self.setProperty(
             "syncGardenDiscoveryCount", len(self._summary.environment_discoveries)
         )
-        for column in range(12):
-            metrics_layout.setColumnStretch(column, 1)
         # Match the review and session summaries: Coins, Growth, Discoveries.
-        for row_index, offset in enumerate(range(0, len(metrics), 3)):
-            row_metrics = metrics[offset:offset + 3]
-            column_span = 12 // len(row_metrics)
-            for column_index, (value, label, icon_name) in enumerate(row_metrics):
-                metrics_layout.addWidget(
-                    self._metric_tile(
-                        value,
-                        label,
-                        icon_name,
-                        metrics_frame,
-                        motion=metric_motion.get(label),
-                    ),
-                    row_index,
-                    column_index * column_span,
-                    1,
-                    column_span,
-                )
+        for value, label, icon_name in metrics:
+            metrics_layout.addWidget(
+                self._metric_tile(value, label, icon_name, metrics_frame,
+                                  motion=metric_motion.get(label)),
+                1,
+            )
         layout.addWidget(metrics_frame)
         layout.addWidget(headline)
 
@@ -1678,6 +1664,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         height = max(1, int(parent.height())) if viewport_height is None else int(viewport_height)
         provisional = sync_reward_summary_geometry(width, height, 1)
         self.setFixedWidth(provisional[2])
+        fit_receipt_chrome(self._header, self._footer, provisional[2])
         self._body_widget.setFixedWidth(max(1, provisional[2] - 8))
         geometry = sync_reward_summary_geometry(
             width,
