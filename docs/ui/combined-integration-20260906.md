@@ -38,7 +38,13 @@ Integration also corrected capture containment bookkeeping for partially visible
 
 The continuous lawn uses a lossless WebP runtime encoding. PIL and Anki’s actual Qt decoder produce the same 1448 × 1086 RGBA pixels as the retained PNG master; the encoding saves 588,322 installed bytes. The final 115,329,175-byte archive remains within the existing 110 MiB budget. Generation and conversion provenance is retained beside the master.
 
-The 22-surface representative preflight passed all independent validators and shut down gracefully. The full capture and final visual-review results are being assembled from the same candidate.
+The final-package 22-surface representative preflight and **50-surface full capture both passed** every independent capture and contact-sheet validator, with no capture, text-layout, or geometry errors or advisories. The full run refreshed 24 affected views and reused 26 exact compatible captures, preserving their immutable lineage. All 50 raw surfaces and five assembled sheets were visually inspected by Codex. This records visual review of the captured states, not human release approval.
+
+Capture used Anki 26.8.1 on the primary Built-in Retina Display at 100% UI scale (2× device pixels), in fresh sync-disabled disposable profiles. The capture processes exited gracefully; the normal Anki process was not used.
+
+[Open the complete contact-sheet handoff](../../build/final-integration-20260906/CONTACT-SHEETS.md). It links all five sheets, the raw manifest, capture report, ZIP, package parity, and visual-review records. The final full run is `capture-sequence-20260906-021539`; its capture ZIP SHA-256 is `ec207894c930a4c2ddf04bbb3e0c001f424011aa812a340276d949a89afd9682`.
+
+The runtime and README integration is committed on main as `1ceca9e2375b342e465a9187f4e60952a5d695c7`. The frozen QA archive is `build/final-integration-20260906/candidate-final.ankiaddon`; its 332 production payloads match the source. Capture evidence and original artwork remain preserved without replacing historical reports.
 
 Production-format QA archive SHA-256: `545f95deb3191103fae86a959aa54f5199d12a3e30c6d3bd8c6eeddde5dcb8a0`.
 
