@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,7 @@ def _compiled_functions(*names: str) -> dict[str, Any]:
     )
     namespace: dict[str, Any] = {
         "Any": Any,
+        "re": re,
         "DIALOG_SCROLL_FOUR_STATE_NAMES": _literal_assignment(
             "DIALOG_SCROLL_FOUR_STATE_NAMES"
         ),
@@ -714,3 +716,15 @@ def test_home_and_vertical_settings_capture_bounds_match_the_release_layout() ->
     )
     assert "Plant in Bed" in starter_postcondition
     assert "Place in Bed" not in starter_postcondition
+
+
+def test_refinement_native_issue_keeps_unrelated_capture_damage_blocking():
+    accept = _compiled_functions("refinement_layout_issue_is_advisory")["refinement_layout_issue_is_advisory"]
+    warning = {"native_text_role": "reviewer.collapsed-status", "text": "1 remaining",
+               "horizontal_clip": True, "vertical_clip": False,
+               "ancestor_clip_horizontal": False, "ancestor_clip_vertical": False}
+    assert accept("workspace-reviewer-collapsed", warning)
+    assert not accept("reviewer-hud-expanded", warning)
+    assert not accept("workspace-reviewer-collapsed", dict(warning, vertical_clip=True))
+    assert not accept("workspace-reviewer-collapsed", dict(warning, native_text_role="other-control"))
+    assert not accept("workspace-reviewer-collapsed", dict(warning, empty_visible_region=True))

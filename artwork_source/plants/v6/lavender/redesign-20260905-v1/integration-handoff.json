@@ -1,0 +1,1355 @@
+{
+  "schema_version": 1,
+  "species": "lavender",
+  "shared_file_owner": "Coordinate plant species agents",
+  "prior_entry_hash_encoding": "sha256(sorted-key compact JSON UTF-8)",
+  "entries": {
+    "plant_lavender_seed_twilight_v6": {
+      "prior_entry_sha256": "ebf7367f366000bf10af73bb305494394485ff86fb4b11414899ef2e9cc54f25",
+      "replacement": {
+        "asset_id": "plant_lavender_seed_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "lavender",
+          "stage": "seed"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/lavender/seed/lavender_seed_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_seed_alpha.png",
+        "source_master_sha256": "5dc156784f32a182d0d91bfdb146cbb83e55073045395175b12144efd3033fd9",
+        "placement": {
+          "anchor_x": 0.5637958532695375,
+          "baseline_y": 0.9218500797448166,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.4944178628389155,
+            0.7599681020733652
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.16188198,
+            0.59728868,
+            0.66507177,
+            0.32535885
+          ],
+          "ground_anchor": [
+            0.5637958532695375,
+            0.9218500797448166
+          ],
+          "ground_anchor_x": 0.5637958532695375,
+          "ground_anchor_y": 0.9218500797448166,
+          "soil_contact": [
+            0.5637958532695375,
+            0.9218500797448166
+          ],
+          "contact_shadow": [
+            0.78,
+            0.07
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "lavender-redesign-20260905-v1",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.55,
+          "visual_scale_correction": 0.5293537719450275,
+          "art_bounds": [
+            0.16188198,
+            0.59728868,
+            0.66507177,
+            0.32535885
+          ],
+          "base_bounds": [
+            0.36602871,
+            0.90510367,
+            0.36044657,
+            0.01754386
+          ],
+          "support_bounds": [
+            0.36602871,
+            0.90510367,
+            0.36044657,
+            0.01754386
+          ],
+          "foliage_bounds": [
+            0.16188198,
+            0.59728868,
+            0.66507177,
+            0.32535885
+          ],
+          "plant_above_rim_bounds": [
+            0.16188198,
+            0.59728868,
+            0.66507177,
+            0.32535885
+          ],
+          "interaction_bounds": [
+            0.16188198,
+            0.59728868,
+            0.66507177,
+            0.32535885
+          ],
+          "layout_family": "compact",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true,
+          "thumbnail_bounds": [
+            0.16188198,
+            0.59728868,
+            0.66507177,
+            0.32535885
+          ],
+          "thumbnail_optical_center": [
+            0.4944178628389155,
+            0.7599681020733652
+          ],
+          "thumbnail_safe_padding": 0.08
+        }
+      }
+    },
+    "plant_lavender_sprout_twilight_v6": {
+      "prior_entry_sha256": "1b488b34e01f974e6bb817486a11c9f80c802109045c7140f3b436ced4ac9c4b",
+      "replacement": {
+        "asset_id": "plant_lavender_sprout_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "lavender",
+          "stage": "sprout"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/lavender/sprout/lavender_sprout_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_sprout_alpha.png",
+        "source_master_sha256": "9b07f0f04de451eb4b374db58957a2765b7d4c059653b104310b225c51ef0e3e",
+        "placement": {
+          "anchor_x": 0.5003987240829346,
+          "baseline_y": 0.9290271132376395,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.5011961722488039,
+            0.7296650717703349
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.34529506,
+            0.52950558,
+            0.31180223,
+            0.40031898
+          ],
+          "ground_anchor": [
+            0.5003987240829346,
+            0.9290271132376395
+          ],
+          "ground_anchor_x": 0.5003987240829346,
+          "ground_anchor_y": 0.9290271132376395,
+          "soil_contact": [
+            0.5003987240829346,
+            0.9290271132376395
+          ],
+          "contact_shadow": [
+            0.78,
+            0.07
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "lavender-redesign-20260905-v1",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.58,
+          "visual_scale_correction": 0.7529601066459444,
+          "art_bounds": [
+            0.34529506,
+            0.52950558,
+            0.31180223,
+            0.40031898
+          ],
+          "base_bounds": [
+            0.48724083,
+            0.90749601,
+            0.02711324,
+            0.02232855
+          ],
+          "support_bounds": [
+            0.48724083,
+            0.90749601,
+            0.02711324,
+            0.02232855
+          ],
+          "foliage_bounds": [
+            0.34529506,
+            0.52950558,
+            0.31180223,
+            0.40031898
+          ],
+          "plant_above_rim_bounds": [
+            0.34529506,
+            0.52950558,
+            0.31180223,
+            0.40031898
+          ],
+          "interaction_bounds": [
+            0.34529506,
+            0.52950558,
+            0.31180223,
+            0.40031898
+          ],
+          "layout_family": "compact",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true,
+          "thumbnail_bounds": [
+            0.34529506,
+            0.52950558,
+            0.31180223,
+            0.40031898
+          ],
+          "thumbnail_optical_center": [
+            0.5011961722488039,
+            0.7296650717703349
+          ],
+          "thumbnail_safe_padding": 0.08
+        }
+      }
+    },
+    "plant_lavender_young_twilight_v6": {
+      "prior_entry_sha256": "772dd3c913e17d9dd8426d01b512ba830b41aa3fb880f2a2391d181881f7438e",
+      "replacement": {
+        "asset_id": "plant_lavender_young_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "lavender",
+          "stage": "young"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/lavender/young/lavender_young_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_young_alpha.png",
+        "source_master_sha256": "119e6883d7b3089d4877c73b52724df66372655571c1ddb9f2ff0c120bb269b0",
+        "placement": {
+          "anchor_x": 0.4944178628389155,
+          "baseline_y": 0.9090909090909091,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.5015948963317385,
+            0.5661881977671451
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.13795853,
+            0.22248804,
+            0.72727273,
+            0.68740032
+          ],
+          "ground_anchor": [
+            0.4944178628389155,
+            0.9090909090909091
+          ],
+          "ground_anchor_x": 0.4944178628389155,
+          "ground_anchor_y": 0.9090909090909091,
+          "soil_contact": [
+            0.4944178628389155,
+            0.9090909090909091
+          ],
+          "contact_shadow": [
+            0.78,
+            0.07
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "lavender-redesign-20260905-v1",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.7,
+          "visual_scale_correction": 1.0138070007340036,
+          "art_bounds": [
+            0.13795853,
+            0.22248804,
+            0.72727273,
+            0.68740032
+          ],
+          "base_bounds": [
+            0.47527911,
+            0.88596491,
+            0.03668262,
+            0.02392344
+          ],
+          "support_bounds": [
+            0.47527911,
+            0.88596491,
+            0.03668262,
+            0.02392344
+          ],
+          "foliage_bounds": [
+            0.13795853,
+            0.22248804,
+            0.72727273,
+            0.68740032
+          ],
+          "plant_above_rim_bounds": [
+            0.13795853,
+            0.22248804,
+            0.72727273,
+            0.68740032
+          ],
+          "interaction_bounds": [
+            0.13795853,
+            0.22248804,
+            0.72727273,
+            0.68740032
+          ],
+          "layout_family": "standard",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true,
+          "thumbnail_bounds": [
+            0.13795853,
+            0.22248804,
+            0.72727273,
+            0.68740032
+          ],
+          "thumbnail_optical_center": [
+            0.5015948963317385,
+            0.5661881977671451
+          ],
+          "thumbnail_safe_padding": 0.08
+        }
+      }
+    },
+    "plant_lavender_mature_twilight_v6": {
+      "prior_entry_sha256": "4059f9090a227613469684acf1c717bdceec8c3e6b84da0487861d3a976d69ce",
+      "replacement": {
+        "asset_id": "plant_lavender_mature_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "lavender",
+          "stage": "mature"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/lavender/mature/lavender_mature_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_mature_alpha.png",
+        "source_master_sha256": "30cf536e2d442e761c30cbb7bef98c9410c76dd31a9c1521764c8986ef1ee455",
+        "placement": {
+          "anchor_x": 0.5167464114832536,
+          "baseline_y": 0.9186602870813397,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.5023923444976076,
+            0.4716905901116427
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.03668262,
+            0.023126,
+            0.93141946,
+            0.89712919
+          ],
+          "ground_anchor": [
+            0.5167464114832536,
+            0.9186602870813397
+          ],
+          "ground_anchor_x": 0.5167464114832536,
+          "ground_anchor_y": 0.9186602870813397,
+          "soil_contact": [
+            0.5167464114832536,
+            0.9186602870813397
+          ],
+          "contact_shadow": [
+            0.78,
+            0.07
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "lavender-redesign-20260905-v1",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.8,
+          "visual_scale_correction": 1.1827748341896709,
+          "art_bounds": [
+            0.03668262,
+            0.02392344,
+            0.93141946,
+            0.89553429
+          ],
+          "base_bounds": [
+            0.47049442,
+            0.89553429,
+            0.08692185,
+            0.02392344
+          ],
+          "support_bounds": [
+            0.47049442,
+            0.89553429,
+            0.08692185,
+            0.02392344
+          ],
+          "foliage_bounds": [
+            0.03668262,
+            0.023126,
+            0.93141946,
+            0.89712919
+          ],
+          "plant_above_rim_bounds": [
+            0.03668262,
+            0.023126,
+            0.93141946,
+            0.89712919
+          ],
+          "interaction_bounds": [
+            0.03668262,
+            0.02392344,
+            0.93141946,
+            0.89553429
+          ],
+          "layout_family": "standard",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true,
+          "thumbnail_bounds": [
+            0.03668262,
+            0.023126,
+            0.93141946,
+            0.89712919
+          ],
+          "thumbnail_optical_center": [
+            0.5023923444976076,
+            0.4716905901116427
+          ],
+          "thumbnail_safe_padding": 0.08
+        }
+      }
+    },
+    "plant_lavender_flowering_twilight_v6": {
+      "prior_entry_sha256": "bc2e61cd1772a6b435572c800519a3e915bd15e2d4902fc487baf772926d2d57",
+      "replacement": {
+        "asset_id": "plant_lavender_flowering_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "lavender",
+          "stage": "flowering"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/lavender/flowering/lavender_flowering_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_flowering_alpha.png",
+        "source_master_sha256": "a83fc977f53bed8966f1cc5ccf8321eac7d62d651afa9be1abd492d6134bab4f",
+        "placement": {
+          "anchor_x": 0.5291068580542265,
+          "baseline_y": 0.9362041467304625,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.5043859649122807,
+            0.4768740031897927
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.02631579,
+            0.01594896,
+            0.95614035,
+            0.92264753
+          ],
+          "ground_anchor": [
+            0.5291068580542265,
+            0.9362041467304625
+          ],
+          "ground_anchor_x": 0.5291068580542265,
+          "ground_anchor_y": 0.9362041467304625,
+          "soil_contact": [
+            0.5291068580542265,
+            0.9362041467304625
+          ],
+          "contact_shadow": [
+            0.78,
+            0.07
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "lavender-redesign-20260905-v1",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.98,
+          "visual_scale_correction": 1.2254809898982462,
+          "art_bounds": [
+            0.02711324,
+            0.01674641,
+            0.95454545,
+            0.92025518
+          ],
+          "base_bounds": [
+            0.49122807,
+            0.91307815,
+            0.08213716,
+            0.02392344
+          ],
+          "support_bounds": [
+            0.49122807,
+            0.91307815,
+            0.08213716,
+            0.02392344
+          ],
+          "foliage_bounds": [
+            0.02631579,
+            0.01594896,
+            0.95614035,
+            0.92264753
+          ],
+          "plant_above_rim_bounds": [
+            0.02631579,
+            0.01594896,
+            0.95614035,
+            0.92264753
+          ],
+          "interaction_bounds": [
+            0.02711324,
+            0.01674641,
+            0.95454545,
+            0.92025518
+          ],
+          "layout_family": "expanded",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true,
+          "thumbnail_bounds": [
+            0.02631579,
+            0.01594896,
+            0.95614035,
+            0.92264753
+          ],
+          "thumbnail_optical_center": [
+            0.5043859649122807,
+            0.4768740031897927
+          ],
+          "thumbnail_safe_padding": 0.08
+        }
+      }
+    },
+    "plant_lavender_rare_twilight_v6": {
+      "prior_entry_sha256": "5fb1663e7eab4187a2fbcaf4d5a4cfd08f295d2b1e7959b1ad73b09d40d75bb7",
+      "replacement": {
+        "asset_id": "plant_lavender_rare_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "lavender",
+          "stage": "rare"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/lavender/rare/lavender_rare_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_rare_alpha.png",
+        "source_master_sha256": "76d28e4a8c938ad7eb7079cdf62317764ba334016fa57bcc34bd4a067b171f12",
+        "placement": {
+          "anchor_x": 0.44577352472089316,
+          "baseline_y": 0.9521531100478469,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.5007974481658692,
+            0.48724082934609253
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.02232855,
+            0.0215311,
+            0.9569378,
+            0.93141946
+          ],
+          "ground_anchor": [
+            0.44577352472089316,
+            0.9521531100478469
+          ],
+          "ground_anchor_x": 0.44577352472089316,
+          "ground_anchor_y": 0.9521531100478469,
+          "soil_contact": [
+            0.44577352472089316,
+            0.9521531100478469
+          ],
+          "contact_shadow": [
+            0.78,
+            0.07
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "lavender-redesign-20260905-v1",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.98,
+          "visual_scale_correction": 1.2997525650435944,
+          "art_bounds": [
+            0.02232855,
+            0.0215311,
+            0.9569378,
+            0.93141946
+          ],
+          "base_bounds": [
+            0.21052632,
+            0.92902711,
+            0.64433812,
+            0.02392344
+          ],
+          "support_bounds": [
+            0.21052632,
+            0.92902711,
+            0.64433812,
+            0.02392344
+          ],
+          "foliage_bounds": [
+            0.02232855,
+            0.0215311,
+            0.9569378,
+            0.93141946
+          ],
+          "plant_above_rim_bounds": [
+            0.02232855,
+            0.0215311,
+            0.9569378,
+            0.93141946
+          ],
+          "interaction_bounds": [
+            0.02232855,
+            0.0215311,
+            0.9569378,
+            0.93141946
+          ],
+          "layout_family": "expanded",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true,
+          "thumbnail_bounds": [
+            0.02232855,
+            0.0215311,
+            0.9569378,
+            0.93141946
+          ],
+          "thumbnail_optical_center": [
+            0.5007974481658692,
+            0.48724082934609253
+          ],
+          "thumbnail_safe_padding": 0.08
+        }
+      }
+    }
+  },
+  "installer_handoff": {
+    "source_file_overrides": {
+      "seed": "redesign-20260905-v1/lavender_seed_alpha.png",
+      "sprout": "redesign-20260905-v1/lavender_sprout_alpha.png",
+      "young": "redesign-20260905-v1/lavender_young_alpha.png",
+      "mature": "redesign-20260905-v1/lavender_mature_alpha.png",
+      "flowering": "redesign-20260905-v1/lavender_flowering_alpha.png",
+      "rare": "redesign-20260905-v1/lavender_rare_alpha.png"
+    },
+    "species_visual_scale": {
+      "seed": 0.5293537719450275,
+      "sprout": 0.7529601066459444,
+      "young": 1.0138070007340036,
+      "mature": 1.1827748341896709,
+      "flowering": 1.2254809898982462,
+      "rare": 1.2997525650435944
+    },
+    "placement_overrides_by_asset_id": {
+      "plant_lavender_seed_twilight_v6": {
+        "anchor_x": 0.5637958532695375,
+        "baseline_y": 0.9218500797448166,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.4944178628389155,
+          0.7599681020733652
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "ground_anchor": [
+          0.5637958532695375,
+          0.9218500797448166
+        ],
+        "ground_anchor_x": 0.5637958532695375,
+        "ground_anchor_y": 0.9218500797448166,
+        "soil_contact": [
+          0.5637958532695375,
+          0.9218500797448166
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.5293537719450275,
+        "art_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "base_bounds": [
+          0.36602871,
+          0.90510367,
+          0.36044657,
+          0.01754386
+        ],
+        "support_bounds": [
+          0.36602871,
+          0.90510367,
+          0.36044657,
+          0.01754386
+        ],
+        "foliage_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "plant_above_rim_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "interaction_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "thumbnail_optical_center": [
+          0.4944178628389155,
+          0.7599681020733652
+        ],
+        "thumbnail_safe_padding": 0.08
+      },
+      "plant_lavender_sprout_twilight_v6": {
+        "anchor_x": 0.5003987240829346,
+        "baseline_y": 0.9290271132376395,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5011961722488039,
+          0.7296650717703349
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "ground_anchor": [
+          0.5003987240829346,
+          0.9290271132376395
+        ],
+        "ground_anchor_x": 0.5003987240829346,
+        "ground_anchor_y": 0.9290271132376395,
+        "soil_contact": [
+          0.5003987240829346,
+          0.9290271132376395
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.7529601066459444,
+        "art_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "base_bounds": [
+          0.48724083,
+          0.90749601,
+          0.02711324,
+          0.02232855
+        ],
+        "support_bounds": [
+          0.48724083,
+          0.90749601,
+          0.02711324,
+          0.02232855
+        ],
+        "foliage_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "plant_above_rim_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "interaction_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "thumbnail_optical_center": [
+          0.5011961722488039,
+          0.7296650717703349
+        ],
+        "thumbnail_safe_padding": 0.08
+      },
+      "plant_lavender_young_twilight_v6": {
+        "anchor_x": 0.4944178628389155,
+        "baseline_y": 0.9090909090909091,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5015948963317385,
+          0.5661881977671451
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "ground_anchor": [
+          0.4944178628389155,
+          0.9090909090909091
+        ],
+        "ground_anchor_x": 0.4944178628389155,
+        "ground_anchor_y": 0.9090909090909091,
+        "soil_contact": [
+          0.4944178628389155,
+          0.9090909090909091
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 1.0138070007340036,
+        "art_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "base_bounds": [
+          0.47527911,
+          0.88596491,
+          0.03668262,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.47527911,
+          0.88596491,
+          0.03668262,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "plant_above_rim_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "interaction_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "thumbnail_optical_center": [
+          0.5015948963317385,
+          0.5661881977671451
+        ],
+        "thumbnail_safe_padding": 0.08
+      },
+      "plant_lavender_mature_twilight_v6": {
+        "anchor_x": 0.5167464114832536,
+        "baseline_y": 0.9186602870813397,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5023923444976076,
+          0.4716905901116427
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "ground_anchor": [
+          0.5167464114832536,
+          0.9186602870813397
+        ],
+        "ground_anchor_x": 0.5167464114832536,
+        "ground_anchor_y": 0.9186602870813397,
+        "soil_contact": [
+          0.5167464114832536,
+          0.9186602870813397
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.1827748341896709,
+        "art_bounds": [
+          0.03668262,
+          0.02392344,
+          0.93141946,
+          0.89553429
+        ],
+        "base_bounds": [
+          0.47049442,
+          0.89553429,
+          0.08692185,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.47049442,
+          0.89553429,
+          0.08692185,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "plant_above_rim_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "interaction_bounds": [
+          0.03668262,
+          0.02392344,
+          0.93141946,
+          0.89553429
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "thumbnail_optical_center": [
+          0.5023923444976076,
+          0.4716905901116427
+        ],
+        "thumbnail_safe_padding": 0.08
+      },
+      "plant_lavender_flowering_twilight_v6": {
+        "anchor_x": 0.5291068580542265,
+        "baseline_y": 0.9362041467304625,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5043859649122807,
+          0.4768740031897927
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "ground_anchor": [
+          0.5291068580542265,
+          0.9362041467304625
+        ],
+        "ground_anchor_x": 0.5291068580542265,
+        "ground_anchor_y": 0.9362041467304625,
+        "soil_contact": [
+          0.5291068580542265,
+          0.9362041467304625
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.2254809898982462,
+        "art_bounds": [
+          0.02711324,
+          0.01674641,
+          0.95454545,
+          0.92025518
+        ],
+        "base_bounds": [
+          0.49122807,
+          0.91307815,
+          0.08213716,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.49122807,
+          0.91307815,
+          0.08213716,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "plant_above_rim_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "interaction_bounds": [
+          0.02711324,
+          0.01674641,
+          0.95454545,
+          0.92025518
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "thumbnail_optical_center": [
+          0.5043859649122807,
+          0.4768740031897927
+        ],
+        "thumbnail_safe_padding": 0.08
+      },
+      "plant_lavender_rare_twilight_v6": {
+        "anchor_x": 0.44577352472089316,
+        "baseline_y": 0.9521531100478469,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5007974481658692,
+          0.48724082934609253
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "ground_anchor": [
+          0.44577352472089316,
+          0.9521531100478469
+        ],
+        "ground_anchor_x": 0.44577352472089316,
+        "ground_anchor_y": 0.9521531100478469,
+        "soil_contact": [
+          0.44577352472089316,
+          0.9521531100478469
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.2997525650435944,
+        "art_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "base_bounds": [
+          0.21052632,
+          0.92902711,
+          0.64433812,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.21052632,
+          0.92902711,
+          0.64433812,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "plant_above_rim_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "interaction_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "thumbnail_optical_center": [
+          0.5007974481658692,
+          0.48724082934609253
+        ],
+        "thumbnail_safe_padding": 0.08
+      }
+    }
+  },
+  "compatibility_sources": "Existing unversioned Lavender *_chroma.png sources are preserved; actual new source provenance points to versioned alpha masters."
+}

@@ -169,7 +169,8 @@ def _placement_fingerprint(placement: Any) -> tuple[Any, ...]:
     )
 
 
-def _source_identity(path: str) -> tuple[Any, ...]:
+def plant_art_source_identity(path: str) -> tuple[Any, ...]:
+    """Identify a replacement at the same canonical artwork path."""
     if not path:
         return ("", 0, 0)
     try:
@@ -200,7 +201,7 @@ def normalized_plant_pixmap(
     logical_size = max(1, int(logical_size))
     ratio = max(1.0, min(4.0, _number(device_pixel_ratio, 2.0)))
     cache_key = (
-        *_source_identity(path),
+        *plant_art_source_identity(path),
         str(stage or "").lower(),
         logical_size,
         round(ratio, 2),
@@ -311,5 +312,6 @@ __all__ = [
     "calibrated_thumbnail_scale",
     "clear_plant_art_cache",
     "normalized_plant_pixmap",
+    "plant_art_source_identity",
     "padded_preview_bounds",
 ]

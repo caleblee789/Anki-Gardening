@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -100,7 +101,7 @@ def test_v25_migration_preserves_growth_and_converts_paid_effects_by_ceil() -> N
 
     migrated = migrate_modern_state(payload, migrated_at=1_000.0)
 
-    assert migrated.version == STATE_VERSION == 27
+    assert migrated.version == STATE_VERSION
     assert migrated.stored_growth_units == 12_345
     assert migrated.earned_bed_unlocks == [3, 4, 5, 6]
     assert {
@@ -118,8 +119,8 @@ def test_v25_migration_preserves_growth_and_converts_paid_effects_by_ceil() -> N
             "flourishing_garden",
         )
     )
-    assert migrated.loadout.display_decoration_id == "garden_bench"
-    assert migrated.loadout.active_garden_bonus_id == "wind_chime"
+    assert migrated.loadout.display_decoration_id == "seedling_sign"
+    assert migrated.loadout.active_garden_bonus_id == "seedling_sign"
     assert migrated.loadout.display_scenery_id == "full_moon"
     assert migrated.loadout.active_scenery_effect_id == "full_moon"
     assert migrated.inventory["cosmetics"] == ["garden_bench"]
@@ -654,6 +655,54 @@ def test_schema27_legacy_claim_paths_reconcile_combined_mastery_spend(
 
     ledger.rollback_all()
     ledger.close()
+
+
+@pytest.mark.parametrize("source", ["sqlite", "json"])
+def test_equipment_upgrade_preserves_display_progress_and_earned_state(tmp_path, source) -> None:
+    state = GardenState()
+    state.inventory["garden_features"].extend(["wind_chime", "watering_station"])
+    state.inventory["scenery"].extend(["spring", "summer"])
+    state.loadout.display_decoration_id = "wind_chime"
+    state.loadout.display_scenery_id = "spring"
+    state.loadout.visibility["garden_feature"] = False
+    state.wind_chime_progress = 9
+    state.prism_pending_growth_units = 3_700
+    database = tmp_path / ("garden_state.sqlite3" if source == "sqlite" else "original.sqlite3")
+    ledger = RewardLedger(database)
+    GardenStorage._initialize_schema27_migration_metadata(ledger, state)
+    # These values have advanced since the earlier migration's opening record.
+    state.garden_cycle_remainder = 3
+    state.currency_balance = 543
+    payload = state.to_dict()
+    payload["version"] = 27
+    payload["loadout"]["active_garden_bonus_id"] = "watering_station"
+    payload["loadout"]["active_scenery_effect_id"] = "summer"
+    payload["daily_loadout"] = {
+        "pending_garden_feature_id": "watering_station",
+        "queued_scenery_id": "summer", "queued_for_day": "2099-01-01",
+    }
+    if source == "sqlite":
+        for key in UNBOUNDED_STATE_AUTHORITY_KEYS:
+            payload.pop(key, None)
+        ledger.commit_state(payload, schema_version=27, expected_revision=0)
+    else:
+        (tmp_path / "garden_state.json").write_text(json.dumps(payload), "utf-8")
+    ledger.close()
+    storage = GardenStorage.__new__(GardenStorage)
+    storage.user_files_dir = tmp_path
+    storage.database_path = tmp_path / "garden_state.sqlite3"
+    storage.data_path = tmp_path / "garden_state.json"
+    storage._reward_ledger = None
+    storage._ledger_revision = 0
+
+    restored = storage._load_authoritative_state()
+
+    assert restored.to_dict() == state.to_dict()
+    assert restored.loadout.active_garden_bonus_id == "wind_chime"
+    assert restored.loadout.active_scenery_effect_id == "spring"
+    assert "daily_loadout" not in restored.to_dict()
+    assert tuple(tmp_path.glob("garden_state.schema-27.legacy*"))
+    storage._reward_ledger.close()
 
 
 def test_schema27_reload_fails_closed_on_unbacked_endgame_state(tmp_path) -> None:

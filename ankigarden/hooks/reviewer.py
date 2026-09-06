@@ -1,4 +1,7 @@
 from __future__ import annotations
+from ..reward_presentation import reward_content_visible
+
+from ..presentation import PlantIdentity, plant_species_name, plant_stage_event
 
 import logging
 import math
@@ -833,7 +836,7 @@ class ReviewerHookHandler:
             plant_id = str(getattr(plant, "plant_id", "") or "")
             if not plant_id:
                 continue
-            plant_name = str(getattr(plant, "name", "") or "Plant")
+            plant_name = PlantIdentity.from_plant(plant).display_name
             fertilizer_batches = tuple(
                 batch
                 for batch in tuple(
@@ -1238,7 +1241,7 @@ class ReviewerHookHandler:
             shared = min(delta, shared_by_plant.get(plant_id, 0))
             common = {
                 "plant_id": plant_id,
-                "plant_name": str(current.name or "Plant"),
+                "plant_name": PlantIdentity.from_plant(current).display_name,
                 "species_name": str(current.species or "").replace("_", " ").title(),
                 "art_asset": self._result_plant_art_asset(current),
             }
@@ -1320,7 +1323,7 @@ class ReviewerHookHandler:
                 milestones.append(PlantMilestone(
                     event_id=event_key,
                     plant_id=plant_id,
-                    plant_name=str(plant.name or "Plant"),
+                    plant_name=plant_species_name(plant),
                     milestone_type="checkpoint",
                     occurred_at=str(getattr(transaction, "occurred_at", "") or self._session_now_iso()),
                     plant_art_asset=self._result_plant_art_asset(plant),
@@ -1367,7 +1370,7 @@ class ReviewerHookHandler:
                 milestones.append(PlantMilestone(
                     event_id=event_key,
                     plant_id=plant_id,
-                    plant_name=str(plant.name or "Plant"),
+                    plant_name=plant_species_name(plant),
                     milestone_type=(
                         "full_bloom" if next_stage == "rare" else "stage_change"
                     ),
@@ -1499,7 +1502,7 @@ class ReviewerHookHandler:
             plant = plants_by_id[plant_id]
             return PlantGrowthDelta(
                 plant_id,
-                str(getattr(plant, "name", "") or "Plant"),
+                PlantIdentity.from_plant(plant).display_name,
                 units,
                 str(getattr(plant, "species", "") or "").replace("_", " ").title(),
                 self._plant_art_asset(plant),
@@ -1595,7 +1598,7 @@ class ReviewerHookHandler:
                 milestones.append(PlantMilestone(
                     reward_key,
                     plant_id,
-                    str(getattr(plant, "name", "") or "Plant"),
+                    PlantIdentity.from_plant(plant).display_name,
                     "checkpoint",
                     str(getattr(transaction, "occurred_at", "") or self._session_now_iso()),
                     self._plant_art_asset(plant),
@@ -1642,7 +1645,7 @@ class ReviewerHookHandler:
                 milestones.append(PlantMilestone(
                     event_key,
                     plant_id,
-                    str(getattr(plant, "name", "") or "Plant"),
+                    PlantIdentity.from_plant(plant).display_name,
                     "full_bloom" if next_stage == "rare" else "stage_change",
                     str(
                         getattr(transaction, "occurred_at", "")
@@ -3551,7 +3554,7 @@ class ReviewerHookHandler:
                 art.setMinimumHeight(80)
                 art.setMaximumHeight(104)
                 art.setAccessibleName(
-                    f"{projection.nurture.plant_name}, {projection.nurture.stage_label}"
+                    projection.nurture.plant_name
                 )
                 try:
                     plant = next(
@@ -3582,7 +3585,7 @@ class ReviewerHookHandler:
                 stage_row = QHBoxLayout()
                 stage = QLabel(projection.nurture.stage_label)
                 stage.setProperty("hudSection", True)
-                stage_row.addWidget(stage, 1)
+                stage.hide()
                 percent = QLabel(f"{projection.nurture.progress_percent}%")
                 percent.setProperty("hudMuted", True)
                 stage_row.addWidget(percent)
@@ -4877,6 +4880,8 @@ class ReviewerHookHandler:
         unique: list[Any] = []
         seen_ids: set[str] = set()
         for event in events:
+            if not reward_content_visible(event):
+                continue
             event_id = str(getattr(event, "event_id", "") or "")
             if not event_id or event_id in seen_ids:
                 continue

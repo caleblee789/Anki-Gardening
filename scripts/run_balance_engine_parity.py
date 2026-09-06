@@ -22,6 +22,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
 
+from ankigarden.feature_availability import landmarks_enabled
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.balance_catalog import (
     CONSUMABLES,
@@ -645,8 +646,8 @@ def _scenario_storage(scenario) -> _ParityStorage:
         # The accelerated kernel records this separately as opening plant
         # Growth; production parity compares committed-event totals here.
         if scenario.landmark_mastery_spending:
-            storage.state.active_growth_target_type = "landmark"
-            storage.state.active_growth_target_id = "garden_landmark"
+            storage.state.active_growth_target_type = "landmark" if landmarks_enabled() else "mastery"
+            storage.state.active_growth_target_id = "garden_landmark" if landmarks_enabled() else facts.species_ids[0]
             storage.state.active_growth_target_activation_identity = (
                 "parity-active-landmark"
             )
@@ -1131,7 +1132,7 @@ def run_durable_persistence_checks() -> dict[str, object]:
             "achievement_ownership",
             "garden_cycle_remainder",
             "todays_cards_completion_state",
-            "daily_loadout_snapshot",
+            "equipped_items",
             "reward_identities",
             "purchase_identities",
             "undo_lineage",
@@ -1505,75 +1506,78 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                 )
                 return expected_outcome, actual_outcome
 
-            landmark = GrowthTargetRef(
-                GrowthTargetType.LANDMARK, "garden_landmark"
-            )
-            apply_project(
-                GrowthProjectRequest(
-                    str(uuid.UUID(int=101)),
-                    oracle.state_revision,
-                    GrowthProjectAction.ACTIVATE,
-                    landmark,
-                ),
-                behavior="landmark_contribution_and_claim",
-                event_identity="focused:landmark:activate",
-                state_fields=("state_revision",),
-            )
-            apply_project(
-                GrowthProjectRequest(
-                    str(uuid.UUID(int=102)),
-                    oracle.state_revision,
-                    GrowthProjectAction.CONTRIBUTE,
-                    landmark,
-                    ContributionMode.SPECIFIED,
-                    10_000_000,
-                ),
-                behavior="landmark_contribution_and_claim",
-                event_identity="focused:landmark:fund-two-tiers",
-                state_fields=(
-                    "stored_growth_balance",
-                    "landmark_funding",
-                    "state_revision",
-                ),
-            )
-            apply_project(
-                GrowthProjectRequest(
-                    str(uuid.UUID(int=103)),
-                    oracle.state_revision,
-                    GrowthProjectAction.CLAIM,
-                    landmark,
-                    claim_id="mossy_stone_path",
-                ),
-                behavior="landmark_contribution_and_claim",
-                event_identity="focused:landmark:claim-tier-1",
-                state_fields=(
-                    "garden_coin_wallet",
-                    "coin_ledger_entries",
-                    "coin_source_ids",
-                    "landmark_funding",
-                    "landmark_claims",
-                    "state_revision",
-                ),
-            )
-            apply_project(
-                GrowthProjectRequest(
-                    str(uuid.UUID(int=107)),
-                    oracle.state_revision,
-                    GrowthProjectAction.CLAIM,
-                    landmark,
-                    claim_id="birdbath_terrace",
-                ),
-                behavior="landmark_contribution_and_claim",
-                event_identity="focused:landmark:claim-tier-2",
-                state_fields=(
-                    "garden_coin_wallet",
-                    "coin_ledger_entries",
-                    "coin_source_ids",
-                    "landmark_funding",
-                    "landmark_claims",
-                    "state_revision",
-                ),
-            )
+            # Retained future-feature backend coverage; release-mode traces
+            # and annual simulation above use the actual availability policy.
+            with patch("ankigarden.feature_availability.LANDMARKS_ENABLED", True):
+                landmark = GrowthTargetRef(
+                    GrowthTargetType.LANDMARK, "garden_landmark"
+                )
+                apply_project(
+                    GrowthProjectRequest(
+                        str(uuid.UUID(int=101)),
+                        oracle.state_revision,
+                        GrowthProjectAction.ACTIVATE,
+                        landmark,
+                    ),
+                    behavior="landmark_contribution_and_claim",
+                    event_identity="focused:landmark:activate",
+                    state_fields=("state_revision",),
+                )
+                apply_project(
+                    GrowthProjectRequest(
+                        str(uuid.UUID(int=102)),
+                        oracle.state_revision,
+                        GrowthProjectAction.CONTRIBUTE,
+                        landmark,
+                        ContributionMode.SPECIFIED,
+                        10_000_000,
+                    ),
+                    behavior="landmark_contribution_and_claim",
+                    event_identity="focused:landmark:fund-two-tiers",
+                    state_fields=(
+                        "stored_growth_balance",
+                        "landmark_funding",
+                        "state_revision",
+                    ),
+                )
+                apply_project(
+                    GrowthProjectRequest(
+                        str(uuid.UUID(int=103)),
+                        oracle.state_revision,
+                        GrowthProjectAction.CLAIM,
+                        landmark,
+                        claim_id="mossy_stone_path",
+                    ),
+                    behavior="landmark_contribution_and_claim",
+                    event_identity="focused:landmark:claim-tier-1",
+                    state_fields=(
+                        "garden_coin_wallet",
+                        "coin_ledger_entries",
+                        "coin_source_ids",
+                        "landmark_funding",
+                        "landmark_claims",
+                        "state_revision",
+                    ),
+                )
+                apply_project(
+                    GrowthProjectRequest(
+                        str(uuid.UUID(int=107)),
+                        oracle.state_revision,
+                        GrowthProjectAction.CLAIM,
+                        landmark,
+                        claim_id="birdbath_terrace",
+                    ),
+                    behavior="landmark_contribution_and_claim",
+                    event_identity="focused:landmark:claim-tier-2",
+                    state_fields=(
+                        "garden_coin_wallet",
+                        "coin_ledger_entries",
+                        "coin_source_ids",
+                        "landmark_funding",
+                        "landmark_claims",
+                        "state_revision",
+                    ),
+                )
 
             mastery = GrowthTargetRef(GrowthTargetType.MASTERY, "bonsai")
             apply_project(
@@ -1853,7 +1857,7 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
         counter_state.inventory["scenery"].append("spring")
         counter_state.loadout.active_garden_bonus_id = "wind_chime"
         counter_state.loadout.active_scenery_effect_id = "spring"
-        counter_state.wind_chime_progress = 9
+        counter_state.wind_chime_progress = 4
         counter_session = _DurableParitySession(
             root / "effect-counters", counter_state
         )
@@ -1882,11 +1886,9 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                     "prism_pending_growth_units": 0,
                     "hourglass_completion": 0,
                 },
-                "daily_loadout_snapshot": {
-                    "scheduler_day": "2026-08-30",
-                    "garden_feature_id": "wind_chime",
+                "equipped_items": {
+                    "decoration_id": "wind_chime",
                     "scenery_id": "spring",
-                    "locked_at_ms": 1_788_100_000_001,
                 },
                 "state_revision": initial_revision + 2,
                 "growth_delta": {
@@ -1904,17 +1906,17 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
             }
             recorder.compare(
                 case_id="effect_counters",
-                event_identity="focused:wind-chime:tenth-answer",
+                event_identity="focused:wind-chime:fifth-answer",
                 behavior="garden_bonus_counters",
                 expected=expected,
                 actual=actual,
                 state_fields=(
                     "plant_exact_growth_units",
                     "garden_bonus_counters",
-                    "daily_loadout_snapshot",
+                    "equipped_items",
                     "state_revision",
                 ),
-                operation="tenth Wind Chime answer with Spring Scenery",
+                operation="fifth Wind Chime answer with Spring Scenery",
             )
         finally:
             counter_session.close()
@@ -1976,11 +1978,9 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                         "reward_claimed": True,
                         "completed_due_cards": True,
                     },
-                    "daily_loadout_snapshot": {
-                        "scheduler_day": "2026-08-30",
-                        "garden_feature_id": "herbalist_hourglass",
+                    "equipped_items": {
+                        "decoration_id": "herbalist_hourglass",
                         "scenery_id": "snowy",
-                        "locked_at_ms": 1_788_100_000_001,
                     },
                     "state_revision": initial_revision + 3,
                 },
@@ -1991,7 +1991,7 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                     "scenery_counters",
                     "garden_cycle_remainder",
                     "todays_cards_completion_state",
-                    "daily_loadout_snapshot",
+                    "equipped_items",
                     "state_revision",
                 ),
                 operation=(

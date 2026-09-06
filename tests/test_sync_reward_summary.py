@@ -71,7 +71,7 @@ def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> N
         "percent": 75,
         "stage_name": "flowering",
         "display_text": "75% toward Flowering reached",
-    }) == "Reached the 75% checkpoint toward Flowering"
+    }, "bonsai") == "Bonsai reached 75% toward flowering"
 
 
 def test_geometry_is_upper_right_and_viewport_bounded() -> None:
@@ -293,10 +293,8 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     card._toggle_expanded()
     application.processEvents()
     texts = {label.text() for label in card.findChildren(QLabel)}
-    assert {
-        "Stored Growth added to Garden Landmark",
-        "Stored Growth added to Rose Cultivation Mastery",
-    } <= texts
+    assert "Stored Growth added to Rose Cultivation Mastery" in texts
+    assert not any("landmark" in text.casefold() for text in texts)
     project_rows = [
         widget
         for widget in card.findChildren(QWidget)
@@ -310,7 +308,6 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
         )
         for row in project_rows
     ] == [
-        ("landmark", "garden_landmark", 300),
         ("mastery", "rose", 100),
     ]
     buttons = {button.text(): button for button in card.findChildren(QPushButton)}
@@ -576,7 +573,7 @@ def test_schema24_round_trips_pending_summary_and_fails_closed_when_malformed() 
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 27
+    assert restored.version == STATE_VERSION
     assert SyncRewardSummary.from_dict(restored.pending_sync_reward_summary) == summary
 
     malformed = state.to_dict()

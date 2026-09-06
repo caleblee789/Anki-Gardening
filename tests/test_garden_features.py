@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import pytest
 from pathlib import Path
 
 from PIL import Image
@@ -164,14 +165,14 @@ def test_registry_is_exact_and_uses_shipped_bonus_values() -> None:
 
 def test_schema22_weather_migration_is_lossless_and_idempotent() -> None:
     first = migrate_modern_state(_legacy_schema22())
-    assert first.version == STATE_VERSION == 27
+    assert first.version == STATE_VERSION
     assert first.inventory["garden_features"] == [
         "seedling_sign", "wind_chime", "firefly_lantern",
     ]
     assert "weather" not in first.inventory.keys()
     assert first.selected_garden_feature == "firefly_lantern"
     assert first.loadout.visibility["garden_feature"] is False
-    assert first.daily_loadout.pending_garden_feature_id == "wind_chime"
+    assert first.daily_loadout.pending_garden_feature_id == ""
 
     canonical = first.to_dict()
     assert "decoration_id" not in canonical["loadout"]
@@ -235,10 +236,10 @@ def test_feature_assets_share_square_canvas_and_contact_line() -> None:
             assert bbox[3] == round(1024 * ASSET_CONTACT_Y)
 
 
-def test_manifest_has_feature_assets_and_no_position_overrides() -> None:
+def test_manifest_has_physical_support_metadata_and_no_scene_offsets() -> None:
     manifest = json.loads((ROOT / "ankigarden/assets/manifest.json").read_text())
     rows = [row for row in manifest["assets"] if row["category"] == "garden_features"]
-    assert len(rows) == 8
+    assert len(rows) == 7
     assert all(row["category"] != "decorations" for row in manifest["assets"])
     assert not (ROOT / "ankigarden/assets/support/decorations/lantern.webp").exists()
     forbidden = {
@@ -246,6 +247,17 @@ def test_manifest_has_feature_assets_and_no_position_overrides() -> None:
         "themePosition", "homeOffset", "gardenOffset", "rarityScale",
     }
     assert all(not (forbidden & set(row)) for row in rows)
+    for row in rows:
+        metadata = row["placement"]
+        x, y = metadata["ground_anchor"]
+        sx, sy, sw, sh = metadata["support_bounds"]
+        assert sx <= x <= sx + sw and sy <= y <= sy + sh
+        for width, height in ((1260, 840), (960, 400)):
+            layout = garden_feature_layout(width, height, "spring", metadata)
+            assert math.isclose(layout.feature.x + layout.feature.width * x, width * FEATURE_ANCHOR_X)
+            assert math.isclose(layout.feature.y + layout.feature.height * y, height * FEATURE_GROUND_Y)
+            assert layout.shadow.width < layout.feature.width
+
 
 
 def test_config_has_no_weather_visual_controls() -> None:
@@ -255,7 +267,7 @@ def test_config_has_no_weather_visual_controls() -> None:
     assert "weather_opacity" not in serialized
 
 
-def test_home_uses_static_pointer_transparent_feature_and_pad() -> None:
+def test_home_preview_omits_decorations_even_when_equipped() -> None:
     data = HomeWidgetData(
         reviews_today=1,
         growth_earned=10,
@@ -276,8 +288,9 @@ def test_home_uses_static_pointer_transparent_feature_and_pad() -> None:
         visible_scenery="spring",
     )
     html = render_home_widget(HomeWidgetSnapshot(1, "success", data))
-    assert 'data-testid="home-garden-feature"' in html
-    assert 'data-testid="home-garden-feature-pad"' in html
+    assert 'data-testid="home-garden-feature"' not in html
+    assert 'data-testid="home-garden-feature-pad"' not in html
+    assert 'class="ag-home__feature-shadow"' not in html
     assert "pointer-events:none" in html
     assert "requestAnimationFrame" not in html
     assert "home-weather-layer" not in html
@@ -285,8 +298,8 @@ def test_home_uses_static_pointer_transparent_feature_and_pad() -> None:
 
 def test_recurring_growth_cadence_uses_engine_results() -> None:
     for feature_id, cadence, amount in (
-        ("wind_chime", 10, 1),
-        ("watering_station", 5, 1),
+        ("wind_chime", 5, 1),
+        ("watering_station", 2, 1),
     ):
         engine, storage = _engine(feature_id)
         engine.begin_review_session()
@@ -306,8 +319,8 @@ def test_recurring_growth_cadence_uses_engine_results() -> None:
 
 def test_recurring_growth_catalog_matches_100_and_200_answer_balance() -> None:
     for feature_id, expected_100, expected_200 in (
-        ("wind_chime", 10, 20),
-        ("watering_station", 20, 20),
+        ("wind_chime", 20, 40),
+        ("watering_station", 50, 100),
     ):
         engine, storage = _engine(feature_id)
         awards = [_answer(engine, storage, index) for index in range(200)]
@@ -324,25 +337,23 @@ def test_recurring_growth_catalog_matches_100_and_200_answer_balance() -> None:
     assert sum(direct) == 12_000
 
 
-def test_hidden_artwork_keeps_bonus_and_mid_session_change_does_not_stack() -> None:
+def test_equipment_swaps_restore_visibility_and_preserve_session_progress() -> None:
     engine, storage = _engine("wind_chime")
     storage.state.inventory["garden_features"].append("watering_station")
     storage.state.loadout.visibility["garden_feature"] = False
     engine.begin_review_session()
-    for index in range(9):
+    for index in range(4):
         assert _answer(engine, storage, index).weather_growth == 0
-
-    ok, message = engine.equip_environment("garden_feature", "watering_station")
-    assert ok and "next Anki day" in message
-    assert _answer(engine, storage, 10).weather_growth == 1
-    assert storage.state.daily_loadout.pending_garden_feature_id == "watering_station"
-
+    assert engine.equip_environment("garden_feature", "watering_station")[0]
+    assert storage.state.displayed_garden_feature == "watering_station"
+    assert _answer(engine, storage, 10).weather_growth == 0
+    assert engine.equip_environment("garden_feature", "wind_chime")[0]
+    assert _answer(engine, storage, 11).weather_growth == 1
     engine.end_review_session()
-    assert engine.active_garden_feature_id() == "wind_chime"
     storage.day = "2026-08-29"
     engine.rollover_if_needed()
-    assert engine.active_garden_feature_id() == "watering_station"
-    assert storage.state.loadout.visibility["garden_feature"] is False
+    assert engine.active_garden_feature_id() == "wind_chime"
+    assert storage.state.loadout.visibility["garden_feature"] is True
 
 
 def test_completion_and_booster_values_match_shipped_engine_balance() -> None:
@@ -386,17 +397,22 @@ def test_schema24_splits_display_and_bonus_without_losing_hidden_selection() -> 
     assert migrated.prism_pending_growth_units == 0
 
 
-def test_display_changes_never_change_the_locked_bonus() -> None:
+def test_retired_cosmetics_cannot_replace_equipped_decoration_or_its_effect() -> None:
     engine, storage = _engine("wind_chime")
     storage.state.inventory["garden_features"].append("prism_trellis")
+    storage.state.inventory["cosmetics"].append("garden_bench")
     _answer(engine, storage, 1)
-    assert engine.active_garden_feature_id() == "wind_chime"
     assert engine.display_garden_feature("prism_trellis")[0]
-    assert storage.state.displayed_garden_feature == "prism_trellis"
-    assert engine.active_garden_feature_id() == "wind_chime"
+    assert engine.active_garden_feature_id() == "prism_trellis"
     assert engine.set_environment_visibility("garden_feature", False)[0]
+    assert _answer(engine, storage, 2).decoration_result.prism_growth_banked_units == 100
+    assert not engine.display_decoration("garden_bench")[0]
     assert storage.state.displayed_garden_feature == "prism_trellis"
-    assert engine.active_garden_feature_id() == "wind_chime"
+    assert _answer(engine, storage, 3).decoration_result.prism_growth_banked_units == 100
+    assert storage.state.prism_pending_growth_units == 200
+    restored = GardenState.from_dict(storage.state.to_dict())
+    assert restored.displayed_garden_feature == "prism_trellis"
+    assert restored.loadout.active_garden_bonus_id == "prism_trellis"
 
 
 def test_cadence_progress_persists_across_cutoff_and_inactive_days() -> None:
@@ -404,14 +420,14 @@ def test_cadence_progress_persists_across_cutoff_and_inactive_days() -> None:
     storage.state.inventory["garden_features"].append("watering_station")
     for index in range(7):
         _answer(engine, storage, index)
-    assert storage.state.wind_chime_progress == 7
+    assert storage.state.wind_chime_progress == 2
     assert engine.equip_environment("garden_feature", "watering_station")[0]
     storage.day = "2026-08-29"
     engine.rollover_if_needed()
     for index in range(5):
         _answer(engine, storage, 100 + index)
-    assert storage.state.watering_station_progress == 0
-    assert storage.state.wind_chime_progress == 7
+    assert storage.state.watering_station_progress == 1
+    assert storage.state.wind_chime_progress == 2
     assert engine.equip_environment("garden_feature", "wind_chime")[0]
     storage.day = "2026-08-30"
     engine.rollover_if_needed()
@@ -452,27 +468,18 @@ def test_unreleased_prism_bank_persists_at_the_anki_cutoff() -> None:
     assert storage.state.prism_pending_growth_units == 3_700
 
 
-def test_locked_day_blocks_event_switching_and_undo_clears_only_the_queue() -> None:
+def test_equipment_changes_preserve_owned_potion_bonuses() -> None:
     engine, storage = _engine("wind_chime")
-    storage.state.inventory["garden_features"].extend((
-        "harvest_bell",
-        "herbalist_hourglass",
-    ))
+    storage.state.inventory["garden_features"].append("herbalist_hourglass")
+    storage.state.consumables["booster_potion"] = 2
     _answer(engine, storage, 1)
-    assert engine.equip_environment("garden_feature", "herbalist_hourglass")[0]
-    storage.state.consumables["booster_potion"] = 1
     assert engine.use_booster_potion("p1")[0]
-    assert engine.last_booster_result.hourglass_bonus_cards == 0
-    assert engine.active_garden_feature_id() == "wind_chime"
-    storage.state.daily_loadout.queued_scenery_id = "spring"
-    storage.state.daily_loadout.queued_for_day = "2026-08-29"
-    assert engine.undo_queued_garden_bonus("scenery")[0]
-    assert storage.state.daily_loadout.queued_scenery_id == ""
-    assert storage.state.daily_loadout.queued_for_day == ""
-    assert storage.state.daily_loadout.pending_garden_feature_id == "herbalist_hourglass"
-    assert engine.undo_queued_garden_bonus()[0]
-    assert storage.state.daily_loadout.pending_garden_feature_id == ""
-    assert engine.active_garden_feature_id() == "wind_chime"
+    assert engine.last_booster_result.total_cards_added == 125
+    assert engine.equip_environment("garden_feature", "herbalist_hourglass")[0]
+    assert engine.use_booster_potion("p1")[0]
+    assert engine.last_booster_result.total_cards_added == 125
+    assert engine.equip_environment("garden_feature", "wind_chime")[0]
+    assert sum(batch.remaining_cards for batch in storage.state.plants[0].booster_card_batches) == 250
 
 
 def test_hourglass_multiple_uses_extend_only_each_new_potion_dose() -> None:
@@ -487,4 +494,22 @@ def test_hourglass_multiple_uses_extend_only_each_new_potion_dose() -> None:
         hourglass_bonus_cards=25,
         total_cards_added=125,
         remaining_booster_cards=250,
+        target_id="p1",
     )
+
+
+@pytest.mark.parametrize("feature,counter,credit,remainder", [
+    ("wind_chime", "wind_chime_progress", 9, 0),
+    ("watering_station", "watering_station_progress", 4, 1),
+])
+def test_carried_decoration_credit_settles_once_on_next_equipped_answer(feature, counter, credit, remainder):
+    engine, storage = _engine(feature)
+    setattr(storage.state, counter, credit)
+    if feature == "watering_station":
+        storage.state.watering_station_progress_by_day[storage.day] = credit
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    engine = GardenGameEngine(_Config(), storage)
+    award = _answer(engine, storage, 1)
+    assert award.weather_growth_units == 200
+    assert getattr(storage.state, counter) == remainder
+    assert _answer(engine, storage, 2).weather_growth_units == (100 if remainder else 0)

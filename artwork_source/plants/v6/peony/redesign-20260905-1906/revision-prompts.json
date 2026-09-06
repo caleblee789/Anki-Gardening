@@ -1,0 +1,18 @@
+{
+  "prompts": [
+    {
+      "stage": "seed",
+      "path": "/Users/test/Documents/Anki Gardening.nosync/artwork_source/plants/v6/peony/redesign-20260905-1906/seed-generated.png",
+      "prompt": "Edit the supplied Peony Seed sprite. Make it a COMPACT newly cracked seed, almost circular overall silhouette. Remove the entire long stem and the two large leaves. Keep a matte chestnut-brown split seed of the same painterly identity, with ONLY a TINY paired folded green tip emerging directly from the opening. The tip is just ONE FIFTH of the seed diameter in height. No visible stalk between seed and tip. The seed body accounts for 80 percent of total silhouette height; total silhouette width is at least 80 percent of total height. Same warm storybook gouache brushwork, burgundy within the crack, modest matte highlights. No roots, soil, shadow, text, particles or other objects. ONE isolated whole seed centered on a genuinely transparent RGBA background with generous clean padding, no checkerboard. Clear neutral antialiased edges with no colored fringe."
+    },
+    {
+      "stage": "rare",
+      "path": "/Users/test/Documents/Anki Gardening.nosync/artwork_source/plants/v6/peony/redesign-20260905-1906/rare-generated.png",
+      "prompt": "Edit this FULL BLOOM Peony sprite into the final clean transparent game asset. REMOVE the painted checkerboard completely and provide genuine RGBA alpha transparency, including the holes between leaves and stems. Preserve the five beautiful coral, blush and peach layered peony flowers, the softly painted green foliage, three nearby petal motes, and matte gouache identity. Refine the overall composition to be SLIGHTLY TALLER THAN WIDE, about 1.12:1 height to width: bring the outer foliage and two side blooms a little inward and upward, retain the full rounded flowering bush and substantial leafy skirt. Avoid a giant flower or long bare stalks; the largest bloom is at most one third of plant height. Whole plant visible, stem crown centered. Outside the plant must be truly transparent, not a checkerboard or solid color. Completely remove every stray fleck and colored edge halo. No ground plane, soil, pot, shadow, text or watermark. Keep gentle warm light without any glow."
+    }
+  ],
+  "generated_paths": {
+    "seed": "/Users/test/.codex/generated_images/01a073f5-de9d-7023-9e55-ba72966414d2/exec-0d1397c9-e433-432f-8091-7ff5c4771c45.png",
+    "rare": "/Users/test/.codex/generated_images/01a073f5-de9d-7023-9e55-ba72966414d2/exec-71bd317e-1f7e-437d-aa23-655d8e06f0dd.png"
+  }
+}

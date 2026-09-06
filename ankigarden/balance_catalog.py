@@ -197,6 +197,7 @@ class CoinSourceId(StableStringEnum):
     COMPLETION_CYCLE_5 = "completion_cycle_5"
     SEVEN_DAY_STREAK_CYCLE = "seven_day_streak_cycle"
     ACHIEVEMENT = "achievement"
+    ACHIEVEMENT_TROPHY = "achievement_trophy"
     PLANT_MILESTONE = "plant_milestone"
     STANDARD_FIND = "standard_find"
     HARVEST_BELL = "harvest_bell"
@@ -541,6 +542,11 @@ class CosmeticDefinition:
     price_coins: Optional[int]
     source_achievement_id: Optional[AchievementId]
     asset_id: str
+    buff_description: str = ""
+    review_growth: int = 0
+    completion_coins: int = 0
+    shared_growth_numerator: int = SHARED_GROWTH_NUMERATOR
+    shared_growth_denominator: int = SHARED_GROWTH_DENOMINATOR
 
     @property
     def purchasable(self) -> bool:
@@ -684,6 +690,7 @@ def _effect(
     counter_scope: CounterScope = CounterScope.EVENT,
     target_policy: TargetPolicy = TargetPolicy.NONE,
     target_tie_break: TargetTieBreak = TargetTieBreak.NONE,
+    active_only: bool = True,
 ) -> EffectDefinition:
     return EffectDefinition(
         effect_id=effect_id,
@@ -692,6 +699,7 @@ def _effect(
             every_n=every_n,
             first_n_per_day=first_n_per_day,
             counter_scope=counter_scope,
+            active_only=active_only,
         ),
         grant=RewardGrant(kind, amount, item_id),
         target_policy=target_policy,
@@ -742,6 +750,16 @@ COIN_SOURCES = (
         "Achievements",
         CoinBehaviorFamily.ACHIEVEMENTS,
         "One-time or recurring achievement reward.",
+    ),
+    CoinSourceDefinition(
+        CoinSourceId.ACHIEVEMENT_TROPHY,
+        "Garden Journal",
+        CoinBehaviorFamily.ACHIEVEMENTS,
+        "Verified Today’s Cards completion after unlocking the Garden Journal.",
+        fixed_amount_coins=5,
+        receipt_title="Garden Journal",
+        receipt_detail="Permanent trophy bonus · Today’s Cards completed",
+        artwork_id="cosmetic_garden_journal",
     ),
     CoinSourceDefinition(
         CoinSourceId.PLANT_MILESTONE,
@@ -944,13 +962,13 @@ GARDEN_BONUSES = (
             TriggerKind.ELIGIBLE_CARD,
             RewardKind.GROWTH,
             1,
-            every_n=10,
+            every_n=5,
             counter_scope=CounterScope.LIFETIME_ACTIVE,
             target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_feature_wind_chime",
         "Nursery for 100 Garden Coins.",
-        "Every 10 eligible cards: +1 Growth.",
+        "Every 5 eligible cards while equipped: +1 Growth.",
     ),
     GardenBonusDefinition(
         GardenBonusId.HARVEST_BELL,
@@ -979,14 +997,14 @@ GARDEN_BONUSES = (
             TriggerKind.ELIGIBLE_CARD,
             RewardKind.GROWTH,
             1,
-            every_n=5,
-            first_n_per_day=100,
+            every_n=2,
+            first_n_per_day=200,
             counter_scope=CounterScope.ANKI_DAY,
             target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_feature_watering_station",
         "Nursery for 250 Garden Coins.",
-        "Every fifth eligible card among the first 100 each Anki day: +1 Growth.",
+        "Every second eligible card among the first 200 each Anki day while equipped: +1 Growth.",
     ),
     GardenBonusDefinition(
         GardenBonusId.HERBALIST_HOURGLASS,
@@ -1010,11 +1028,12 @@ GARDEN_BONUSES = (
                 TriggerKind.BOOSTER_ACTIVATION,
                 RewardKind.BOOSTER_CARD_LIMIT,
                 25,
+                active_only=False,
             ),
         ),
         "garden_feature_herbalist_hourglass",
         "Nursery for 350 Garden Coins.",
-        "Every 30 Today’s Cards completions while active, gain 1 Booster Potion; activated Potions affect 25 additional cards.",
+        "While equipped: 1 Booster Potion every 30 Today’s Cards completions. Once owned: new Potions last 25 more cards.",
     ),
     GardenBonusDefinition(
         GardenBonusId.FIREFLY_LANTERN,
@@ -1223,10 +1242,16 @@ SCENERIES = (
             every_n=6,
             counter_scope=CounterScope.LIFETIME_ACTIVE,
             target_policy=TargetPolicy.INVENTORY,
-        ),),
+        ), _effect(
+            "full_moon_booster_cards_plus_25",
+            TriggerKind.BOOSTER_ACTIVATION,
+            RewardKind.BOOSTER_CARD_LIMIT,
+            25,
+            active_only=False,
+        )),
         "garden_full_moon",
         "Ultra Rare Garden discovery.",
-        "Every sixth Today’s Cards completion while active grants 1 Booster Potion.",
+        "While equipped: 1 Booster Potion every 6 Today’s Cards completions. Once owned: new Potions last 25 more cards.",
     ),
     SceneryDefinition(
         SceneryId.ECLIPSE,
@@ -1258,6 +1283,7 @@ KNOWN_EFFECT_RESOLVER_IDS = frozenset({
     "growth_every_5_first_100_plus_1",
     "hourglass_completion_booster",
     "booster_cards_plus_25",
+    "full_moon_booster_cards_plus_25",
     "instant_growth_every_5_plus_3_closest_checkpoint",
     "prism_bank_per_answer_1",
     "spring_growth_first_20",
@@ -1715,47 +1741,12 @@ ACHIEVEMENTS = (
 )
 
 
+# Retired IDs remain reserved for saved ownership and transaction history.
+RETIRED_COSMETIC_IDS = frozenset({
+    "garden_bench", "birdhouse", "butterfly_house", "stone_lantern", "sundial",
+})
+
 COSMETICS = (
-    CosmeticDefinition(
-        CosmeticId.GARDEN_BENCH,
-        "Garden Bench",
-        AcquisitionKind.PURCHASE,
-        150,
-        None,
-        "cosmetic_garden_bench",
-    ),
-    CosmeticDefinition(
-        CosmeticId.BIRDHOUSE,
-        "Birdhouse",
-        AcquisitionKind.PURCHASE,
-        200,
-        None,
-        "cosmetic_birdhouse",
-    ),
-    CosmeticDefinition(
-        CosmeticId.BUTTERFLY_HOUSE,
-        "Butterfly House",
-        AcquisitionKind.PURCHASE,
-        250,
-        None,
-        "cosmetic_butterfly_house",
-    ),
-    CosmeticDefinition(
-        CosmeticId.STONE_LANTERN,
-        "Stone Lantern",
-        AcquisitionKind.PURCHASE,
-        300,
-        None,
-        "cosmetic_stone_lantern",
-    ),
-    CosmeticDefinition(
-        CosmeticId.SUNDIAL,
-        "Sundial",
-        AcquisitionKind.PURCHASE,
-        400,
-        None,
-        "cosmetic_sundial",
-    ),
     CosmeticDefinition(
         CosmeticId.BOTANISTS_PLAQUE,
         "Botanist's Plaque",
@@ -1763,6 +1754,8 @@ COSMETICS = (
         None,
         AchievementId.BOTANICAL_COLLECTION,
         "cosmetic_botanists_plaque",
+        buff_description="+1 Growth per eligible card",
+        review_growth=1,
     ),
     CosmeticDefinition(
         CosmeticId.GARDEN_JOURNAL,
@@ -1771,6 +1764,8 @@ COSMETICS = (
         None,
         AchievementId.YEAR_OF_HARVESTS,
         "cosmetic_garden_journal",
+        buff_description="+5 Garden Coins when you complete Today’s Cards",
+        completion_coins=5,
     ),
     CosmeticDefinition(
         CosmeticId.GOLDEN_TROWEL,
@@ -1779,6 +1774,9 @@ COSMETICS = (
         None,
         AchievementId.ANCIENT_GARDEN,
         "cosmetic_golden_trowel",
+        buff_description="15% Shared Growth for each other planted bed",
+        shared_growth_numerator=3,
+        shared_growth_denominator=20,
     ),
 )
 
@@ -1929,6 +1927,12 @@ STANDARD_FIND_BY_ID = _immutable_index(STANDARD_FINDS, "reward_id")
 ENVIRONMENT_TIER_BY_ID = _immutable_index(ENVIRONMENT_TIERS, "tier_id")
 ACHIEVEMENT_BY_ID = _immutable_index(ACHIEVEMENTS, "achievement_id")
 COSMETIC_BY_ID = _immutable_index(COSMETICS, "cosmetic_id")
+# Stable cosmetic reward IDs are retained in receipts; these are permanent trophies.
+ACHIEVEMENT_TROPHIES = COSMETICS
+TROPHY_BY_ACHIEVEMENT = MappingProxyType({
+    str(item.source_achievement_id): item for item in ACHIEVEMENT_TROPHIES
+})
+KNOWN_COSMETIC_IDS = frozenset(COSMETIC_BY_ID) | RETIRED_COSMETIC_IDS
 LANDMARK_BY_ID = _immutable_index(LANDMARKS, "landmark_id")
 MASTERY_RANK_BY_ID = _immutable_index(MASTERY_RANKS, "rank_id")
 BED_UNLOCK_BY_NUMBER = MappingProxyType({item.bed_number: item for item in BED_UNLOCKS})
@@ -2582,11 +2586,12 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
         )
 
     expected_effect_signatures = {
-        "growth_every_10_plus_1": ("eligible_card", ("growth", 1, None), 10, None, "lifetime_active", "active_plant", None, None, False),
+        "growth_every_10_plus_1": ("eligible_card", ("growth", 1, None), 5, None, "lifetime_active", "active_plant", None, None, False),
         "completion_coins_plus_5": ("valid_completion", ("coins", 5, None), 1, None, "event", "none", None, None, False),
-        "growth_every_5_first_100_plus_1": ("eligible_card", ("growth", 1, None), 5, 100, "anki_day", "active_plant", None, None, False),
+        "growth_every_5_first_100_plus_1": ("eligible_card", ("growth", 1, None), 2, 200, "anki_day", "active_plant", None, None, False),
         "hourglass_completion_booster": ("valid_completion", ("consumable", 1, "booster_potion"), 30, None, "lifetime_active", "inventory", None, None, False),
         "booster_cards_plus_25": ("booster_activation", ("booster_card_limit", 25, None), 1, None, "event", "none", None, None, False),
+        "full_moon_booster_cards_plus_25": ("booster_activation", ("booster_card_limit", 25, None), 1, None, "event", "none", None, None, False),
         "instant_growth_every_5_plus_3_closest_checkpoint": ("eligible_card", ("instant_growth", 3, None), 5, None, "lifetime_active", "closest_checkpoint", None, None, False),
         "prism_bank_per_answer_1": ("eligible_card", ("banked_growth", 1, None), 1, 100, "persistent_bank", "active_plant", 300, "valid_completion", True),
         "spring_growth_first_20": ("eligible_card", ("growth", 2, None), 1, 20, "anki_day", "active_plant", None, None, False),
@@ -2601,6 +2606,12 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
     }
     for effect_id, expected in expected_effect_signatures.items():
         _require(effect_signature(effect_id) == expected, f"{effect_id} balance drifted")
+    ownership_effects = {"booster_cards_plus_25", "full_moon_booster_cards_plus_25"}
+    _require(
+        all(effect.cadence.active_only == (effect_id not in ownership_effects)
+            for effect_id, effect in effects_by_id.items()),
+        "owned and equipped effect requirements drifted",
+    )
     _require(
         effects_by_id[
             "instant_growth_every_5_plus_3_closest_checkpoint"
@@ -2774,11 +2785,6 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
     )
 
     expected_cosmetics = {
-        "garden_bench": ("purchase", 150, None),
-        "birdhouse": ("purchase", 200, None),
-        "butterfly_house": ("purchase", 250, None),
-        "stone_lantern": ("purchase", 300, None),
-        "sundial": ("purchase", 400, None),
         "botanists_plaque": ("achievement", None, "botanical_collection"),
         "garden_journal": ("achievement", None, "year_of_harvests"),
         "golden_trowel": ("achievement", None, "ancient_garden"),

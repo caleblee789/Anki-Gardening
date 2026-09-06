@@ -229,6 +229,12 @@ def test_growth_charge_preview_commit_and_success_share_one_geometry_envelope() 
     ]
 
     assert profiles[0] == profiles[1] == profiles[2]
+    assert max(profile.max_height for profile in DIALOG_VIEW_HEIGHT_PROFILES[DialogSizeClass.GROWTH_CHARGE].values()) <= policy.max_height
+    garden_ready = dialog_height_profile(DialogSizeClass.GROWTH_CHARGE, "garden-ready")
+    garden_result = dialog_height_profile(DialogSizeClass.GROWTH_CHARGE, "garden-success")
+    assert garden_ready == dialog_height_profile(DialogSizeClass.GROWTH_CHARGE, "garden-loading")
+    assert garden_result.min_height < garden_ready.min_height < profiles[0].min_height
+    assert garden_ready.preferred_width == garden_result.preferred_width == profiles[0].preferred_width
     assert (
         policy.preferred_width,
         policy.max_width,

@@ -586,10 +586,10 @@ def test_profile_retention_preserves_malformed_fake_complete_artifacts(
     assert all(path.exists() for path in valid_runs)
 
 
-def test_profile_retention_uses_the_current_v27_contract() -> None:
-    assert runner.CONTRACT_VERSION == 27
-    assert runner._profile_evidence_counts(27, "representative") == (18, 2)
-    assert runner._profile_evidence_counts(27, "full") == (36, 5)
+def test_profile_retention_uses_the_current_v29_contract() -> None:
+    assert runner.CONTRACT_VERSION == 29
+    assert runner._profile_evidence_counts(29, "representative") == (22, 5)
+    assert runner._profile_evidence_counts(29, "full") == (51, 5)
     assert runner._profile_evidence_counts(25, "full") is None
     assert runner._profile_evidence_counts(24, "representative") == (26, 4)
 
@@ -794,9 +794,11 @@ def test_real_planner_reuses_only_representative_overlap_for_full_profile(
     assert plan["run_level_recapture_required"] is True
 
 
-def test_full_runner_launches_gate_only_session_when_all_surfaces_are_reusable(
+@pytest.mark.parametrize("fresh_baseline", [False, True])
+def test_full_runner_keeps_capture_and_gates_in_one_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    fresh_baseline: bool,
 ) -> None:
     repo = tmp_path / "repo"
     (repo / "scripts").mkdir(parents=True)
@@ -820,10 +822,9 @@ def test_full_runner_launches_gate_only_session_when_all_surfaces_are_reusable(
         / "assembled"
         / "manifest.json"
     )
-    representative_labels = [f"face-{index:03d}" for index in range(26)]
-    full_labels = representative_labels + [
-        f"full-only-{index:03d}" for index in range(100)
-    ]
+    # Keep the legacy run-gate policy fixture, but execute the actual current
+    # inventory so fresh mode schedules all 51 registry-bound surfaces.
+    full_labels = list(runner.REGISTRY.profile_labels("full"))
     render_inputs = _fixture_render_inputs(
         full_labels,
         profile="full",
@@ -892,28 +893,31 @@ def test_full_runner_launches_gate_only_session_when_all_surfaces_are_reusable(
     )
     launches: list[dict[str, Any]] = []
 
-    def run_gate_only_attempt(**kwargs: Any) -> tuple[Path, dict[str, Any]]:
+    expected_fresh = full_labels if fresh_baseline else []
+
+    def run_attempt(**kwargs: Any) -> tuple[Path, dict[str, Any]]:
         launches.append(kwargs)
-        assert not kwargs["requested_faces"]
-        manifest = Path(kwargs["capture_dir"]) / "gate-session" / "manifest.json"
+        assert list(kwargs["requested_faces"]) == expected_fresh
+        assert list(kwargs["invalidated_faces"]) == expected_fresh
+        manifest = Path(kwargs["capture_dir"]) / "test-session" / "manifest.json"
         _write_reusable_manifest(
             manifest,
             profile="full",
-            labels=[],
+            labels=expected_fresh,
             render_inputs=render_inputs,
-            groups=[],
+            groups=[{"name": "Full", "labels": full_labels}] if fresh_baseline else [],
             full_run_level=True,
         )
         return manifest, {"status": "complete"}
 
-    monkeypatch.setattr(runner, "_run_capture_attempt", run_gate_only_attempt)
+    monkeypatch.setattr(runner, "_run_capture_attempt", run_attempt)
 
     monkeypatch.setattr(
         runner,
         "validate_capture_manifest",
         lambda *_args, **_kwargs: {
             "capture_contract_version": 24,
-            "capture_count": 126,
+            "capture_count": len(full_labels),
             "capture_profile": "full",
             "status": "valid",
         },
@@ -927,13 +931,14 @@ def test_full_runner_launches_gate_only_session_when_all_surfaces_are_reusable(
         "--profile",
         "full",
         "--defer-contact-sheets",
+        *(["--fresh-baseline"] if fresh_baseline else []),
     ]) == 0
     reports = list((evidence_root / "full").glob("*/capture-report.json"))
     assert len(reports) == 1
     report = json.loads(reports[0].read_text(encoding="utf-8"))
-    assert report["captured_faces"] == []
-    assert report["reused_faces"] == full_labels
-    assert report["capture_plan"]["recapture_required"] == []
+    assert report["captured_faces"] == expected_fresh
+    assert report["reused_faces"] == ([] if fresh_baseline else full_labels)
+    assert report["capture_plan"]["recapture_required"] == expected_fresh
     assert report["capture_plan"]["run_level_recapture_required"] is True
     assert report["capture_plan"]["run_level_reuse_policy"] == (
         "current-session-required"

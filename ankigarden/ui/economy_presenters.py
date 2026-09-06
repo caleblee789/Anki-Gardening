@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
+from ..feature_availability import landmarks_enabled
 
 from ..balance_catalog import (
     ACHIEVEMENT_BY_ID,
@@ -222,13 +223,13 @@ def catalog_item_projections() -> tuple[CatalogItemProjection, ...]:
             item_id,
             str(item.display_name),
             "cosmetic",
-            "Display Decoration only; no gameplay effect.",
+            str(item.buff_description),
             acquisition,
             str(item.asset_id),
             bool(item.purchasable),
             None if item.price_coins is None else int(item.price_coins),
         ))
-    for item in LANDMARKS:
+    for item in LANDMARKS if landmarks_enabled() else ():
         item_id = _id(item.landmark_id)
         rows.append(CatalogItemProjection(
             f"landmark:{item_id}", item_id, str(item.display_name), "landmark",
@@ -246,17 +247,20 @@ def catalog_item_projections() -> tuple[CatalogItemProjection, ...]:
             str(item.asset_id),
             False, None,
         ))
-    rows.append(CatalogItemProjection(
-        "legacy:garden_legacy",
-        str(GARDEN_LEGACY.legacy_id),
-        str(GARDEN_LEGACY.display_name),
-        "legacy",
-        _player_card_copy(GARDEN_LEGACY.effect_description),
-        _player_card_copy(GARDEN_LEGACY.how_to_acquire),
-        str(GARDEN_LEGACY.asset_id),
-        False,
-        None,
-    ))
+    # A state-free catalog cannot establish Legacy eligibility. Its active
+    # projection remains available for saves that already meet the requirement.
+    if landmarks_enabled():
+        rows.append(CatalogItemProjection(
+            "legacy:garden_legacy",
+            str(GARDEN_LEGACY.legacy_id),
+            str(GARDEN_LEGACY.display_name),
+            "legacy",
+            _player_card_copy(GARDEN_LEGACY.effect_description),
+            _player_card_copy(GARDEN_LEGACY.how_to_acquire),
+            str(GARDEN_LEGACY.asset_id),
+            False,
+            None,
+        ))
     for item in BED_UNLOCKS:
         item_id = f"bed_{int(item.bed_number)}"
         achievement = (
@@ -271,7 +275,7 @@ def catalog_item_projections() -> tuple[CatalogItemProjection, ...]:
             "bed",
             (
                 "Permanent planting space; each other planted bed adds one "
-                "10% Shared Growth lane."
+                "Shared Growth lane (10%; 15% with the Golden Trowel)."
             ),
             (
                 "Included."
@@ -353,7 +357,7 @@ def cosmetic_rows(state: Any) -> tuple[CosmeticRow, ...]:
             _id(item.cosmetic_id),
             str(item.display_name),
             _id(item.cosmetic_id) in owned_ids,
-            _id(item.cosmetic_id) == displayed_id,
+            False,
             None if item.price_coins is None else int(item.price_coins),
             _id(item.acquisition),
             str(item.asset_id),

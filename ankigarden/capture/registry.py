@@ -246,22 +246,8 @@ class SurfaceRegistry:
     ) -> int:
         if columns < 1 or max_rows < 1:
             raise ValueError("contact-sheet dimensions must be positive")
-        capacity = columns * max_rows
-        pages = 0
-        used_rows = 0
-        for _name, labels in self.profile_groups(profile):
-            if len(labels) > capacity:
-                if used_rows:
-                    pages += 1
-                    used_rows = 0
-                pages += math.ceil(len(labels) / capacity)
-                continue
-            rows = math.ceil(len(labels) / columns)
-            if used_rows and used_rows + rows > max_rows:
-                pages += 1
-                used_rows = 0
-            used_rows += rows
-        return pages + bool(used_rows)
+        from .handoff import sheet_layout
+        return len(sheet_layout(self.profile_labels(profile)))
 
     def profile_digest(self, profile: str) -> str:
         return _canonical_digest({

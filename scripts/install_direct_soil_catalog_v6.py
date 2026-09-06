@@ -203,6 +203,27 @@ GROUND_ANCHOR_OVERRIDES = {
 }
 
 
+# The reviewed redraws have measured stem contacts and thumbnail optical bounds
+# that cannot be recovered from a generic bounding-box pass. Keep that authored
+# calibration beside the versioned source masters and apply it after measuring.
+REVIEWED_CATALOG = json.loads(
+    (SOURCE_ROOT / "catalog-calibration.json").read_text(encoding="utf-8")
+)["assets"]
+for _species in SPECIES:
+    for _stage in STAGES:
+        _reviewed = REVIEWED_CATALOG[f"plant_{_species}_{_stage}_twilight_v6"]
+        SOURCE_FILE_OVERRIDES[(_species, _stage)] = (
+            ROOT / _reviewed["source_master_file"]
+        ).relative_to(SOURCE_ROOT / _species).as_posix()
+        SOURCE_DESCRIPTION_OVERRIDES[(_species, _stage)] = _reviewed["source"]
+        SPECIES_VISUAL_SCALE.setdefault(_species, {})[_stage] = _reviewed["placement"][
+            "visual_scale_correction"
+        ]
+        GROUND_ANCHOR_OVERRIDES[(_species, _stage)] = _reviewed["placement"][
+            "ground_anchor_y"
+        ]
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -326,7 +347,7 @@ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
     source_master_file = source.relative_to(ROOT).as_posix()
     relative = path.relative_to(ADDON).as_posix()
     asset_id = f"plant_{species}_{stage}_twilight_v6"
-    return {
+    result = {
         "asset_id": asset_id,
         "category": "plants",
         "slot": {"species": species, "stage": stage},
@@ -393,6 +414,13 @@ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
             "release_layout_candidate": True,
         },
     }
+    reviewed = REVIEWED_CATALOG[asset_id]
+    if _sha256(path) != reviewed["runtime_sha256"]:
+        raise ValueError(f"plant artwork changed; review its catalog calibration: {asset_id}")
+    if result["source_master_sha256"] != reviewed["source_master_sha256"]:
+        raise ValueError(f"reviewed plant source master changed: {asset_id}")
+    result["placement"].update(reviewed["placement"])
+    return result
 
 
 def main() -> None:

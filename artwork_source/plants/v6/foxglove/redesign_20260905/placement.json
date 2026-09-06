@@ -1,0 +1,38 @@
+{
+  "seed": {
+    "visual_scale_correction": 0.62,
+    "thumbnail_safe_padding": 0.06,
+    "max_visible_width": 0.9,
+    "max_visible_height": 0.9
+  },
+  "sprout": {
+    "visual_scale_correction": 0.65,
+    "thumbnail_safe_padding": 0.06,
+    "max_visible_width": 0.9,
+    "max_visible_height": 0.9
+  },
+  "young": {
+    "visual_scale_correction": 1.12,
+    "thumbnail_safe_padding": 0.05,
+    "max_visible_width": 0.9,
+    "max_visible_height": 0.9
+  },
+  "mature": {
+    "visual_scale_correction": 1.3,
+    "thumbnail_safe_padding": 0.04,
+    "max_visible_width": 0.9,
+    "max_visible_height": 0.9
+  },
+  "flowering": {
+    "visual_scale_correction": 1.28,
+    "thumbnail_safe_padding": 0.04,
+    "max_visible_width": 0.9,
+    "max_visible_height": 0.9
+  },
+  "rare": {
+    "visual_scale_correction": 1.28,
+    "thumbnail_safe_padding": 0.04,
+    "max_visible_width": 0.9,
+    "max_visible_height": 0.9
+  }
+}

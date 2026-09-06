@@ -1,15 +1,46 @@
 """Small set of learner-facing copy contracts shared by Garden surfaces."""
 
-import re
+from __future__ import annotations
 
+import re
+from html import escape
+
+from ..models.state import DEFAULT_GARDEN_NAME
+from ..bonus_copy import GARDEN_BONUS_EFFECT_COPY
 from .formatters import format_garden_coins
 
-FALLBACK_GARDEN_NAME = "My Garden"
+GARDEN_TITLE = "Anki Garden"
+FALLBACK_GARDEN_NAME = DEFAULT_GARDEN_NAME
+
+WELCOME_TITLE = "Welcome to your new Anki Garden!"
+WELCOME_BODY = (
+    "As you study cards each day, you will receive rewards and help your plants grow!"
+)
+WELCOME_REWARDS_ACTION = "View rewards"
+
+
+def past_study_intro(review_count: int | None, *, has_rewards: bool) -> str:
+    """Count review events accurately, including repeat answers to one card."""
+    if review_count is None:
+        return "Your past study has earned you these rewards:" if has_rewards else ""
+    count = max(0, int(review_count))
+    noun = "card review" if count == 1 else "card reviews"
+    total = f"You’ve completed {count:,} {noun} in Anki."
+    return (
+        f"{total} Your past study has earned you these rewards:"
+        if has_rewards else
+        f"{total} Keep studying to reach your first study milestone."
+    )
 
 HOME_NO_STARTER_TITLE = "Grow your first plant"
 HOME_NO_STARTER_BODY = "Your first plant is free."
 HOME_NO_STARTER_ACCESSIBLE = "Grow your first plant. Your first plant is free. Choose a plant."
 CHOOSE_STARTER_ACTION = "Choose a plant"
+
+
+def garden_preview_title(title: str) -> str:
+    """Keep onboarding copy while hiding saved names in older previews."""
+    return HOME_NO_STARTER_TITLE if title == HOME_NO_STARTER_TITLE else GARDEN_TITLE
 
 GARDEN_SETUP_TITLE = "Choose your first plant"
 GARDEN_SETUP_BODY = "Pick one free plant for your garden."
@@ -22,7 +53,8 @@ GARDEN_NURTURE_ACTION = "Open plant"
 
 NURSERY_STARTER_TITLE = "Choose your first plant"
 NURSERY_STARTER_RATIONALE = (
-    "Your first plant is free. All plants grow at the same rate."
+    "Your first plant is free. The plant you choose will start as a seed. "
+    "Study your cards each day to help it grow!"
 )
 NURSERY_STARTER_COUNT = ""
 DISABLED_STARTER_TABS = "The Shop opens after you choose a plant."
@@ -83,7 +115,9 @@ def starter_ready_next_step(plant_name: str) -> str:
 def seed_title(species_name: str) -> str:
     """Return the shared visible title for a Nursery seed purchase."""
 
-    return f"{str(species_name).strip()} Seed"
+    from ..presentation import plant_stage_title
+
+    return plant_stage_title(species_name, "seed")
 
 
 def cost_label(amount: int) -> str:
@@ -128,47 +162,19 @@ def fertilizer_queue_copy(
     )
 
 
-_GARDEN_BONUS_EFFECT_COPY = {
-    'watering_station': '+1 Growth every 5 cards, during your first 100 cards each day.',
-    'wind_chime': '+1 Growth every 10 cards.',
-    'firefly_lantern': 'Every 5 cards, the unfinished plant nearest its next checkpoint gains +3 Growth.',
-    'autumn': 'Finish today’s cards: +4 Coins.\nPlant checkpoints award 50% more Coins. Each plant’s first reward for reaching a growth stage also awards 50% more Coins.',
-    'snowy': 'Earn 1 Small Growth Charge for every 2 days you finish today’s cards while this scenery is active.',
-    'full_moon': 'Earn 1 Booster Potion for every 6 days you finish today’s cards while this scenery is active.',
-    'herbalist_hourglass': 'Earn 1 Booster Potion for every 30 days you finish today’s cards while this decoration is active.\nBooster Potions you use while it is active last 25 extra cards, including those waiting to start.',
-    'prism_trellis': 'Set aside 1 Growth on each of your first 100 cards per day, up to 300 Growth. Finish today’s cards while this decoration is active to release it.',
-    'spring': '+2 Growth per card for your first 20 cards each day.',
-    'summer': '+1 Growth every 2 cards, during your first 120 cards each day.',
-    'harvest_bell': 'Finish today’s cards: +5 Coins.',
-    'rainbow_horizon': '+1 Growth per card for your first 75 cards each day.',
-    'halloween': 'Finish today’s cards while this scenery is active to earn 1 gift: Small Growth Charge 95%, Standard Growth Charge 4%, or Booster Potion 1%.',
-    'eclipse': '+1 Growth per card for your first 125 cards each day.',
-}
 
-
-_GARDEN_BONUS_SUMMARIES = {
-    "seedling_sign": "No study bonus",
-    "default": "No study bonus",
-    "wind_chime": "+1 Growth every 10 cards",
-    "harvest_bell": "+5 Coins when today’s cards are complete",
-    "watering_station": "+1 Growth every 5 cards\nFirst 100 cards each day",
-    "herbalist_hourglass": "Booster Potion every 30 completed days with this bonus\nPotions used with this bonus last 25 extra cards",
-    "firefly_lantern": "+3 Growth every 5 cards\nPlant nearest a checkpoint",
-    "prism_trellis": "Set aside 1 Growth per card\nFirst 100 cards each day · Up to 300 Growth\nFinish today’s cards to release",
-    "spring": "+2 Growth per card\nFirst 20 cards each day",
-    "summer": "+1 Growth every 2 cards\nFirst 120 cards each day",
-    "autumn": "+4 Coins when you finish today’s cards\n+50% Coins from checkpoints and each plant’s first reward per growth stage",
-    "snowy": "Small Growth Charge every 2 days you finish today’s cards with this bonus",
-    "rainbow_horizon": "+1 Growth per card\nFirst 75 cards each day",
-    "halloween": "Growth Charge or Potion when today’s cards are complete",
-    "full_moon": "Booster Potion every 6 days you finish today’s cards with this bonus",
-    "eclipse": "+1 Growth per card\nFirst 125 cards each day",
-}
 
 
 def garden_bonus_summary(item_id: str, full_effect: str = "") -> str:
-    """Compact browsing copy; the selected item retains every full condition."""
-    return _GARDEN_BONUS_SUMMARIES.get(str(item_id), full_effect or "No bonus")
+    """Use the same concise description in Collection and equipped-item cards."""
+    if str(item_id) in {"seedling_sign", "default"}:
+        return "No study bonus"
+    return garden_bonus_effect_copy(item_id, full_effect) or "No study bonus"
+
+
+def inline_detail_copy(label: str, value: str) -> str:
+    """Keep short metadata beside its label; longer values wrap naturally."""
+    return f"<b>{escape(label)}:</b> {escape(value).replace(chr(10), '<br>')}"
 
 
 def learner_card_copy(value: object) -> str:
@@ -203,7 +209,7 @@ def garden_bonus_effect_copy(item_id: str, fallback: object = "") -> str:
     """Resolve exact player-facing bonus mechanics from one stable catalog ID."""
 
     normalized = str(item_id or "").strip().casefold()
-    return _GARDEN_BONUS_EFFECT_COPY.get(
+    return GARDEN_BONUS_EFFECT_COPY.get(
         normalized,
         learner_card_copy(fallback).strip(),
     )

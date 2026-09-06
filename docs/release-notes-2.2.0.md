@@ -55,30 +55,34 @@
 ## Longer-term collection
 
 - Thirteen cumulative achievements add earned beds, completion milestones,
-  lifetime answer milestones, Grand Charges, and three earned cosmetics to the
+  lifetime answer milestones, Grand Charges, and three earned Gardening Trophies to the
   original seven achievements.
-- Five cosmetic-only Display Decorations are available for 150–400 Garden Coins.
-- Six Garden Landmark thresholds form one cumulative construction track after
-  the first Full Bloom. Growth can prefund later thresholds while claims remain
-  sequential and spend Garden Coins only.
+- Progress → Trophy Room and the garden house open one Gardening Trophies case.
+  The Plaque adds +1 Growth per eligible card, the Journal adds +5 Coins per
+  completed review day, and the Trowel raises Shared Growth to 15%. All three
+  bonuses activate permanently after unlocking; Growth Charges stay unchanged.
+- Five decorative-only paid props are retired. Original artwork and historical
+  ownership are preserved; an equipped retired item falls back to Seedling Sign.
+- Outdoor decorations use individual ground-contact metadata and subtle shadows.
+  Tall props appear in front of the middle bed. Home omits decoration artwork.
 - Four cumulative Cultivation Mastery ranks per species provide cosmetic
   favorite-plant goals after Full Bloom; unpaid ranks do not block later Growth
   funding.
 - A learner-acknowledged active project receives only final overflow after
   plant routing. Existing Stored Growth can be contributed with a revalidated
   atomic quote, while no-target play preserves the complete reserve.
-- Evergreen Garden Legacy unlocks once every finite Landmark and Mastery Growth
-  track is funded. Each cosmetic level uses 500,000 Growth, costs no Garden
-  Coins, and grants no gameplay effect.
 
 ## Persistence and migration
 
-- State schema 27 stores exact card-effect queues, immutable daily economy
-  snapshots, appearance/effect separation, dual environment pity, earned beds,
-  Garden Cycle, active Growth targets, cumulative Landmark and Mastery funding
-  and claims, Garden Legacy, and provenance-qualified lifetime economy
+- State schema 30 retains durable trophy activation boundaries and stores exact card-effect queues, daily Garden Rhythm
+  snapshots, unified equipment, dual environment pity, earned beds,
+  Garden Cycle, active Growth targets, cumulative project funding
+  and claims, and provenance-qualified lifetime economy
   aggregates.
-- Permanent answer, Find, discovery, purchase, Charge, Landmark, Mastery, and
+- Scenery and decorations can be equipped throughout the day. Their artwork
+  and effects stay together; old pending selections are discarded while
+  displayed items, earned rewards, and saved progress are preserved.
+- Permanent answer, Find, discovery, purchase, Charge, project, and
   migration identities live independently from bounded UI receipt history.
 - Timed Fertilizer converts proportionally to cards with ceiling. Existing paid
   beds remain unlocked and receive their fixed Garden Coin refunds. Recorded plant
@@ -87,7 +91,7 @@
 - Existing Full Moon progress carries from the old four-completion cadence to
   the new six-completion cadence proportionally, rounded up so positive earned
   progress is not erased.
-- Existing Stored Growth, Landmark/Mastery claims and partial progress, and
+- Existing Stored Growth, project claims and partial progress, and
   owned environments are preserved. Migration never auto-spends Stored Growth,
   recharges a claim, grants a retroactive Garden Cycle, or grants retroactive
   calendar pity.

@@ -14,7 +14,7 @@ from .balance_catalog import (
     STAGES as BALANCE_STAGES,
     StageId,
 )
-from .economy_progression import ProjectGrowthAllocation
+from .economy_progression import GrowthTargetType, ProjectGrowthAllocation
 
 # ``rare`` remains the durable runtime/artwork identifier for Full Bloom.
 # Every threshold and presentation name comes from the canonical catalog.
@@ -296,6 +296,7 @@ class GrowthChargeTargetState(str, Enum):
     UNAVAILABLE = "unavailable"
     STORED = "stored"
     FULLY_GROWN = "fully_grown"
+    GARDEN = "garden"
 
 
 @dataclass(frozen=True)
@@ -366,9 +367,10 @@ def project_growth_charge_application(
         resolved_target = GrowthChargeTargetState.UNAVAILABLE
 
     before = stage_progress(current)
-    if before.fully_grown:
+    garden = resolved_target is GrowthChargeTargetState.GARDEN
+    if before.fully_grown and not garden:
         resolved_target = GrowthChargeTargetState.FULLY_GROWN
-    if resolved_target is not GrowthChargeTargetState.ELIGIBLE or requested <= 0:
+    if resolved_target not in {GrowthChargeTargetState.ELIGIBLE, GrowthChargeTargetState.GARDEN} or requested <= 0:
         status = GrowthChargeStatus.TARGET_INVALID
     elif inventory <= 0:
         status = GrowthChargeStatus.EMPTY_INVENTORY
@@ -376,7 +378,7 @@ def project_growth_charge_application(
         status = GrowthChargeStatus.READY
 
     accepted = status is GrowthChargeStatus.READY
-    capacity = max(0, GROWTH_THRESHOLDS[-1] - current)
+    capacity = 0 if garden else max(0, GROWTH_THRESHOLDS[-1] - current)
     applied = min(requested, capacity) if accepted else 0
     overflow = max(0, requested - applied) if accepted else 0
     unconsumed = 0 if accepted else requested
@@ -428,6 +430,9 @@ class GrowthChargeQuote:
 
     current_growth_units: int | None = None
     projected_growth_units: int | None = None
+    destination_kind: str = "plant"
+    stored_growth_units: int = 0
+    project_allocations: tuple[ProjectGrowthAllocation, ...] = ()
 
     @property
     def ready(self) -> bool:
@@ -494,6 +499,9 @@ class GrowthChargeOutcome:
 
     previous_growth_units: int | None = None
     resulting_growth_units: int | None = None
+    destination_kind: str = "plant"
+    stored_growth_units: int = 0
+    project_allocations: tuple[ProjectGrowthAllocation, ...] = ()
 
     @property
     def success(self) -> bool:
@@ -517,6 +525,9 @@ class GrowthChargeOutcome:
             "rewards": [reward.to_dict() for reward in self.rewards],
             "inventory_remaining": self.inventory_remaining,
             "message": self.message,
+            "destination_kind": self.destination_kind,
+            "stored_growth_units": self.stored_growth_units,
+            "project_allocations": [item.to_dict() for item in self.project_allocations],
         }
 
     @staticmethod
@@ -572,6 +583,19 @@ class GrowthChargeOutcome:
         )
         if len(rewards) != len(raw_rewards):
             return None
+        destination_kind = value.get("destination_kind", "plant")
+        stored_units = value.get("stored_growth_units", 0)
+        raw_allocations = value.get("project_allocations", [])
+        if (destination_kind not in {"plant", "garden"}
+                or not isinstance(stored_units, int) or isinstance(stored_units, bool) or stored_units < 0
+                or not isinstance(raw_allocations, list)):
+            return None
+        try:
+            allocations = tuple(ProjectGrowthAllocation(
+                GrowthTargetType(row["target_type"]), row["target_id"], row["units"],
+            ) for row in raw_allocations)
+        except (KeyError, TypeError, ValueError):
+            return None
         return GrowthChargeOutcome(
             status=status,
             charge_id=str(value["charge_id"]),
@@ -588,6 +612,9 @@ class GrowthChargeOutcome:
             rewards=rewards,
             inventory_remaining=int(value["inventory_remaining"]),
             message=str(value["message"]),
+            destination_kind=destination_kind,
+            stored_growth_units=stored_units,
+            project_allocations=allocations,
         )
 
 

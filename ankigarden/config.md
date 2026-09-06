@@ -7,7 +7,7 @@ Deck Browser and Overview screens.
 ## Garden display
 
 - **Show garden on home screens**: Show the compact garden preview in Deck
-  Browser and Overview. The preview displays the Garden name, nurtured plant,
+  Browser and Overview. The preview displays **Anki Garden**, the nurtured plant,
   Growth, and **Open Garden** (or **Choose starter** before setup). Today’s
   Cards, Anki streak, and Garden Coins stay in the full Garden and Garden Progress. Preview
   plants and Nursery cannot be clicked.
@@ -20,13 +20,11 @@ Deck Browser and Overview screens.
   another device add Garden rewards. Reward processing is unchanged when this
   presentation setting is off.
 
-Garden Decorations and Scenery are managed in Garden Progress. Open the Garden Progress
-cottage or **Garden Progress**, choose **Garden Decorations and Scenery**, then choose one
-of each or change the two visual-layer switches. Scenery and the Garden Bonus
-lock on the first eligible answer of the Anki day. A later bonus change queues
-for the next Anki day; the displayed decoration can change immediately.
-Hiding a Garden Decoration or Scenery does not disable its effect. Purchasable
-choices live in the Nursery's matching tab.
+Garden Decorations and Scenery are managed in Collection. Choose **Equip** on
+an owned item, or preview it and choose **Apply**. Each selection supplies both
+its artwork and its effect. Equipped items always appear in the garden, and
+**Currently Equipped Items** pairs each item with its bonus. Purchasable choices
+live in Shop.
 
 Artwork quality and animation performance are balanced
 automatically. Anki Garden honors the operating system's reduced-motion setting,
@@ -39,7 +37,7 @@ diagnostic report and copy action.
 
 Each eligible completed card starts with 10 base Growth for the unfinished
 plant you **Nurture**. Anki streak, Fertilizer, an active Booster Potion, and
-the locked environment effects contribute once. The nurtured plant receives
+the equipped items’ effects contribute once. The nurtured plant receives
 full Answer Growth; every other planted plant creates an exact 20% Shared Growth
 share. A Full Bloom plant’s share is divided among planted plants still growing.
 Growth Charges and fixed rewards add Instant Growth. Overflow
@@ -52,4 +50,5 @@ persisted API field remains `currency_balance`.
 
 Open settings from **Caleb M. Add-ons Settings → Anki Garden settings** or from
 the full Garden's **Settings** action. The Garden name can be changed at the top
-of the **Display** tab.
+of the **Display** tab. Custom names are saved in Settings; other UI uses
+**Anki Garden**.

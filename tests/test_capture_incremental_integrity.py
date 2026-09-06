@@ -32,6 +32,21 @@ CONTRACT_DIGEST = "8" * 64
 PNG_BYTES = b"\x89PNG\r\n\x1a\natomic-capture-evidence"
 
 
+def test_delegated_capture_helpers_are_bound_and_missing_helpers_fail(tmp_path: Path) -> None:
+    from scripts.capture_evidence import _declared_capture_module_inputs
+
+    helper = tmp_path / "fixture.py"
+    helper.write_text("STATE = 'before'\n")
+    spec = {"owned_module_dependencies": ("ui/dashboard.py", "capture/fixture.py")}
+    before = _declared_capture_module_inputs(tmp_path / "runtime.py", spec)
+    assert set(before) == {"capture-helper:fixture.py"}
+    helper.write_text("STATE = 'after'\n")
+    assert _declared_capture_module_inputs(tmp_path / "runtime.py", spec) != before
+    helper.unlink()
+    with pytest.raises(CaptureEvidenceError, match="Missing capture helper"):
+        _declared_capture_module_inputs(tmp_path / "runtime.py", spec)
+
+
 def _write_json(path: Path, payload: object) -> None:
     path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",

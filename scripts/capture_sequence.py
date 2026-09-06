@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the repository-owned v27 incremental Garden capture pipeline."""
+"""Run the repository-owned v29 Garden capture pipeline in one Anki session."""
 
 from __future__ import annotations
 
@@ -243,6 +243,8 @@ def _inspection_mode(arguments: argparse.Namespace) -> int | None:
         )
         print(json.dumps({
             "profile": arguments.profile,
+            "capture_mode": "fresh-baseline" if arguments.fresh_baseline else "incremental",
+            "historical_reuse_allowed": not arguments.fresh_baseline,
             "requested": list(plan.requested),
             "execution": list(plan.execution),
             "scenario_sequence": {
@@ -1081,7 +1083,7 @@ def _clarify_contact_sheet_padding(
         from PIL import Image, ImageDraw, ImageOps, PngImagePlugin
     except ImportError as error:
         raise CaptureError("Pillow is required to clarify contact sheets") from error
-    page_groups = BASE.paginate_contact_sheet_groups(groups)
+    page_groups = BASE.paginate_contact_sheet_groups(groups, explicit_pages=payload.get("contact_sheet_layout"))
     if len(page_groups) != len(contact_sheets):
         raise CaptureError("Contact-sheet pages changed during padding clarification")
     records = {
@@ -1430,9 +1432,6 @@ def _gate_result(
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
-    inspection_result = _inspection_mode(arguments)
-    if inspection_result is not None:
-        return inspection_result
     if arguments.gate_only:
         if (
             arguments.surface
@@ -1461,6 +1460,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise CaptureError(
             "--reuse-from cannot be combined with --reuse-only-from"
         )
+    inspection_result = _inspection_mode(arguments)
+    if inspection_result is not None:
+        return inspection_result
     repo = arguments.repo.expanduser().resolve()
     capture_bootstrap = repo / "ankigarden" / "capture_ui_faces.py"
     capture_source = repo / "ankigarden" / "capture" / "runtime.py"
@@ -1757,6 +1759,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }, sort_keys=True))
         return 0
 
+    payload["contact_sheet_layout"] = compiled_contract["profiles"][arguments.profile]["contact_sheets"]
     payload["manifest"] = str(candidate_manifest)
     groups = BASE.capture_groups(payload)
     # The assembled manifest intentionally stores movable relative paths.

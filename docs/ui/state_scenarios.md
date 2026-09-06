@@ -17,7 +17,7 @@
   atomically makes it active; completion saves `done` before either destination
   action. The other unlocked space remains empty. Nursery selection, placement
   copy, and creation retain the same species identity and created `plant_id`;
-  a default Bonsai is displayed as **Bonsai Plant**.
+  an owned Bonsai, seed selection, and Shop products all use **Bonsai Seed**.
 - Cards completed before starter selection still count toward study
   totals and the Anki streak, but receive no retroactive plant Growth or
   recurring rewards. Reliably reconstructable one-time achievements are handled
@@ -28,14 +28,16 @@
 ## Shared presentation projections
 
 - `PlantIdentity(plant_id, display_name, species_name)` keeps the durable plant
-  instance, learner-visible name, and species label separate for every renderer.
+  instance ID, stage-and-species title, and bare species separate for every renderer.
 - The six visible stages are Seed, Sprout, Young, Mature, Flowering, and Full
   Bloom. Persisted `rare` remains compatible but is never visible; the compact
-  HUD says `Sprout · 2 of 6 stages`.
+  HUD uses one **Bonsai Sprout** heading.
 - Collection completion reports `10 of 10 species discovered` separately from
   `30 of 39 collection entries discovered`; 30 is never labeled as plants.
-- Garden appearance presents four independent rows: Scenery, Displayed
-  decoration, Active garden bonus, and Visual effects.
+- Currently Equipped Items presents compact Scenery and Decoration cards, each
+  with its artwork, name, and complete bonus. The cards stack below 492 px of
+  available width. Equipped artwork always displays, even with legacy hidden
+  preferences; previewing another item leaves these committed cards unchanged.
 - Standard Finds and Garden discoveries retain their internal ledger/event IDs
   but use distinct player-facing labels.
 
@@ -219,16 +221,14 @@ Exact presentation states:
 - Nursery offers only free/purchasable environment choices. Each one-time
   purchase is transactional and remains unequipped until the learner chooses it
   through Collection's loadout detail.
-- Collection shows the decoration displayed in Garden, today’s locked Garden
-  Bonus, any bonus queued for the next Anki day, today’s locked Scenery,
-  queued Scenery for tomorrow, exact
-  effect/cap/acquisition, and finite tier-discovery progress. It owns reversible
-  previews plus atomic selection, queue, and visibility changes.
-- The one Garden Bonus stacks with the Scenery passive. Turning off a visual
-  layer or displaying another prop does not turn off its mechanical bonus.
-- The first eligible answer locks the Garden Bonus for the Anki day. Scenery
-  locks independently on the first progression action; later mechanical
-  selections queue for the next Anki day.
+- Currently Equipped Items pairs each saved Scenery and Decoration with its
+  complete effect. Preview, Apply, and Undo keep both appearance and effect
+  consistent; a failed save leaves both unchanged.
+- Equipped artwork always displays. Legacy visibility fields remain readable
+  but do not hide items. Other active bonuses group Fertilizer, Booster Potion,
+  and Garden Rhythm separately below the two cards.
+- Equipment changes take effect immediately, including during a review session.
+  Daily caps remain intact and rewards already earned are not recalculated.
 - Scenery gifts require Today’s Cards completion and never backfill. Halloween
   chooses Small 85%, Standard 10%, or Booster 5%; Full Moon grants a Booster
   every fourth qualifying completion.
@@ -252,10 +252,8 @@ Exact presentation states:
 
 ## Plant Story
 
-- The compact hero shows artwork, editable name, species, stage, planted date,
-  total Growth, and whether the plant is being nurtured.
-- The pencil control opens inline rename; Escape cancels editing and a failed
-  save leaves the old name intact.
+- The compact hero shows artwork, stage and species as its title, planted date,
+  total Growth, and whether the plant is being nurtured. Plant renaming is unavailable.
 - Semantic memories render oldest to newest with local dates. A new plant gets
   a warm early-story message rather than a large empty panel.
 - **Up next** describes the next checkpoint and approximate cards remaining,

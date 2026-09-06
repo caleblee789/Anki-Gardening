@@ -182,6 +182,7 @@ class EffectFact:
     weighted_grants: Tuple[Tuple[GrantFact, int], ...]
     bank_cap_growth: Optional[int]
     release_trigger: str
+    active_only: bool = True
 
 
 @dataclass(frozen=True)
@@ -241,6 +242,18 @@ class PurchaseOption:
 
 
 @dataclass(frozen=True)
+class TrophyFact:
+    trophy_id: str
+    achievement_id: str
+    progress_metric: str
+    progress_target: int
+    review_growth: int
+    completion_coins: int
+    shared_growth_numerator: int
+    shared_growth_denominator: int
+
+
+@dataclass(frozen=True)
 class CatalogFacts:
     snapshot: Mapping[str, Any]
     snapshot_sha256: str
@@ -266,6 +279,7 @@ class CatalogFacts:
     bed_unlocks: Tuple[BedUnlockFact, ...]
     catalog_records: Tuple[Mapping[str, Any], ...]
     daily_cap_resolver: Callable[[int], int]
+    trophies: Tuple[TrophyFact, ...] = ()
 
     @property
     def full_bloom_growth(self) -> int:
@@ -515,6 +529,7 @@ def _effect_facts(module: Any) -> Mapping[str, Tuple[EffectFact, ...]]:
                         else _integer(effect, "bank_cap_growth")
                     ),
                     release_trigger=str(_read(effect, "release_trigger", default="") or ""),
+                    active_only=bool(_read(cadence, "active_only", default=True)),
                 ))
             rows[item_id] = tuple(effects)
     return MappingProxyType(rows)
@@ -783,4 +798,11 @@ def load_catalog_facts() -> CatalogFacts:
         bed_unlocks=_bed_unlocks(module),
         catalog_records=records,
         daily_cap_resolver=daily_cap,
+        trophies=tuple(TrophyFact(
+            str(item.cosmetic_id), str(item.source_achievement_id),
+            str(module.ACHIEVEMENT_BY_ID[str(item.source_achievement_id)].progress_metric),
+            int(module.ACHIEVEMENT_BY_ID[str(item.source_achievement_id)].progress_target),
+            int(item.review_growth), int(item.completion_coins),
+            int(item.shared_growth_numerator), int(item.shared_growth_denominator),
+        ) for item in getattr(module, "ACHIEVEMENT_TROPHIES", ())),
     )

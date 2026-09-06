@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from ankigarden import feature_availability
 
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.economy_progression import (
@@ -23,6 +24,12 @@ from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import ActivePlantPeriod, DailyStats, GardenState, Plant
 from ankigarden.reward_ledger import EconomyEventRecord, IdempotencyRecord
 from ankigarden.storage import DueObligationStatus
+
+
+@pytest.fixture(autouse=True)
+def enabled_landmark_backend(monkeypatch):
+    """Keep the dormant transaction contract exercised independently of release UI."""
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", True)
 
 
 class _Config:
@@ -448,3 +455,94 @@ def test_mastery_rolls_back_both_resources_rank_and_feedback_on_save_failure() -
     assert storage._pending_events == {}
     assert storage.idempotency_record("mastery", _request_id(34)) is None
     assert storage.state.cultivation_mastery.highest_rank_by_species == {}
+
+
+@pytest.mark.parametrize("source", ["local", "sync", "instant"])
+def test_dormant_landmarks_conserve_growth_and_preserve_saved_progress(monkeypatch, source):
+    engine, storage = _engine()
+    state = storage.state
+    state.active_growth_target_type = "landmark"
+    state.active_growth_target_id = "garden_landmark"
+    state.active_growth_target_activation_identity = "saved-selection"
+    state.garden_project.landmark_growth_units_funded = 2_600_000
+    state.garden_project.landmark_highest_claimed_tier = 1
+    state.garden_project.displayed_landmark_tier_id = "mossy_stone_path"
+    engine._sync_landmark_compatibility_projection()
+    saved_project = deepcopy(state.garden_project)
+    stored_before = state.stored_growth_balance_units
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", False)
+
+    if source == "instant":
+        result = engine._apply_direct_growth_units(
+            None, 1_237, stats_field="direct_reward_growth", transition_source="garden_find",
+        )
+        assert result.conserved and result.stored_units == 1_237
+        assert result.landmark_units == 0
+        storage.save()
+    else:
+        preview = engine.project_review_growth()
+        assert preview.landmark_growth_units == 0
+        assert preview.stored_growth_units == preview.total_growth_units
+        payload = {
+            "revlog_id": storage.now_ms, "answered_at_ms": storage.now_ms,
+            "card_id": 1, "ease": 3, "review_type": 1,
+            "origin": source,
+        }
+        results = engine.apply_same_day_reviews_with_results([payload])
+        assert len(results) == 1
+        result = results[0]
+        assert result.landmark_growth_delta_units == 0
+        assert result.award.landmark_growth_units == 0
+        assert result.award.stored_growth_units == preview.stored_growth_units
+        assert result.award.total_growth_units == preview.total_growth_units
+        assert state.currency_balance > 10_000  # Ordinary daily reward is retained.
+        assert engine.apply_same_day_reviews_with_results([payload]) == ()
+        if source == "sync":
+            from ankigarden.sync_reward_processor import build_sync_reward_summary
+            summary = build_sync_reward_summary("paused-feature", results, engine=engine)
+            assert summary.landmark_growth_delta_units == 0
+            assert not summary.project_allocations
+
+    assert state.garden_project == saved_project
+    assert state.stored_growth_balance_units > stored_before
+    restored = GardenState.from_dict(state.to_dict())
+    assert restored.garden_project == saved_project
+    assert restored.active_growth_target_type == "landmark"
+    assert restored.active_growth_target_activation_identity == "saved-selection"
+    assert restored.stored_growth_balance_units == state.stored_growth_balance_units
+    assert not engine._garden_legacy_unlocked()
+    # Re-enabling neither awards missed cards nor spends the saved reserve.
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", True)
+    assert engine.growth_projects_snapshot().landmark_track.growth_units_funded == 2_600_000
+    assert state.stored_growth_balance_units == restored.stored_growth_balance_units
+
+
+def test_dormant_landmarks_reject_new_and_stale_actions_but_replay_committed_requests(monkeypatch):
+    engine, storage = _engine()
+    target = GrowthTargetRef(GrowthTargetType.LANDMARK, "garden_landmark")
+    committed_request = LandmarkRequest(_request_id(900), LandmarkAction.SELECT, "mossy_stone_path")
+    committed = engine.confirm_landmark(committed_request)
+    requests = (
+        GrowthProjectRequest(_request_id(901), storage._ledger_revision, GrowthProjectAction.ACTIVATE, target),
+        GrowthProjectRequest(_request_id(902), storage._ledger_revision, GrowthProjectAction.CONTRIBUTE, target, ContributionMode.MAXIMUM),
+        GrowthProjectRequest(_request_id(903), storage._ledger_revision, GrowthProjectAction.CLAIM, target, claim_id="mossy_stone_path"),
+    )
+    confirmations = [GrowthProjectConfirmation.from_quote(engine.quote_growth_project(request)) for request in requests]
+    before = storage.state.to_dict()
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", False)
+    for request, stale in zip(requests, confirmations):
+        quote = engine.quote_growth_project(request)
+        assert not quote.can_apply
+        assert quote.accepted_growth_units == quote.coin_cost == 0
+        for confirmation in (stale, GrowthProjectConfirmation.from_quote(quote)):
+            outcome = engine.confirm_growth_project(request, confirmation)
+            assert not outcome.applied
+            assert outcome.stored_balance_delta_units == outcome.coins_spent == 0
+    assert not engine.select_landmark("mossy_stone_path").applied
+    assert not engine.contribute_to_landmark("mossy_stone_path", 100).applied
+    assert not engine.complete_landmark("mossy_stone_path").applied
+    assert not engine.set_landmark_auto_contribute(True)[0]
+    assert not engine.display_landmark("mossy_stone_path")[0]
+    assert not engine.undo_landmark_appearance("", "")[0]
+    assert engine.confirm_landmark(committed_request) == committed
+    assert storage.state.to_dict() == before

@@ -1,0 +1,5827 @@
+{
+  "schema_version": 1,
+  "review": "plant-redesign-20260905",
+  "assets": {
+    "plant_bonsai_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_seed_master_v1.png",
+      "source_master_sha256": "08bf7a84c28f8a09ac3ce91ecadd974c1d2e91785e6364614380b7d3e1709abb",
+      "runtime_sha256": "b2147c9385be5c5e810683209be04a7ea4840187e18624cc4c35971c8c8a9398",
+      "source": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.479665,
+          0.509569
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.5,
+        "visual_scale_correction": 0.5,
+        "art_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "base_bounds": [
+          0.272727,
+          0.888357,
+          0.454545,
+          0.051834
+        ],
+        "support_bounds": [
+          0.272727,
+          0.888357,
+          0.454545,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "plant_above_rim_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "interaction_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "thumbnail_optical_center": [
+          0.479665,
+          0.509569
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_bonsai_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_sprout_master_v1.png",
+      "source_master_sha256": "9c4eedb5548a1d6a062909d7df86d511457e9b828992003d48c32acbfd3a7bed",
+      "runtime_sha256": "0662a5b745a0fd9276ca10d8d90a01c284585e6bc09574cf6b79710b2b88396f",
+      "source": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.480463,
+          0.508373
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.592399,
+        "art_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "base_bounds": [
+          0.335726,
+          0.888357,
+          0.330144,
+          0.051834
+        ],
+        "support_bounds": [
+          0.335726,
+          0.888357,
+          0.330144,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "plant_above_rim_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "interaction_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "thumbnail_optical_center": [
+          0.480463,
+          0.508373
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_bonsai_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_young_master_v1.png",
+      "source_master_sha256": "0c4dfd684b7192e4cbf7c761597764108eff56b622f3dfffd09a56ed2f36df25",
+      "runtime_sha256": "fa42e0a4b3ff748cf1eef9e7410c12bbfd986a9bfa545b0347a99c32897d1b25",
+      "source": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.508772,
+          0.509569
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.754528,
+        "art_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "base_bounds": [
+          0.305423,
+          0.888357,
+          0.389952,
+          0.051834
+        ],
+        "support_bounds": [
+          0.305423,
+          0.888357,
+          0.389952,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "plant_above_rim_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "interaction_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "thumbnail_optical_center": [
+          0.508772,
+          0.509569
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_bonsai_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_mature_master_v1.png",
+      "source_master_sha256": "69a4582974cdb0307263f84f3b4ce7ed0f4dfca96f181096c0ab917603048f08",
+      "runtime_sha256": "b368c5d895f8710ab2df17fbbe698dc47d05d7d0c40cbaffcc4848b056a07a0c",
+      "source": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.480463,
+          0.508373
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.084971,
+        "art_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "base_bounds": [
+          0.273525,
+          0.888357,
+          0.452153,
+          0.051834
+        ],
+        "support_bounds": [
+          0.273525,
+          0.888357,
+          0.452153,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "plant_above_rim_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "interaction_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "thumbnail_optical_center": [
+          0.480463,
+          0.508373
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_bonsai_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_flowering_master_v1.png",
+      "source_master_sha256": "61c56876a3cffce1ce9d4fa4847f74f6dc1ee9495c61e7bf0f045dab30807369",
+      "runtime_sha256": "b54ad1f184c97178d0f7a2543aab0777a150315978ad397125ab97fe014eb415",
+      "source": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.483254,
+          0.508772
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.068936,
+        "art_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "base_bounds": [
+          0.273525,
+          0.888357,
+          0.452951,
+          0.051834
+        ],
+        "support_bounds": [
+          0.273525,
+          0.888357,
+          0.452951,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "plant_above_rim_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "interaction_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "thumbnail_optical_center": [
+          0.483254,
+          0.508772
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_bonsai_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_rare_master_v1.png",
+      "source_master_sha256": "0592207c3ef77cdac4e1e42f02e23d62d36d55983c5ad598c62d6cec077e2cf2",
+      "runtime_sha256": "ffc5fe9e0758dea76317e8c09d46afe23eda11de7a1d948c770c3f9827c41252",
+      "source": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.490032,
+          0.486842
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.068936,
+        "art_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "base_bounds": [
+          0.235247,
+          0.885965,
+          0.528708,
+          0.054226
+        ],
+        "support_bounds": [
+          0.235247,
+          0.885965,
+          0.528708,
+          0.054226
+        ],
+        "foliage_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "plant_above_rim_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "interaction_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "thumbnail_optical_center": [
+          0.490032,
+          0.486842
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_rose_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/rose/redesign-20260905/rose_seed_rgba.png",
+      "source_master_sha256": "b2b4205c4a15b47e3267936db78b22c32c355faf3562beeacc6605fae91ae6c9",
+      "runtime_sha256": "fbd8d2056151fc8788f86cf9cbc0460474188c7ae8fa660de34460c586621501",
+      "source": "ImageGen Rose redesign with preserved opaque botanical interiors and clean alpha; 2026-09-05",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.559809,
+          0.709329
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.329346,
+          0.477671,
+          0.460925,
+          0.463317
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.7,
+          0.06
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "rose-redesign-20260905",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.526621,
+        "art_bounds": [
+          0.329346,
+          0.477671,
+          0.460925,
+          0.463317
+        ],
+        "base_bounds": [
+          0.41866,
+          0.927432,
+          0.171451,
+          0.013557
+        ],
+        "support_bounds": [
+          0.41866,
+          0.927432,
+          0.171451,
+          0.013557
+        ],
+        "foliage_bounds": [
+          0.329346,
+          0.477671,
+          0.460925,
+          0.463317
+        ],
+        "plant_above_rim_bounds": [
+          0.329346,
+          0.477671,
+          0.460925,
+          0.463317
+        ],
+        "interaction_bounds": [
+          0.329346,
+          0.477671,
+          0.460925,
+          0.463317
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.329346,
+          0.477671,
+          0.460925,
+          0.463317
+        ],
+        "thumbnail_optical_center": [
+          0.559809,
+          0.709329
+        ],
+        "thumbnail_safe_padding": 0.1,
+        "thumbnail_scale": 1.2
+      }
+    },
+    "plant_rose_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/rose/redesign-20260905/rose_sprout_rgba.png",
+      "source_master_sha256": "81f4643fd7df913c5862be75aa7741ad2cccdfbaed8f0348de409e2dcfee2588",
+      "runtime_sha256": "3546994dd095a53c1d2a98a3042667bf39165bafd96222b75b89ea5e010c2f4f",
+      "source": "ImageGen Rose redesign with preserved opaque botanical interiors and clean alpha; 2026-09-05",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.513158,
+          0.68142
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.161085,
+          0.42185,
+          0.704147,
+          0.519139
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.7,
+          0.06
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "rose-redesign-20260905",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 1.021296,
+        "art_bounds": [
+          0.161085,
+          0.42185,
+          0.704147,
+          0.519139
+        ],
+        "base_bounds": [
+          0.46252,
+          0.92504,
+          0.075758,
+          0.015949
+        ],
+        "support_bounds": [
+          0.46252,
+          0.92504,
+          0.075758,
+          0.015949
+        ],
+        "foliage_bounds": [
+          0.161085,
+          0.42185,
+          0.704147,
+          0.519139
+        ],
+        "plant_above_rim_bounds": [
+          0.161085,
+          0.42185,
+          0.704147,
+          0.519139
+        ],
+        "interaction_bounds": [
+          0.161085,
+          0.42185,
+          0.704147,
+          0.519139
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.161085,
+          0.42185,
+          0.704147,
+          0.519139
+        ],
+        "thumbnail_optical_center": [
+          0.513158,
+          0.68142
+        ],
+        "thumbnail_safe_padding": 0.1,
+        "thumbnail_scale": 0.9895191068662962
+      }
+    },
+    "plant_rose_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/rose/redesign-20260905/rose_young_rgba.png",
+      "source_master_sha256": "785f3083a919cd3b58d2d85c45fc0b52f7ccb973234b2b0de6f56514e07180e9",
+      "runtime_sha256": "0965959159baad0f1365569495ec0000f301c88e76436ad55af60e8c94eeb217",
+      "source": "ImageGen Rose redesign with preserved opaque botanical interiors and clean alpha; 2026-09-05",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.497209,
+          0.53748
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.245614,
+          0.133971,
+          0.50319,
+          0.807018
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.7,
+          0.06
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "rose-redesign-20260905",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.632127,
+        "art_bounds": [
+          0.245614,
+          0.133971,
+          0.50319,
+          0.807018
+        ],
+        "base_bounds": [
+          0.472089,
+          0.917065,
+          0.050239,
+          0.023923
+        ],
+        "support_bounds": [
+          0.472089,
+          0.917065,
+          0.050239,
+          0.023923
+        ],
+        "foliage_bounds": [
+          0.245614,
+          0.133971,
+          0.50319,
+          0.807018
+        ],
+        "plant_above_rim_bounds": [
+          0.245614,
+          0.133971,
+          0.50319,
+          0.807018
+        ],
+        "interaction_bounds": [
+          0.245614,
+          0.133971,
+          0.50319,
+          0.807018
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.245614,
+          0.133971,
+          0.50319,
+          0.807018
+        ],
+        "thumbnail_optical_center": [
+          0.497209,
+          0.53748
+        ],
+        "thumbnail_safe_padding": 0.1,
+        "thumbnail_scale": 1.2
+      }
+    },
+    "plant_rose_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/rose/redesign-20260905/rose_mature_rgba.png",
+      "source_master_sha256": "0a09227ab204f4b3c126d209e5ed655c5a2254d93bc2d2cc08820a467fc3c3f2",
+      "runtime_sha256": "4063086432f7be7a937607e46a2bda32934a0879e482219090aa46601a418454",
+      "source": "ImageGen Rose redesign with preserved opaque botanical interiors and clean alpha; 2026-09-05",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.500399,
+          0.49043
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.143541,
+          0.039872,
+          0.713716,
+          0.901116
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.7,
+          0.06
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "rose-redesign-20260905",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 0.9368,
+        "art_bounds": [
+          0.143541,
+          0.039872,
+          0.713716,
+          0.901116
+        ],
+        "base_bounds": [
+          0.479266,
+          0.913876,
+          0.042265,
+          0.027113
+        ],
+        "support_bounds": [
+          0.479266,
+          0.913876,
+          0.042265,
+          0.027113
+        ],
+        "foliage_bounds": [
+          0.143541,
+          0.039872,
+          0.713716,
+          0.901116
+        ],
+        "plant_above_rim_bounds": [
+          0.143541,
+          0.039872,
+          0.713716,
+          0.901116
+        ],
+        "interaction_bounds": [
+          0.143541,
+          0.039872,
+          0.713716,
+          0.901116
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.143541,
+          0.039872,
+          0.713716,
+          0.901116
+        ],
+        "thumbnail_optical_center": [
+          0.500399,
+          0.49043
+        ],
+        "thumbnail_safe_padding": 0.1,
+        "thumbnail_scale": 1.0331813520548985
+      }
+    },
+    "plant_rose_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/rose/redesign-20260905/rose_flowering_rgba.png",
+      "source_master_sha256": "e1a3d67ff3ec241a5d972fd6b3c0b3df193c235e3e17add315f73e90d8d11412",
+      "runtime_sha256": "d0111d2beb0ca06b1d5a5f467ffa94a7bc4c9b62f598ccdf59cc0ccc95500726",
+      "source": "ImageGen Rose redesign with preserved opaque botanical interiors and clean alpha; 2026-09-05",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.493221,
+          0.49043
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.087719,
+          0.039872,
+          0.811005,
+          0.901116
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.7,
+          0.06
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "rose-redesign-20260905",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.069511,
+        "art_bounds": [
+          0.087719,
+          0.039872,
+          0.811005,
+          0.901116
+        ],
+        "base_bounds": [
+          0.480861,
+          0.913876,
+          0.039872,
+          0.027113
+        ],
+        "support_bounds": [
+          0.480861,
+          0.913876,
+          0.039872,
+          0.027113
+        ],
+        "foliage_bounds": [
+          0.087719,
+          0.039872,
+          0.811005,
+          0.901116
+        ],
+        "plant_above_rim_bounds": [
+          0.087719,
+          0.039872,
+          0.811005,
+          0.901116
+        ],
+        "interaction_bounds": [
+          0.087719,
+          0.039872,
+          0.811005,
+          0.901116
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.087719,
+          0.039872,
+          0.811005,
+          0.901116
+        ],
+        "thumbnail_optical_center": [
+          0.493221,
+          0.49043
+        ],
+        "thumbnail_safe_padding": 0.1,
+        "thumbnail_scale": 0.9669574685960457
+      }
+    },
+    "plant_rose_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/rose/redesign-20260905/rose_rare_rgba.png",
+      "source_master_sha256": "d339a5958fc5f017bc3c0a67434cc30be5519c1fb6dc04cf43f4a24a7eebd416",
+      "runtime_sha256": "ad73260b63d73d5cd38bd163f1d7334c75b2208c3aac7500b023ef8ec7da0d9e",
+      "source": "ImageGen Rose redesign with preserved opaque botanical interiors and clean alpha; 2026-09-05",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.489235,
+          0.49043
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.053429,
+          0.039872,
+          0.871611,
+          0.901116
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.7,
+          0.06
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "rose-redesign-20260905",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.346995,
+        "art_bounds": [
+          0.053429,
+          0.039872,
+          0.871611,
+          0.901116
+        ],
+        "base_bounds": [
+          0.471292,
+          0.913876,
+          0.059011,
+          0.027113
+        ],
+        "support_bounds": [
+          0.471292,
+          0.913876,
+          0.059011,
+          0.027113
+        ],
+        "foliage_bounds": [
+          0.053429,
+          0.039872,
+          0.871611,
+          0.901116
+        ],
+        "plant_above_rim_bounds": [
+          0.053429,
+          0.039872,
+          0.871611,
+          0.901116
+        ],
+        "interaction_bounds": [
+          0.053429,
+          0.039872,
+          0.871611,
+          0.901116
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.053429,
+          0.039872,
+          0.871611,
+          0.901116
+        ],
+        "thumbnail_optical_center": [
+          0.489235,
+          0.49043
+        ],
+        "thumbnail_safe_padding": 0.025,
+        "thumbnail_scale": 0.8616224539379852
+      }
+    },
+    "plant_sunflower_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_seed_buried_alpha.png",
+      "source_master_sha256": "f231e6bd7d9f3988698d0aa7f3e4c539a8cf705b0c962a8331254bb11a416ba2",
+      "runtime_sha256": "da50e4e6bdf283fb6c1d484b9a748bc174a225821119c205052c4ae5b05c5e6b",
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.50598,
+          0.79067
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.296651,
+          0.632376,
+          0.41866,
+          0.317384
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.53464699,
+        "art_bounds": [
+          0.304625,
+          0.641148,
+          0.402711,
+          0.299043
+        ],
+        "base_bounds": [
+          0.305024,
+          0.917394,
+          0.389952,
+          0.022
+        ],
+        "support_bounds": [
+          0.305024,
+          0.917394,
+          0.389952,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.296651,
+          0.632376,
+          0.41866,
+          0.317384
+        ],
+        "plant_above_rim_bounds": [
+          0.296651,
+          0.632376,
+          0.41866,
+          0.317384
+        ],
+        "interaction_bounds": [
+          0.304625,
+          0.641148,
+          0.402711,
+          0.299043
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.304625,
+          0.641148,
+          0.402711,
+          0.299043
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_sprout_alpha.png",
+      "source_master_sha256": "34a0f1d3ba40bc8d0fb5a282e39f3b446e7b907830442ee327b689088b0e9514",
+      "runtime_sha256": "088541827b3affd0662bf7d6fbc606ba2f220cdd9b3a1ae99eac13573fb3c49a",
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.483254,
+          0.671451
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.167464,
+          0.394737,
+          0.633174,
+          0.555024
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.89837612,
+        "art_bounds": [
+          0.175439,
+          0.402711,
+          0.61563,
+          0.53748
+        ],
+        "base_bounds": [
+          0.471292,
+          0.917394,
+          0.057416,
+          0.022
+        ],
+        "support_bounds": [
+          0.471292,
+          0.917394,
+          0.057416,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.167464,
+          0.394737,
+          0.633174,
+          0.555024
+        ],
+        "plant_above_rim_bounds": [
+          0.167464,
+          0.394737,
+          0.633174,
+          0.555024
+        ],
+        "interaction_bounds": [
+          0.175439,
+          0.402711,
+          0.61563,
+          0.53748
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.175439,
+          0.402711,
+          0.61563,
+          0.53748
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_young_alpha.png",
+      "source_master_sha256": "cfd8b708709552b01b9d03fdb9bc0b8b0a3318c61abd2e8596dc5c10b08ccc2f",
+      "runtime_sha256": "0b2332277f68cd371ece2caa03823e36cc0a077cf0f1ab4eaa37292a20350733",
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.496811,
+          0.50598
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.1874,
+          0.066188,
+          0.617225,
+          0.883573
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.91548414,
+        "art_bounds": [
+          0.19697,
+          0.07177,
+          0.599681,
+          0.868421
+        ],
+        "base_bounds": [
+          0.473285,
+          0.917394,
+          0.053429,
+          0.022
+        ],
+        "support_bounds": [
+          0.473285,
+          0.917394,
+          0.053429,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.1874,
+          0.066188,
+          0.617225,
+          0.883573
+        ],
+        "plant_above_rim_bounds": [
+          0.1874,
+          0.066188,
+          0.617225,
+          0.883573
+        ],
+        "interaction_bounds": [
+          0.19697,
+          0.07177,
+          0.599681,
+          0.868421
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.19697,
+          0.07177,
+          0.599681,
+          0.868421
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_mature_alpha.png",
+      "source_master_sha256": "175d87285c8aad757bde31211331661c12cb25f9d454bdc271d22a034ab175a7",
+      "runtime_sha256": "f4d6f2eb7b936a829255093aa9e47bbc82fa3d2474fc5d5980c1fd8eb443cf7f",
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.499202,
+          0.495215
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.245614,
+          0.043062,
+          0.504785,
+          0.902711
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 0.94024958,
+        "art_bounds": [
+          0.254386,
+          0.051037,
+          0.489633,
+          0.888357
+        ],
+        "base_bounds": [
+          0.476475,
+          0.917394,
+          0.047049,
+          0.022
+        ],
+        "support_bounds": [
+          0.476475,
+          0.917394,
+          0.047049,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.245614,
+          0.043062,
+          0.504785,
+          0.902711
+        ],
+        "plant_above_rim_bounds": [
+          0.245614,
+          0.043062,
+          0.504785,
+          0.902711
+        ],
+        "interaction_bounds": [
+          0.254386,
+          0.051037,
+          0.489633,
+          0.888357
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.254386,
+          0.051037,
+          0.489633,
+          0.888357
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_flowering_alpha.png",
+      "source_master_sha256": "3807687382d90e07a9a440fa9ed120979f852a583fd18f3a343d60d422ba14a6",
+      "runtime_sha256": "c2ea4f6cb11e52b044568b4e13ff5504200a79c1c2fa26d4e41b413b15d2d0bc",
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.513158,
+          0.496012
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.273525,
+          0.043062,
+          0.476874,
+          0.906699
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 0.81747165,
+        "art_bounds": [
+          0.283094,
+          0.051834,
+          0.460128,
+          0.888357
+        ],
+        "base_bounds": [
+          0.481659,
+          0.917394,
+          0.036683,
+          0.022
+        ],
+        "support_bounds": [
+          0.481659,
+          0.917394,
+          0.036683,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.273525,
+          0.043062,
+          0.476874,
+          0.906699
+        ],
+        "plant_above_rim_bounds": [
+          0.273525,
+          0.043062,
+          0.476874,
+          0.906699
+        ],
+        "interaction_bounds": [
+          0.283094,
+          0.051834,
+          0.460128,
+          0.888357
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.283094,
+          0.051834,
+          0.460128,
+          0.888357
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_rare_alpha.png",
+      "source_master_sha256": "fea46b3f92c4b84d52d4042ed6433573cc4f8ec9174812e0c88bd1f9b22727a5",
+      "runtime_sha256": "b2ded96fefbbed8814ee53dfd2128f77223fb1fbe53934721010142a2c8c271f",
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.49362,
+          0.495614
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.171451,
+          0.043062,
+          0.645136,
+          0.902711
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.2583794,
+        "art_bounds": [
+          0.177033,
+          0.051834,
+          0.633174,
+          0.88756
+        ],
+        "base_bounds": [
+          0.480463,
+          0.917394,
+          0.039075,
+          0.022
+        ],
+        "support_bounds": [
+          0.480463,
+          0.917394,
+          0.039075,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.171451,
+          0.043062,
+          0.645136,
+          0.902711
+        ],
+        "plant_above_rim_bounds": [
+          0.171451,
+          0.043062,
+          0.645136,
+          0.902711
+        ],
+        "interaction_bounds": [
+          0.177033,
+          0.051834,
+          0.633174,
+          0.88756
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.177033,
+          0.051834,
+          0.633174,
+          0.88756
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_lavender_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_seed_alpha.png",
+      "source_master_sha256": "5dc156784f32a182d0d91bfdb146cbb83e55073045395175b12144efd3033fd9",
+      "runtime_sha256": "e24dc7ac97a3b4b78d3d3c586a6bebc060127bfe64fb252bed3e160c59641703",
+      "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+      "placement": {
+        "anchor_x": 0.5637958532695375,
+        "baseline_y": 0.9218500797448166,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.4944178628389155,
+          0.7599681020733652
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "ground_anchor": [
+          0.5637958532695375,
+          0.9218500797448166
+        ],
+        "ground_anchor_x": 0.5637958532695375,
+        "ground_anchor_y": 0.9218500797448166,
+        "soil_contact": [
+          0.5637958532695375,
+          0.9218500797448166
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.5293537719450275,
+        "art_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "base_bounds": [
+          0.36602871,
+          0.90510367,
+          0.36044657,
+          0.01754386
+        ],
+        "support_bounds": [
+          0.36602871,
+          0.90510367,
+          0.36044657,
+          0.01754386
+        ],
+        "foliage_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "plant_above_rim_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "interaction_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.16188198,
+          0.59728868,
+          0.66507177,
+          0.32535885
+        ],
+        "thumbnail_optical_center": [
+          0.4944178628389155,
+          0.7599681020733652
+        ],
+        "thumbnail_safe_padding": 0.08
+      }
+    },
+    "plant_lavender_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_sprout_alpha.png",
+      "source_master_sha256": "9b07f0f04de451eb4b374db58957a2765b7d4c059653b104310b225c51ef0e3e",
+      "runtime_sha256": "32e7d3f2671d6e73e651fdc08f250d2aba8c48903541875b52503c10647b179b",
+      "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+      "placement": {
+        "anchor_x": 0.5003987240829346,
+        "baseline_y": 0.9290271132376395,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5011961722488039,
+          0.7296650717703349
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "ground_anchor": [
+          0.5003987240829346,
+          0.9290271132376395
+        ],
+        "ground_anchor_x": 0.5003987240829346,
+        "ground_anchor_y": 0.9290271132376395,
+        "soil_contact": [
+          0.5003987240829346,
+          0.9290271132376395
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.7529601066459444,
+        "art_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "base_bounds": [
+          0.48724083,
+          0.90749601,
+          0.02711324,
+          0.02232855
+        ],
+        "support_bounds": [
+          0.48724083,
+          0.90749601,
+          0.02711324,
+          0.02232855
+        ],
+        "foliage_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "plant_above_rim_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "interaction_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.34529506,
+          0.52950558,
+          0.31180223,
+          0.40031898
+        ],
+        "thumbnail_optical_center": [
+          0.5011961722488039,
+          0.7296650717703349
+        ],
+        "thumbnail_safe_padding": 0.08
+      }
+    },
+    "plant_lavender_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_young_alpha.png",
+      "source_master_sha256": "119e6883d7b3089d4877c73b52724df66372655571c1ddb9f2ff0c120bb269b0",
+      "runtime_sha256": "8c949b34f305853b2d75b22f355e1c51d6429858261272d1dc39d7734162b0c4",
+      "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+      "placement": {
+        "anchor_x": 0.4944178628389155,
+        "baseline_y": 0.9090909090909091,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5015948963317385,
+          0.5661881977671451
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "ground_anchor": [
+          0.4944178628389155,
+          0.9090909090909091
+        ],
+        "ground_anchor_x": 0.4944178628389155,
+        "ground_anchor_y": 0.9090909090909091,
+        "soil_contact": [
+          0.4944178628389155,
+          0.9090909090909091
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 1.0138070007340036,
+        "art_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "base_bounds": [
+          0.47527911,
+          0.88596491,
+          0.03668262,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.47527911,
+          0.88596491,
+          0.03668262,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "plant_above_rim_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "interaction_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.13795853,
+          0.22248804,
+          0.72727273,
+          0.68740032
+        ],
+        "thumbnail_optical_center": [
+          0.5015948963317385,
+          0.5661881977671451
+        ],
+        "thumbnail_safe_padding": 0.08
+      }
+    },
+    "plant_lavender_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_mature_alpha.png",
+      "source_master_sha256": "30cf536e2d442e761c30cbb7bef98c9410c76dd31a9c1521764c8986ef1ee455",
+      "runtime_sha256": "327d71976c6db19dafdbcbf1dda1b2f95b6f92b48b5fc36b362eff552d9cbdd5",
+      "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+      "placement": {
+        "anchor_x": 0.5167464114832536,
+        "baseline_y": 0.9186602870813397,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5023923444976076,
+          0.4716905901116427
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "ground_anchor": [
+          0.5167464114832536,
+          0.9186602870813397
+        ],
+        "ground_anchor_x": 0.5167464114832536,
+        "ground_anchor_y": 0.9186602870813397,
+        "soil_contact": [
+          0.5167464114832536,
+          0.9186602870813397
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.1827748341896709,
+        "art_bounds": [
+          0.03668262,
+          0.02392344,
+          0.93141946,
+          0.89553429
+        ],
+        "base_bounds": [
+          0.47049442,
+          0.89553429,
+          0.08692185,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.47049442,
+          0.89553429,
+          0.08692185,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "plant_above_rim_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "interaction_bounds": [
+          0.03668262,
+          0.02392344,
+          0.93141946,
+          0.89553429
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.03668262,
+          0.023126,
+          0.93141946,
+          0.89712919
+        ],
+        "thumbnail_optical_center": [
+          0.5023923444976076,
+          0.4716905901116427
+        ],
+        "thumbnail_safe_padding": 0.08
+      }
+    },
+    "plant_lavender_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_flowering_alpha.png",
+      "source_master_sha256": "a83fc977f53bed8966f1cc5ccf8321eac7d62d651afa9be1abd492d6134bab4f",
+      "runtime_sha256": "c31bac5e3917fc1c8a5510ecb29673b07a76bd2f92a6d62e03dd6de9ec6a4253",
+      "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+      "placement": {
+        "anchor_x": 0.5291068580542265,
+        "baseline_y": 0.9362041467304625,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5043859649122807,
+          0.4768740031897927
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "ground_anchor": [
+          0.5291068580542265,
+          0.9362041467304625
+        ],
+        "ground_anchor_x": 0.5291068580542265,
+        "ground_anchor_y": 0.9362041467304625,
+        "soil_contact": [
+          0.5291068580542265,
+          0.9362041467304625
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.2254809898982462,
+        "art_bounds": [
+          0.02711324,
+          0.01674641,
+          0.95454545,
+          0.92025518
+        ],
+        "base_bounds": [
+          0.49122807,
+          0.91307815,
+          0.08213716,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.49122807,
+          0.91307815,
+          0.08213716,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "plant_above_rim_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "interaction_bounds": [
+          0.02711324,
+          0.01674641,
+          0.95454545,
+          0.92025518
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.02631579,
+          0.01594896,
+          0.95614035,
+          0.92264753
+        ],
+        "thumbnail_optical_center": [
+          0.5043859649122807,
+          0.4768740031897927
+        ],
+        "thumbnail_safe_padding": 0.08
+      }
+    },
+    "plant_lavender_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_rare_alpha.png",
+      "source_master_sha256": "76d28e4a8c938ad7eb7079cdf62317764ba334016fa57bcc34bd4a067b171f12",
+      "runtime_sha256": "ba2269df4ec6b001db69a0ac3164471265a5259d86900bc2e5b848d8f50805d4",
+      "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
+      "placement": {
+        "anchor_x": 0.44577352472089316,
+        "baseline_y": 0.9521531100478469,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5007974481658692,
+          0.48724082934609253
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "ground_anchor": [
+          0.44577352472089316,
+          0.9521531100478469
+        ],
+        "ground_anchor_x": 0.44577352472089316,
+        "ground_anchor_y": 0.9521531100478469,
+        "soil_contact": [
+          0.44577352472089316,
+          0.9521531100478469
+        ],
+        "contact_shadow": [
+          0.78,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "lavender-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.2997525650435944,
+        "art_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "base_bounds": [
+          0.21052632,
+          0.92902711,
+          0.64433812,
+          0.02392344
+        ],
+        "support_bounds": [
+          0.21052632,
+          0.92902711,
+          0.64433812,
+          0.02392344
+        ],
+        "foliage_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "plant_above_rim_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "interaction_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.02232855,
+          0.0215311,
+          0.9569378,
+          0.93141946
+        ],
+        "thumbnail_optical_center": [
+          0.5007974481658692,
+          0.48724082934609253
+        ],
+        "thumbnail_safe_padding": 0.08
+      }
+    },
+    "plant_hydrangea_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_seed_master.png",
+      "source_master_sha256": "9497e3f314e593f20159c80ab938cc716274c690668e1f7992179af4d4e04e60",
+      "runtime_sha256": "2ee5d5840c3dee84f38e434d6d85c5507de9ba3bc35336a91160c7d8e9ab80d3",
+      "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
+      "placement": {
+        "anchor_x": 0.602472,
+        "baseline_y": 0.91866,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.505981,
+          0.836922
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.394737,
+          0.745614,
+          0.218501,
+          0.180223
+        ],
+        "ground_anchor": [
+          0.602472,
+          0.91866
+        ],
+        "ground_anchor_x": 0.602472,
+        "ground_anchor_y": 0.91866,
+        "soil_contact": [
+          0.602472,
+          0.91866
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "hydrangea-redesign-20260905-190543",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.55,
+        "art_bounds": [
+          0.403509,
+          0.755183,
+          0.204944,
+          0.163477
+        ],
+        "base_bounds": [
+          0.582472,
+          0.89666,
+          0.04,
+          0.022
+        ],
+        "support_bounds": [
+          0.582472,
+          0.89666,
+          0.04,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.394737,
+          0.745614,
+          0.218501,
+          0.180223
+        ],
+        "plant_above_rim_bounds": [
+          0.394737,
+          0.745614,
+          0.218501,
+          0.180223
+        ],
+        "interaction_bounds": [
+          0.403509,
+          0.755183,
+          0.204944,
+          0.163477
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.403509,
+          0.755183,
+          0.204944,
+          0.163477
+        ],
+        "thumbnail_optical_center": [
+          0.505981,
+          0.836922
+        ],
+        "max_visible_width": 1.0,
+        "max_visible_height": 1.0
+      }
+    },
+    "plant_hydrangea_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_sprout_master.png",
+      "source_master_sha256": "0df1f972fd844114578a1a5f1b74c2b52bd7eadb9d9d792d2b99fcfaa1a1eb65",
+      "runtime_sha256": "323b53b4c1c0bc5704bf8620d433155a0d6749e66264b4194a7629c10454e54f",
+      "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
+      "placement": {
+        "anchor_x": 0.496013,
+        "baseline_y": 0.88756,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.496013,
+          0.701356
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.245614,
+          0.507974,
+          0.500797,
+          0.386762
+        ],
+        "ground_anchor": [
+          0.496013,
+          0.88756
+        ],
+        "ground_anchor_x": 0.496013,
+        "ground_anchor_y": 0.88756,
+        "soil_contact": [
+          0.496013,
+          0.88756
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "hydrangea-redesign-20260905-190543",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.78,
+        "art_bounds": [
+          0.254386,
+          0.515152,
+          0.483254,
+          0.372408
+        ],
+        "base_bounds": [
+          0.473513,
+          0.86556,
+          0.045,
+          0.022
+        ],
+        "support_bounds": [
+          0.473513,
+          0.86556,
+          0.045,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.245614,
+          0.507974,
+          0.500797,
+          0.386762
+        ],
+        "plant_above_rim_bounds": [
+          0.245614,
+          0.507974,
+          0.500797,
+          0.386762
+        ],
+        "interaction_bounds": [
+          0.254386,
+          0.515152,
+          0.483254,
+          0.372408
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.254386,
+          0.515152,
+          0.483254,
+          0.372408
+        ],
+        "thumbnail_optical_center": [
+          0.496013,
+          0.701356
+        ],
+        "max_visible_width": 1.0,
+        "max_visible_height": 1.0
+      }
+    },
+    "plant_hydrangea_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_young_master.png",
+      "source_master_sha256": "1dceb32b98463fc0bdaeebd6d59bb5f3f5fe94f97d8ac9cc237934562dfb300f",
+      "runtime_sha256": "626c72f75cda18102bd85edcc644a154f68f7a36e72ce02cf3e0d0899ba0faaa",
+      "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
+      "placement": {
+        "anchor_x": 0.503589,
+        "baseline_y": 0.898724,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.48445,
+          0.573365
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.191388,
+          0.242424,
+          0.586124,
+          0.664274
+        ],
+        "ground_anchor": [
+          0.503589,
+          0.898724
+        ],
+        "ground_anchor_x": 0.503589,
+        "ground_anchor_y": 0.898724,
+        "soil_contact": [
+          0.503589,
+          0.898724
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "hydrangea-redesign-20260905-190543",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.96,
+        "art_bounds": [
+          0.19697,
+          0.248006,
+          0.57496,
+          0.650718
+        ],
+        "base_bounds": [
+          0.476089,
+          0.876724,
+          0.055,
+          0.022
+        ],
+        "support_bounds": [
+          0.476089,
+          0.876724,
+          0.055,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.191388,
+          0.242424,
+          0.586124,
+          0.664274
+        ],
+        "plant_above_rim_bounds": [
+          0.191388,
+          0.242424,
+          0.586124,
+          0.664274
+        ],
+        "interaction_bounds": [
+          0.19697,
+          0.248006,
+          0.57496,
+          0.650718
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.19697,
+          0.248006,
+          0.57496,
+          0.650718
+        ],
+        "thumbnail_optical_center": [
+          0.48445,
+          0.573365
+        ],
+        "max_visible_width": 1.0,
+        "max_visible_height": 1.0
+      }
+    },
+    "plant_hydrangea_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_mature_master.png",
+      "source_master_sha256": "adfc0438ffa0e25780c4c3fbddd81f912fd6184474663da104f22c049f35512a",
+      "runtime_sha256": "c31c3bdbaf7779b09a05b2d31ebbdcbdeadbfbbcf718e55aa59e7bde1173a7cd",
+      "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
+      "placement": {
+        "anchor_x": 0.513955,
+        "baseline_y": 0.909888,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.501994,
+          0.495215
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.0311,
+          0.074163,
+          0.941786,
+          0.8437
+        ],
+        "ground_anchor": [
+          0.513955,
+          0.909888
+        ],
+        "ground_anchor_x": 0.513955,
+        "ground_anchor_y": 0.909888,
+        "soil_contact": [
+          0.513955,
+          0.909888
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "hydrangea-redesign-20260905-190543",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.12,
+        "art_bounds": [
+          0.038278,
+          0.080542,
+          0.927432,
+          0.829346
+        ],
+        "base_bounds": [
+          0.481455,
+          0.887888,
+          0.065,
+          0.022
+        ],
+        "support_bounds": [
+          0.481455,
+          0.887888,
+          0.065,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.0311,
+          0.074163,
+          0.941786,
+          0.8437
+        ],
+        "plant_above_rim_bounds": [
+          0.0311,
+          0.074163,
+          0.941786,
+          0.8437
+        ],
+        "interaction_bounds": [
+          0.038278,
+          0.080542,
+          0.927432,
+          0.829346
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.038278,
+          0.080542,
+          0.927432,
+          0.829346
+        ],
+        "thumbnail_optical_center": [
+          0.501994,
+          0.495215
+        ],
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_hydrangea_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_flowering_master.png",
+      "source_master_sha256": "6140e4b92a18c6c738a7fb2aa9149b46cd1d88171fb3c6ef9be45254e403c5dd",
+      "runtime_sha256": "bace828ce634f9200d6945879d1d88d23d523e1f0cc1e863c042296cc3c77158",
+      "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
+      "placement": {
+        "anchor_x": 0.516746,
+        "baseline_y": 0.913876,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.509968,
+          0.500399
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.039075,
+          0.082137,
+          0.945774,
+          0.839713
+        ],
+        "ground_anchor": [
+          0.516746,
+          0.913876
+        ],
+        "ground_anchor_x": 0.516746,
+        "ground_anchor_y": 0.913876,
+        "soil_contact": [
+          0.516746,
+          0.913876
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "hydrangea-redesign-20260905-190543",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.07,
+        "art_bounds": [
+          0.044657,
+          0.086922,
+          0.930622,
+          0.826954
+        ],
+        "base_bounds": [
+          0.479246,
+          0.891876,
+          0.075,
+          0.022
+        ],
+        "support_bounds": [
+          0.479246,
+          0.891876,
+          0.075,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.039075,
+          0.082137,
+          0.945774,
+          0.839713
+        ],
+        "plant_above_rim_bounds": [
+          0.039075,
+          0.082137,
+          0.945774,
+          0.839713
+        ],
+        "interaction_bounds": [
+          0.044657,
+          0.086922,
+          0.930622,
+          0.826954
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.044657,
+          0.086922,
+          0.930622,
+          0.826954
+        ],
+        "thumbnail_optical_center": [
+          0.509968,
+          0.500399
+        ],
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_hydrangea_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_rare_master.png",
+      "source_master_sha256": "c43ddf99101a0f0bb4ff9eba4a212329c9f5c1df263bfc950e430776a8e039fa",
+      "runtime_sha256": "999754e114d70804d88e178e099ebfa16cca460b6f18570f51f6cbc6e07b2e75",
+      "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
+      "placement": {
+        "anchor_x": 0.519139,
+        "baseline_y": 0.954545,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.507975,
+          0.50319
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.047049,
+          0.047049,
+          0.925837,
+          0.913876
+        ],
+        "ground_anchor": [
+          0.519139,
+          0.954545
+        ],
+        "ground_anchor_x": 0.519139,
+        "ground_anchor_y": 0.954545,
+        "soil_contact": [
+          0.519139,
+          0.954545
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "hydrangea-redesign-20260905-190543",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.1,
+        "art_bounds": [
+          0.051037,
+          0.051834,
+          0.913876,
+          0.902711
+        ],
+        "base_bounds": [
+          0.476639,
+          0.932545,
+          0.085,
+          0.022
+        ],
+        "support_bounds": [
+          0.476639,
+          0.932545,
+          0.085,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.047049,
+          0.047049,
+          0.925837,
+          0.913876
+        ],
+        "plant_above_rim_bounds": [
+          0.047049,
+          0.047049,
+          0.925837,
+          0.913876
+        ],
+        "interaction_bounds": [
+          0.051037,
+          0.051834,
+          0.913876,
+          0.902711
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.051037,
+          0.051834,
+          0.913876,
+          0.902711
+        ],
+        "thumbnail_optical_center": [
+          0.507975,
+          0.50319
+        ],
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_peony_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/peony/redesign-20260905-1906/seed-normalized-rgba.png",
+      "source_master_sha256": "b55ef67767c36fc57960530038417c197b894d64061f8018ff23f191ea4172fe",
+      "runtime_sha256": "dfc42281c18aa12606e4bd4aaa10500840e6340dcefa5945a6b8dfbabc52216a",
+      "source": "ImageGen Peony redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.537481,
+          0.724881
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.296651,
+          0.503987,
+          0.480861,
+          0.441786
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.85,
+          0.1
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/peony-redesign/20260905-1906",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.7874,
+        "thumbnail_safe_padding": 0.25,
+        "art_bounds": [
+          0.305423,
+          0.510367,
+          0.464115,
+          0.429027
+        ],
+        "base_bounds": [
+          0.449,
+          0.923394,
+          0.102,
+          0.016
+        ],
+        "support_bounds": [
+          0.449,
+          0.923394,
+          0.102,
+          0.016
+        ],
+        "foliage_bounds": [
+          0.296651,
+          0.503987,
+          0.480861,
+          0.441786
+        ],
+        "plant_above_rim_bounds": [
+          0.296651,
+          0.503987,
+          0.480861,
+          0.441786
+        ],
+        "interaction_bounds": [
+          0.305423,
+          0.510367,
+          0.464115,
+          0.429027
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_peony_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/peony/redesign-20260905-1906/sprout-normalized-rgba.png",
+      "source_master_sha256": "798d42cb42f7d0c0d5303c1d9030aea26de6182013b0b6c5e3c2f42187a69c9a",
+      "runtime_sha256": "d214d8f697ed62064fc2b91100652040c2130f485c14c01d9e6acc4c1ab459cc",
+      "source": "ImageGen Peony redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.493221,
+          0.642743
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.121212,
+          0.339713,
+          0.746411,
+          0.610048
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.85,
+          0.1
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/peony-redesign/20260905-1906",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 1.2314,
+        "art_bounds": [
+          0.128389,
+          0.345295,
+          0.729665,
+          0.594896
+        ],
+        "base_bounds": [
+          0.476,
+          0.923394,
+          0.048,
+          0.016
+        ],
+        "support_bounds": [
+          0.476,
+          0.923394,
+          0.048,
+          0.016
+        ],
+        "foliage_bounds": [
+          0.121212,
+          0.339713,
+          0.746411,
+          0.610048
+        ],
+        "plant_above_rim_bounds": [
+          0.121212,
+          0.339713,
+          0.746411,
+          0.610048
+        ],
+        "interaction_bounds": [
+          0.128389,
+          0.345295,
+          0.729665,
+          0.594896
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_peony_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/peony/redesign-20260905-1906/young-normalized-rgba.png",
+      "source_master_sha256": "b8b2afd76ef26136946603dd8cde9419be36ea197024151cb66bcd8b427376d8",
+      "runtime_sha256": "e183c0ec403c77bfc65b2d15586e74c18ec3bdb9fc0017c7e167749e431b8d60",
+      "source": "ImageGen Peony redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.495613,
+          0.550638
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.125199,
+          0.152313,
+          0.742424,
+          0.793461
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.85,
+          0.1
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/peony-redesign/20260905-1906",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 1.0444,
+        "art_bounds": [
+          0.132376,
+          0.161882,
+          0.726475,
+          0.777512
+        ],
+        "base_bounds": [
+          0.472,
+          0.923394,
+          0.056,
+          0.016
+        ],
+        "support_bounds": [
+          0.472,
+          0.923394,
+          0.056,
+          0.016
+        ],
+        "foliage_bounds": [
+          0.125199,
+          0.152313,
+          0.742424,
+          0.793461
+        ],
+        "plant_above_rim_bounds": [
+          0.125199,
+          0.152313,
+          0.742424,
+          0.793461
+        ],
+        "interaction_bounds": [
+          0.132376,
+          0.161882,
+          0.726475,
+          0.777512
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_peony_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/peony/redesign-20260905-1906/mature-normalized-rgba.png",
+      "source_master_sha256": "9f61357b1ac352cc3139249c8641d95afdfd13a88777168369ed825fb39f904b",
+      "runtime_sha256": "653d8a729b62b534210f3f21a8b8f1e10164ca6f681187d79d905e2410b4104d",
+      "source": "ImageGen Peony redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.49083,
+          0.564195
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.121212,
+          0.179426,
+          0.742424,
+          0.766348
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.85,
+          0.1
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/peony-redesign/20260905-1906",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.1891,
+        "art_bounds": [
+          0.127592,
+          0.188995,
+          0.726475,
+          0.750399
+        ],
+        "base_bounds": [
+          0.474,
+          0.923394,
+          0.052,
+          0.016
+        ],
+        "support_bounds": [
+          0.474,
+          0.923394,
+          0.052,
+          0.016
+        ],
+        "foliage_bounds": [
+          0.121212,
+          0.179426,
+          0.742424,
+          0.766348
+        ],
+        "plant_above_rim_bounds": [
+          0.121212,
+          0.179426,
+          0.742424,
+          0.766348
+        ],
+        "interaction_bounds": [
+          0.127592,
+          0.188995,
+          0.726475,
+          0.750399
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_peony_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/peony/redesign-20260905-1906/flowering-normalized-rgba.png",
+      "source_master_sha256": "016ebed343f7aecc00735b77f6c2843a0d74c36866e017f4febbb4e9b9bd74ec",
+      "runtime_sha256": "36697643644d56903ef6b9ec5379b2c399e7c7617aebd2dc7133e6de2404bcb0",
+      "source": "ImageGen Peony redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.491228,
+          0.566188
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.117225,
+          0.183413,
+          0.746411,
+          0.76236
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.85,
+          0.1
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/peony-redesign/20260905-1906",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.1993,
+        "art_bounds": [
+          0.125997,
+          0.192982,
+          0.730463,
+          0.746411
+        ],
+        "base_bounds": [
+          0.476,
+          0.923394,
+          0.048,
+          0.016
+        ],
+        "support_bounds": [
+          0.476,
+          0.923394,
+          0.048,
+          0.016
+        ],
+        "foliage_bounds": [
+          0.117225,
+          0.183413,
+          0.746411,
+          0.76236
+        ],
+        "plant_above_rim_bounds": [
+          0.117225,
+          0.183413,
+          0.746411,
+          0.76236
+        ],
+        "interaction_bounds": [
+          0.125997,
+          0.192982,
+          0.730463,
+          0.746411
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_peony_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/peony/redesign-20260905-1906/rare-normalized-rgba.png",
+      "source_master_sha256": "4f3068c29720da11f09d9b8f0ec2a613a3901c8d3ace073fd99178c0e1e56bfc",
+      "runtime_sha256": "ca5aee1ee2b7959e7294a38e470907b171f2c32847dd13d5789dcee8a4af74db",
+      "source": "ImageGen Peony redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.496012,
+          0.551037
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.121212,
+          0.1563,
+          0.746411,
+          0.793461
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.85,
+          0.1
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/peony-redesign/20260905-1906",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.1993,
+        "art_bounds": [
+          0.129984,
+          0.161882,
+          0.732057,
+          0.778309
+        ],
+        "base_bounds": [
+          0.464,
+          0.923394,
+          0.072,
+          0.016
+        ],
+        "support_bounds": [
+          0.464,
+          0.923394,
+          0.072,
+          0.016
+        ],
+        "foliage_bounds": [
+          0.121212,
+          0.1563,
+          0.746411,
+          0.793461
+        ],
+        "plant_above_rim_bounds": [
+          0.121212,
+          0.1563,
+          0.746411,
+          0.793461
+        ],
+        "interaction_bounds": [
+          0.129984,
+          0.161882,
+          0.732057,
+          0.778309
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_foxglove_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/foxglove/redesign_20260905/foxglove_seed_alpha.png",
+      "source_master_sha256": "dedbb602a6499167d0da7480e719001eca97f158fa47f4bfa48213609a85f501",
+      "runtime_sha256": "b120f3253df9aac577471fc06970db8fef8ca7d9e75fe63928c7c59537c9e7d9",
+      "source": "ImageGen Foxglove redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.956140350877193,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.500001,
+          0.872009
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.362839,
+          0.784689,
+          0.274322,
+          0.172249
+        ],
+        "ground_anchor": [
+          0.5,
+          0.95614
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.95614,
+        "soil_contact": [
+          0.5,
+          0.95614
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/foxglove-redesign/20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.62,
+        "art_bounds": [
+          0.369219,
+          0.794258,
+          0.261563,
+          0.155502
+        ],
+        "base_bounds": [
+          0.48,
+          0.93414,
+          0.04,
+          0.022
+        ],
+        "support_bounds": [
+          0.48,
+          0.93414,
+          0.04,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.362839,
+          0.784689,
+          0.274322,
+          0.172249
+        ],
+        "plant_above_rim_bounds": [
+          0.362839,
+          0.784689,
+          0.274322,
+          0.172249
+        ],
+        "interaction_bounds": [
+          0.369219,
+          0.794258,
+          0.261563,
+          0.155502
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_safe_padding": 0.06,
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_foxglove_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/foxglove/redesign_20260905/foxglove_sprout_alpha.png",
+      "source_master_sha256": "868182ccbbc52888c0b4b8f9f0396593161a0c6cd1038eda9d8961a45a26ae66",
+      "runtime_sha256": "e4a3c95c415c6f311a6d4d57069b100587045fa471786f4c1a99334cc7e0717f",
+      "source": "ImageGen Foxglove redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.956140350877193,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.499202,
+          0.793859
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.355662,
+          0.632376,
+          0.285486,
+          0.324561
+        ],
+        "ground_anchor": [
+          0.5,
+          0.95614
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.95614,
+        "soil_contact": [
+          0.5,
+          0.95614
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/foxglove-redesign/20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.65,
+        "art_bounds": [
+          0.365231,
+          0.638756,
+          0.267943,
+          0.310207
+        ],
+        "base_bounds": [
+          0.4775,
+          0.93414,
+          0.045,
+          0.022
+        ],
+        "support_bounds": [
+          0.4775,
+          0.93414,
+          0.045,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.355662,
+          0.632376,
+          0.285486,
+          0.324561
+        ],
+        "plant_above_rim_bounds": [
+          0.355662,
+          0.632376,
+          0.285486,
+          0.324561
+        ],
+        "interaction_bounds": [
+          0.365231,
+          0.638756,
+          0.267943,
+          0.310207
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_safe_padding": 0.06,
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_foxglove_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/foxglove/redesign_20260905/foxglove_young_alpha.png",
+      "source_master_sha256": "62984eec6edb889e732b2d8844a3c770daffad98a22511a88ba2a707b3c6109e",
+      "runtime_sha256": "9110a8a3f984b6511adfe0740939a3c65bf18ff742d3546ddfa1d705f414bcee",
+      "source": "ImageGen Foxglove redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.956140350877193,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5,
+          0.769139
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.195375,
+          0.582137,
+          0.60925,
+          0.374801
+        ],
+        "ground_anchor": [
+          0.5,
+          0.95614
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.95614,
+        "soil_contact": [
+          0.5,
+          0.95614
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/foxglove-redesign/20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 1.12,
+        "art_bounds": [
+          0.204944,
+          0.588517,
+          0.590112,
+          0.361244
+        ],
+        "base_bounds": [
+          0.4725,
+          0.93414,
+          0.055,
+          0.022
+        ],
+        "support_bounds": [
+          0.4725,
+          0.93414,
+          0.055,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.195375,
+          0.582137,
+          0.60925,
+          0.374801
+        ],
+        "plant_above_rim_bounds": [
+          0.195375,
+          0.582137,
+          0.60925,
+          0.374801
+        ],
+        "interaction_bounds": [
+          0.204944,
+          0.588517,
+          0.590112,
+          0.361244
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_safe_padding": 0.05,
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_foxglove_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/foxglove/redesign_20260905/foxglove_mature_alpha.png",
+      "source_master_sha256": "bdba07ee43edb56bc61c58dad354851d046309d3ff4f636ddd7c8e469367dcef",
+      "runtime_sha256": "57228ab15d135612bf645eb9e6fb4ca0cd37d42f67e3e3358582ee4c1c035246",
+      "source": "ImageGen Foxglove redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9521531100478469,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.500398,
+          0.486045
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.136364,
+          0.019139,
+          0.73126,
+          0.933812
+        ],
+        "ground_anchor": [
+          0.5,
+          0.952153
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.952153,
+        "soil_contact": [
+          0.5,
+          0.952153
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/foxglove-redesign/20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.3,
+        "art_bounds": [
+          0.142743,
+          0.026316,
+          0.715311,
+          0.919458
+        ],
+        "base_bounds": [
+          0.4675,
+          0.930153,
+          0.065,
+          0.022
+        ],
+        "support_bounds": [
+          0.4675,
+          0.930153,
+          0.065,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.136364,
+          0.019139,
+          0.73126,
+          0.933812
+        ],
+        "plant_above_rim_bounds": [
+          0.136364,
+          0.019139,
+          0.73126,
+          0.933812
+        ],
+        "interaction_bounds": [
+          0.142743,
+          0.026316,
+          0.715311,
+          0.919458
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_safe_padding": 0.04,
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_foxglove_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/foxglove/redesign_20260905/foxglove_flowering_alpha.png",
+      "source_master_sha256": "108c7c0ac8d3ee58ec380188251d35e22dd4900b3bc56c641a0a670ead595c41",
+      "runtime_sha256": "3716010c6fe1d6e56cd9f5f5869d07e4de00f8a53d2dad6e9c412a5474c23807",
+      "source": "ImageGen Foxglove redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9521531100478469,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.499602,
+          0.485646
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.136364,
+          0.019139,
+          0.727273,
+          0.933812
+        ],
+        "ground_anchor": [
+          0.5,
+          0.952153
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.952153,
+        "soil_contact": [
+          0.5,
+          0.952153
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/foxglove-redesign/20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.28,
+        "art_bounds": [
+          0.143541,
+          0.025518,
+          0.712121,
+          0.920255
+        ],
+        "base_bounds": [
+          0.4625,
+          0.930153,
+          0.075,
+          0.022
+        ],
+        "support_bounds": [
+          0.4625,
+          0.930153,
+          0.075,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.136364,
+          0.019139,
+          0.727273,
+          0.933812
+        ],
+        "plant_above_rim_bounds": [
+          0.136364,
+          0.019139,
+          0.727273,
+          0.933812
+        ],
+        "interaction_bounds": [
+          0.143541,
+          0.025518,
+          0.712121,
+          0.920255
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_safe_padding": 0.04,
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_foxglove_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/foxglove/redesign_20260905/foxglove_rare_alpha.png",
+      "source_master_sha256": "16e5d2e60e73bb95b03eff815c8f5673f12dc94a881d61459e7757a9431d70cf",
+      "runtime_sha256": "6f4c6af8e6c71c91d73cbe534f2bdf2cffe3b01ae3e09f6baf37f14d99b4d61c",
+      "source": "ImageGen Foxglove redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9521531100478469,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.5,
+          0.486842
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.136364,
+          0.019139,
+          0.727273,
+          0.933812
+        ],
+        "ground_anchor": [
+          0.5,
+          0.952153
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.952153,
+        "soil_contact": [
+          0.5,
+          0.952153
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/foxglove-redesign/20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.28,
+        "art_bounds": [
+          0.143541,
+          0.027113,
+          0.712919,
+          0.919458
+        ],
+        "base_bounds": [
+          0.4575,
+          0.930153,
+          0.085,
+          0.022
+        ],
+        "support_bounds": [
+          0.4575,
+          0.930153,
+          0.085,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.136364,
+          0.019139,
+          0.727273,
+          0.933812
+        ],
+        "plant_above_rim_bounds": [
+          0.136364,
+          0.019139,
+          0.727273,
+          0.933812
+        ],
+        "interaction_bounds": [
+          0.143541,
+          0.027113,
+          0.712919,
+          0.919458
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_safe_padding": 0.04,
+        "max_visible_width": 0.9,
+        "max_visible_height": 0.9
+      }
+    },
+    "plant_japanese_maple_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/japanese_maple/redesign-20260905/seed-rgba-master.png",
+      "source_master_sha256": "2411ed1cc1c3d73dec988d665adfaa44f7f1619ba346ffc96526314a72c71870",
+      "runtime_sha256": "c93ca1c86606458d79bd843e78e560ca50599ca4a98d89508c005df41dad62f3",
+      "source": "ImageGen Japanese Maple redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.94896331738437,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.592105,
+          0.655502
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.339713,
+          0.362839,
+          0.503987,
+          0.586922
+        ],
+        "ground_anchor": [
+          0.5,
+          0.948963
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.948963,
+        "soil_contact": [
+          0.5,
+          0.948963
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/japanese-maple-redesign/20260905-190604",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.56,
+        "art_bounds": [
+          0.34689,
+          0.370016,
+          0.490431,
+          0.570973
+        ],
+        "base_bounds": [
+          0.475279,
+          0.926963,
+          0.049442,
+          0.022
+        ],
+        "support_bounds": [
+          0.475279,
+          0.926963,
+          0.049442,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.339713,
+          0.362839,
+          0.503987,
+          0.586922
+        ],
+        "plant_above_rim_bounds": [
+          0.339713,
+          0.362839,
+          0.503987,
+          0.586922
+        ],
+        "interaction_bounds": [
+          0.34689,
+          0.370016,
+          0.490431,
+          0.570973
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_japanese_maple_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/japanese_maple/redesign-20260905/sprout-rgba-master.png",
+      "source_master_sha256": "7a0b25c2eda110f5c186beeb7269e319074bb0fa9f8a9cab5071c2796f04758a",
+      "runtime_sha256": "7b2bc696d9754085a5016fe01c9758939e1d6b51e61cff48281f74c69e088a4e",
+      "source": "ImageGen Japanese Maple redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.94896331738437,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.501993,
+          0.671451
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.199362,
+          0.394737,
+          0.60925,
+          0.555024
+        ],
+        "ground_anchor": [
+          0.5,
+          0.948963
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.948963,
+        "soil_contact": [
+          0.5,
+          0.948963
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/japanese-maple-redesign/20260905-190604",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.84,
+        "art_bounds": [
+          0.204944,
+          0.401914,
+          0.594099,
+          0.539075
+        ],
+        "base_bounds": [
+          0.450558,
+          0.926963,
+          0.098884,
+          0.022
+        ],
+        "support_bounds": [
+          0.450558,
+          0.926963,
+          0.098884,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.199362,
+          0.394737,
+          0.60925,
+          0.555024
+        ],
+        "plant_above_rim_bounds": [
+          0.199362,
+          0.394737,
+          0.60925,
+          0.555024
+        ],
+        "interaction_bounds": [
+          0.204944,
+          0.401914,
+          0.594099,
+          0.539075
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_japanese_maple_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/japanese_maple/redesign-20260905/young-rgba-master.png",
+      "source_master_sha256": "0e588e073e0d0254c4d57d12e31ebc42ce9519aac4cb02bf9e7c860e31a9c155",
+      "runtime_sha256": "39dad9794282b0108963e94268878bbd863f66bd04cd530fd2150290bb7c3556",
+      "source": "ImageGen Japanese Maple redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9449760765550239,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.529506,
+          0.543461
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.230463,
+          0.160287,
+          0.480861,
+          0.785486
+        ],
+        "ground_anchor": [
+          0.5,
+          0.944976
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.944976,
+        "soil_contact": [
+          0.5,
+          0.944976
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/japanese-maple-redesign/20260905-190604",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.85,
+        "art_bounds": [
+          0.236045,
+          0.145933,
+          0.586922,
+          0.795056
+        ],
+        "base_bounds": [
+          0.413876,
+          0.922976,
+          0.172249,
+          0.022
+        ],
+        "support_bounds": [
+          0.413876,
+          0.922976,
+          0.172249,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.230463,
+          0.160287,
+          0.480861,
+          0.785486
+        ],
+        "plant_above_rim_bounds": [
+          0.230463,
+          0.160287,
+          0.480861,
+          0.785486
+        ],
+        "interaction_bounds": [
+          0.236045,
+          0.145933,
+          0.586922,
+          0.795056
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_japanese_maple_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/japanese_maple/redesign-20260905/mature-rgba-master.png",
+      "source_master_sha256": "ccaa6758441ad3a04ae90bc996902ab400d35d5db14e6e4e58ecdd4e395412d3",
+      "runtime_sha256": "b2020e36c6c4e0dff54cb3e8e6957245b8ac96fb855e1466f5efcc2b7d25af62",
+      "source": "ImageGen Japanese Maple redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.94896331738437,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.496013,
+          0.494418
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.1563,
+          0.039075,
+          0.683413,
+          0.910686
+        ],
+        "ground_anchor": [
+          0.5,
+          0.948963
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.948963,
+        "soil_contact": [
+          0.5,
+          0.948963
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/japanese-maple-redesign/20260905-190604",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.0,
+        "art_bounds": [
+          0.154705,
+          0.047847,
+          0.682616,
+          0.893142
+        ],
+        "base_bounds": [
+          0.398724,
+          0.926963,
+          0.202552,
+          0.022
+        ],
+        "support_bounds": [
+          0.398724,
+          0.926963,
+          0.202552,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.1563,
+          0.039075,
+          0.683413,
+          0.910686
+        ],
+        "plant_above_rim_bounds": [
+          0.1563,
+          0.039075,
+          0.683413,
+          0.910686
+        ],
+        "interaction_bounds": [
+          0.154705,
+          0.047847,
+          0.682616,
+          0.893142
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_japanese_maple_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/japanese_maple/redesign-20260905/flowering-rgba-master.png",
+      "source_master_sha256": "1c28e899fa712b480302d99b211324083392973ad064c058fcfc7f777d0dfeff",
+      "runtime_sha256": "ae9e3f110e9dfe8dccd3328ce6a476336e69c05c3f8e278245d37e6f82538811",
+      "source": "ImageGen Japanese Maple redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.94896331738437,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.476077,
+          0.494418
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.07815,
+          0.043062,
+          0.796651,
+          0.906699
+        ],
+        "ground_anchor": [
+          0.5,
+          0.948963
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.948963,
+        "soil_contact": [
+          0.5,
+          0.948963
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/japanese-maple-redesign/20260905-190604",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.07,
+        "art_bounds": [
+          0.082137,
+          0.047847,
+          0.787879,
+          0.893142
+        ],
+        "base_bounds": [
+          0.42504,
+          0.926963,
+          0.14992,
+          0.022
+        ],
+        "support_bounds": [
+          0.42504,
+          0.926963,
+          0.14992,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.07815,
+          0.043062,
+          0.796651,
+          0.906699
+        ],
+        "plant_above_rim_bounds": [
+          0.07815,
+          0.043062,
+          0.796651,
+          0.906699
+        ],
+        "interaction_bounds": [
+          0.082137,
+          0.047847,
+          0.787879,
+          0.893142
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_japanese_maple_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/japanese_maple/redesign-20260905/rare-rgba-master.png",
+      "source_master_sha256": "d527f5693f0bb13d26a88b8283f59df31420512520c0e517b21da9338213237a",
+      "runtime_sha256": "1c97482bcf2e145b6c54f373c5703a6c0376f3018f3381cf9a7ad3e0375da6ea",
+      "source": "ImageGen Japanese Maple redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9449760765550239,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.47488,
+          0.494019
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.062201,
+          0.039075,
+          0.828549,
+          0.906699
+        ],
+        "ground_anchor": [
+          0.5,
+          0.944976
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.944976,
+        "soil_contact": [
+          0.5,
+          0.944976
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/japanese-maple-redesign/20260905-190604",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.12,
+        "art_bounds": [
+          0.066188,
+          0.047847,
+          0.817384,
+          0.892344
+        ],
+        "base_bounds": [
+          0.419457,
+          0.922976,
+          0.161085,
+          0.022
+        ],
+        "support_bounds": [
+          0.419457,
+          0.922976,
+          0.161085,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.062201,
+          0.039075,
+          0.828549,
+          0.906699
+        ],
+        "plant_above_rim_bounds": [
+          0.062201,
+          0.039075,
+          0.828549,
+          0.906699
+        ],
+        "interaction_bounds": [
+          0.066188,
+          0.047847,
+          0.817384,
+          0.892344
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_wisteria_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_seed_rgba.png",
+      "source_master_sha256": "52db8530d7b149921ec3c26620f5e6ca78f715923e4ce19e786530afa6ae36ba",
+      "runtime_sha256": "ad31f158b6e5e8bcbbafcadbb3c93777c2709351f80effdbe3c9d0ea1458f6d6",
+      "source": "ImageGen Wisteria redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9003189792663477,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.491627,
+          0.680623
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.242424,
+          0.455343,
+          0.498405,
+          0.450558
+        ],
+        "ground_anchor": [
+          0.5,
+          0.9003189792663477
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.9003189792663477,
+        "soil_contact": [
+          0.5,
+          0.9003189792663477
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/wisteria-redesign/20260905-195101-final",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.5905491198175096,
+        "art_bounds": [
+          0.247209,
+          0.460128,
+          0.488836,
+          0.440989
+        ],
+        "base_bounds": [
+          0.472089,
+          0.885965,
+          0.055821,
+          0.014354
+        ],
+        "support_bounds": [
+          0.472089,
+          0.885965,
+          0.055821,
+          0.014354
+        ],
+        "foliage_bounds": [
+          0.242424,
+          0.455343,
+          0.498405,
+          0.450558
+        ],
+        "plant_above_rim_bounds": [
+          0.242424,
+          0.455343,
+          0.498405,
+          0.450558
+        ],
+        "interaction_bounds": [
+          0.247209,
+          0.460128,
+          0.488836,
+          0.440989
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_wisteria_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_sprout_rgba.png",
+      "source_master_sha256": "b49eb9a36407cadb777731369e2ee8aadb0c04db31fd0dab6d2bfcd73f9ab07a",
+      "runtime_sha256": "e5692480340cc2ca301269befaa184ceb6d679038438ccbcc53e913c317cf3d6",
+      "source": "ImageGen Wisteria redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9003189792663477,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.504386,
+          0.50598
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.212121,
+          0.106061,
+          0.58453,
+          0.799841
+        ],
+        "ground_anchor": [
+          0.5,
+          0.9003189792663477
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.9003189792663477,
+        "soil_contact": [
+          0.5,
+          0.9003189792663477
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/wisteria-redesign/20260905-195101-final",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.612583977741385,
+        "art_bounds": [
+          0.216906,
+          0.110845,
+          0.57496,
+          0.790271
+        ],
+        "base_bounds": [
+          0.374801,
+          0.874801,
+          0.250399,
+          0.025518
+        ],
+        "support_bounds": [
+          0.374801,
+          0.874801,
+          0.250399,
+          0.025518
+        ],
+        "foliage_bounds": [
+          0.212121,
+          0.106061,
+          0.58453,
+          0.799841
+        ],
+        "plant_above_rim_bounds": [
+          0.212121,
+          0.106061,
+          0.58453,
+          0.799841
+        ],
+        "interaction_bounds": [
+          0.216906,
+          0.110845,
+          0.57496,
+          0.790271
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_wisteria_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_young_rgba.png",
+      "source_master_sha256": "1f183c46ed4cee00638ac011444e0897915bab6d937d48a6cbcec7098b341f7d",
+      "runtime_sha256": "b15aec872cc5fc25bac059c87cd6e3c688a05a196a97672dbefdf77e4c392f8d",
+      "source": "ImageGen Wisteria redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9003189792663477,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.486045,
+          0.482457
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.101276,
+          0.059011,
+          0.769537,
+          0.84689
+        ],
+        "ground_anchor": [
+          0.5,
+          0.9003189792663477
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.9003189792663477,
+        "soil_contact": [
+          0.5,
+          0.9003189792663477
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/wisteria-redesign/20260905-195101-final",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 1.0384394319021586,
+        "art_bounds": [
+          0.106061,
+          0.063796,
+          0.759968,
+          0.837321
+        ],
+        "base_bounds": [
+          0.368421,
+          0.873206,
+          0.263158,
+          0.027113
+        ],
+        "support_bounds": [
+          0.368421,
+          0.873206,
+          0.263158,
+          0.027113
+        ],
+        "foliage_bounds": [
+          0.101276,
+          0.059011,
+          0.769537,
+          0.84689
+        ],
+        "plant_above_rim_bounds": [
+          0.101276,
+          0.059011,
+          0.769537,
+          0.84689
+        ],
+        "interaction_bounds": [
+          0.106061,
+          0.063796,
+          0.759968,
+          0.837321
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_wisteria_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_mature_rgba.png",
+      "source_master_sha256": "324321cc2d24b0352829d4c93487b0c918884ee9e8a8c05fd18335ac935a2a7e",
+      "runtime_sha256": "f5b6340d1d2606f4093096819a2973e3a65bc5867ee855fbe478613ea9104e1e",
+      "source": "ImageGen Wisteria redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9003189792663477,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.493222,
+          0.482058
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.062201,
+          0.059011,
+          0.862041,
+          0.846093
+        ],
+        "ground_anchor": [
+          0.5,
+          0.9003189792663477
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.9003189792663477,
+        "soil_contact": [
+          0.5,
+          0.9003189792663477
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/wisteria-redesign/20260905-195101-final",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.1197389762873997,
+        "art_bounds": [
+          0.066986,
+          0.063796,
+          0.852472,
+          0.836523
+        ],
+        "base_bounds": [
+          0.360447,
+          0.873206,
+          0.279107,
+          0.027113
+        ],
+        "support_bounds": [
+          0.360447,
+          0.873206,
+          0.279107,
+          0.027113
+        ],
+        "foliage_bounds": [
+          0.062201,
+          0.059011,
+          0.862041,
+          0.846093
+        ],
+        "plant_above_rim_bounds": [
+          0.062201,
+          0.059011,
+          0.862041,
+          0.846093
+        ],
+        "interaction_bounds": [
+          0.066986,
+          0.063796,
+          0.852472,
+          0.836523
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_wisteria_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_flowering_rgba.png",
+      "source_master_sha256": "2f3b928028c7ebe59ac55cbc15b51c3756727458172f94f239291b8b117d041e",
+      "runtime_sha256": "9c4f6e14d615756d06b60d0c5e06d3397464b682b6078a840f6d2a3bd009978d",
+      "source": "ImageGen Wisteria redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9003189792663477,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.485646,
+          0.494019
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.046252,
+          0.082935,
+          0.878788,
+          0.822169
+        ],
+        "ground_anchor": [
+          0.5,
+          0.9003189792663477
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.9003189792663477,
+        "soil_contact": [
+          0.5,
+          0.9003189792663477
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/wisteria-redesign/20260905-195101-final",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.0660764588941274,
+        "art_bounds": [
+          0.051037,
+          0.087719,
+          0.869219,
+          0.8126
+        ],
+        "base_bounds": [
+          0.375598,
+          0.874003,
+          0.248804,
+          0.026316
+        ],
+        "support_bounds": [
+          0.375598,
+          0.874003,
+          0.248804,
+          0.026316
+        ],
+        "foliage_bounds": [
+          0.046252,
+          0.082935,
+          0.878788,
+          0.822169
+        ],
+        "plant_above_rim_bounds": [
+          0.046252,
+          0.082935,
+          0.878788,
+          0.822169
+        ],
+        "interaction_bounds": [
+          0.051037,
+          0.087719,
+          0.869219,
+          0.8126
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_wisteria_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_rare_rgba.png",
+      "source_master_sha256": "73f9e9f70ceb4c97057b235854224f3bc398556b983469f8d20054e6dfe43030",
+      "runtime_sha256": "aa692b3c328bf9100fdf0d99fc4491e100fbbc1a01fe841d75c2a16cf750457b",
+      "source": "ImageGen Wisteria redesign; approved alpha cleanup; versioned native-alpha master",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9003189792663477,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.501196,
+          0.482058
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.055821,
+          0.059011,
+          0.89075,
+          0.846093
+        ],
+        "ground_anchor": [
+          0.5,
+          0.9003189792663477
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.9003189792663477,
+        "soil_contact": [
+          0.5,
+          0.9003189792663477
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "build/wisteria-redesign/20260905-195101-final",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.1023309589779358,
+        "art_bounds": [
+          0.060606,
+          0.063796,
+          0.88118,
+          0.836523
+        ],
+        "base_bounds": [
+          0.34051,
+          0.873206,
+          0.318979,
+          0.027113
+        ],
+        "support_bounds": [
+          0.34051,
+          0.873206,
+          0.318979,
+          0.027113
+        ],
+        "foliage_bounds": [
+          0.055821,
+          0.059011,
+          0.89075,
+          0.846093
+        ],
+        "plant_above_rim_bounds": [
+          0.055821,
+          0.059011,
+          0.89075,
+          0.846093
+        ],
+        "interaction_bounds": [
+          0.060606,
+          0.063796,
+          0.88118,
+          0.836523
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true
+      }
+    },
+    "plant_dahlia_seed_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/dahlia/seed-revision-20260905-195349/dahlia_seed_single_tuber_normalized_v2.png",
+      "source_master_sha256": "ad0b0b54782b5ed79dca57072bc72e54c46a73f34ee6b74de81ddaa04025d58e",
+      "runtime_sha256": "46d83523ecb4e632c7cd9ead3cebe7b720a0c33373c2897e84c3becf24cc82c6",
+      "source": "ImageGen single dormant Dahlia tuber revision; requested replacement of the three-lobed sprouting cluster; seed-revision-20260905-195349",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9298245614035088,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.600877,
+          0.677432
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.23445,
+          0.417863,
+          0.73445,
+          0.519936
+        ],
+        "ground_anchor": [
+          0.5,
+          0.929825
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.929825,
+        "soil_contact": [
+          0.5,
+          0.929825
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "dahlia-seed-revision-20260905-195349",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.64,
+        "art_bounds": [
+          0.241627,
+          0.424242,
+          0.718501,
+          0.50638
+        ],
+        "base_bounds": [
+          0.48,
+          0.907825,
+          0.04,
+          0.022
+        ],
+        "support_bounds": [
+          0.48,
+          0.907825,
+          0.04,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.23445,
+          0.417863,
+          0.73445,
+          0.519936
+        ],
+        "plant_above_rim_bounds": [
+          0.23445,
+          0.417863,
+          0.73445,
+          0.519936
+        ],
+        "interaction_bounds": [
+          0.241627,
+          0.424242,
+          0.718501,
+          0.50638
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.241627,
+          0.424242,
+          0.718501,
+          0.50638
+        ],
+        "thumbnail_optical_center": [
+          0.600877,
+          0.677432
+        ]
+      }
+    },
+    "plant_dahlia_sprout_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/dahlia/redesign-20260905-190632/dahlia_sprout_normalized_rgba_v1.png",
+      "source_master_sha256": "184d82906042fd8e03336508b26505e86e50716ec451e558dadd7fe333cf8212",
+      "runtime_sha256": "b8ec7caf40a18d97cf07edf2f6382c55fdd65bb9018b0f16be044a17dd440366",
+      "source": "ImageGen targeted Dahlia redesign; transparent source retained; aspect-preserving canvas normalization; 20260905-190632",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9298245614035088,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.49362,
+          0.530303
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.062201,
+          0.121212,
+          0.863636,
+          0.816587
+        ],
+        "ground_anchor": [
+          0.5,
+          0.929825
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.929825,
+        "soil_contact": [
+          0.5,
+          0.929825
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "dahlia-targeted-redesign-20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.78,
+        "art_bounds": [
+          0.067783,
+          0.129984,
+          0.851675,
+          0.800638
+        ],
+        "base_bounds": [
+          0.4775,
+          0.907825,
+          0.045,
+          0.022
+        ],
+        "support_bounds": [
+          0.4775,
+          0.907825,
+          0.045,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.062201,
+          0.121212,
+          0.863636,
+          0.816587
+        ],
+        "plant_above_rim_bounds": [
+          0.062201,
+          0.121212,
+          0.863636,
+          0.816587
+        ],
+        "interaction_bounds": [
+          0.067783,
+          0.129984,
+          0.851675,
+          0.800638
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.067783,
+          0.129984,
+          0.851675,
+          0.800638
+        ],
+        "thumbnail_optical_center": [
+          0.49362,
+          0.530303
+        ]
+      }
+    },
+    "plant_dahlia_young_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/dahlia/redesign-20260905-190632/dahlia_young_normalized_rgba_v1.png",
+      "source_master_sha256": "6f3fb8dd4afd6570230d8c324bd240628b946674cd77c19ab14184d328b6e26b",
+      "runtime_sha256": "f440e9159cf8704e60fd5fefd415b2c451c136191a8dfd9a6bd26add008e201c",
+      "source": "ImageGen targeted Dahlia redesign; transparent source retained; aspect-preserving canvas normalization; 20260905-190632",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9298245614035088,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.507177,
+          0.504784
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.230463,
+          0.070175,
+          0.551037,
+          0.867624
+        ],
+        "ground_anchor": [
+          0.5,
+          0.929825
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.929825,
+        "soil_contact": [
+          0.5,
+          0.929825
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "dahlia-targeted-redesign-20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.86,
+        "art_bounds": [
+          0.23764,
+          0.078947,
+          0.539075,
+          0.851675
+        ],
+        "base_bounds": [
+          0.4725,
+          0.907825,
+          0.055,
+          0.022
+        ],
+        "support_bounds": [
+          0.4725,
+          0.907825,
+          0.055,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.230463,
+          0.070175,
+          0.551037,
+          0.867624
+        ],
+        "plant_above_rim_bounds": [
+          0.230463,
+          0.070175,
+          0.551037,
+          0.867624
+        ],
+        "interaction_bounds": [
+          0.23764,
+          0.078947,
+          0.539075,
+          0.851675
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.23764,
+          0.078947,
+          0.539075,
+          0.851675
+        ],
+        "thumbnail_optical_center": [
+          0.507177,
+          0.504784
+        ]
+      }
+    },
+    "plant_dahlia_mature_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/dahlia/redesign-20260905-190632/dahlia_mature_normalized_rgba_v1.png",
+      "source_master_sha256": "a1633aa1f87db981dc14565660af579fb00d4b231c636013b60e3e6c555d0ec6",
+      "runtime_sha256": "cb5b17fe0210cc15f986d44977e1df538cf9c0a2f9b13bf38c60d6e0be2ed5ab",
+      "source": "ImageGen targeted Dahlia redesign; transparent source retained; aspect-preserving canvas normalization; 20260905-190632",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9298245614035088,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.498007,
+          0.504784
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.164274,
+          0.070175,
+          0.668262,
+          0.867624
+        ],
+        "ground_anchor": [
+          0.5,
+          0.929825
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.929825,
+        "soil_contact": [
+          0.5,
+          0.929825
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "dahlia-targeted-redesign-20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.08,
+        "art_bounds": [
+          0.172249,
+          0.078947,
+          0.651515,
+          0.851675
+        ],
+        "base_bounds": [
+          0.4675,
+          0.907825,
+          0.065,
+          0.022
+        ],
+        "support_bounds": [
+          0.4675,
+          0.907825,
+          0.065,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.164274,
+          0.070175,
+          0.668262,
+          0.867624
+        ],
+        "plant_above_rim_bounds": [
+          0.164274,
+          0.070175,
+          0.668262,
+          0.867624
+        ],
+        "interaction_bounds": [
+          0.172249,
+          0.078947,
+          0.651515,
+          0.851675
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.172249,
+          0.078947,
+          0.651515,
+          0.851675
+        ],
+        "thumbnail_optical_center": [
+          0.498007,
+          0.504784
+        ]
+      }
+    },
+    "plant_dahlia_flowering_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/dahlia/redesign-20260905-190632/dahlia_flowering_normalized_rgba_v1.png",
+      "source_master_sha256": "68c87c76e2814669b9db76111a80849d4c5a199f4d3e00c3fb883e016802e4e6",
+      "runtime_sha256": "6242d893d071e8e6cdfe15f6de0fc33f1d18c6204e765b08ce1c87e7644263dc",
+      "source": "ImageGen targeted Dahlia redesign; transparent source retained; aspect-preserving canvas normalization; 20260905-190632",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9298245614035088,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.511164,
+          0.503987
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.167464,
+          0.070175,
+          0.684211,
+          0.867624
+        ],
+        "ground_anchor": [
+          0.5,
+          0.929825
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.929825,
+        "soil_contact": [
+          0.5,
+          0.929825
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "dahlia-targeted-redesign-20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.07,
+        "art_bounds": [
+          0.176236,
+          0.077352,
+          0.669856,
+          0.85327
+        ],
+        "base_bounds": [
+          0.4625,
+          0.907825,
+          0.075,
+          0.022
+        ],
+        "support_bounds": [
+          0.4625,
+          0.907825,
+          0.075,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.167464,
+          0.070175,
+          0.684211,
+          0.867624
+        ],
+        "plant_above_rim_bounds": [
+          0.167464,
+          0.070175,
+          0.684211,
+          0.867624
+        ],
+        "interaction_bounds": [
+          0.176236,
+          0.077352,
+          0.669856,
+          0.85327
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.176236,
+          0.077352,
+          0.669856,
+          0.85327
+        ],
+        "thumbnail_optical_center": [
+          0.511164,
+          0.503987
+        ]
+      }
+    },
+    "plant_dahlia_rare_twilight_v6": {
+      "source_master_file": "artwork_source/plants/v6/dahlia/redesign-20260905-190632/dahlia_rare_normalized_rgba_v1.png",
+      "source_master_sha256": "6be3e1178de0c41d99ec895b3799b4e3d60297c9021ba63af434033fe174b7e0",
+      "runtime_sha256": "361b1e9e48bc94482d2d957f75f4e0d2c2899a6bacfd2936b605aa5bda0b0ed5",
+      "source": "ImageGen targeted Dahlia redesign; transparent source retained; aspect-preserving canvas normalization; 20260905-190632",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9298245614035088,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.527513,
+          0.504386
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.191388,
+          0.070175,
+          0.668262,
+          0.867624
+        ],
+        "ground_anchor": [
+          0.5,
+          0.929825
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.929825,
+        "soil_contact": [
+          0.5,
+          0.929825
+        ],
+        "contact_shadow": [
+          0.42,
+          0.04
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "dahlia-targeted-redesign-20260905-190632",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.07,
+        "art_bounds": [
+          0.198565,
+          0.07815,
+          0.657895,
+          0.852472
+        ],
+        "base_bounds": [
+          0.4575,
+          0.907825,
+          0.085,
+          0.022
+        ],
+        "support_bounds": [
+          0.4575,
+          0.907825,
+          0.085,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.191388,
+          0.070175,
+          0.668262,
+          0.867624
+        ],
+        "plant_above_rim_bounds": [
+          0.191388,
+          0.070175,
+          0.668262,
+          0.867624
+        ],
+        "interaction_bounds": [
+          0.198565,
+          0.07815,
+          0.657895,
+          0.852472
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.198565,
+          0.07815,
+          0.657895,
+          0.852472
+        ],
+        "thumbnail_optical_center": [
+          0.527513,
+          0.504386
+        ]
+      }
+    }
+  }
+}

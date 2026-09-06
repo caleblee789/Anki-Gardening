@@ -1,0 +1,600 @@
+{
+  "species": "sunflower",
+  "source_file_overrides": {
+    "seed": "redesign-20260905-190549/sunflower_seed_buried_alpha.png",
+    "sprout": "redesign-20260905-190549/sunflower_sprout_alpha.png",
+    "young": "redesign-20260905-190549/sunflower_young_alpha.png",
+    "mature": "redesign-20260905-190549/sunflower_mature_alpha.png",
+    "flowering": "redesign-20260905-190549/sunflower_flowering_alpha.png",
+    "rare": "redesign-20260905-190549/sunflower_rare_alpha.png"
+  },
+  "species_visual_scale": {
+    "seed": 0.53464699,
+    "sprout": 0.89837612,
+    "young": 0.91548414,
+    "mature": 0.94024958,
+    "flowering": 0.81747165,
+    "rare": 1.2583794
+  },
+  "ground_anchor_overrides": {
+    "seed": 0.9393939393939394,
+    "sprout": 0.9393939393939394,
+    "young": 0.9393939393939394,
+    "mature": 0.9393939393939394,
+    "flowering": 0.9393939393939394,
+    "rare": 0.9393939393939394
+  },
+  "placement_overrides_by_asset_id": {
+    "plant_sunflower_seed_twilight_v6": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9393939393939394,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.50598,
+        0.79067
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.296651,
+        0.632376,
+        0.41866,
+        0.317384
+      ],
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.939394,
+      "soil_contact": [
+        0.5,
+        0.939394
+      ],
+      "contact_shadow": [
+        0.9,
+        0.07
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "sunflower-redesign-20260905-190549",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.55,
+      "visual_scale_correction": 0.53464699,
+      "art_bounds": [
+        0.304625,
+        0.641148,
+        0.402711,
+        0.299043
+      ],
+      "base_bounds": [
+        0.305024,
+        0.917394,
+        0.389952,
+        0.022
+      ],
+      "support_bounds": [
+        0.305024,
+        0.917394,
+        0.389952,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.296651,
+        0.632376,
+        0.41866,
+        0.317384
+      ],
+      "plant_above_rim_bounds": [
+        0.296651,
+        0.632376,
+        0.41866,
+        0.317384
+      ],
+      "interaction_bounds": [
+        0.304625,
+        0.641148,
+        0.402711,
+        0.299043
+      ],
+      "layout_family": "compact",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true,
+      "thumbnail_bounds": [
+        0.304625,
+        0.641148,
+        0.402711,
+        0.299043
+      ],
+      "thumbnail_optical_center": [
+        0.5,
+        0.5
+      ],
+      "thumbnail_safe_padding": 0.1
+    },
+    "plant_sunflower_sprout_twilight_v6": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9393939393939394,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.483254,
+        0.671451
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.167464,
+        0.394737,
+        0.633174,
+        0.555024
+      ],
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.939394,
+      "soil_contact": [
+        0.5,
+        0.939394
+      ],
+      "contact_shadow": [
+        0.9,
+        0.07
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "sunflower-redesign-20260905-190549",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.58,
+      "visual_scale_correction": 0.89837612,
+      "art_bounds": [
+        0.175439,
+        0.402711,
+        0.61563,
+        0.53748
+      ],
+      "base_bounds": [
+        0.471292,
+        0.917394,
+        0.057416,
+        0.022
+      ],
+      "support_bounds": [
+        0.471292,
+        0.917394,
+        0.057416,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.167464,
+        0.394737,
+        0.633174,
+        0.555024
+      ],
+      "plant_above_rim_bounds": [
+        0.167464,
+        0.394737,
+        0.633174,
+        0.555024
+      ],
+      "interaction_bounds": [
+        0.175439,
+        0.402711,
+        0.61563,
+        0.53748
+      ],
+      "layout_family": "compact",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true,
+      "thumbnail_bounds": [
+        0.175439,
+        0.402711,
+        0.61563,
+        0.53748
+      ],
+      "thumbnail_optical_center": [
+        0.5,
+        0.5
+      ],
+      "thumbnail_safe_padding": 0.1
+    },
+    "plant_sunflower_young_twilight_v6": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9393939393939394,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.496811,
+        0.50598
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.1874,
+        0.066188,
+        0.617225,
+        0.883573
+      ],
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.939394,
+      "soil_contact": [
+        0.5,
+        0.939394
+      ],
+      "contact_shadow": [
+        0.9,
+        0.07
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "sunflower-redesign-20260905-190549",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.7,
+      "visual_scale_correction": 0.91548414,
+      "art_bounds": [
+        0.19697,
+        0.07177,
+        0.599681,
+        0.868421
+      ],
+      "base_bounds": [
+        0.473285,
+        0.917394,
+        0.053429,
+        0.022
+      ],
+      "support_bounds": [
+        0.473285,
+        0.917394,
+        0.053429,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.1874,
+        0.066188,
+        0.617225,
+        0.883573
+      ],
+      "plant_above_rim_bounds": [
+        0.1874,
+        0.066188,
+        0.617225,
+        0.883573
+      ],
+      "interaction_bounds": [
+        0.19697,
+        0.07177,
+        0.599681,
+        0.868421
+      ],
+      "layout_family": "standard",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true,
+      "thumbnail_bounds": [
+        0.19697,
+        0.07177,
+        0.599681,
+        0.868421
+      ],
+      "thumbnail_optical_center": [
+        0.5,
+        0.5
+      ],
+      "thumbnail_safe_padding": 0.1
+    },
+    "plant_sunflower_mature_twilight_v6": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9393939393939394,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.499202,
+        0.495215
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.245614,
+        0.043062,
+        0.504785,
+        0.902711
+      ],
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.939394,
+      "soil_contact": [
+        0.5,
+        0.939394
+      ],
+      "contact_shadow": [
+        0.9,
+        0.07
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "sunflower-redesign-20260905-190549",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.8,
+      "visual_scale_correction": 0.94024958,
+      "art_bounds": [
+        0.254386,
+        0.051037,
+        0.489633,
+        0.888357
+      ],
+      "base_bounds": [
+        0.476475,
+        0.917394,
+        0.047049,
+        0.022
+      ],
+      "support_bounds": [
+        0.476475,
+        0.917394,
+        0.047049,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.245614,
+        0.043062,
+        0.504785,
+        0.902711
+      ],
+      "plant_above_rim_bounds": [
+        0.245614,
+        0.043062,
+        0.504785,
+        0.902711
+      ],
+      "interaction_bounds": [
+        0.254386,
+        0.051037,
+        0.489633,
+        0.888357
+      ],
+      "layout_family": "standard",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true,
+      "thumbnail_bounds": [
+        0.254386,
+        0.051037,
+        0.489633,
+        0.888357
+      ],
+      "thumbnail_optical_center": [
+        0.5,
+        0.5
+      ],
+      "thumbnail_safe_padding": 0.1
+    },
+    "plant_sunflower_flowering_twilight_v6": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9393939393939394,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.513158,
+        0.496012
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.273525,
+        0.043062,
+        0.476874,
+        0.906699
+      ],
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.939394,
+      "soil_contact": [
+        0.5,
+        0.939394
+      ],
+      "contact_shadow": [
+        0.9,
+        0.07
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "sunflower-redesign-20260905-190549",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.98,
+      "visual_scale_correction": 0.81747165,
+      "art_bounds": [
+        0.283094,
+        0.051834,
+        0.460128,
+        0.888357
+      ],
+      "base_bounds": [
+        0.481659,
+        0.917394,
+        0.036683,
+        0.022
+      ],
+      "support_bounds": [
+        0.481659,
+        0.917394,
+        0.036683,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.273525,
+        0.043062,
+        0.476874,
+        0.906699
+      ],
+      "plant_above_rim_bounds": [
+        0.273525,
+        0.043062,
+        0.476874,
+        0.906699
+      ],
+      "interaction_bounds": [
+        0.283094,
+        0.051834,
+        0.460128,
+        0.888357
+      ],
+      "layout_family": "expanded",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true,
+      "thumbnail_bounds": [
+        0.283094,
+        0.051834,
+        0.460128,
+        0.888357
+      ],
+      "thumbnail_optical_center": [
+        0.5,
+        0.5
+      ],
+      "thumbnail_safe_padding": 0.1
+    },
+    "plant_sunflower_rare_twilight_v6": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9393939393939394,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.49362,
+        0.495614
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.171451,
+        0.043062,
+        0.645136,
+        0.902711
+      ],
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.939394,
+      "soil_contact": [
+        0.5,
+        0.939394
+      ],
+      "contact_shadow": [
+        0.9,
+        0.07
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "sunflower-redesign-20260905-190549",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.98,
+      "visual_scale_correction": 1.2583794,
+      "art_bounds": [
+        0.177033,
+        0.051834,
+        0.633174,
+        0.88756
+      ],
+      "base_bounds": [
+        0.480463,
+        0.917394,
+        0.039075,
+        0.022
+      ],
+      "support_bounds": [
+        0.480463,
+        0.917394,
+        0.039075,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.171451,
+        0.043062,
+        0.645136,
+        0.902711
+      ],
+      "plant_above_rim_bounds": [
+        0.171451,
+        0.043062,
+        0.645136,
+        0.902711
+      ],
+      "interaction_bounds": [
+        0.177033,
+        0.051834,
+        0.633174,
+        0.88756
+      ],
+      "layout_family": "expanded",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true,
+      "thumbnail_bounds": [
+        0.177033,
+        0.051834,
+        0.633174,
+        0.88756
+      ],
+      "thumbnail_optical_center": [
+        0.5,
+        0.5
+      ],
+      "thumbnail_safe_padding": 0.1
+    }
+  },
+  "integration_note": "The global installer hardcodes base widths, shadow dimensions, and thumbnail bounds. Apply these keyed placement overrides after generic _metadata derivation so a rebuild reproduces the reviewed Sunflower geometry. Do not rewrite unrelated species entries."
+}

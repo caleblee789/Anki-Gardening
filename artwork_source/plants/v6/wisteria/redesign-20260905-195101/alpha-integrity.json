@@ -1,0 +1,26 @@
+{
+  "seed": {
+    "alpha_identical_to_first_pass": true,
+    "cyan_edge_matches": 0
+  },
+  "sprout": {
+    "alpha_identical_to_first_pass": true,
+    "cyan_edge_matches": 0
+  },
+  "young": {
+    "alpha_identical_to_first_pass": true,
+    "cyan_edge_matches": 0
+  },
+  "mature": {
+    "alpha_identical_to_first_pass": true,
+    "cyan_edge_matches": 0
+  },
+  "flowering": {
+    "alpha_identical_to_first_pass": true,
+    "cyan_edge_matches": 0
+  },
+  "rare": {
+    "alpha_identical_to_first_pass": true,
+    "cyan_edge_matches": 0
+  }
+}

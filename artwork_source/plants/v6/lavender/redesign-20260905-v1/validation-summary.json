@@ -1,0 +1,148 @@
+{
+  "completed_at": "2026-09-06T01:22:00.069670+00:00",
+  "species": "lavender",
+  "status": "species assets complete; coordinator metadata integration pending",
+  "runtime_assets_installed": true,
+  "shared_manifest_changed_by_this_lane": false,
+  "shared_installer_changed_by_this_lane": false,
+  "shared_renderer_changed_by_this_lane": false,
+  "source_and_runtime_checks": {
+    "six_sources_and_runtime_hashes_match": true,
+    "rgba_canvas": [
+      1254,
+      1254
+    ],
+    "encoding": "lossless WebP",
+    "png_runtime_alpha_and_color_parity": true,
+    "current_shared_lavender_entries_match_prior_hashes": true,
+    "candidate_overlay_only_six_lavender_images_and_manifest": true
+  },
+  "full_bloom_geometry": {
+    "width_ratio_to_flowering": 1.0606060606060606,
+    "height_ratio_to_flowering": 1.0707893497041119,
+    "bounding_area_ratio_to_flowering": 1.1356856739286034,
+    "normalized_silhouette_iou": 0.6498018615795779,
+    "iou_method": "alpha >= 192; each tight mask resized to 256 square with nearest-neighbor; intersection / union",
+    "passes_existing_limits": true
+  },
+  "offscreen_qa": {
+    "garden_renders": 270,
+    "icon_exports": 180,
+    "sceneries": 9,
+    "garden_sizes": [
+      [
+        1260,
+        840
+      ],
+      [
+        572,
+        382
+      ]
+    ],
+    "geometry_warnings": 0,
+    "icon_logical_sizes": [
+      32,
+      36,
+      40,
+      44,
+      48,
+      52,
+      56,
+      64,
+      88,
+      92,
+      96,
+      108,
+      128,
+      132,
+      136
+    ],
+    "icon_dprs": [
+      1,
+      2
+    ],
+    "all_render_file_hashes_verified": true
+  },
+  "native_qa": {
+    "anki_version": "26.08.1",
+    "capture_count": 14,
+    "base": "/private/tmp/anki-release-qa.8_z6mfiv",
+    "profile": "Codex QA Lavender 20260905 1945",
+    "pid": 40278,
+    "sync": "disabled-and-disconnected",
+    "isolation_passed": true,
+    "archive_sha256": "bb5a6ece4147e17166950526f86b45a29b053d8df94bc057821516972bf0af14",
+    "installed_package_files_byte_matched": 346,
+    "native_capture_hashes_verified": true,
+    "graceful_shutdown_process_exited": true,
+    "surfaces": [
+      "01-home",
+      "02-garden-six-stages",
+      "03-collection",
+      "04-species-overview",
+      "05-plant-details-seed",
+      "06-plant-details-sprout",
+      "07-plant-details-young",
+      "08-plant-details-mature",
+      "09-plant-details-flowering",
+      "10-plant-details-rare",
+      "11-shop-lavender-seed",
+      "12-reviewer-hud",
+      "13-reviewer-full-bloom-reward",
+      "14-reviewer-active-full-bloom"
+    ],
+    "reward_fixture_note": "13 uses a different owned plant; 14 correctly exercises the active Full Bloom hero",
+    "log_note": "Shop fixture replacement triggers transient missing-art warnings from hidden old plant detail widgets; final Lavender art is present.",
+    "release_evidence": false
+  },
+  "existing_tests": {
+    "passed": 170,
+    "skipped": 6,
+    "failed": 1,
+    "command": "ANKI_GARDEN_SKIP_STARTUP=1 python -m pytest -q tests/test_asset_selection.py tests/test_plant_display.py tests/test_asset_retina_audit.py -m ''",
+    "run_against": "source-snapshot with candidate overlay",
+    "failure": "test_production_asset_catalog_passes_retina_density_gate: pre-existing catalog counts expected cosmetics=8/garden_features=8; actual=3/7",
+    "separate_existing_plant_and_retina_validator_calls": "pass for all 60 plant entries",
+    "new_tests_added": false
+  },
+  "review_pages": [
+    {
+      "file": "lavender-scenery-page-1.png",
+      "sha256": "2a177d0544f75cf97ea5ff70dc4b2a810091dd44034bab80b8c5674e6e36eedd"
+    },
+    {
+      "file": "lavender-scenery-page-2.png",
+      "sha256": "e676ab001bf2c68884d84ff9a149f6832627166d9c4eef2d17e6db9911f75997"
+    },
+    {
+      "file": "lavender-icons-light-1x.png",
+      "sha256": "ad9aa714d485c83dc0d596d2904cb16b5b1c277fa8f3a3cda09c05263a625653"
+    },
+    {
+      "file": "lavender-icons-light-2x.png",
+      "sha256": "7f5d3d1216871fa33d8c389764b6ccbb07e63374a8d41753b9d77e4827182794"
+    },
+    {
+      "file": "lavender-icons-dark-1x.png",
+      "sha256": "49d9ca50702bc72614671d36135fafea5a1b61a86cfec260ec6f520267309e64"
+    },
+    {
+      "file": "lavender-icons-dark-2x.png",
+      "sha256": "35a6ab405f63d746ac6d586dda598f64dc82cba9f15c1ac61cf94b7947af32bd"
+    },
+    {
+      "file": "lavender-full-garden-overview.png",
+      "sha256": "0b4b796c087df1e5855686ea736673f44ad159eac74fcb616ecc482272ccb868"
+    },
+    {
+      "file": "lavender-mixed-garden-overview.png",
+      "sha256": "18bfc9bdafc1fc065582c8228d04385eca07ac152d34f1298847495b110ef76a"
+    }
+  ],
+  "handoff_file": "/Users/test/Documents/Anki Gardening.nosync/artwork_source/plants/v6/lavender/redesign-20260905-v1/integration-handoff.json",
+  "limitations": [
+    "Frozen single-species candidate, not a release acceptance run.",
+    "Coordinator must apply the six checked manifest replacements and installer deltas and perform combined integration validation.",
+    "Scene lighting, shadows, and neighboring species refer to the recorded frozen renderer and catalog."
+  ]
+}

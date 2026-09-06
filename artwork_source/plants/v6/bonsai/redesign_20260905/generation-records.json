@@ -1,0 +1,42 @@
+{
+  "created_at": "2026-09-06T00:28:07.459529+00:00",
+  "tool": "built-in image_gen",
+  "records": {
+    "seed": {
+      "generated_original": "/Users/test/.codex/generated_images/01a073f3-d702-71d1-9430-2ac208ea5a92/exec-cdcb38cc-5cce-46b5-956d-970b4acbaf29.png",
+      "source_master": "artwork_source/plants/v6/bonsai/redesign_20260905/generated/bonsai_seed_imagegen_v1.png",
+      "sha256": "dc50468ea2c0931b7357e9b609281e6d09237483d96f01ae7bfe93aaa06417ec",
+      "source_mode": "cyan_matte"
+    },
+    "sprout": {
+      "generated_original": "/Users/test/.codex/generated_images/01a073f3-d702-71d1-9430-2ac208ea5a92/exec-680b9d2f-f294-48b1-8e6b-bf1be2ac85e9.png",
+      "source_master": "artwork_source/plants/v6/bonsai/redesign_20260905/generated/bonsai_sprout_imagegen_v1.png",
+      "sha256": "3ccb36f70ab5468526618f739b54ff32f461cca106085a4cab7fe719b30b0fb0",
+      "source_mode": "native_alpha"
+    },
+    "young": {
+      "generated_original": "/Users/test/.codex/generated_images/01a073f3-d702-71d1-9430-2ac208ea5a92/exec-f9da7de4-0dbc-4f54-9cb5-a9555953c4b6.png",
+      "source_master": "artwork_source/plants/v6/bonsai/redesign_20260905/generated/bonsai_young_imagegen_v1.png",
+      "sha256": "5c46417dc86881695f6891baa9f4de86ab8325f5c3c0c69d5aeb21b5d74714d4",
+      "source_mode": "cyan_matte"
+    },
+    "mature": {
+      "generated_original": "/Users/test/.codex/generated_images/01a073f3-d702-71d1-9430-2ac208ea5a92/exec-e4dc4117-6e6a-4b14-aa38-e58490d4da98.png",
+      "source_master": "artwork_source/plants/v6/bonsai/redesign_20260905/generated/bonsai_mature_imagegen_v1.png",
+      "sha256": "98ffce3d102a438eacf999acceaa9ca646173df09790b3183c173b4f9b941ba2",
+      "source_mode": "native_alpha"
+    },
+    "flowering": {
+      "generated_original": "/Users/test/.codex/generated_images/01a073f3-d702-71d1-9430-2ac208ea5a92/exec-4c11513c-5d8b-4372-92a2-c84c4b00c598.png",
+      "source_master": "artwork_source/plants/v6/bonsai/redesign_20260905/generated/bonsai_flowering_imagegen_v1.png",
+      "sha256": "ba1c223c5de895a5380de91f7420889035a3e7a68ba5714a307d2053f9a43d95",
+      "source_mode": "cyan_matte"
+    },
+    "rare": {
+      "generated_original": "/Users/test/.codex/generated_images/01a073f3-d702-71d1-9430-2ac208ea5a92/exec-dab5da7a-8caa-4ab8-87fd-76ac55d16c5c.png",
+      "source_master": "artwork_source/plants/v6/bonsai/redesign_20260905/generated/bonsai_rare_imagegen_v1.png",
+      "sha256": "46c6ce5c8ed27f8c48cd5993265dcb25260a9849ef9ee3fdb860680fff5f066b",
+      "source_mode": "cyan_matte"
+    }
+  }
+}

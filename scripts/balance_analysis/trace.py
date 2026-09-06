@@ -118,7 +118,7 @@ REQUIRED_PARITY_STATE_FIELDS: Tuple[str, ...] = (
     "environment_pity_counters",
     "environment_ownership",
     "todays_cards_completion_state",
-    "daily_loadout_snapshot",
+    "equipped_items",
     "reward_identities",
     "purchase_identities",
     "undo_lineage",
@@ -1154,7 +1154,6 @@ def project_production_release_state(engine: Any) -> Mapping[str, object]:
         for plant in sorted(state.plants, key=lambda item: item.plant_id)
     )
     completion = state.daily_completion
-    loadout = state.daily_loadout
     inventory = state.inventory
     find_status = engine.garden_find_status()
     return {
@@ -1277,11 +1276,9 @@ def project_production_release_state(engine: Any) -> Mapping[str, object]:
             "reward_claimed": bool(completion.reward_claimed),
             "completed_due_cards": bool(state.daily_stats.completed_due_cards),
         },
-        "daily_loadout_snapshot": {
-            "scheduler_day": str(loadout.scheduler_day),
-            "garden_feature_id": str(loadout.garden_feature_id),
-            "scenery_id": str(loadout.scenery_id),
-            "locked_at_ms": max(0, int(loadout.locked_at_ms)),
+        "equipped_items": {
+            "decoration_id": str(state.loadout.display_decoration_id),
+            "scenery_id": str(state.loadout.display_scenery_id),
         },
         "reward_identities": reward_identities,
         "purchase_identities": purchase_identities,

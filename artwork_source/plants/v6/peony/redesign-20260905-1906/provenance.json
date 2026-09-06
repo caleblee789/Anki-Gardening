@@ -1,0 +1,991 @@
+{
+  "species": "peony",
+  "task": "Peony - Redesign",
+  "artwork_generator": "ImageGen native tool",
+  "runtime_canvas": [
+    1254,
+    1254
+  ],
+  "runtime_encoding": "lossless RGBA WebP, exact=True",
+  "records": [
+    {
+      "stage": "seed",
+      "generated_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/seed-chroma-generated.png",
+      "generated_sha256": "0b7cb294eb4321256c7103d10c432f7fdfd38f8f14c6cbc59ab4adcd440642b4",
+      "normalized_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/seed-normalized-rgba.png",
+      "normalized_sha256": "b55ef67767c36fc57960530038417c197b894d64061f8018ff23f191ea4172fe",
+      "source": "artwork_source/plants/v6/peony/peony_seed_chroma.png",
+      "source_sha256": "930e474d4c7d77b756ce7fd6158f6d7992bf25bcfa23ffa4f4472c9be5a44acf",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/plants/peony/seed/peony_seed_twilight_v6.webp",
+      "runtime_sha256": "dfc42281c18aa12606e4bd4aaa10500840e6340dcefa5945a6b8dfbabc52216a",
+      "normalized_rgba_equals_runtime": true,
+      "source_opaque_pixel_count": 272170,
+      "edge_despill_opaque_pixels": 456,
+      "matte_removed_pixels": 1031,
+      "additional_edge_despill_pixels": 526,
+      "opaque_interior_changed_pixels": 0,
+      "post_resize_edge_despill_pixels": 0,
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "alpha_bounds": [
+        379,
+        636,
+        968,
+        1181
+      ],
+      "primary_bounds": [
+        372,
+        632,
+        975,
+        1186
+      ],
+      "normalization": {
+        "uniform_scale": 0.9554140127388535,
+        "offset": [
+          375,
+          632
+        ],
+        "source_root_x": 578,
+        "source_root_y": 920
+      }
+    },
+    {
+      "stage": "sprout",
+      "generated_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/sprout-chroma-generated.png",
+      "generated_sha256": "ade9b58d1323efa30de7a739dac64564a9406d7a68740c2bfd5855c058b6f28f",
+      "normalized_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/sprout-normalized-rgba.png",
+      "normalized_sha256": "798d42cb42f7d0c0d5303c1d9030aea26de6182013b0b6c5e3c2f42187a69c9a",
+      "source": "artwork_source/plants/v6/peony/peony_sprout_chroma.png",
+      "source_sha256": "f751ca242ebecaa57d02b50466374f1ecbb4257f9f58f2887a4b989a02d1ed8c",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/plants/peony/sprout/peony_sprout_twilight_v6.webp",
+      "runtime_sha256": "d214d8f697ed62064fc2b91100652040c2130f485c14c01d9e6acc4c1ab459cc",
+      "normalized_rgba_equals_runtime": true,
+      "source_opaque_pixel_count": 501000,
+      "edge_despill_opaque_pixels": 1798,
+      "matte_removed_pixels": 6938,
+      "additional_edge_despill_pixels": 1925,
+      "opaque_interior_changed_pixels": 0,
+      "post_resize_edge_despill_pixels": 2,
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "alpha_bounds": [
+        159,
+        431,
+        1079,
+        1181
+      ],
+      "primary_bounds": [
+        152,
+        426,
+        1088,
+        1191
+      ],
+      "normalization": {
+        "uniform_scale": 0.7775919732441472,
+        "offset": [
+          155,
+          427
+        ],
+        "source_root_x": 639.0,
+        "source_root_y": 1086
+      }
+    },
+    {
+      "stage": "young",
+      "generated_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/young-chroma-generated.png",
+      "generated_sha256": "24fd7fc65c44791f88aeeef761c33173c7abdb6a4cc054bfcb003cd391e47c2f",
+      "normalized_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/young-normalized-rgba.png",
+      "normalized_sha256": "b8b2afd76ef26136946603dd8cde9419be36ea197024151cb66bcd8b427376d8",
+      "source": "artwork_source/plants/v6/peony/peony_young_chroma.png",
+      "source_sha256": "87a4d38545383096bd6e57037d9be1bb32401a17213ebdcd9bfd2209bcbf4f9a",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/plants/peony/young/peony_young_twilight_v6.webp",
+      "runtime_sha256": "e183c0ec403c77bfc65b2d15586e74c18ec3bdb9fc0017c7e167749e431b8d60",
+      "normalized_rgba_equals_runtime": true,
+      "source_opaque_pixel_count": 645724,
+      "edge_despill_opaque_pixels": 2609,
+      "matte_removed_pixels": 10464,
+      "additional_edge_despill_pixels": 2812,
+      "opaque_interior_changed_pixels": 0,
+      "post_resize_edge_despill_pixels": 2,
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "alpha_bounds": [
+        163,
+        200,
+        1080,
+        1181
+      ],
+      "primary_bounds": [
+        157,
+        191,
+        1088,
+        1186
+      ],
+      "normalization": {
+        "uniform_scale": 0.8587257617728532,
+        "offset": [
+          159,
+          196
+        ],
+        "source_root_x": 646,
+        "source_root_y": 1172
+      }
+    },
+    {
+      "stage": "mature",
+      "generated_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/mature-chroma-generated.png",
+      "generated_sha256": "7cf4872e6cdce1f7a36a68f1f4a3a4504c0a519efc7e99f923a371b3525c07f6",
+      "normalized_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/mature-normalized-rgba.png",
+      "normalized_sha256": "9f61357b1ac352cc3139249c8641d95afdfd13a88777168369ed825fb39f904b",
+      "source": "artwork_source/plants/v6/peony/peony_mature_chroma.png",
+      "source_sha256": "2f9b902b6f116560768f1fefb1cc2151187c6ea59079ea2ed660607a289e1024",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/plants/peony/mature/peony_mature_twilight_v6.webp",
+      "runtime_sha256": "653d8a729b62b534210f3f21a8b8f1e10164ca6f681187d79d905e2410b4104d",
+      "normalized_rgba_equals_runtime": true,
+      "source_opaque_pixel_count": 804859,
+      "edge_despill_opaque_pixels": 1938,
+      "matte_removed_pixels": 9589,
+      "additional_edge_despill_pixels": 2049,
+      "opaque_interior_changed_pixels": 0,
+      "post_resize_edge_despill_pixels": 3,
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "alpha_bounds": [
+        157,
+        234,
+        1073,
+        1181
+      ],
+      "primary_bounds": [
+        152,
+        225,
+        1083,
+        1186
+      ],
+      "normalization": {
+        "uniform_scale": 0.7908163265306123,
+        "offset": [
+          153,
+          230
+        ],
+        "source_root_x": 646,
+        "source_root_y": 1209
+      }
+    },
+    {
+      "stage": "flowering",
+      "generated_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/flowering-chroma-generated.png",
+      "generated_sha256": "34f2ee4d3b3848334a0287a367f39344addeb258feb9fa08f12fbdeadd229d02",
+      "normalized_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/flowering-normalized-rgba.png",
+      "normalized_sha256": "016ebed343f7aecc00735b77f6c2843a0d74c36866e017f4febbb4e9b9bd74ec",
+      "source": "artwork_source/plants/v6/peony/peony_flowering_chroma.png",
+      "source_sha256": "06e317c018cd0fea3e6f320ee64a93f8ca5dc2efd930bffd4dc78943363dafa9",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/plants/peony/flowering/peony_flowering_twilight_v6.webp",
+      "runtime_sha256": "36697643644d56903ef6b9ec5379b2c399e7c7617aebd2dc7133e6de2404bcb0",
+      "normalized_rgba_equals_runtime": true,
+      "source_opaque_pixel_count": 811794,
+      "edge_despill_opaque_pixels": 4254,
+      "matte_removed_pixels": 12985,
+      "additional_edge_despill_pixels": 4742,
+      "opaque_interior_changed_pixels": 0,
+      "post_resize_edge_despill_pixels": 1,
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "alpha_bounds": [
+        156,
+        239,
+        1076,
+        1181
+      ],
+      "primary_bounds": [
+        147,
+        230,
+        1083,
+        1186
+      ],
+      "normalization": {
+        "uniform_scale": 0.7874682472480948,
+        "offset": [
+          152,
+          235
+        ],
+        "source_root_x": 642.0,
+        "source_root_y": 1220
+      }
+    },
+    {
+      "stage": "rare",
+      "generated_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/rare-final-chroma-generated.png",
+      "generated_sha256": "93a4053f3d0ab104177f200d4be00a21b5f3b3dfa60832ab462f0a61da3d830d",
+      "normalized_master": "artwork_source/plants/v6/peony/redesign-20260905-1906/rare-normalized-rgba.png",
+      "normalized_sha256": "4f3068c29720da11f09d9b8f0ec2a613a3901c8d3ace073fd99178c0e1e56bfc",
+      "source": "artwork_source/plants/v6/peony/peony_rare_chroma.png",
+      "source_sha256": "6d5efa98b84b2be37ae2423d31d67f6d2555b03665ca55f4874b7a8780a11318",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/plants/peony/rare/peony_rare_twilight_v6.webp",
+      "runtime_sha256": "ca5aee1ee2b7959e7294a38e470907b171f2c32847dd13d5789dcee8a4af74db",
+      "normalized_rgba_equals_runtime": true,
+      "source_opaque_pixel_count": 827235,
+      "edge_despill_opaque_pixels": 3795,
+      "matte_removed_pixels": 9424,
+      "additional_edge_despill_pixels": 4635,
+      "opaque_interior_changed_pixels": 0,
+      "post_resize_edge_despill_pixels": 20,
+      "ground_anchor": [
+        0.5,
+        0.939394
+      ],
+      "alpha_bounds": [
+        160,
+        200,
+        1084,
+        1182
+      ],
+      "primary_bounds": [
+        152,
+        196,
+        1088,
+        1191
+      ],
+      "normalization": {
+        "uniform_scale": 0.8508691674290942,
+        "offset": [
+          156,
+          196
+        ],
+        "source_root_x": 619,
+        "source_root_y": 1200
+      }
+    }
+  ],
+  "prompt_records": [
+    {
+      "file": "chroma-prompts.json",
+      "sha256": "46a4c37c5f71f0d01c10d087595d76bacef0ba67c36a94992b1a09b7b87ee070"
+    },
+    {
+      "file": "derivative-prompts.json",
+      "sha256": "9abe39a102d9a7a1d564b4c118832828e6a055ca203b18f26bd2a3247e999118"
+    },
+    {
+      "file": "full-bloom-final-prompt.json",
+      "sha256": "75f3e0e41ec915ea7017d3f4dad51c572e6970d588bdd473e9d1fc4407562e6e"
+    },
+    {
+      "file": "full-bloom-width-prompt.json",
+      "sha256": "b2ddf91e5f6cbe6067935b6508a59d0152aa0bb1199f1cca75b97393b9452583"
+    },
+    {
+      "file": "prompts.json",
+      "sha256": "aaaade7baede3e915e3101ec0914f54942e4ceee429e0c3d7d17acac0d28d7ce"
+    },
+    {
+      "file": "revision-prompts.json",
+      "sha256": "ba0c7e45609c8237274d785b4eb25a6cc764894325b13484e03fa9ab0a9f10c1"
+    }
+  ],
+  "manifest_replacements": {
+    "plant_peony_seed_twilight_v6": {
+      "prior_entry_sha256": "6ce5821fa84142d5601461c3b19747950f9e4e043334ea8c1df23c777bb9aab3",
+      "replacement": {
+        "asset_id": "plant_peony_seed_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "peony",
+          "stage": "seed"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/peony/seed/peony_seed_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "ImageGen line authored against the Verdant Twilight V6 background",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/peony/peony_seed_chroma.png",
+        "source_master_sha256": "930e474d4c7d77b756ce7fd6158f6d7992bf25bcfa23ffa4f4472c9be5a44acf",
+        "placement": {
+          "anchor_x": 0.5,
+          "baseline_y": 0.939394,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.537481,
+            0.724881
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.296651,
+            0.503987,
+            0.480861,
+            0.441786
+          ],
+          "ground_anchor": [
+            0.5,
+            0.939394
+          ],
+          "ground_anchor_x": 0.5,
+          "ground_anchor_y": 0.939394,
+          "soil_contact": [
+            0.5,
+            0.939394
+          ],
+          "contact_shadow": [
+            0.85,
+            0.1
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.55,
+          "visual_scale_correction": 0.7874,
+          "thumbnail_safe_padding": 0.25,
+          "art_bounds": [
+            0.305423,
+            0.510367,
+            0.464115,
+            0.429027
+          ],
+          "base_bounds": [
+            0.449,
+            0.923394,
+            0.102,
+            0.016
+          ],
+          "support_bounds": [
+            0.449,
+            0.923394,
+            0.102,
+            0.016
+          ],
+          "foliage_bounds": [
+            0.296651,
+            0.503987,
+            0.480861,
+            0.441786
+          ],
+          "plant_above_rim_bounds": [
+            0.296651,
+            0.503987,
+            0.480861,
+            0.441786
+          ],
+          "interaction_bounds": [
+            0.305423,
+            0.510367,
+            0.464115,
+            0.429027
+          ],
+          "layout_family": "compact",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true
+        }
+      }
+    },
+    "plant_peony_sprout_twilight_v6": {
+      "prior_entry_sha256": "7b3d835104ce4cbc1828005b80eb75b80c68c71f67cb7f076f9a27b4a5c7a850",
+      "replacement": {
+        "asset_id": "plant_peony_sprout_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "peony",
+          "stage": "sprout"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/peony/sprout/peony_sprout_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "ImageGen line authored against the Verdant Twilight V6 background",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/peony/peony_sprout_chroma.png",
+        "source_master_sha256": "f751ca242ebecaa57d02b50466374f1ecbb4257f9f58f2887a4b989a02d1ed8c",
+        "placement": {
+          "anchor_x": 0.5,
+          "baseline_y": 0.939394,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.493221,
+            0.642743
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.121212,
+            0.339713,
+            0.746411,
+            0.610048
+          ],
+          "ground_anchor": [
+            0.5,
+            0.939394
+          ],
+          "ground_anchor_x": 0.5,
+          "ground_anchor_y": 0.939394,
+          "soil_contact": [
+            0.5,
+            0.939394
+          ],
+          "contact_shadow": [
+            0.85,
+            0.1
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.58,
+          "visual_scale_correction": 1.2314,
+          "art_bounds": [
+            0.128389,
+            0.345295,
+            0.729665,
+            0.594896
+          ],
+          "base_bounds": [
+            0.476,
+            0.923394,
+            0.048,
+            0.016
+          ],
+          "support_bounds": [
+            0.476,
+            0.923394,
+            0.048,
+            0.016
+          ],
+          "foliage_bounds": [
+            0.121212,
+            0.339713,
+            0.746411,
+            0.610048
+          ],
+          "plant_above_rim_bounds": [
+            0.121212,
+            0.339713,
+            0.746411,
+            0.610048
+          ],
+          "interaction_bounds": [
+            0.128389,
+            0.345295,
+            0.729665,
+            0.594896
+          ],
+          "layout_family": "compact",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true
+        }
+      }
+    },
+    "plant_peony_young_twilight_v6": {
+      "prior_entry_sha256": "ac12363b6df84c0efdb87c34edce612668c55b2661e80ac0b9421e2edf403e45",
+      "replacement": {
+        "asset_id": "plant_peony_young_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "peony",
+          "stage": "young"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/peony/young/peony_young_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "ImageGen line authored against the Verdant Twilight V6 background",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/peony/peony_young_chroma.png",
+        "source_master_sha256": "87a4d38545383096bd6e57037d9be1bb32401a17213ebdcd9bfd2209bcbf4f9a",
+        "placement": {
+          "anchor_x": 0.5,
+          "baseline_y": 0.939394,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.495613,
+            0.550638
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.125199,
+            0.152313,
+            0.742424,
+            0.793461
+          ],
+          "ground_anchor": [
+            0.5,
+            0.939394
+          ],
+          "ground_anchor_x": 0.5,
+          "ground_anchor_y": 0.939394,
+          "soil_contact": [
+            0.5,
+            0.939394
+          ],
+          "contact_shadow": [
+            0.85,
+            0.1
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.7,
+          "visual_scale_correction": 1.0444,
+          "art_bounds": [
+            0.132376,
+            0.161882,
+            0.726475,
+            0.777512
+          ],
+          "base_bounds": [
+            0.472,
+            0.923394,
+            0.056,
+            0.016
+          ],
+          "support_bounds": [
+            0.472,
+            0.923394,
+            0.056,
+            0.016
+          ],
+          "foliage_bounds": [
+            0.125199,
+            0.152313,
+            0.742424,
+            0.793461
+          ],
+          "plant_above_rim_bounds": [
+            0.125199,
+            0.152313,
+            0.742424,
+            0.793461
+          ],
+          "interaction_bounds": [
+            0.132376,
+            0.161882,
+            0.726475,
+            0.777512
+          ],
+          "layout_family": "standard",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true
+        }
+      }
+    },
+    "plant_peony_mature_twilight_v6": {
+      "prior_entry_sha256": "063d5387a84da77e05251f9f257011e2838285c823006f585e0f487ceb7fcf75",
+      "replacement": {
+        "asset_id": "plant_peony_mature_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "peony",
+          "stage": "mature"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/peony/mature/peony_mature_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "ImageGen line authored against the Verdant Twilight V6 background",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/peony/peony_mature_chroma.png",
+        "source_master_sha256": "2f9b902b6f116560768f1fefb1cc2151187c6ea59079ea2ed660607a289e1024",
+        "placement": {
+          "anchor_x": 0.5,
+          "baseline_y": 0.939394,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.49083,
+            0.564195
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.121212,
+            0.179426,
+            0.742424,
+            0.766348
+          ],
+          "ground_anchor": [
+            0.5,
+            0.939394
+          ],
+          "ground_anchor_x": 0.5,
+          "ground_anchor_y": 0.939394,
+          "soil_contact": [
+            0.5,
+            0.939394
+          ],
+          "contact_shadow": [
+            0.85,
+            0.1
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.8,
+          "visual_scale_correction": 1.1891,
+          "art_bounds": [
+            0.127592,
+            0.188995,
+            0.726475,
+            0.750399
+          ],
+          "base_bounds": [
+            0.474,
+            0.923394,
+            0.052,
+            0.016
+          ],
+          "support_bounds": [
+            0.474,
+            0.923394,
+            0.052,
+            0.016
+          ],
+          "foliage_bounds": [
+            0.121212,
+            0.179426,
+            0.742424,
+            0.766348
+          ],
+          "plant_above_rim_bounds": [
+            0.121212,
+            0.179426,
+            0.742424,
+            0.766348
+          ],
+          "interaction_bounds": [
+            0.127592,
+            0.188995,
+            0.726475,
+            0.750399
+          ],
+          "layout_family": "standard",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true
+        }
+      }
+    },
+    "plant_peony_flowering_twilight_v6": {
+      "prior_entry_sha256": "65ccaed36aab9bd0b6454512942d77aab46df88976023f5bf15aa2dab6e4902b",
+      "replacement": {
+        "asset_id": "plant_peony_flowering_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "peony",
+          "stage": "flowering"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/peony/flowering/peony_flowering_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "ImageGen line authored against the Verdant Twilight V6 background",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/peony/peony_flowering_chroma.png",
+        "source_master_sha256": "06e317c018cd0fea3e6f320ee64a93f8ca5dc2efd930bffd4dc78943363dafa9",
+        "placement": {
+          "anchor_x": 0.5,
+          "baseline_y": 0.939394,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.491228,
+            0.566188
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.117225,
+            0.183413,
+            0.746411,
+            0.76236
+          ],
+          "ground_anchor": [
+            0.5,
+            0.939394
+          ],
+          "ground_anchor_x": 0.5,
+          "ground_anchor_y": 0.939394,
+          "soil_contact": [
+            0.5,
+            0.939394
+          ],
+          "contact_shadow": [
+            0.85,
+            0.1
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.98,
+          "visual_scale_correction": 1.1993,
+          "art_bounds": [
+            0.125997,
+            0.192982,
+            0.730463,
+            0.746411
+          ],
+          "base_bounds": [
+            0.476,
+            0.923394,
+            0.048,
+            0.016
+          ],
+          "support_bounds": [
+            0.476,
+            0.923394,
+            0.048,
+            0.016
+          ],
+          "foliage_bounds": [
+            0.117225,
+            0.183413,
+            0.746411,
+            0.76236
+          ],
+          "plant_above_rim_bounds": [
+            0.117225,
+            0.183413,
+            0.746411,
+            0.76236
+          ],
+          "interaction_bounds": [
+            0.125997,
+            0.192982,
+            0.730463,
+            0.746411
+          ],
+          "layout_family": "expanded",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true
+        }
+      }
+    },
+    "plant_peony_rare_twilight_v6": {
+      "prior_entry_sha256": "935a62cf971edff8fc739247a4b39e07166b4e0fbd0a692b15acd0108728df64",
+      "replacement": {
+        "asset_id": "plant_peony_rare_twilight_v6",
+        "category": "plants",
+        "slot": {
+          "species": "peony",
+          "stage": "rare"
+        },
+        "variants": [
+          "storybook_gouache",
+          "direct_soil",
+          "continuity_v6",
+          "transparent_cutout",
+          "geometry_v2"
+        ],
+        "file": "assets/v6_storybook_gouache/plants/peony/rare/peony_rare_twilight_v6.webp",
+        "width": 1254,
+        "height": 1254,
+        "format": "webp",
+        "alpha": true,
+        "style_family": "storybook_gouache",
+        "release_preferred": true,
+        "quality_tier": "ultra",
+        "quality_score": 0.995,
+        "source": "ImageGen line authored against the Verdant Twilight V6 background",
+        "attribution": "Original AI-assisted artwork generated for Anki Garden",
+        "source_master_file": "artwork_source/plants/v6/peony/peony_rare_chroma.png",
+        "source_master_sha256": "6d5efa98b84b2be37ae2423d31d67f6d2555b03665ca55f4874b7a8780a11318",
+        "placement": {
+          "anchor_x": 0.5,
+          "baseline_y": 0.939394,
+          "scale": 1.0,
+          "display_scale": 1.0,
+          "visual_center": [
+            0.496012,
+            0.551037
+          ],
+          "shadow_offset": [
+            0.0,
+            0.0
+          ],
+          "minimum_bed_clearance": 0.04,
+          "visible_bounds": [
+            0.121212,
+            0.1563,
+            0.746411,
+            0.793461
+          ],
+          "ground_anchor": [
+            0.5,
+            0.939394
+          ],
+          "ground_anchor_x": 0.5,
+          "ground_anchor_y": 0.939394,
+          "soil_contact": [
+            0.5,
+            0.939394
+          ],
+          "contact_shadow": [
+            0.85,
+            0.1
+          ],
+          "base_type": "direct_soil",
+          "crop": "contain",
+          "layer": "plants",
+          "geometry_version": 2,
+          "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+          "vessel_class": "soil_only",
+          "vessel_class_multiplier": 1.0,
+          "scene_scale_correction": 0.98,
+          "visual_scale_correction": 1.1993,
+          "art_bounds": [
+            0.129984,
+            0.161882,
+            0.732057,
+            0.778309
+          ],
+          "base_bounds": [
+            0.464,
+            0.923394,
+            0.072,
+            0.016
+          ],
+          "support_bounds": [
+            0.464,
+            0.923394,
+            0.072,
+            0.016
+          ],
+          "foliage_bounds": [
+            0.121212,
+            0.1563,
+            0.746411,
+            0.793461
+          ],
+          "plant_above_rim_bounds": [
+            0.121212,
+            0.1563,
+            0.746411,
+            0.793461
+          ],
+          "interaction_bounds": [
+            0.129984,
+            0.161882,
+            0.732057,
+            0.778309
+          ],
+          "layout_family": "expanded",
+          "lateral_spacing_multiplier": 1.0,
+          "slot_envelope_scale": 1.0,
+          "release_layout_candidate": true
+        }
+      }
+    }
+  },
+  "review_directory": "build/peony-redesign/20260905-1906",
+  "shared_integration": "Coordinator owns shared manifest, installer and renderer edits."
+}

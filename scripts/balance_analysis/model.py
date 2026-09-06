@@ -176,6 +176,21 @@ APPROVED_CONSUMABLE_POLICY_BY_STRATEGY: Tuple[Tuple[str, str], ...] = (
 
 
 @dataclass(frozen=True)
+class OpeningState:
+    """Small production-onboarding projection, built once outside the kernel."""
+    coins: int
+    starter_growth_units: int
+    lifetime_answers: int
+    claimed_achievements: Tuple[str, ...]
+    trophies: Tuple[str, ...]
+    consumables: Tuple[Tuple[str, int], ...]
+    coin_sources: Tuple[Tuple[str, int], ...]
+    checkpoint_claims: Tuple[str, ...]
+    stage_reward_claims: Tuple[str, ...]
+    achievement_state_json: str
+
+
+@dataclass(frozen=True)
 class ScenarioSpec:
     scenario_id: str
     cohort: CohortSpec
@@ -187,6 +202,11 @@ class ScenarioSpec:
     all_environments_owned: bool = False
     all_plants_complete: bool = False
     landmark_mastery_spending: bool = False
+    # Explicit player action used by the quick audit; historical release
+    # scenarios keep their original fixed placement policy.
+    rotate_completed_plants: bool = False
+    starting_profile: str = "legacy"
+    opening: Optional[OpeningState] = None
 
     @property
     def completion_percent(self) -> int:

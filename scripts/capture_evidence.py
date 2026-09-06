@@ -2369,7 +2369,7 @@ def _label_bucket(label: str, renderer_family: str = "") -> str:
     if renderer_family == "AnkiQt":
         return (
             "settings-transactions"
-            if label.startswith("reviewer-")
+            if label.startswith(("reviewer-", "workspace-reviewer-"))
             else "home-garden"
         )
     if renderer_family in {
@@ -2479,16 +2479,16 @@ def _entry_affects_surface(
     if name == "ui/dashboard.py":
         return False
     if name == "ui/home_widget.py":
-        return renderer_family == "AnkiQt" and not label.startswith("reviewer-")
+        return renderer_family == "AnkiQt" and not label.startswith(("reviewer-", "workspace-reviewer-"))
     if name == "ui/garden_studio.py":
         return settings_preview
     if name in {
         "hooks/reviewer.py",
     }:
-        return label.startswith("reviewer-")
+        return label.startswith(("reviewer-", "workspace-reviewer-"))
     if name in {"reward_presentation.py", "garden_finds.py"}:
         return (
-            label.startswith("reviewer-")
+            label.startswith(("reviewer-", "workspace-reviewer-"))
             or renderer_family == "GardenProgressDialog"
         )
     if name in {"ui/scene.py", "ui/landmarks.py"}:
@@ -2498,6 +2498,24 @@ def _entry_affects_surface(
         return settings_preview or affected is None or bucket in affected
     affected = _entry_buckets(name)
     return affected is None or bucket in affected
+
+
+def _declared_capture_module_inputs(
+    capture_source: Path, surface_spec: Mapping[str, Any],
+) -> dict[str, str]:
+    """Bind delegated capture fixtures that are absent from production ZIPs."""
+    result = {}
+    for value in surface_spec.get("owned_module_dependencies", ()):
+        if not str(value).startswith("capture/"):
+            continue
+        relative = Path(str(value)).relative_to("capture")
+        if ".." in relative.parts or relative.suffix != ".py":
+            raise CaptureEvidenceError(f"Invalid capture helper dependency: {value}")
+        path = capture_source.parent / relative
+        if not path.is_file():
+            raise CaptureEvidenceError(f"Missing capture helper dependency: {value}")
+        result[f"capture-helper:{relative.as_posix()}"] = sha256_file(path)
+    return result
 
 
 def build_render_input_catalog(
@@ -2696,7 +2714,7 @@ def build_render_input_catalog(
         if family == "AnkiQt":
             owned_module_roots.add(
                 "hooks/reviewer.py"
-                if label.startswith("reviewer-")
+                if label.startswith(("reviewer-", "workspace-reviewer-"))
                 else "ui/home_widget.py"
             )
         module_roots.update(owned_module_roots)
@@ -2705,6 +2723,8 @@ def build_render_input_catalog(
             roots=module_roots,
         )
         inputs = dict(environment_inputs)
+        if surface_specs is not None:
+            inputs.update(_declared_capture_module_inputs(capture_source, surface_specs[label]))
         included_entries: set[str] = set()
         for name, digest in entries.items():
             exact_owners = exact_module_owners.get(name)
@@ -5135,6 +5155,7 @@ def assemble_capture_manifest(
         "evidence_schema_digest": current_render_inputs.get("evidence_schema_digest"),
         "capture_profile": profile,
         "capture_scope": "assembled",
+        "contact_sheet_layout": current_render_inputs.get("capture_contract_snapshot", {}).get("profiles", {}).get(profile, {}).get("contact_sheets", []),
         "capture_display": displays[0] if len(displays) == 1 else "mixed",
         "capture_displays": displays,
         "requested_faces": expected,

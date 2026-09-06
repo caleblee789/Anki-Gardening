@@ -424,3 +424,33 @@ def test_schema3_growth_flows_reconcile_generated_and_manual_units(tmp_path) -> 
         ))
     ledger.rollback_all()
     ledger.close()
+
+
+def test_item_acquisition_date_uses_first_committed_purchase_or_discovery(tmp_path):
+    database = tmp_path / "acquisition.sqlite3"
+    with RewardLedger(database) as ledger:
+        ledger.stage_economy_event(EconomyEventRecord(
+            "find:lantern", "environment_discovery", item_id="firefly_lantern",
+            occurred_at=OCCURRED_AT, quantity=1,
+        ))
+        ledger.stage_economy_event(EconomyEventRecord(
+            "buy:chime", "purchase", sink_id="garden_feature:wind_chime", item_id="wind_chime",
+            occurred_at=OCCURRED_AT, coins_spent=100, quantity=1,
+        ))
+        ledger.stage_economy_event(EconomyEventRecord(
+            "bonus:lantern", "answer_growth", item_id="firefly_lantern",
+            occurred_at="2026-08-20T15:30:00+00:00",
+        ))
+        assert ledger.first_item_acquisition_at("firefly_lantern") == OCCURRED_AT
+        assert ledger.first_item_acquisition_at("wind_chime") == OCCURRED_AT
+        assert ledger.first_item_acquisition_at("prism_trellis") is None
+        ledger.commit_state({}, schema_version=30, expected_revision=0)
+        ledger.stage_economy_event(EconomyEventRecord(
+            "failed:prism", "environment_discovery", item_id="prism_trellis",
+            occurred_at=OCCURRED_AT, quantity=1,
+        ))
+        ledger.rollback_all()
+        assert ledger.first_item_acquisition_at("prism_trellis") is None
+    with RewardLedger(database) as reopened:
+        assert reopened.first_item_acquisition_at("firefly_lantern") == OCCURRED_AT
+        assert reopened.first_item_acquisition_at("wind_chime") == OCCURRED_AT

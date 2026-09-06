@@ -42,6 +42,7 @@ def test_schema_mismatch_is_a_deliberate_fresh_reset():
     state = GardenState.from_dict(payload)
 
     assert state.version == STATE_VERSION
+    assert state.garden_name == "Anki Garden"
     assert state.total_reviews == 0
     assert state.plants == []
 

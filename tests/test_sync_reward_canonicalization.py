@@ -20,21 +20,22 @@ def _checkpoint(event_id: str, percent: int, stage: str) -> SyncPlantCheckpoint:
 def test_stage_change_supersedes_prior_stage_checkpoint() -> None:
     result = SyncPlantResult(
         plant_id="rose",
-        display_name="Rose Plant",
+        display_name="Hidden custom name",
+        species="rose",
         stage_before="mature",
         stage_after="flowering",
         stage_progress_after=68,
         next_stage="rare",
         checkpoints=(_checkpoint("checkpoint:rose:75:flowering", 75, "Flowering"),),
         stage_event_id="stage:rose:flowering",
-        stage_event_text="Rose Plant reached Flowering",
+        stage_event_text="Rose reached flowering",
         transition_source="shared_growth",
         growth_after_units=1_520_050,
     )
 
     assert result.canonical_checkpoints == ()
     assert result.primary_milestone.kind == "stage_change"
-    assert result.primary_milestone.display_text == "Rose Plant reached Flowering"
+    assert result.primary_milestone.display_text == "Rose reached flowering"
     assert SyncPlantResult.from_dict(result.to_dict()).growth_after_units == 1_520_050
     assert result.to_dict()["checkpoints"] == []
     assert result.to_dict()["transition_source"] == "shared_growth"
@@ -46,7 +47,8 @@ def test_stage_change_supersedes_prior_stage_checkpoint() -> None:
 def test_only_highest_reached_checkpoint_in_current_stage_survives() -> None:
     result = SyncPlantResult(
         plant_id="rose",
-        display_name="Rose Plant",
+        display_name="Hidden custom name",
+        species="rose",
         stage_before="flowering",
         stage_after="flowering",
         stage_progress_after=68,

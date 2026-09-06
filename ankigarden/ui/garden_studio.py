@@ -34,7 +34,13 @@ from ..environment import (
     SCENERY_CATALOG,
     canonical_garden_feature_id,
 )
-from .copy import HOME_ACTIVE_ACTION, REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION_LABEL
+from .copy import (
+    GARDEN_TITLE,
+    HOME_ACTIVE_ACTION,
+    REDUCED_MOTION_DESCRIPTION,
+    REDUCED_MOTION_LABEL,
+    garden_preview_title,
+)
 from .accessibility import effective_motion_enabled, read_system_reduced_motion
 from .controls import GardenToggleSwitch
 from .garden_asset_thumbnail import GardenAssetThumbnail
@@ -215,7 +221,7 @@ class HomeGardenPreview(QFrame):
         identity.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         eyebrow = QLabel("ANKI GARDEN")
         eyebrow.setProperty("previewEyebrow", True)
-        self.title = ElidedPreviewTitle("My Garden")
+        self.title = ElidedPreviewTitle(GARDEN_TITLE)
         self.title.setProperty("previewTitle", True)
         self.title.setTextFormat(Qt.TextFormat.PlainText)
         self.title.setWordWrap(False)
@@ -280,7 +286,7 @@ class HomeGardenPreview(QFrame):
         grid.addWidget(self.scrim, 0, 0, Qt.AlignmentFlag.AlignBottom)
 
     def set_snapshot(self, snapshot: GardenPreviewSnapshot) -> None:
-        safe_title = str(snapshot.title or "My Garden")
+        safe_title = garden_preview_title(snapshot.title)
         safe_support = str(snapshot.summary)
         summary_parts = safe_support.split(" · ", 2)
         identity_copy = (

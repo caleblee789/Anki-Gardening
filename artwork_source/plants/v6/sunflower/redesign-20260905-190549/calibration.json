@@ -1,0 +1,98 @@
+{
+  "seed": {
+    "target_height": 24.0,
+    "visible_width": 32.319980675941444,
+    "visible_height": 23.99999995350402,
+    "visual_scale_correction": 0.53464699,
+    "scene_scale_correction": 0.55,
+    "thumbnail_scale": 1.2,
+    "ground_anchor": [
+      464.24,
+      354.6816
+    ],
+    "contact_shadow": [
+      28.16639474484245,
+      2.190719591265524
+    ]
+  },
+  "sprout": {
+    "target_height": 50.0,
+    "visible_width": 57.27003778737613,
+    "visible_height": 49.99999985374157,
+    "visual_scale_correction": 0.89837612,
+    "scene_scale_correction": 0.58,
+    "thumbnail_scale": 1.0550447976451673,
+    "ground_anchor": [
+      464.24,
+      354.6816
+    ],
+    "contact_shadow": [
+      4.807099785000713,
+      2.0
+    ]
+  },
+  "young": {
+    "target_height": 102.0,
+    "visible_width": 70.43526318944362,
+    "visible_height": 101.9999994901286,
+    "visual_scale_correction": 0.91548414,
+    "scene_scale_correction": 0.7,
+    "thumbnail_scale": 1.0451402839717852,
+    "ground_anchor": [
+      464.24,
+      354.6816
+    ],
+    "contact_shadow": [
+      5.647931332248152,
+      2.0
+    ]
+  },
+  "mature": {
+    "target_height": 150.0,
+    "visible_width": 82.67503965536602,
+    "visible_height": 150.0000004148454,
+    "visual_scale_correction": 0.94024958,
+    "scene_scale_correction": 0.8,
+    "thumbnail_scale": 1.0312843468626507,
+    "ground_anchor": [
+      464.24,
+      354.6816
+    ],
+    "contact_shadow": [
+      7.149845183373638,
+      2.0
+    ]
+  },
+  "flowering": {
+    "target_height": 170.0,
+    "visible_width": 88.05216783408419,
+    "visible_height": 169.99999926234335,
+    "visual_scale_correction": 0.81747165,
+    "scene_scale_correction": 0.98,
+    "thumbnail_scale": 1.1060217051924799,
+    "ground_anchor": [
+      464.24,
+      354.6816
+    ],
+    "contact_shadow": [
+      6.317841786181105,
+      2.0
+    ]
+  },
+  "rare": {
+    "target_height": 190.0,
+    "visible_width": 135.54358016911553,
+    "visible_height": 190.00000002353252,
+    "visual_scale_correction": 1.2583794,
+    "scene_scale_correction": 0.98,
+    "thumbnail_scale": 0.89144427439925,
+    "ground_anchor": [
+      464.24,
+      354.6816
+    ],
+    "contact_shadow": [
+      7.528307946310762,
+      2.0
+    ]
+  }
+}

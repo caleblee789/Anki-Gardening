@@ -7,6 +7,7 @@ import json
 import os
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -35,6 +36,7 @@ from scripts.validate_ui_capture import (
     load_capture_contract,
     load_capture_scenario_contracts,
     load_expected_state_evidence_contracts,
+    foreground_request_issue_codes,
 )
 
 
@@ -202,7 +204,7 @@ def test_compiled_contract_is_current_and_validator_consumes_it() -> None:
 
     assert compiled == compile_contract()
     assert compiled["schema_version"] == 2
-    assert compiled["contract_version"] == 27
+    assert compiled["contract_version"] == 29
     assert compiled["scenario_schema_version"] == 3
     full = load_capture_contract(DEFAULT_CAPTURE_SOURCE, profile="full")
     states = load_expected_state_evidence_contracts(
@@ -315,12 +317,12 @@ def test_v26_contract_hard_gates_scenario_and_profile_totals() -> None:
     with pytest.raises(ContractValidationError) as scenario_error:
         validate_contract_payload(bad_scenario)
     assert any(
-        "unexpected v27 scenario identity" in issue
+        "unexpected v29 scenario identity" in issue
         for issue in scenario_error.value.issues
     )
 
     bad_totals = copy.deepcopy(compiled)
-    bad_totals["profiles"]["representative"]["surface_count"] = 17
+    bad_totals["profiles"]["representative"]["surface_count"] = 18
     with pytest.raises(ContractValidationError) as totals_error:
         validate_contract_payload(bad_totals)
     assert "profile 'representative' surface count is stale" in totals_error.value.issues
@@ -348,12 +350,25 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         stable_id.startswith("watering-can-")
         for stable_id in REGISTRY.profile_labels("full")
     )
-    assert len(REGISTRY.profile_labels("representative")) == 18
-    assert len(REGISTRY.profile_labels("full")) == 36
+    assert len(REGISTRY.profile_labels("representative")) == 22
+    assert len(REGISTRY.profile_labels("full")) == 51
     assert not REGISTRY["nursery-weather-scenery"].active
     assert "nursery-weather-scenery" in compiled["retired_ids"]
-    assert REGISTRY.profile_page_count("representative") == 2
+    assert REGISTRY.profile_page_count("representative") == 5
     assert REGISTRY.profile_page_count("full") == 5
+    from scripts.capture_support import paginate_contact_sheet_groups
+    pages = compiled["profiles"]["full"]["contact_sheets"]
+    assigned = [label for page in pages for label in page["labels"]]
+    assert [len(page["labels"]) for page in pages] == [12, 10, 12, 10, 7]
+    assert len(assigned) == len(set(assigned)) == 51
+    assert set(assigned) == set(REGISTRY.profile_labels("full"))
+    assert assigned != list(REGISTRY.profile_labels("full"))
+    rendered = paginate_contact_sheet_groups(
+        [(name, list(labels)) for name, labels in REGISTRY.profile_groups("full")],
+        explicit_pages=pages,
+    )
+    assert len(rendered) == 5
+    assert [len(page[0][1]) for page in rendered] == [12, 10, 12, 10, 7]
     assert "starter-selection-confirmation" in compiled["retired_ids"]
     assert REGISTRY["starter-selection-confirmation"].placements == ()
     runtime_source = (
@@ -948,6 +963,22 @@ def test_home_prefers_app_owned_webview_and_requires_exact_fallback_identity() -
         "process-id-mismatch",
     ]
 
+    families = {label: REGISTRY[label].renderer_family
+                for label in REGISTRY.profile_labels("full")}
+    requests = [{"label": label, "reason": reason, "confirmed": False,
+                 "process_id": 11, "window_id": 22}
+                for label, family in families.items() if family == "AnkiQt"
+                for reason in ("pointer-neutralization", "app-owned-home-composite-not-ready")]
+    assert len(requests) > 2
+    assert foreground_request_issue_codes(requests, families) == ()
+    assert foreground_request_issue_codes([*requests, requests[0]], families)
+    assert foreground_request_issue_codes(
+        [{**requests[0], "label": "garden-starter-picker"}], families,
+    )
+    assert foreground_request_issue_codes(
+        [{**requests[0], "window_id": None}], families,
+    )
+
 
 
 def test_move_mode_semantic_copy_facts_are_declared() -> None:
@@ -961,6 +992,37 @@ def test_capture_plan_keeps_checkpoint_domains_inside_one_session() -> None:
     plan = build_capture_plan(REGISTRY, profile="representative", requested=requested)
     assert plan.requested == requested
     assert tuple(label for _name, labels in plan.cohorts for label in labels) == requested
+
+
+def test_reviewer_readiness_callback_failure_restores_fixture_once() -> None:
+    callbacks = []
+    events = []
+    web = SimpleNamespace(
+        isVisible=lambda: True,
+        page=lambda: SimpleNamespace(
+            runJavaScript=lambda *_args: _args[-1]({"ready": True}),
+        ),
+    )
+    namespace = {
+        "mw": SimpleNamespace(state="review", reviewer=SimpleNamespace(web=web)),
+        "QTimer": SimpleNamespace(singleShot=lambda _delay, callback: callbacks.append(callback)),
+        "logger": SimpleNamespace(exception=lambda *_args: None),
+    }
+    guard = _compiled_runtime_method("_UiFaceCaptureRunner", "_one_shot_async_callback", namespace)
+    wait = _compiled_runtime_method("_UiFaceCaptureRunner", "_wait_for_reviewer_surface", namespace)
+    harness = SimpleNamespace(_failures=[], _next_after=lambda _delay: events.append("next"))
+    harness._one_shot_async_callback = lambda *args, **kwargs: guard(harness, *args, **kwargs)
+
+    def failed_ready():
+        raise RuntimeError("Reviewer fixture failed after the card was ready")
+
+    wait(harness, "workspace-reviewer-collapsed", failed_ready,
+         on_error=lambda: events.append("restored"))
+    for callback in callbacks:
+        callback()
+    assert events == ["restored", "next"]
+    assert len(harness._failures) == 1
+    assert harness._failures[0]["label"] == "workspace-reviewer-collapsed"
 
 
 
@@ -1035,6 +1097,14 @@ def test_inspection_cli_is_non_mutating_and_registry_derived(capsys: pytest.Capt
     assert planned["process_count"] == 1
     assert planned["process_strategy"] == "single-session"
     assert planned["run_gate_process"] == "same-session-or-zero-surface-when-reused"
+    assert capture_sequence.main([
+        "--plan-only", "--profile", "full", "--fresh-baseline",
+    ]) == 0
+    full = json.loads(capsys.readouterr().out)
+    assert full["requested"] == full["execution"] == list(REGISTRY.profile_labels("full"))
+    assert full["process_count"] == 1
+    assert full["capture_mode"] == "fresh-baseline"
+    assert full["historical_reuse_allowed"] is False
     assert contract_path.read_bytes() == before
 
 

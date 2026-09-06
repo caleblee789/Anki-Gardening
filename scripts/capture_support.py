@@ -120,11 +120,11 @@ def archive_package(
         required_capture_entries = {
             "capture_ui_faces.py",
             "capture/runtime.py",
-            "capture/capture-contract-v27.json",
+            "capture/capture-contract-v29.json",
         }
         if not required_capture_entries.issubset(names):
             raise CaptureError(
-                "The built package does not contain the complete v27 capture runtime"
+                "The built package does not contain the complete v28 capture runtime"
             )
     package_id = str(manifest.get("package", "")).strip()
     if not package_id or any(part in package_id for part in ("/", "\\", "..")):
@@ -416,10 +416,18 @@ def paginate_contact_sheet_groups(
     *,
     columns: int = CONTACT_SHEET_COLUMNS,
     max_rows: int = CONTACT_SHEET_MAX_ROWS,
+    explicit_pages: list[dict[str, Any]] | None = None,
 ) -> list[list[tuple[str, list[str]]]]:
     """Pack whole UI groups into readable pages without exceeding max_rows."""
     if columns < 1 or max_rows < 1:
         raise CaptureError("Contact-sheet columns and rows must be positive")
+
+    if explicit_pages:
+        assigned = [label for page in explicit_pages for label in page["labels"]]
+        expected = [label for _, labels in groups for label in labels]
+        if len(assigned) != len(set(assigned)) or set(assigned) != set(expected):
+            raise CaptureError("Explicit sheets must cover each capture exactly once")
+        return [[(page["name"], list(page["labels"]))] for page in explicit_pages]
 
     pages: list[list[tuple[str, list[str]]]] = []
     current: list[tuple[str, list[str]]] = []
@@ -556,11 +564,11 @@ def render_contact_sheets(
     set_dir = contact_dir / f"{CONTACT_SHEET_PREFIX}{safe_version}-{stamp}"
     set_dir.mkdir(parents=False, exist_ok=False)
 
-    page_groups = paginate_contact_sheet_groups(groups)
+    page_groups = paginate_contact_sheet_groups(groups, explicit_pages=payload.get("contact_sheet_layout"))
     number_by_label = {
         label: index
         for index, label in enumerate(
-            (label for _group_name, labels in groups for label in labels),
+            (label for page in page_groups for _group_name, labels in page for label in labels),
             start=1,
         )
     }

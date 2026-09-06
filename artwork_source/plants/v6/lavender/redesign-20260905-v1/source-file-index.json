@@ -1,0 +1,114 @@
+{
+  "files": [
+    {
+      "file": "README.md",
+      "sha256": "429cb787de1a4321aa2f25a834eadd804a38f6abcabdc4874cf3c77e92d57361",
+      "bytes": 6185
+    },
+    {
+      "file": "alpha-processing.json",
+      "sha256": "929c11cdb52b274c2bc1a106b9301b5cc662b1712a2bc08e4ca1e3643a5413d8",
+      "bytes": 6587
+    },
+    {
+      "file": "drafts.json",
+      "sha256": "cb7b878b7c64c01100abbc86049f6c151e311c394656d975f805ae63e72721fb",
+      "bytes": 3035
+    },
+    {
+      "file": "export_runtime_and_handoff.py",
+      "sha256": "fe671020b5785867c6d0edc35307313e5b42c765c7c579f97b6f7108151ddbe6",
+      "bytes": 7254
+    },
+    {
+      "file": "flowering-generated-v1.png",
+      "sha256": "440ce1d1d31e41580aeac6f7e67b570cff4b2dbfedfee3757a8e6ba7463eb5df",
+      "bytes": 2393688
+    },
+    {
+      "file": "generation-prompts.json",
+      "sha256": "9de512e5a069904d270c096c2334f655460809a34be777a65b84bfa1b1b1a25f",
+      "bytes": 8963
+    },
+    {
+      "file": "integration-handoff.json",
+      "sha256": "ac84463784fb4c095f4fa0be6b93083ddfbab6741b3ee8a819fc51f2aa84ad87",
+      "bytes": 38949
+    },
+    {
+      "file": "lavender_flowering_alpha.png",
+      "sha256": "a83fc977f53bed8966f1cc5ccf8321eac7d62d651afa9be1abd492d6134bab4f",
+      "bytes": 2212415
+    },
+    {
+      "file": "lavender_mature_alpha.png",
+      "sha256": "30cf536e2d442e761c30cbb7bef98c9410c76dd31a9c1521764c8986ef1ee455",
+      "bytes": 2135991
+    },
+    {
+      "file": "lavender_rare_alpha.png",
+      "sha256": "76d28e4a8c938ad7eb7079cdf62317764ba334016fa57bcc34bd4a067b171f12",
+      "bytes": 3120379
+    },
+    {
+      "file": "lavender_seed_alpha.png",
+      "sha256": "5dc156784f32a182d0d91bfdb146cbb83e55073045395175b12144efd3033fd9",
+      "bytes": 1204959
+    },
+    {
+      "file": "lavender_sprout_alpha.png",
+      "sha256": "9b07f0f04de451eb4b374db58957a2765b7d4c059653b104310b225c51ef0e3e",
+      "bytes": 1289270
+    },
+    {
+      "file": "lavender_young_alpha.png",
+      "sha256": "119e6883d7b3089d4877c73b52724df66372655571c1ddb9f2ff0c120bb269b0",
+      "bytes": 1702092
+    },
+    {
+      "file": "mature-generated-v1.png",
+      "sha256": "cebbf699ac73272a07c974ee8d54a8fe8e24f6885521c0ba9c1a51352cdad90c",
+      "bytes": 2033903
+    },
+    {
+      "file": "mature-generated-v2.png",
+      "sha256": "8e62adb2f086b423d4a679979df43167b72fc753f47d568f5d1a53d79a8f6873",
+      "bytes": 2010090
+    },
+    {
+      "file": "mature-generated-v3.png",
+      "sha256": "20efecb114a967bd7238d50392414fc6a362b1480e8810381f66fde80bed88ea",
+      "bytes": 1954008
+    },
+    {
+      "file": "prepare_alpha.py",
+      "sha256": "c04b9f562167622e576b2b4a191fddac0d972e6f5333c9242b4f2e83bf56df4e",
+      "bytes": 3045
+    },
+    {
+      "file": "rare-generated-v1.png",
+      "sha256": "99d3eb5341394444f38afcfc4433ec6840b2fb865e71e4d199a56231fb544f07",
+      "bytes": 2735973
+    },
+    {
+      "file": "seed-generated-v1.png",
+      "sha256": "98dfca5ca68b5d808f9a7926c0d0969a336082e6ac463768ff2d71f841104bdf",
+      "bytes": 1184777
+    },
+    {
+      "file": "sprout-generated-v1.png",
+      "sha256": "010ed0f78f7e5a2db22deda6e2fbf1d63097030f663b2029d0ca54b1f23ece03",
+      "bytes": 1282439
+    },
+    {
+      "file": "validation-summary.json",
+      "sha256": "84a3035b71f2cb79234a664e73cf48fff105b808b0c752f789740cea0ce2a695",
+      "bytes": 5083
+    },
+    {
+      "file": "young-generated-v1.png",
+      "sha256": "929be9fb31aad1459951780be3c3314b17ef2691839e8fca836b391206870b80",
+      "bytes": 1611175
+    }
+  ]
+}

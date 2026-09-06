@@ -319,10 +319,10 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
 
     equipped, message = engine.equip_environment("scenery", "spring")
     assert equipped
-    assert message == "Spring Bloom effect is ready for today."
+    assert message == "Garden updated."
     engine, storage = _restart(engine, storage)
-    assert storage.state.selected_background == "default"
-    assert storage.state.equipped["background"] == "default"
+    assert storage.state.selected_background == "spring"
+    assert storage.state.equipped["background"] == "spring"
     assert storage.state.loadout.active_scenery_effect_id == "spring"
     assert storage.state.daily_loadout.queued_scenery_id == ""
     assert storage.state.daily_loadout.queued_for_day == ""
@@ -330,8 +330,8 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     storage.day = "2026-08-09"
     engine.rollover_if_needed()
     engine, storage = _restart(engine, storage)
-    assert storage.state.selected_background == "default"
-    assert storage.state.equipped["background"] == "default"
+    assert storage.state.selected_background == "spring"
+    assert storage.state.equipped["background"] == "spring"
     assert storage.state.loadout.active_scenery_effect_id == "spring"
 
     assert engine.rename_garden("Moss and Moon")[0]
@@ -339,12 +339,6 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert storage.state.garden_name == "Moss and Moon"
     assert storage.state.garden_setup_version == 1
 
-    assert engine.rename_plant(starter_id, "Briar Moon")[0]
-    engine, storage = _restart(engine, storage)
-    renamed = engine.plant_story(starter_id)
-    assert renamed is not None
-    assert renamed.name == "Briar Moon"
-    assert renamed.name_customized is True
     assert onboarding_state_display(storage.state, 0).state is (
         OnboardingState.ONBOARDING_COMPLETE
     )

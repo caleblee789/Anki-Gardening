@@ -500,12 +500,12 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "growth_value": "350 → 450",
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
-        "progress_label": "Next-stage progress",
-        "stage_progress": "50 / 1,600 Growth to Young",
+        "progress_label": "To Young after use",
+        "stage_progress": "50 / 1,600 Growth",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Stage reward on use",
+        "reward_label": "Reaching Sprout earns",
         "reward_value": "+2 Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
@@ -530,9 +530,9 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "variant": "ready",
         "component_variant": "confirmation",
         "data_source": "engine-preview",
-        "dialog_title": "Use Small Growth Charge?",
-        "transition_statement": "Bonsai Plant",
-        "primary_action": "Use charge",
+        "dialog_title": "Use a Growth Charge?",
+        "transition_statement": "Bonsai Seed",
+        "primary_action": "Use 1 charge",
         "secondary_action": "Cancel",
     }
     assert growth_charge_rendered_value_issue_codes(
@@ -553,9 +553,16 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "variant": "success",
         "component_variant": "success",
         "data_source": "engine-confirmed",
-        "dialog_title": "Reached Sprout",
-        "transition_statement": "Bonsai Plant",
-        "reward_label": "Stage reward earned",
+        "dialog_title": "Bonsai reached sprout",
+        "transition_statement": "Bonsai Sprout",
+        "reward_label": "Coins earned",
+        "after_label": "Seed → Sprout",
+        "impact_name": "Growth applied",
+        "growth_value": "450",
+        "inventory_label": "Small Growth Charge remaining",
+        "inventory_value": "1",
+        "progress_label": "To Young",
+        "transition_arrow_visible": False,
         "primary_action": "View plant",
         "secondary_action": "Close",
         "resulting_growth": 450,
@@ -584,8 +591,8 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "active_reveal_count": 1,
         "hero_count": 1,
         "eyebrow": "MILESTONE REACHED",
-        "hero_title": "Full Bloom reached",
-        "projected_hero_subtitle": "Juniper of the Moonlit Library Garden",
+        "hero_title": "Bonsai reached full bloom",
+        "projected_hero_subtitle": "",
         "hero_subtitle": "",
         "active_plant_identity_suppressed": True,
         "secondary_summary_count": 2,
@@ -603,7 +610,7 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "bundle_id": "answer:committed:1",
         "rendered_bundle_id": "answer:committed:1",
         "hero_event_id": "reward:full-bloom",
-        "visible_summary_labels": ["1 Garden Find", "2 Garden discoveries"],
+        "visible_summary_labels": ["1 Garden Find", "2 Discoveries"],
         "visible_summary_reward_types": [
             "garden_find",
             "environment_discovery",
@@ -629,7 +636,10 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "overlaps_bottom_controls": False,
         "horizontal_scroll_maximum": 0,
         "reveal_height": 132,
-        "footer_height": 54,
+        "reveal_natural_height": 132,
+        "collapsed_session": True,
+        "session_totals_hidden": True,
+        "footer_height": 32,
         "single_outer_surface": True,
         "divider_visible": True,
         "divider_count": 1,
@@ -1180,10 +1190,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
 
 
 def _reviewer_reward_content() -> dict[str, object]:
-    settled_copy = (
-        "Future Growth will go to other unfinished plants. "
-        "Any remainder becomes Stored Growth."
-    )
+    settled_copy = "New Growth is shared or stored."
     expected_detail_rows = [
         {
             "category": category,
@@ -1192,7 +1199,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "event_ids": [event_id],
         }
         for category, name, value, event_id in (
-            ("Milestone", "Full Bloom reached", "+14 Garden Coins", "event:1"),
+            ("Milestone", "Bonsai reached full bloom", "+14 Garden Coins", "event:1"),
             ("Growth applied", "Plant Growth", "+40 growth", "event:2"),
             ("Garden Coins", "Garden Coins", "+14 Garden Coins", "event:3"),
             ("Discovery", "Firefly Evening", "New", "event:4"),
@@ -1221,12 +1228,12 @@ def _reviewer_reward_content() -> dict[str, object]:
             "footer_copy": "1 Garden Find",
         },
         "discovery-new-wording": {
-            "visible_summary_labels": ["1 Garden Find", "2 Garden discoveries"],
-            "discovery_summary": "2 Garden discoveries",
+            "visible_summary_labels": ["1 Garden Find", "2 Discoveries"],
+            "discovery_summary": "2 Discoveries",
         },
         "full-bloom": {
             "eyebrow": "MILESTONE REACHED",
-            "hero_title": "Full Bloom reached",
+            "hero_title": "Recent rewards",
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "class_label": "Bonsai",
@@ -1246,16 +1253,13 @@ def _reviewer_reward_content() -> dict[str, object]:
             "motion_animation_active": True,
             "art_scale": 1.04,
             "particles_active": True,
-            "select_another_visible": False,
+            "select_another_visible": True,
         },
         "full-bloom-settled": {
             "settled": True,
             "temporary_gold_cleared": True,
             "all_plants_full_bloom": True,
-            "settled_copy": (
-                "All planted plants are at Full Bloom. "
-                "Future Growth will be stored."
-            ),
+            "settled_copy": "New Growth becomes Stored Growth.",
             "select_another_visible": False,
             "destination_visible": True,
             "destination_kind": "stored_growth",
@@ -1284,7 +1288,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "hero_subtitle": "",
             "active_plant_identity_suppressed": True,
             "visible_summary_count": 2,
-            "visible_summary_labels": ["1 Garden Find", "2 Garden discoveries"],
+            "visible_summary_labels": ["1 Garden Find", "2 Discoveries"],
             "visible_summary_rows": [
                 {
                     "label": "1 Garden Find",
@@ -1295,7 +1299,7 @@ def _reviewer_reward_content() -> dict[str, object]:
                     "icon_kind": "item-art",
                 },
                 {
-                    "label": "2 Garden discoveries",
+                    "label": "2 Discoveries",
                     "reward_type": "environment_discovery",
                     "artwork_ref": "firefly_lantern",
                     "uses_item_art": False,
@@ -1307,6 +1311,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "details_click_height": 28,
             "details_heading_aligned": True,
             "reveal_height": 140,
+            "reveal_natural_height": 140,
             "title_details_non_overlapping": True,
             "detail_event_ids_reconciled": True,
             "obsolete_bottom_details_present": False,
@@ -1348,6 +1353,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "sticky_reward_and_footer": True,
             "reward_footer_non_overlapping": True,
             "reveal_height": 145,
+            "reveal_natural_height": 145,
             "canonical_viewport_restored": True,
         },
         "session-footer-reconciliation": {
@@ -1370,7 +1376,7 @@ def _reviewer_reward_content() -> dict[str, object]:
         },
         "session-history-named-growth": {
             "meaningful_names": [
-                "Full Bloom reached",
+                "Bonsai reached full bloom",
                 "Mature reached",
                 "75% checkpoint",
                 "Morning Dew",
@@ -1530,11 +1536,9 @@ def _reviewer_hud_viewport_matrix() -> dict[str, object]:
         "vertical_scroll_maximum": 120,
     })
     rows["1280x800-collapsed"].update({
-        "collapsed_today_visible": True,
-        "collapsed_today_copy": "18 remaining",
-        "collapsed_today_full_copy": "Today’s cards · 18 cards remaining",
-        "collapsed_today_expected_copy": "Today’s cards · 18 cards remaining",
-        "collapsed_today_expected_visible_copy": "18 remaining",
+        "collapsed_today_visible": False,
+        "collapsed_today_copy": "",
+        "collapsed_today_full_copy": "",
         "collapsed_next_visible": True,
         "collapsed_next_copy": "+18\nGrowth",
         "collapsed_next_declared_copy": "+18\nGrowth",

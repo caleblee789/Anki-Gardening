@@ -136,7 +136,7 @@ def test_schema22_exact_progression_fields_round_trip() -> None:
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 27
+    assert restored.version == STATE_VERSION
     assert restored.plants[0].growth_units == 99_975
     assert restored.plants[0].fertilizer_card_batches == [batch]
     assert restored.stored_growth_units == 1_250
@@ -145,7 +145,7 @@ def test_schema22_exact_progression_fields_round_trip() -> None:
     assert restored.daily_stats.plant_applied_growth_units == {"p": 500}
     assert restored.daily_stats.plant_shared_growth_units == {"p": 270}
     assert restored.daily_completion.cards_completed_today == 176
-    assert restored.daily_loadout.queued_for_day == "2026-08-29"
+    assert restored.daily_loadout.queued_for_day == ""
     assert restored.environment_pity_misses == {
         "rare": 12,
         "very_rare": 34,

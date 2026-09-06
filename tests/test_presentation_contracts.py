@@ -51,7 +51,7 @@ def test_canonical_stage_projection_retains_rare_as_only_the_internal_id() -> No
     assert stage_presentation("rare") == stages[-1]
 
 
-def test_plant_identity_preserves_the_instance_name_and_species_name() -> None:
+def test_plant_identity_without_stage_preserves_id_and_uses_species() -> None:
     identity = PlantIdentity.from_plant(SimpleNamespace(
         plant_id="bonsai-1",
         species="bonsai",
@@ -65,11 +65,36 @@ def test_plant_identity_preserves_the_instance_name_and_species_name() -> None:
     )
 
 
-@pytest.mark.parametrize("name", ["Bonsai Plant", "My Bonsai", "Plant Plant"])
-def test_customized_plant_names_are_preserved(name: str) -> None:
-    assert PlantIdentity.from_plant(SimpleNamespace(
-        species="bonsai", name=name, name_customized=True,
-    )).display_name == name
+@pytest.mark.parametrize("stage,label,title", [
+    ("seed", "Seed", "{species} Seed"),
+    ("sprout", "Sprout", "{species} Sprout"),
+    ("young", "Young", "Young {species}"),
+    ("mature", "Mature", "Mature {species}"),
+    ("flowering", "Flowering", "Flowering {species}"),
+    ("rare", "Full Bloom", "Full Bloom {species}"),
+])
+@pytest.mark.parametrize("species,species_name", [
+    ("bonsai", "Bonsai"), ("rose", "Rose"), ("japanese_maple", "Japanese Maple"),
+])
+@pytest.mark.parametrize("name", ["Bonsai Plant", "Juniper of the Moonlit Library Garden"])
+def test_plant_titles_use_stage_and_species_and_ignore_custom_names(
+    stage: str, label: str, title: str, species: str, species_name: str, name: str,
+) -> None:
+    from ankigarden.ui.formatters import format_plant_name
+    from ankigarden.presentation import plant_stage_event, plant_stage_title
+
+    plant = dict(plant_id="plant-1", species=species, name=name,
+                 display_name=name, name_customized=True, stage=stage)
+    expected_title = title.format(species=species_name)
+    for source in (plant, SimpleNamespace(**plant)):
+        identity = PlantIdentity.from_plant(source)
+        assert identity.plant_id == "plant-1"
+        assert identity.species_name == species_name
+        assert identity.display_name == expected_title
+        assert format_plant_name(source) == expected_title
+        assert plant_stage_title(source, stage) == expected_title
+        assert plant_stage_event(source, stage) == f"{species_name} reached {label.lower()}"
+    assert plant["name"] == name
 
 
 def test_collection_projection_names_exact_species_and_registry_denominators() -> None:
@@ -104,35 +129,36 @@ def test_collection_projection_names_exact_species_and_registry_denominators() -
     )
 
 
-def test_garden_appearance_keeps_display_bonus_scenery_and_effects_distinct() -> None:
+def test_garden_appearance_derives_effects_from_equipped_artwork() -> None:
     state = GardenState()
     day = state.daily_stats.day
     state.loadout.scenery_id = "default"
     state.loadout.displayed_garden_feature_id = "seedling_sign"
     state.loadout.active_bonus_garden_feature_id = "wind_chime"
-    state.loadout.visibility["garden_feature"] = True
+    state.loadout.visibility = {"garden_feature": False, "scenery": False}
     state.daily_loadout.garden_bonus_anki_day_id = day
     state.daily_loadout.garden_bonus_locked_at_ms = 100
     state.daily_loadout.garden_feature_id = "watering_station"
 
+    before = state.to_dict()
     projection = project_garden_appearance(state)
+    assert state.to_dict() == before
 
     assert projection.to_dict() == {
         "scenery_id": "default",
-        "displayed_decoration_id": "seedling_sign",
-        "active_bonus_decoration_id": "watering_station",
+        "displayed_decoration_id": "wind_chime",
+        "active_bonus_decoration_id": "wind_chime",
         "active_bonus_effect": (
-            "+1 Growth every 5 cards, during your first 100 cards each day."
+            "+1 Growth every 5 cards."
         ),
         "visual_effects_enabled": True,
     }
     assert projection.summary_rows == (
         ("Scenery", "Verdant Twilight"),
-        ("Displayed decoration", "Seedling Sign"),
+        ("Displayed decoration", "Wind Chime"),
         (
             "Active garden bonus",
-            "Watering Station · +1 Growth every 5 cards, during your first "
-            "100 cards each day.",
+            "Wind Chime · +1 Growth every 5 cards.",
         ),
         ("Visual effects", "Enabled"),
     )

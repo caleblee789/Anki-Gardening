@@ -47,13 +47,13 @@ SCENERY = (
     "eclipse",
 )
 EXPECTED_COUNTS = {
-    "cosmetics": 8,
+    "cosmetics": 3,
     "landmarks": 6,
     "mastery": 4,
     "backgrounds": 9,
     "plants": 60,
     "ui": 19,
-    "garden_features": 8,
+    "garden_features": 7,
 }
 RUNTIME_ROOTS = (
     "assets/v6_storybook_gouache/",

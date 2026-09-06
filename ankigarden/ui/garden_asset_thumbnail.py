@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..asset_manager import bundled_ui_asset_path
 from .environment_art import cover_pixmap, preview_source_pixmap
+from .icons import _active_device_pixel_ratio
 from .plant_art import normalized_plant_pixmap
 
 
@@ -39,15 +41,7 @@ def _path_from_asset(value: Any) -> Path | None:
 
 
 def _bundled_ui_path(asset_id: str) -> Path | None:
-    normalized = str(asset_id or "").removeprefix("ui_")
-    candidate = (
-        Path(__file__).resolve().parents[1]
-        / "assets"
-        / "v6_storybook_gouache"
-        / "ui"
-        / f"{normalized}.webp"
-    )
-    return candidate if candidate.is_file() else None
+    return bundled_ui_asset_path(asset_id)
 
 
 class GardenAssetThumbnail(QLabel):  # type: ignore[misc,valid-type]
@@ -153,12 +147,15 @@ class GardenAssetThumbnail(QLabel):  # type: ignore[misc,valid-type]
         source = QPixmap(str(path)) if path is not None else QPixmap()
         if source.isNull():
             return QPixmap()
-        return source.scaled(
-            width,
-            height,
+        dpr = _active_device_pixel_ratio()
+        pixmap = source.scaled(
+            max(1, round(width * dpr)),
+            max(1, round(height * dpr)),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        pixmap.setDevicePixelRatio(dpr)
+        return pixmap
 
     def _render(
         self,

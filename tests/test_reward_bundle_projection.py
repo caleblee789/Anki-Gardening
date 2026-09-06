@@ -67,6 +67,7 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
                 coin_reward=3,
                 coin_award_event_ids=("coin:stage",),
                 coin_included_in_total=True,
+                plant_class='Rose',
             ),
             PlantMilestone(
                 "checkpoint:rose:75",
@@ -114,7 +115,7 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
     assert bundle.hero.kind is RewardHero.FULL_BLOOM
     assert bundle.hero.artwork_ref == "rose-rare.webp"
     assert bundle.hero.plant_id == "rose"
-    assert bundle.hero.plant_name == "Rose"
+    assert bundle.hero.plant_name == "Bonsai"
     assert bundle.hero.plant_class == "Bonsai"
     assert bundle.hero.new_stage == "rare"
     assert bundle.hero.sequence == 2
@@ -134,8 +135,8 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
     assert checkpoint.plant_class == "Bonsai"
     assert checkpoint.sequence == 1
     assert bundle.compact.eyebrow == "MILESTONE REACHED"
-    assert bundle.compact.hero_title == "Full Bloom reached"
-    assert bundle.compact.hero_subtitle == "Rose"
+    assert bundle.compact.hero_title == "Bonsai reached full bloom"
+    assert bundle.compact.hero_subtitle == ""
     assert [summary.label for summary in bundle.visible_summaries] == [
         "1 Garden Find",
         "Verdant Twilight",
@@ -180,6 +181,7 @@ def test_full_bloom_coin_history_reconciles_the_canonical_footer_total() -> None
             coin_reward=5,
             coin_award_event_ids=("coin:bloom",),
             coin_included_in_total=True,
+            plant_class='Rose',
         ),),
     )
 
@@ -339,6 +341,7 @@ def test_full_bloom_inventory_receipt_names_the_growth_charge_not_the_event():
             "full_bloom",
             "2026-08-28T10:00:00Z",
             new_stage="rare",
+            plant_class='Rose',
         ),),
         reward_receipts=(RewardReceipt(
             event_key="full_bloom:rose",
@@ -412,6 +415,7 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
                 detail="Reached Mature",
                 plant_id="rose",
                 plant_name="Rose",
+                plant_class='Rose',
             ),
             RewardItemProjection(
                 "find:morning-dew",
@@ -439,6 +443,7 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
                 "Checkpoint reached",
                 checkpoint_percent=75,
                 plant_id="rose",
+                plant_class='Rose',
             ),
             RewardItemProjection(
                 "booster:answer",
@@ -455,8 +460,8 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
 
     assert compact == RewardCompactProjection(
         eyebrow="MILESTONE REACHED",
-        hero_title="Full Bloom reached",
-        hero_subtitle="Rose",
+        hero_title="Bonsai reached full bloom",
+        hero_subtitle="",
         visible_summaries=(
             RewardCompactSummary(
                 "garden_finds",
@@ -510,6 +515,7 @@ def test_secondary_reward_priority_is_semantic_stable_and_metadata_rich() -> Non
         "Full Bloom",
         plant_id="rose",
         plant_name="Rose",
+        plant_class='Rose',
     )
     candidates = (
         RewardItemProjection(
@@ -551,6 +557,7 @@ def test_secondary_reward_priority_is_semantic_stable_and_metadata_rich() -> Non
             "Checkpoint reached",
             checkpoint_percent=75,
             sequence=13,
+            plant_class='Rose',
         ),
         RewardItemProjection(
             "discovery:firefly-evening",
@@ -619,6 +626,7 @@ def test_secondary_ties_use_event_sequence_then_event_id() -> None:
         RewardHero.FULL_BLOOM,
         "Rose",
         "Full Bloom",
+        plant_class='Rose',
     )
     later_id = RewardItemProjection(
         "customization:zeta",
@@ -665,6 +673,7 @@ def test_session_history_names_meaningful_events_and_aggregates_routine_growth()
                 garden_coins=14,
                 plant_name="Rose",
                 artwork_ref="rose-rare.webp",
+                plant_class='Rose',
             ),
             RewardItemProjection(
                 "growth:plant",
@@ -711,12 +720,12 @@ def test_session_history_names_meaningful_events_and_aggregates_routine_growth()
     rows = project_reward_session_history((bloom, collectibles, bloom))
 
     assert tuple(row.name for row in rows) == (
-        "Full Bloom reached",
+        "Rose reached full bloom",
         "Morning Dew",
         "Firefly Evening",
         "Growth applied",
     )
-    assert rows[0].value == "Rose · +14 Coins"
+    assert rows[0].value == "+14 Coins"
     assert rows[1].category_label == "Garden Find"
     assert rows[1].value == "+40 Growth"
     assert rows[2].category_label == "Discovery"
@@ -741,6 +750,7 @@ def test_detail_action_tracks_structured_rows_instead_of_hidden_count() -> None:
             "Full Bloom",
             plant_id="rose",
             plant_name="Rose",
+            plant_class='Rose',
         ),),
     )
     coin_only = RewardBundleProjection(
@@ -775,6 +785,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
             plant_id="rose",
             plant_name="Rose",
             new_stage="rare",
+            plant_class='Rose',
         ),
         RewardItemProjection(
             "find:morning-dew",
@@ -807,6 +818,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
             garden_coins=2,
             checkpoint_percent=75,
             new_stage="flowering",
+            plant_class='Rose',
         ),
     )
     bundle = RewardBundleProjection(
@@ -817,9 +829,9 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
 
     expected = (
         RewardDetailRow(
-            category_label="Full Bloom",
-            name="Rose",
-            value="Reached Full Bloom · +14 Coins",
+            category_label="",
+            name="Rose reached full bloom",
+            value="+14 Coins",
             event_ids=("bloom:rose",),
             artwork_ref="rose-rare.webp",
         ),
@@ -844,15 +856,15 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
             event_ids=("booster:answer",),
         ),
         RewardDetailRow(
-            category_label="Checkpoint reached",
-            name="Rose",
-            value="75% toward Flowering · +2 Coins",
+            category_label="",
+            name="Rose reached 75% toward flowering",
+            value="+2 Coins",
             event_ids=("checkpoint:rose:75",),
         ),
     )
     assert project_reward_detail_rows(items) == expected
     assert bundle.detail_rows == expected
-    assert expected[0].category == "Full Bloom"
+    assert expected[0].category == ""
     assert expected[0].art_asset == "rose-rare.webp"
 
 
@@ -866,6 +878,7 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
             "2026-08-28T10:00:00Z",
             previous_stage="sprout",
             new_stage="young",
+            plant_class='Rose',
         ),
         PlantMilestone(
             "stage:rose:mature",
@@ -875,6 +888,17 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
             "2026-08-28T10:00:01Z",
             previous_stage="young",
             new_stage="mature",
+            plant_class='Rose',
+        ),
+        PlantMilestone(
+            "stage:second-rose:young",
+            "second-rose",
+            "Rose",
+            "stage_change",
+            "2026-08-28T10:00:02Z",
+            previous_stage="sprout",
+            new_stage="young",
+            plant_class="Rose",
         ),
     ))
 
@@ -884,14 +908,22 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
     assert bundle.hero.event_id == "stage:rose:mature"
     assert bundle.hero.detail == "Reached Mature"
     assert bundle.compact.eyebrow == "NEW GROWTH STAGE"
-    assert bundle.compact.hero_title == "Mature reached"
+    assert bundle.compact.hero_title == "Rose reached mature"
     assert bundle.compact.hero_subtitle == "Advanced 2 stages"
-    assert bundle.compact.visible_summaries == ()
     assert {item.event_id for item in bundle.all_items} == {
         "stage:rose:young",
         "stage:rose:mature",
+        "stage:second-rose:young",
     }
-    assert {item.sequence for item in bundle.all_items} == {0, 1}
+    assert {item.sequence for item in bundle.all_items} == {0, 1, 2}
+    assert {row.name for row in bundle.detail_rows} == {
+        "Rose reached young",
+        "Rose reached mature",
+    }
+    assert len(bundle.detail_rows) == 3
+    assert {event_id for row in bundle.detail_rows for event_id in row.event_ids} == {
+        "stage:rose:young", "stage:rose:mature", "stage:second-rose:young",
+    }
 
 
 @pytest.mark.parametrize(
@@ -918,6 +950,7 @@ def test_compact_projection_uses_event_specific_eyebrows(
         "Rose",
         "Garden reward",
         plant_name="Rose",
+        plant_class='Rose',
     )
     bundle = RewardBundleProjection(
         f"answer:{kind.value}",
@@ -950,6 +983,7 @@ def test_checkpoint_compact_copy_names_progress_and_next_target() -> None:
             coin_reward=2,
             coin_award_event_ids=("coin:checkpoint",),
             coin_included_in_total=True,
+            plant_class='Rose',
         ),),
     )
 
@@ -960,7 +994,7 @@ def test_checkpoint_compact_copy_names_progress_and_next_target() -> None:
     assert bundle.hero.artwork_ref == "rose-young.webp"
     assert bundle.hero.garden_coins == 2
     assert bundle.compact.eyebrow == "CHECKPOINT REACHED"
-    assert bundle.compact.hero_title == "50% checkpoint"
+    assert bundle.compact.hero_title == "Rose reached 50% toward mature"
     assert bundle.compact.hero_subtitle == "Next checkpoint at 75%"
 
 
@@ -972,13 +1006,14 @@ def test_single_stage_compact_copy_names_only_the_final_stage() -> None:
         "stage_change",
         "2026-08-28T10:00:00Z",
         new_stage="young",
+        plant_class='Rose',
     ),))
 
     bundle = project_committed_reward_bundle(event)
 
     assert bundle is not None
     assert bundle.compact.eyebrow == "NEW GROWTH STAGE"
-    assert bundle.compact.hero_title == "Young reached"
+    assert bundle.compact.hero_title == "Rose reached young"
     assert bundle.compact.hero_subtitle == ""
 
 

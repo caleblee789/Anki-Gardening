@@ -181,9 +181,9 @@
     },
     {
       "landmark_id": "garden_house",
-      "action_id": "garden.collection.open",
-      "label": "Collection",
-      "tooltip": "Open Collection",
+      "action_id": "garden.trophies.open",
+      "label": "Trophy Room",
+      "tooltip": "Open Trophy Room",
       "role": "button",
       "supported_variants": ["4:3", "16:9", "home"],
       "variants": {

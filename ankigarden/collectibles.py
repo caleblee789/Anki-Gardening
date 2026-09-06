@@ -32,7 +32,7 @@ CATEGORY_LABELS: dict[CollectibleCategory, str] = {
     "garden_features": "Garden decorations",
     "garden_beds": "Garden beds",
     "growth_items": "Growth items",
-    "cosmetics": "Display decorations",
+    "cosmetics": "Gardening Trophies",
     "landmarks": "Garden Landmark",
     "mastery": "Cultivation Mastery",
 }
@@ -340,14 +340,14 @@ def _cosmetic_definitions() -> Iterable[CollectibleDefinition]:
             item_id=f"cosmetics:{source_id}",
             name=item.display_name,
             category="cosmetics",
-            rarity="Cosmetic",
+            rarity="Gardening Trophy",
             descriptor=EffectDescriptor(
-                function="Adds an optional Display Decoration appearance.",
-                buff="Cosmetic only. It never changes Growth, Garden Coins, or Finds.",
-                activation_condition="Select it as the displayed decoration after unlocking it.",
-                duration="Stays owned permanently.",
-                stacking="One Display Decoration is shown at a time.",
-                replacement="Changing the artwork never changes the active Garden Bonus.",
+                function="Celebrates your achievement in the Trophy Room.",
+                buff=item.buff_description,
+                activation_condition="Activates automatically after unlocking.",
+                duration="Permanent.",
+                stacking="All three trophies can be active together, alongside your equipped items.",
+                replacement="No equipment slot required.",
                 unlock_requirement=(
                     f"Buy in the Nursery for {int(item.price_coins):,} Garden Coins."
                     if item.purchasable and item.price_coins is not None
@@ -438,9 +438,9 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
             descriptor=EffectDescriptor(
                 function="Provides one garden location for a collected plant.",
                 buff=(
-                    "Each planted plant adds a 10% Shared Growth share. When a "
-                    "plant reaches Full Bloom, its share is divided among planted "
-                    "plants still growing."
+                    "Each other planted bed adds a Shared Growth lane: 10%, "
+                    "or 15% with the Golden Trowel. Full Bloom lanes redirect "
+                    "to unfinished plants, then Stored Growth."
                 ),
                 activation_condition="Active after the bed is unlocked.",
                 duration="Stays unlocked.",
@@ -588,11 +588,6 @@ def collectible_views(state: Any) -> tuple[CollectibleView, ...]:
             ))
         elif definition.category in {"garden_features", "scenery"}:
             owned = source_id in (inventory.get(definition.category, []) or [])
-            equipped_id = (
-                str(getattr(loadout, "active_garden_bonus_id", "") or "")
-                if definition.category == "garden_features"
-                else str(getattr(loadout, "active_scenery_effect_id", "") or "")
-            )
             displayed_id = (
                 str(getattr(loadout, "display_decoration_id", "") or "")
                 if definition.category == "garden_features"
@@ -601,18 +596,17 @@ def collectible_views(state: Any) -> tuple[CollectibleView, ...]:
             views.append(CollectibleView(
                 definition,
                 owned,
-                equipped=equipped_id == source_id,
+                equipped=displayed_id == source_id,
                 selected=displayed_id == source_id,
             ))
         elif definition.category == "cosmetics":
             owned = source_id in (inventory.get("cosmetics", []) or [])
+            equipped = False
             views.append(CollectibleView(
                 definition,
                 owned,
-                selected=(
-                    str(getattr(loadout, "display_decoration_id", "") or "")
-                    == source_id
-                ),
+                equipped=equipped,
+                selected=equipped,
                 quantity=1 if owned else 0,
             ))
         elif definition.category == "landmarks":

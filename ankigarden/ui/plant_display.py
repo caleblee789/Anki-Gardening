@@ -90,7 +90,7 @@ def theme_integration_profile(
             "contrast": _number(spec.get(f"{prefix}_contrast"), 0.97 if depth_band == "rear" else 0.99, 0.88, 1.08),
             "saturation": _number(spec.get(f"{prefix}_saturation"), 0.94 if depth_band == "rear" else 0.97, 0.82, 1.05),
             "exposure": _number(spec.get(f"{prefix}_exposure"), -0.043 if depth_band == "rear" else -0.025, -0.12, 0.12)
-            + 0.065 * light_amount,
+            + _number(spec.get("distance_exposure"), 0.065, 0.0, 0.12) * light_amount,
             "tint": str(spec.get("key_tint", "#C58A55")),
             "tint_alpha": _number(spec.get("base_tint_alpha"), 0.012, 0.0, 0.08)
             + _number(spec.get("distance_tint_alpha"), 0.032, 0.0, 0.08) * light_amount,
@@ -2034,6 +2034,9 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             max(44.0, min(height - 3.0, depth + max(8.0, height * 0.035)) - 3.0),
         )
 
+    compact_readable_art = responsive_interpolate(width, 440, 520, 22.0, 33.0)
+    readable_art = responsive_interpolate(width, 680, 760, compact_readable_art, 42.0)
+
     def build(
         group_scale: float,
         adjustments: dict[int, tuple[float, float, float]],
@@ -2100,16 +2103,16 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                 if (
                     release_layout_candidate
                     and base_type == "direct_soil"
-                    and layout_family == "compact"
+                    and (layout_family == "compact" or surface_context != "home")
                 ):
-                    # Keep the authored visual correction as metadata and as
-                    # the target-size authority, then apply only the minimum
-                    # runtime readability lift used by the validator. This
-                    # matters at the 572px six-bed dashboard: a reviewed 0.55
-                    # Seed correction would otherwise render at about 15px.
+                    # Preserve authored progression while applying the same
+                    # readability floor as the shared layout validator. Young
+                    # plants also need this in compact native Garden views.
+                    # Home retains its existing compact-stage-only rule.
+                    minimum_visible = 20.01 if layout_family == "compact" else readable_art + 0.01
                     readability_lift = max(
                         1.0,
-                        20.01 / max(1.0, visible_w, visible_h),
+                        minimum_visible / max(1.0, visible_w, visible_h),
                     )
                     draw_w *= readability_lift
                     draw_h *= readability_lift
@@ -2241,8 +2244,16 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                 row=bed.shadow_depth,
                 surface_kind=bed.surface_kind,
                 support_line=resolved_support_line,
-                contact_color=bed.shadow_color or str(appearance.get("contact_shadow_color", "#1c1b19")),
-                cast_color=bed.shadow_color or str(appearance.get("cast_shadow_color", "#23201d")),
+                contact_color=(
+                    bed.shadow_color or str(appearance.get("contact_shadow_color", "#1c1b19"))
+                    if surface_context == "home" else
+                    str(appearance.get("contact_shadow_color") or bed.shadow_color or "#1c1b19")
+                ),
+                cast_color=(
+                    bed.shadow_color or str(appearance.get("cast_shadow_color", "#23201d"))
+                    if surface_context == "home" else
+                    str(appearance.get("cast_shadow_color") or bed.shadow_color or "#23201d")
+                ),
                 lighting=lighting,
             )
             bed_width = max(32.0, width * bed.footprint[0])
@@ -2406,20 +2417,6 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
 
     def finish(rows: list[PlantPlacement]) -> list[PlantPlacement]:
         resolved: list[PlantPlacement] = []
-        compact_readable_art = responsive_interpolate(
-            width,
-            440,
-            520,
-            22.0,
-            33.0,
-        )
-        readable_art = responsive_interpolate(
-            width,
-            680,
-            760,
-            compact_readable_art,
-            42.0,
-        )
         placed_controls: list[Rect] = []
         severe_by_slot: dict[int, set[str]] = {row.slot_index: set() for row in rows}
         active_rows = [row for row in rows if row.slot_index in active_slots]

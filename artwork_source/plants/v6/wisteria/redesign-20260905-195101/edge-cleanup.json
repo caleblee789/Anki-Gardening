@@ -1,0 +1,44 @@
+{
+  "operation": "RGB edge despill only; exact alpha preserved",
+  "predicate": "existing chroma detector OR a>0,r<120,g>140,b>150,min(g,b)-r>70,abs(g-b)<100",
+  "boundary_radius": 4,
+  "replacement_radius": 12,
+  "stages": {
+    "seed": {
+      "repaired_pixels": 1124,
+      "before_sha256": "fce5021ff332df4af049914db08900292f2be69b7751b47d29fc55ab5163c273",
+      "after_sha256": "b49ad5e4c751ecb7fd09373a1db68b95e1a5eb83be43ddbc0abd8fb4ec1ed29c",
+      "alpha_unchanged": true
+    },
+    "sprout": {
+      "repaired_pixels": 3246,
+      "before_sha256": "57fee9b7c0512c72444df7afe98a44161d649e743f36497b5d97acac832c5953",
+      "after_sha256": "7678ccbe534359a09b912179125b1b405fc37818af46ec3c48338cfb7362728e",
+      "alpha_unchanged": true
+    },
+    "young": {
+      "repaired_pixels": 10764,
+      "before_sha256": "510031f8c4e25650811d0c5f1b382796b1c6bf651ea65f9e3d3da4a9040c79a8",
+      "after_sha256": "1ac72946e985607eceaeb6a57014621ec58d969c7f01e40d1a150996fb577cb6",
+      "alpha_unchanged": true
+    },
+    "mature": {
+      "repaired_pixels": 28932,
+      "before_sha256": "b9b3b511472ba170b540f5c405e1a6702e1396338d54b2dd970e0899def1ec13",
+      "after_sha256": "52f79b8b85e03672277cb15ed52b1622e23fe0c57f65fa5d64e1b7da9499df16",
+      "alpha_unchanged": true
+    },
+    "flowering": {
+      "repaired_pixels": 26805,
+      "before_sha256": "c418964b4c5430f46ebf11ebc06e4ccd26154f7cfdf4f4aa384a06eec566ff2d",
+      "after_sha256": "0fa137f05260d1907ce55e00f24c3f4bba5c958fb608125bc82b354fad6257c4",
+      "alpha_unchanged": true
+    },
+    "rare": {
+      "repaired_pixels": 24807,
+      "before_sha256": "1ffb563fa2833a1704c0ae77b7df14fc9e1574488c096c125314dee4e6f9afa1",
+      "after_sha256": "ad09866497ab8eaa085ec72708d554c50b601acf01153f5ea0abd530eb2d0f4a",
+      "alpha_unchanged": true
+    }
+  }
+}

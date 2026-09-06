@@ -5,6 +5,22 @@
 > catalog in `ankigarden/balance_catalog.py`. Runtime source and committed
 > engine results remain authoritative when prose and implementation disagree.
 
+## Current feature availability
+
+Landmarks are dormant for the first release. Their catalog, artwork, saved
+funding, claims, selections, and transaction contracts remain available to
+developer tests. The runtime and UI share the internal
+`ankigarden/feature_availability.py` policy, which defaults to disabled.
+A saved active Landmark receives no new funding: final overflow goes to Stored
+Growth, and new Landmark actions cannot spend resources. No save migration,
+refund, automatic target switch, or later backfill is performed.
+
+The Landmark section below documents the retained backend for future use.
+Garden Legacy still requires complete Landmark and Mastery funding. Locked
+Legacy entries are hidden; already eligible Legacy and Mastery retain their
+existing behavior. Historical reward records remain intact, while dormant
+feature details are omitted from learner-facing summaries.
+
 ## Economy principles
 
 - Every eligible committed answer gives the same ordinary Growth for Again,
@@ -205,11 +221,15 @@ cannot repeat these rewards.
   a plant. A rejected dose remains in inventory.
 - A Booster may run concurrently with one active Fertilizer. Another Booster
   extends its remaining card count rather than increasing potency.
-- Herbalist’s Hourglass snapshots an extra 25 cards when a Booster is
-  activated, for 125 cards total. Full Moon Garden awards Potions but does not
-  extend them.
-- A Full Bloom transition transfers remaining card-counted effects to the next
-  eligible nurtured plant or preserves them until a valid target is chosen.
+- Owning Herbalist’s Hourglass adds 25 cards to each new Potion. Owning Full Moon
+  Garden adds another 25: 100, 125, or 150 cards per dose. Equipment does not
+  affect these ownership bonuses; existing doses keep their recorded duration.
+- A Full Bloom transition transfers remaining effects to the next eligible
+  nurtured plant. Once every current catalog species is Full Bloom, remaining
+  doses move to persistent garden-wide queues, including plants in Collection.
+  Fertilizer and Potions then enhance normal Answer Growth and its Shared Growth.
+- Garden-wide activations keep the five-dose limit per family. Inherited queues
+  above that limit retain every card and drain before accepting more doses.
 - Remaining cards persist exactly across restart and sync.
 
 ### Growth Charge rules
@@ -219,51 +239,49 @@ cannot repeat these rewards.
 - It is consumed only in the same successful transaction that grants Growth.
 - It receives no modifiers or Shared Growth.
 - Every normal checkpoint and stage crossing still resolves. Excess continues
-  through unfinished planted targets and then into Stored Growth.
+  through unfinished planted targets, the selected eligible Mastery project, and
+  Stored Growth. After all catalog species bloom, Charges use this garden route
+  without a plant selection. Quotes and receipts identify the actual allocation.
 
-## Appearance and daily effect snapshot
+## Equipment and daily Rhythm
 
-The four loadout choices are independent:
+`display_decoration_id` and `display_scenery_id` are the two equipped selections.
+Each item supplies both its artwork and its catalog effect. Cosmetic decorations
+supply no effect. Apply and Equip commit the same selection; previews do not.
+Selections may change throughout the day. Subsequent reward events use the
+newly equipped item, without recalculating previously awarded rewards. Purchases
+never auto-equip. Hiding artwork preserves the equipped item and its effect.
 
-```text
-display_decoration_id
-active_garden_bonus_id
-display_scenery_id
-active_scenery_effect_id
-```
-
-The displayed Decoration and displayed Scenery control appearance only. The
-active Garden Bonus and Scenery Effect control mechanics. A user may therefore
-display one owned item while using another owned item’s effect.
-
-At the first eligible answer, the engine atomically snapshots Garden Rhythm,
-the active Garden Bonus, and the active Scenery Effect for that Anki day.
-Appearance may change immediately. Mechanical changes after the snapshot queue
-for the next Anki day and cannot rewrite committed results. Purchases never
-auto-display or auto-equip.
+Daily snapshots preserve Garden Rhythm; their equipment IDs are historical
+metadata, not reward authorities. Sync reconciliation captures the equipped
+items once per batch and uses them for unseen eligible reviews, including
+past-day reviews. First-N limits use each review's original Anki day and card
+position. Today’s Cards completion still requires the current-day live transition.
+Swapping preserves cadence counters, daily limits, banked Growth, and the duration
+already granted to activated consumables. Equipping itself grants no rewards.
 
 ## Garden Bonuses
 
-Only one snapshotted Garden Bonus is active.
+The equipped decoration supplies at most one Garden Bonus.
 
 | Decoration | Acquisition | Garden Bonus |
 |---|---|---|
 | Seedling Sign | Included | None |
-| Wind Chime | 100 Garden Coins | Every 10 eligible answers, +1 Answer Growth; remainder persists across days |
+| Wind Chime | 100 Garden Coins | Every 5 eligible answers, +1 Answer Growth; remainder persists across days |
 | Harvest Bell | 175 Garden Coins | +5 Garden Coins when Today’s Cards is complete |
-| Watering Station | 250 Garden Coins | Every fifth eligible answer among the first 100 of the Anki day, +1 Answer Growth |
-| Herbalist’s Hourglass | 350 Garden Coins | Every 30 active completion days, gain 1 Booster Potion; activated Potions receive 25 extra cards |
+| Watering Station | 250 Garden Coins | Every second eligible answer among the first 200 of the Anki day, +1 Answer Growth |
+| Herbalist’s Hourglass | 350 Garden Coins | Every 30 equipped completion days, gain 1 Booster Potion; owning it adds 25 cards to new Potions |
 | Firefly Lantern | Rare discovery | Every fifth eligible answer, +3 Instant Growth to the unfinished planted plant closest to its next checkpoint |
 | Prism Trellis | Very Rare discovery | Bank 1 Growth for each of the first 100 eligible cards per day, up to 300; release the bank on Today’s Cards completion while active |
 
 Wind Chime and Hourglass progress persists while unequipped, but advances only
-when the bonus is active. Watering Station’s first-100 allowance resets at the
+when the bonus is active. Watering Station’s first-200 allowance resets at the
 Anki-day boundary. Firefly ties resolve by remaining Growth, bed, then species.
 Prism value persists through incomplete days and is never confiscated.
 
 ## Scenery Effects
 
-Only one snapshotted Scenery Effect is active.
+The equipped scenery supplies its Scenery Effect.
 
 | Scenery | Acquisition | Scenery Effect |
 |---|---|---|
@@ -274,7 +292,7 @@ Only one snapshotted Scenery Effect is active.
 | Snow-Covered Garden | 1,200 Garden Coins | Every second active Today’s Cards completion grants 1 Small Growth Charge |
 | Rainbow Horizon | Rare discovery | +1 Answer Growth on the first 75 eligible cards each Anki day |
 | Halloween Garden | Very Rare discovery | Completion gift: Small Charge 95%, Standard Charge 4%, Booster Potion 1% |
-| Full Moon Garden | Ultra Rare discovery | Every sixth active Today’s Cards completion grants 1 Booster Potion |
+| Full Moon Garden | Ultra Rare discovery | Every sixth equipped Today’s Cards completion grants 1 Booster Potion; owning it adds 25 cards to new Potions |
 | Celestial Eclipse | Ultra Rare discovery | +1 Answer Growth on the first 125 eligible cards each Anki day |
 
 Snow and Full Moon completion remainders pause instead of disappearing while a
@@ -374,24 +392,29 @@ Achievements do not reward answer rating, accuracy, speed, or avoiding Again.
 Completion achievements are cumulative, not consecutive. Missing a day never
 removes their progress.
 
-## Cosmetic Display Decorations
+## Gardening Trophies
 
-These items change only the displayed decoration and never change rewards:
+Progress → Trophy Room and the garden house open the same three-bay display
+case. Trophies activate automatically after unlocking and all three stack with
+equipped scenery and the garden decoration.
 
-| Item | Acquisition | Price |
-|---|---|---:|
-| Seedling Sign | Included | — |
-| Garden Bench | Purchase | 150 Garden Coins |
-| Birdhouse | Purchase | 200 Garden Coins |
-| Butterfly House | Purchase | 250 Garden Coins |
-| Stone Lantern | Purchase | 300 Garden Coins |
-| Sundial | Purchase | 400 Garden Coins |
-| Botanist’s Plaque | Botanical Collection | — |
-| Garden Journal | Year of Harvests | — |
-| Golden Trowel | Ancient Garden | — |
+| Trophy | Unlock requirement | Permanent bonus |
+|---|---|---|
+| Botanist’s Plaque | All 10 species at Full Bloom | +1 Growth per eligible card, included before Shared Growth |
+| Garden Journal | 365 verified completed review days | +5 Garden Coins for each subsequent Today’s Cards completion, once per Anki day |
+| Golden Trowel | 100,000 eligible answers | Shared Growth increases from 10% to 15% for each other planted bed |
 
-Cosmetics are direct, one-time acquisitions with real catalog artwork. They do
-not use random purchases, duplicates, gameplay effects, or auto-display.
+Trophies have no Equip action and do not appear outdoors. Bonuses begin after
+the saved activation boundary; historical reviews and completions are not paid
+again. Existing unlocked trophies receive their activation boundary once on
+upgrade. Growth Charges retain their fixed values and never receive trophy
+multipliers or Shared Growth.
+
+Garden Bench, Birdhouse, Butterfly House, Stone Lantern, and Sundial are retired
+from purchasing and display. Their original artwork is saved under
+`artwork_source/retired_cosmetics/`, outside the add-on. Historical ownership and
+transactions remain intact. An equipped retired prop or trophy falls back to the
+included Seedling Sign. Outdoor decoration art is omitted from the Home preview.
 
 ## Garden Landmark
 
@@ -473,9 +496,8 @@ uncommitted projections.
 
 ## Persistence, migration, and replay authority
 
-Schema 27 stores exact hundredth-Growth units, Stored Growth, card-counted
-Fertilizer and Booster queues, Garden Rhythm and effect snapshots, independent
-appearance/effect choices, persistent effect counters, dual environment pity,
+Schema 28 stores exact hundredth-Growth units, Stored Growth, card-counted
+Fertilizer and Booster queues, Garden Rhythm snapshots, unified equipment choices, persistent effect counters, dual environment pity,
 earned beds, active Growth target acknowledgement, cumulative Landmark and
 Mastery funding and claims, Garden Legacy, Garden Cycle, and
 provenance-qualified lifetime economy aggregates.
@@ -559,3 +581,13 @@ release. Exact-package native Anki/macOS interaction, accessibility, remaining
 platform checks, and human review stay separate. Any capture report with
 `quality_status: review-required` or `release_ready: false` remains review
 evidence, not release approval.
+
+
+### Schema 30 late-game supplies
+
+The schema-29 upgrade preserves balances, reward claims, onboarding receipts,
+activation times, and remaining card batches. Carried Wind Chime and Watering
+Station cadence credit settles once on the next qualifying equipped answer;
+Watering Station retains separate Anki-day counters. It does not reissue prior
+migration grants. Garden-wide batches and committed destination receipts survive
+save/reload and failed transactions with the same inventory and Growth totals.

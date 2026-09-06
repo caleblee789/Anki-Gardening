@@ -179,7 +179,7 @@ def format_growth(
 
 
 def format_plant_name(plant: Any) -> str:
-    """Use the canonical plant identity, preserving customized names exactly."""
+    """Use the canonical current stage and species, ignoring custom names."""
     from ..presentation import PlantIdentity
 
     return PlantIdentity.from_plant(plant).display_name

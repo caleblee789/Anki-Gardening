@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .presentation import PlantIdentity, plant_species_name, plant_stage_event, plant_stage_title
+
 import json
 import hashlib
 import logging
@@ -14,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
 from . import build_capabilities
+from .feature_availability import growth_target_enabled, landmarks_enabled
 from .asset_manager import AssetManager, ResolvedAsset
 from .balance_catalog import (
     ALL_DUE_BASE_COINS as CATALOG_ALL_DUE_BASE_COINS,
@@ -137,6 +140,7 @@ from .models.state import (
     Achievement,
     ActivePlantPeriod,
     CardEffectBatch,
+    GardenCardEffects,
     CurrencyTransaction,
     DailyEconomySnapshot,
     DailyCompletionState,
@@ -173,12 +177,18 @@ from .models.state import (
     bounded_reward_receipts,
     utc_now_iso,
 )
+from .models.welcome import (
+    WELCOME_COINS, WELCOME_EVENT_KEY, WELCOME_GROWTH,
+    WelcomeReceipt, WelcomeReward,
+)
 from .reward_ledger import (
     DailyEconomySnapshotRecord,
     EconomyEventRecord,
     IdempotencyRecord,
 )
 from .models.sync_reward import SyncRewardSummary
+from .balance_catalog import KNOWN_COSMETIC_IDS, TROPHY_BY_ACHIEVEMENT
+from .trophies import trophy_effects, initialize_trophy_activations
 from .purchases import (
     CompletedPurchaseRequest,
     EffectDescriptor,
@@ -289,12 +299,30 @@ class BoosterResult:
     hourglass_bonus_cards: int = 0
     total_cards_added: int = 0
     remaining_booster_cards: int = 0
+    full_moon_bonus_cards: int = 0
+    target_id: str = ""
+    destination_kind: str = "plant"
+
+
+@dataclass(frozen=True)
+class ConsumableUseProjection:
+    target_id: str
+    target_name: str
+    destination_kind: str
+    can_use: bool
+    message: str
+    cards_added: int = 0
+    remaining_cards: int = 0
+    doses: int = 0
+    queued_item_doses: int = 0
+    active_item_id: str = ""
 
 
 @dataclass(frozen=True)
 class CompletionResult:
     base_coins: int = 0
     harvest_bell_coins: int = 0
+    trophy_coins: int = 0
     garden_cycle_coins: int = 0
     garden_cycle_remainder: int = 0
     prism_growth_released_units: int = 0
@@ -315,6 +343,9 @@ class ReviewAward:
     booster_growth: int = 0
     weather_growth: int = 0
     scenery_growth: int = 0
+    trophy_growth: int = 0
+    shared_growth_numerator: int = 1
+    shared_growth_denominator: int = 10
     allocations: tuple[GrowthAllocation, ...] = ()
     correlation_id: str = field(default="", compare=False)
     reward_event_keys: tuple[str, ...] = field(default=(), compare=False)
@@ -326,6 +357,7 @@ class ReviewAward:
     booster_growth_units: int = field(default=0, compare=False)
     weather_growth_units: int = field(default=0, compare=False)
     scenery_growth_units: int = field(default=0, compare=False)
+    trophy_growth_units: int = field(default=0, compare=False)
     applied_growth_units: int = field(default=0, compare=False)
     redirected_growth_units: int = field(default=0, compare=False)
     shared_growth_units: int = field(default=0, compare=False)
@@ -349,6 +381,7 @@ class ReviewAward:
             + self.booster_growth
             + self.weather_growth
             + self.scenery_growth
+            + self.trophy_growth
         )
 
     @property
@@ -364,6 +397,7 @@ class ReviewAward:
             max(0, int(self.booster_growth_units)),
             max(0, int(self.weather_growth_units)),
             max(0, int(self.scenery_growth_units)),
+            max(0, int(self.trophy_growth_units)),
         ))
         return explicit or max(0, int(self.total_growth)) * GROWTH_UNITS_PER_POINT
 
@@ -612,7 +646,7 @@ class GardenGameEngine:
         self._pending_reward_activation_ms: int | None = None
         self._pending_stage_transitions: list[StageTransition] = []
         self._current_correlation_id = ""
-        self._session_garden_feature_id: str | None = None
+        self._reward_equipment: tuple[str, str] | None = None
         self.last_booster_result = BoosterResult()
         self.last_completion_result = CompletionResult()
         self.last_fertilizer_stored_item_result: (
@@ -649,7 +683,9 @@ class GardenGameEngine:
             self._migrate_scene_geometry(geometry_version)
         self._repair_surface_placements()
         self._ensure_achievements()
+        initialize_trophy_activations(self.state, self._now_ms())
         self._repair_active_plant()
+        self.state.collect_completed_card_effects()
         if (
             self.state.reward_state_initialized
             and self.state.progression_activation_ms <= 0
@@ -721,7 +757,7 @@ class GardenGameEngine:
         cosmetic_owned = [
             item_id
             for item_id in inventory.get("cosmetics", [])
-            if item_id in COSMETIC_BY_ID
+            if item_id in KNOWN_COSMETIC_IDS
         ] if isinstance(inventory.get("cosmetics", []), list) else []
         inventory.pop("weather", None)
         inventory["garden_features"] = [
@@ -752,8 +788,6 @@ class GardenGameEngine:
                 or self.state.loadout.display_decoration_id
                 not in inventory["garden_features"]
             )
-            and self.state.loadout.display_decoration_id
-            not in inventory["cosmetics"]
         ):
             self.state.loadout.display_decoration_id = (
                 DEFAULT_GARDEN_FEATURE_ID
@@ -951,10 +985,10 @@ class GardenGameEngine:
             plant.slot_index = replacement
             if replacement is not None:
                 occupied.add(replacement)
-                message = f"{plant.name} was moved to an open garden bed."
+                message = f"{PlantIdentity.from_plant(plant).display_name} was moved to an open garden bed."
             else:
                 message = (
-                    f"{plant.name} was returned to the Collection because no garden bed was open."
+                    f"{PlantIdentity.from_plant(plant).display_name} was returned to the Collection because no garden bed was open."
                 )
             self._queue_feedback(
                 f"surface-repair:{plant.plant_id}", "collection", message, plant.plant_id
@@ -1429,9 +1463,69 @@ class GardenGameEngine:
         except (TypeError, ValueError, OverflowError):
             return 0
 
+    GARDEN_SUPPLY_TARGET = "garden:overflow"
+
+    def consumable_target_id(self) -> str:
+        return (self.GARDEN_SUPPLY_TARGET if self.state.collection_complete
+                else str(self.state.active_plant_id or ""))
+
+    def _consumable_target(self, target_id: str | None) -> Plant | GardenCardEffects | None:
+        resolved = self.consumable_target_id() if target_id is None else str(target_id)
+        if resolved == self.GARDEN_SUPPLY_TARGET:
+            return self.state.garden_card_effects if self.state.collection_complete else None
+        plant = self.plant_story(resolved)
+        if (plant is not None and plant in self.state.plants and plant.planted
+                and not plant.fully_grown and self.state.active_plant_id == plant.plant_id):
+            return plant
+        return None
+
+    def booster_card_bonuses(self) -> dict[str, int]:
+        """Resolve activation benefits from catalog ownership/equipment rules."""
+        bonuses = {}
+        for kind, catalog in (("garden_feature", GARDEN_FEATURE_CATALOG), ("scenery", SCENERY_CATALOG)):
+            equipped = self.active_garden_feature_id() if kind == "garden_feature" else self.locked_environment_id("scenery")
+            for item_id, item in catalog.items():
+                if not self.owns_environment(kind, item_id):
+                    continue
+                amount = sum(effect.amount for effect in item.effects
+                             if effect.trigger == "booster_activation" and effect.value_kind == "booster_cards"
+                             and (not effect.active_only or equipped == item_id))
+                if amount:
+                    bonuses[item_id] = amount
+        return bonuses
+
+    def consumable_use_projection(self, item_id: str, target_id: str | None = None) -> ConsumableUseProjection:
+        resolved = self.consumable_target_id() if target_id is None else str(target_id)
+        target = self._consumable_target(resolved)
+        garden = isinstance(target, GardenCardEffects)
+        family = "booster" if item_id == "booster_potion" else "fertilizer"
+        spec = self.FERTILIZERS.get(item_id.removeprefix("fertilizer_")) if family == "fertilizer" else None
+        cards = (self.BOOSTER_CARD_COUNT + sum(self.booster_card_bonuses().values())
+                 if family == "booster" else spec.card_count if spec else 0)
+        batches = sum((list(part) for part in self._card_effect_lists(target, family)), []) if target else []
+        live = [batch for batch in batches if batch.remaining_cards > 0]
+        name = "Garden" if garden else PlantIdentity.from_plant(target).display_name if target else ""
+        noun = "Booster Potion" if family == "booster" else "Fertilizer"
+        message = ("That supply is unavailable." if not cards else
+                   "Choose a nurtured plant that is still growing." if target is None else
+                   f"No {noun} available." if self.state.consumables.get(item_id, 0) <= 0 else
+                   f"{name} already has five {noun} doses." if len(live) >= self.EFFECT_DOSE_CAP else "")
+        return ConsumableUseProjection(resolved, name, "garden" if garden else "plant",
+                                       not message, message, cards,
+                                       sum(batch.remaining_cards for batch in live), len(live),
+                                       sum(batch.effect_id == item_id and batch.remaining_cards > 0
+                                           for batch in self._card_effect_lists(target, family)[1]) if target else 0,
+                                       live[0].effect_id if live else "")
+
+    def _effect_owner(self, plant: Plant | GardenCardEffects | None, family: str) -> Plant | GardenCardEffects | None:
+        garden = self.state.garden_card_effects
+        if any(batch.remaining_cards > 0 for group in self._card_effect_lists(garden, family) for batch in group):
+            return garden
+        return plant
+
     @staticmethod
     def _card_effect_lists(
-        plant: Plant,
+        plant: Plant | GardenCardEffects,
         family: str,
     ) -> tuple[list[CardEffectBatch], list[CardEffectBatch]]:
         if str(family) == "fertilizer":
@@ -1492,16 +1586,11 @@ class GardenGameEngine:
         *,
         event_ms: int,
     ) -> bool:
+        plant = self._effect_owner(plant, family)
         if plant is None:
             return False
         self._promote_card_effect_queue(plant, family)
-        active, _queued = self._card_effect_lists(plant, family)
-        batch = next((
-            item
-            for item in active
-            if int(item.remaining_cards) > 0
-            and self._batch_activation_ms(item) <= max(0, int(event_ms))
-        ), None)
+        batch = self._active_card_effect_batch(plant, family, event_ms=event_ms)
         if batch is None:
             return False
         batch.remaining_cards = max(0, int(batch.remaining_cards) - 1)
@@ -1710,6 +1799,7 @@ class GardenGameEngine:
             self._transfer_card_effects(completed, target)
 
     def fertilizer_growth(self, plant: Plant | None, *, now: float | None = None) -> int:
+        plant = self._effect_owner(plant, "fertilizer")
         if plant is None:
             return 0
         current = self._now_seconds() if now is None else float(now)
@@ -1722,7 +1812,7 @@ class GardenGameEngine:
                 max(0, int(card_batch.growth_per_card_units))
                 // GROWTH_UNITS_PER_POINT
             )
-        if self._card_effect_supersedes_legacy(
+        if isinstance(plant, GardenCardEffects) or self._card_effect_supersedes_legacy(
             plant, "fertilizer", event_ms=event_ms
         ):
             return 0
@@ -1746,6 +1836,7 @@ class GardenGameEngine:
         return int(active_period.growth_per_answer)
 
     def booster_growth(self, plant: Plant | None, *, now: float | None = None) -> int:
+        plant = self._effect_owner(plant, "booster")
         if plant is None:
             return 0
         current = self._now_seconds() if now is None else float(now)
@@ -1755,7 +1846,7 @@ class GardenGameEngine:
         )
         if card_batch is not None:
             return max(0, int(card_batch.growth_per_card_units)) // GROWTH_UNITS_PER_POINT
-        if self._card_effect_supersedes_legacy(
+        if isinstance(plant, GardenCardEffects) or self._card_effect_supersedes_legacy(
             plant, "booster", event_ms=event_ms
         ):
             return 0
@@ -1927,12 +2018,10 @@ class GardenGameEngine:
         historical_sync: bool,
         event_ms: int,
     ) -> DailyEconomySnapshot:
-        """Load or atomically stage the day's immutable economy choices.
+        """Stage immutable daily Rhythm; recorded equipment is metadata only.
 
-        A closed synced Anki day without an authoritative snapshot fails
-        closed: ordinary Growth and card-counted consumables still apply, but
-        Garden Rhythm and permanent loadout effects are zeroed rather than
-        guessed from a later selection.
+        Unknown historical Rhythm remains zero. Equipment is resolved from
+        the current selection independently for every reward transaction.
         """
 
         day_value = str(scheduler_day)
@@ -1959,33 +2048,8 @@ class GardenGameEngine:
             source = "sync_fail_closed"
         else:
             rhythm = self._garden_rhythm_percent_for_day(day_value)
-            legacy_lock = self.state.daily_loadout
-            has_matching_bonus_lock = bool(
-                legacy_lock.garden_bonus_anki_day_id == day_value
-                and int(legacy_lock.garden_bonus_locked_at_ms) > 0
-                and int(legacy_lock.garden_bonus_locked_at_ms)
-                <= max(1, int(event_ms))
-            )
-            has_matching_scenery_lock = bool(
-                legacy_lock.scheduler_day == day_value
-                and int(legacy_lock.locked_at_ms) > 0
-                and int(legacy_lock.locked_at_ms) <= max(1, int(event_ms))
-            )
-            garden_bonus = canonical_garden_feature_id(
-                legacy_lock.garden_feature_id
-                if has_matching_bonus_lock
-                else self.state.loadout.active_garden_bonus_id
-            ) or DEFAULT_GARDEN_FEATURE_ID
-            scenery_effect = str(
-                legacy_lock.scenery_id
-                if has_matching_scenery_lock
-                else self.state.loadout.active_scenery_effect_id
-                or DEFAULT_SCENERY_ID
-            )
-            if garden_bonus not in GARDEN_FEATURE_CATALOG:
-                garden_bonus = DEFAULT_GARDEN_FEATURE_ID
-            if scenery_effect not in SCENERY_CATALOG:
-                scenery_effect = DEFAULT_SCENERY_ID
+            garden_bonus = self.active_garden_feature_id()
+            scenery_effect = self.locked_environment_id("scenery")
             source = "first_eligible_answer"
 
         snapshot_id = hashlib.sha256(
@@ -2009,24 +2073,6 @@ class GardenGameEngine:
         snapshot = self._state_economy_snapshot(record)
         self.state.daily_economy_snapshot = snapshot
 
-        # Preserve the legacy daily-loadout projection for compatibility UI;
-        # the immutable snapshot remains the economic authority.
-        schedule = self.state.daily_loadout
-        lock_time = max(1, int(event_ms))
-        if not (
-            schedule.garden_bonus_anki_day_id == day_value
-            and int(schedule.garden_bonus_locked_at_ms) > 0
-        ):
-            schedule.garden_bonus_anki_day_id = day_value
-            schedule.garden_bonus_locked_at_ms = lock_time
-            schedule.garden_feature_id = garden_bonus
-        if not (
-            schedule.scheduler_day == day_value
-            and int(schedule.locked_at_ms) > 0
-        ):
-            schedule.scheduler_day = day_value
-            schedule.locked_at_ms = lock_time
-            schedule.scenery_id = scenery_effect
         return snapshot
 
     @staticmethod
@@ -2071,20 +2117,11 @@ class GardenGameEngine:
         fertilizer, _queued_fertilizer = self.fertilizer_schedule(
             active, now=now_seconds
         )
+        fertilizer_owner = self._effect_owner(active, "fertilizer")
         active_fertilizer_batches = tuple(
-            batch
-            for batch in (
-                *(
-                    tuple(active.fertilizer_card_batches)
-                    if active is not None else ()
-                ),
-                *(
-                    tuple(active.fertilizer_card_queue)
-                    if active is not None else ()
-                ),
-            )
-            if max(0, int(batch.remaining_cards)) > 0
-        )
+            batch for group in self._card_effect_lists(fertilizer_owner, "fertilizer")
+            for batch in group if batch.remaining_cards > 0
+        ) if fertilizer_owner is not None else ()
         fertilizer_cards_remaining = sum(
             max(0, int(batch.remaining_cards))
             for batch in active_fertilizer_batches
@@ -2104,7 +2141,7 @@ class GardenGameEngine:
         for plant in self.state.plants:
             plants[str(plant.plant_id)] = {
                 "plant_id": str(plant.plant_id),
-                "plant_name": str(plant.name or "Plant"),
+                "plant_name": str(PlantIdentity.from_plant(plant).display_name or "Plant"),
                 "species": str(plant.species or ""),
                 "growth_units": max(0, int(plant.growth_units)),
                 "stage": str(plant.growth_stage or ""),
@@ -2148,6 +2185,12 @@ class GardenGameEngine:
                         *plant.booster_card_queue,
                     )
                 )
+        garden = self.state.garden_card_effects
+        fertilizer_signature.append((self.GARDEN_SUPPLY_TARGET, (), self._sync_card_effect_signature(garden, "fertilizer")))
+        booster_signature.append((self.GARDEN_SUPPLY_TARGET, (), self._sync_card_effect_signature(garden, "booster")))
+        if self._effect_owner(active, "booster") is garden:
+            booster_cards_remaining = sum(batch.remaining_cards for group
+                                          in self._card_effect_lists(garden, "booster") for batch in group)
         inventory = getattr(self.state, "inventory", {}) or {}
         environments = {
             "garden_feature": tuple(sorted({
@@ -2437,6 +2480,10 @@ class GardenGameEngine:
         snapshot = self._state_snapshot()
         transition_snapshot = list(self._pending_stage_transitions)
         previous_correlation = self._current_correlation_id
+        previous_equipment = self._reward_equipment
+        self._reward_equipment = (
+            self.active_garden_feature_id(), self.locked_environment_id("scenery")
+        )
         try:
             if not self.state.reward_state_initialized:
                 if self._pending_reward_activation_ms is None:
@@ -2506,6 +2553,7 @@ class GardenGameEngine:
                     and definition.achievement_id not in unlocked_before_sync
                 )
             )
+            self._capture_welcome_history(history)
             for summary in history.daily_summaries:
                 if summary.closed:
                     self._record_finalized_day(
@@ -2548,13 +2596,11 @@ class GardenGameEngine:
             day_answer_numbers: dict[str, int] = {}
             temporary_stats: dict[str, DailyStats] = {}
             temporary_completion: dict[str, DailyCompletionState] = {}
-            temporary_loadout: dict[str, DailyLoadoutSchedule] = {}
             temporary_economy_snapshots: dict[
                 str, DailyEconomySnapshot | None
             ] = {}
             current_stats = self.state.daily_stats
             current_completion = self.state.daily_completion
-            current_loadout = self.state.daily_loadout
             current_economy_snapshot = self.state.daily_economy_snapshot
             candidate_answer_keys = {
                 consumption_id(stable_answer_event_identity(
@@ -2607,7 +2653,6 @@ class GardenGameEngine:
                 if day_value == current_stats.day:
                     self.state.daily_stats = current_stats
                     self.state.daily_completion = current_completion
-                    self.state.daily_loadout = current_loadout
                     self.state.daily_economy_snapshot = current_economy_snapshot
                 else:
                     self.state.daily_stats = temporary_stats.setdefault(
@@ -2615,19 +2660,6 @@ class GardenGameEngine:
                     )
                     self.state.daily_completion = temporary_completion.setdefault(
                         day_value, DailyCompletionState(scheduler_day=day_value)
-                    )
-                    # Historical Anki days do not retain their original Garden
-                    # Decoration/Scenery lock. Use the no-bonus defaults and
-                    # also tell the growth projector that these bonuses are
-                    # unknowable, instead of guessing from today's loadout.
-                    self.state.daily_loadout = temporary_loadout.setdefault(
-                        day_value,
-                        DailyLoadoutSchedule(
-                            scheduler_day=day_value,
-                            locked_at_ms=max(1, int(entry.answer_ms)),
-                            garden_feature_id=DEFAULT_GARDEN_FEATURE_ID,
-                            scenery_id=DEFAULT_SCENERY_ID,
-                        ),
                     )
                     self.state.daily_economy_snapshot = (
                         temporary_economy_snapshots.setdefault(day_value, None)
@@ -2661,7 +2693,7 @@ class GardenGameEngine:
                     "streak_days": streak_by_day.get(day_value, 0),
                     "history_counted": True,
                     "historical_sync": True,
-                    "environment_growth_known": day_value == current_day,
+                    "environment_growth_known": True,
                     "emit_feedback": False,
                     "correlation_id": sync_correlation,
                 }
@@ -2694,7 +2726,6 @@ class GardenGameEngine:
                 synced_growth += award.total_growth
             self.state.daily_stats = current_stats
             self.state.daily_completion = current_completion
-            self.state.daily_loadout = current_loadout
             self.state.daily_economy_snapshot = current_economy_snapshot
             if (
                 pending_result is not None
@@ -2766,6 +2797,13 @@ class GardenGameEngine:
                 if receipt not in existing_receipts
                 if receipt.correlation_id == sync_correlation
             )
+            welcome = self.state.welcome_receipt
+            if welcome is not None and welcome.status == "collecting":
+                welcome_keys = {row.event_key for row in welcome.history_rewards}
+                sync_receipts = tuple(row for row in sync_receipts if row.event_key not in welcome_keys)
+                unlocked_during_sync = tuple(
+                    key for key in unlocked_during_sync if key not in welcome.achievement_ids
+                )
             if emit_feedback and sync_receipts:
                 self._queue_reward_feedback(
                     sync_correlation,
@@ -2809,6 +2847,8 @@ class GardenGameEngine:
             self._pending_stage_transitions = transition_snapshot
             self._restore_state(snapshot)
             raise
+        finally:
+            self._reward_equipment = previous_equipment
 
     def reconcile_retrospective_streak(self, *, persist: bool = True) -> tuple[bool, str]:
         """Compatibility alias for the unified reward-history reconciliation."""
@@ -2816,8 +2856,6 @@ class GardenGameEngine:
         return self.reconcile_reward_history(persist=persist)
 
     def register_review(self, review_payload: Dict[str, Any]) -> ReviewAward:
-        if self._session_garden_feature_id is None:
-            self.begin_review_session()
         snapshot = self._state_snapshot()
         transition_snapshot = list(self._pending_stage_transitions)
         self.rollover_if_needed(persist=False)
@@ -3197,10 +3235,7 @@ class GardenGameEngine:
                 event_ms,
                 streak_days=explicit_streak,
                 answer_number=source.get("day_answer_number"),
-                environment_growth_known=(
-                    not historical_sync
-                    or bool(source.get("environment_growth_known", False))
-                ),
+                environment_growth_known=True,
             )
             decoration = award.decoration_result
             if decoration.trigger_reached and (
@@ -3438,6 +3473,11 @@ class GardenGameEngine:
         achievement.rewarded_at = now
         achievement.reward_event_key = event_key
         achievement.historical_backfill = bool(historical)
+        trophy = TROPHY_BY_ACHIEVEMENT.get(str(achievement_id))
+        if trophy is not None:
+            self.state.trophy_activation_ms.setdefault(
+                str(trophy.cosmetic_id), max(1, self._now_ms())
+            )
         if definition.achievement_id == "streak_7":
             # Integrate the first badge payout with the first weekly cycle.
             self._append_reward_event_key(f"weekly_streak:{completion_day}")
@@ -3534,143 +3574,48 @@ class GardenGameEngine:
         )
 
     def locked_environment_id(self, kind: str) -> str:
-        """Return the active Garden Decoration or today's locked Scenery."""
-
-        normalized = (
-            "garden_feature"
-            if str(kind) in {"garden_feature", "weather"}
-            else "scenery"
-        )
-        if normalized == "garden_feature":
+        """Compatibility name for the equipped item's effect; never day-locked."""
+        if str(kind) in {"garden_feature", "weather"}:
             return self.active_garden_feature_id()
-        snapshot = getattr(self.state, "daily_economy_snapshot", None)
-        if (
-            snapshot is not None
-            and snapshot.anki_day == self.state.daily_stats.day
-        ):
-            item_id = str(snapshot.active_scenery_effect_id)
-            return (
-                item_id if item_id in SCENERY_CATALOG else DEFAULT_SCENERY_ID
-            )
-        schedule = getattr(self.state, "daily_loadout", None)
-        today = self.state.daily_stats.day
-        if (
-            schedule is not None
-            and schedule.scheduler_day == today
-            and int(schedule.locked_at_ms) > 0
-        ):
-            item_id = schedule.scenery_id
-            if item_id:
-                return str(item_id)
-        item_id = str(self.state.loadout.active_scenery_effect_id)
+        item_id = (
+            self._reward_equipment[1] if self._reward_equipment is not None
+            else self.state.loadout.display_scenery_id
+        )
         return item_id if item_id in SCENERY_CATALOG else DEFAULT_SCENERY_ID
 
     def begin_review_session(self) -> str:
-        """Expose the selected bonus; the first eligible answer locks the day."""
-
         self.rollover_if_needed()
-        self._session_garden_feature_id = self.active_garden_feature_id()
-        return self._session_garden_feature_id
+        return self.active_garden_feature_id()
 
     def end_review_session(self) -> None:
-        """Release the in-memory decoration snapshot after a continuous session."""
-
-        self._session_garden_feature_id = None
+        """Compatibility hook; equipment is never frozen for a session."""
 
     def active_garden_feature_id(self) -> str:
-        snapshot = getattr(self.state, "daily_economy_snapshot", None)
-        if (
-            snapshot is not None
-            and snapshot.anki_day == self.state.daily_stats.day
-        ):
-            value = canonical_garden_feature_id(
-                snapshot.active_garden_bonus_id
-            )
-            return (
-                value
-                if value in GARDEN_FEATURE_CATALOG
-                else DEFAULT_GARDEN_FEATURE_ID
-            )
-        schedule = self.state.daily_loadout
-        value = canonical_garden_feature_id(
-            schedule.garden_feature_id
-            if schedule.garden_bonus_anki_day_id == self.state.daily_stats.day
-            and int(schedule.garden_bonus_locked_at_ms) > 0
+        item_id = (
+            self._reward_equipment[0] if self._reward_equipment is not None
             else self.state.loadout.active_garden_bonus_id
         )
-        if value not in GARDEN_FEATURE_CATALOG:
-            return DEFAULT_GARDEN_FEATURE_ID
-        return value
+        return item_id if item_id in GARDEN_FEATURE_CATALOG else DEFAULT_GARDEN_FEATURE_ID
 
     def _lock_daily_loadout(self, *, event_ms: int | None = None) -> bool:
-        """Freeze today's Garden Bonus on the first eligible answer."""
-
-        existing = getattr(self.state, "daily_economy_snapshot", None)
+        """Compatibility hook that establishes daily Rhythm only."""
+        existing = self.state.daily_economy_snapshot
         self._ensure_daily_economy_snapshot(
-            self.state.daily_stats.day,
-            historical_sync=False,
+            self.state.daily_stats.day, historical_sync=False,
             event_ms=max(1, int(event_ms or self._now_ms())),
         )
         return existing is None
 
     def _lock_scenery_loadout(self, *, event_ms: int | None = None) -> bool:
-        """Preserve the existing daily scenery lock without locking the bonus."""
-
-        today = self.state.daily_stats.day
-        schedule = getattr(self.state, "daily_loadout", None)
-        if schedule is None:
-            self.state.daily_loadout = DailyLoadoutSchedule()
-            schedule = self.state.daily_loadout
-        if not (schedule.scheduler_day == today and int(schedule.locked_at_ms) > 0):
-            lock_time = max(1, int(event_ms or self._now_ms()))
-            schedule.scheduler_day = today
-            schedule.locked_at_ms = lock_time
-            schedule.scenery_id = self.state.loadout.active_scenery_effect_id
-            return True
+        """Compatibility hook; progression actions never lock equipment."""
         return False
 
     def _apply_queued_loadout_for_day(self, scheduler_day: str) -> None:
-        """Activate a queued loadout after Anki advances to another day."""
-
-        schedule = getattr(self.state, "daily_loadout", None)
-        if schedule is None:
-            self.state.daily_loadout = DailyLoadoutSchedule()
-            return
-        queued_day = str(schedule.queued_for_day or "")
-        if queued_day and queued_day <= str(scheduler_day):
-            if schedule.queued_scenery_id:
-                self.state.loadout.active_scenery_effect_id = (
-                    schedule.queued_scenery_id
-                )
-        pending_feature = canonical_garden_feature_id(
-            schedule.pending_garden_feature_id
+        """Reset daily progress, without changing equipment."""
+        self.state.watering_station_progress = self.state.watering_station_progress_by_day.get(
+            scheduler_day, 0
         )
-        if (
-            pending_feature in GARDEN_FEATURE_CATALOG
-            and pending_feature in self.state.inventory.get("garden_features", [])
-        ):
-            self.state.loadout.active_garden_bonus_id = pending_feature
-        # Daily-only cadence resets; persistent counters and the Prism bank
-        # pause safely while their effects are unequipped.
-        self.state.watering_station_progress = 0
         self.state.daily_loadout = DailyLoadoutSchedule()
-
-    def _queue_environment_for_next_day(self, kind: str, item_id: str) -> str:
-        """Queue a Garden Decoration for the next session or Scenery for tomorrow."""
-
-        normalized = (
-            "garden_feature"
-            if str(kind) in {"garden_feature", "weather"}
-            else "scenery"
-        )
-        if normalized == "garden_feature":
-            self.state.daily_loadout.pending_garden_feature_id = str(item_id)
-            return "next_anki_day"
-        today = date.fromisoformat(self.state.daily_stats.day)
-        schedule = self.state.daily_loadout
-        schedule.queued_for_day = (today + timedelta(days=1)).isoformat()
-        schedule.queued_scenery_id = str(item_id)
-        return schedule.queued_for_day
 
     def owns_environment(self, kind: str, item_id: str) -> bool:
         if str(kind) in {"garden_feature", "weather"}:
@@ -3682,35 +3627,75 @@ class GardenGameEngine:
             *self.state.inventory.get("scenery", []),
         }
 
-    def _decoration_progress_spec(self) -> tuple[str, int, int] | None:
-        effect = FEATURE_EFFECT_KEYS[self.active_garden_feature_id()]
-        return {
-            "growth_every_10_plus_1": ("wind_chime_progress", 10, 100),
-            "growth_every_5_first_100_plus_1": (
-                "watering_station_progress", 5, 100
-            ),
-        }.get(effect)
+    def garden_decoration_obtained_at(self, item_id: str) -> str | None:
+        """Project an actual acquisition record without inventing migration dates."""
+        item_id = canonical_garden_feature_id(item_id)
+        if not self.owns_environment("garden_feature", item_id):
+            return None
+        resolver = getattr(self.storage, "first_item_acquisition_at", None)
+        recorded = resolver(item_id) if callable(resolver) else None
+        candidates = [recorded] if recorded else []
+        candidates.extend(
+            request.occurred_at for request in self.state.completed_purchase_requests
+            if request.outcome.success and request.outcome.item_id == item_id
+        )
+        candidates.extend(
+            receipt.occurred_at for receipt in self.state.recent_reward_receipts
+            if receipt.reward_type == "environment_item" and receipt.item_id == item_id
+        )
+        candidates.extend(
+            outcome.occurred_at for outcome in self.state.garden_find_outcomes.values()
+            if outcome.status == "hit" and outcome.item_id == item_id
+        )
+        if item_id == "seedling_sign":
+            starter = self.plant_story(self.state.onboarding.starter_plant_id or "")
+            if starter is not None:
+                candidates.append(starter.planted_on)
+        valid = []
+        for candidate in candidates:
+            try:
+                parsed = datetime.fromisoformat(str(candidate).replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    # Date-only starter records are already local garden dates.
+                    parsed = parsed.astimezone()
+                valid.append((parsed.timestamp(), str(candidate)))
+            except (TypeError, ValueError, OverflowError):
+                continue
+        return min(valid)[1] if valid else None
 
-    def _project_decoration_answer(self) -> DecorationResult:
+    def _decoration_progress_spec(self) -> tuple[str, int, int] | None:
+        item_id = self.active_garden_feature_id()
+        field_name = {"wind_chime": "wind_chime_progress", "watering_station": "watering_station_progress"}.get(item_id)
+        if field_name is None:
+            return None
+        effect = next(effect for effect in GARDEN_FEATURE_CATALOG[item_id].effects
+                      if effect.trigger == "eligible_card" and effect.value_kind == "growth")
+        return field_name, int(effect.every_nth_card or 1), effect.amount * GROWTH_UNITS_PER_POINT
+
+    def _project_decoration_answer(self, answer_number: int | None = None) -> DecorationResult:
         active_id = self.active_garden_feature_id()
         effect = FEATURE_EFFECT_KEYS[active_id]
-        answer_number = max(1, int(self.state.daily_stats.reviewed))
+        answer_number = max(1, int(answer_number or self.state.daily_stats.reviewed))
         spec = self._decoration_progress_spec()
         if spec is not None:
             field_name, cadence, reward_units = spec
-            if (
-                effect == "growth_every_5_first_100_plus_1"
-                and answer_number > 100
-            ):
-                return DecorationResult(active_bonus_id=active_id)
-            before = max(0, int(getattr(self.state, field_name, 0) or 0))
-            reached = before + 1 >= cadence
+            definition = next(item for item in GARDEN_FEATURE_CATALOG[active_id].effects if item.trigger == "eligible_card")
+            before = (
+                self.state.watering_station_progress_by_day.get(self.state.daily_stats.day, 0)
+                if field_name == "watering_station_progress"
+                else max(0, int(getattr(self.state, field_name, 0) or 0))
+            )
+            if definition.first_cards is not None and answer_number > definition.first_cards:
+                return DecorationResult(active_bonus_id=active_id, progress_before=before, progress_after=before)
+            # Old counters retain all qualifying answers through a cadence
+            # change. Settle their credit once on the next equipped answer.
+            awards, remainder = divmod(before + 1, cadence)
             return DecorationResult(
                 active_bonus_id=active_id,
                 progress_before=before,
-                progress_after=0 if reached else before + 1,
-                trigger_reached=reached,
-                decoration_growth_awarded_units=reward_units if reached else 0,
+                progress_after=remainder,
+                trigger_reached=bool(awards),
+                decoration_growth_awarded_units=reward_units * awards,
             )
         if effect == "instant_growth_every_5_plus_3_closest_checkpoint":
             before = max(0, int(self.state.firefly_lantern_progress or 0))
@@ -3739,11 +3724,16 @@ class GardenGameEngine:
             )
         return DecorationResult(active_bonus_id=active_id)
 
-    def _advance_decoration_answer(self) -> DecorationResult:
-        result = self._project_decoration_answer()
+    def _advance_decoration_answer(self, answer_number: int | None = None) -> DecorationResult:
+        result = self._project_decoration_answer(answer_number)
         spec = self._decoration_progress_spec()
         if spec is not None:
-            setattr(self.state, spec[0], result.progress_after)
+            if spec[0] == "watering_station_progress":
+                self.state.watering_station_progress_by_day[self.state.daily_stats.day] = result.progress_after
+                if self.state.daily_stats.day == self._scheduler_day():
+                    self.state.watering_station_progress = result.progress_after
+            else:
+                setattr(self.state, spec[0], result.progress_after)
         if result.active_bonus_id == "firefly_lantern":
             self.state.firefly_lantern_progress = result.progress_after
         if result.prism_growth_banked_units:
@@ -3756,9 +3746,8 @@ class GardenGameEngine:
     def _garden_feature_review_growth(self, answer_number: int) -> int:
         """Compatibility projection for callers that still request points."""
 
-        del answer_number
         return (
-            self._project_decoration_answer().decoration_growth_awarded_units
+            self._project_decoration_answer(answer_number).decoration_growth_awarded_units
             // GROWTH_UNITS_PER_POINT
         )
 
@@ -3881,8 +3870,11 @@ class GardenGameEngine:
         self,
         target: Plant | None,
         award_units: int,
+        *,
+        numerator: int = 1,
+        denominator: int = 10,
     ) -> tuple[tuple[Plant, int], ...]:
-        """Create one exact 10% lane for every other planted bed.
+        """Create one exact effective-rate lane for every other planted bed.
 
         A Full Bloom bed still owns its lane. The normal lane router skips the
         full intended recipient and carries that complete lane forward in
@@ -3903,7 +3895,7 @@ class GardenGameEngine:
         other_plants = [candidate for candidate in planted if candidate is not target]
         if not other_plants:
             return ()
-        share_units = max(0, int(award_units)) // self.PASSIVE_GROWTH_DENOMINATOR
+        share_units = max(0, int(award_units)) * numerator // denominator
         if share_units <= 0:
             return ()
         return tuple((candidate, share_units) for candidate in other_plants)
@@ -4154,7 +4146,29 @@ class GardenGameEngine:
         self,
         request: GrowthProjectRequest,
     ) -> GrowthProjectQuote:
-        return quote_growth_project_request(self.growth_projects_snapshot(), request)
+        return self._available_growth_project_quote(
+            quote_growth_project_request(self.growth_projects_snapshot(), request)
+        )
+
+    @staticmethod
+    def _available_growth_project_quote(quote: GrowthProjectQuote) -> GrowthProjectQuote:
+        if growth_target_enabled(quote.target.target_type):
+            return quote
+        return replace(
+            quote,
+            quote_fingerprint=hashlib.sha256(
+                f"{quote.quote_fingerprint}:unavailable".encode("utf-8")
+            ).hexdigest(),
+            disposition=ProgressionDisposition.NOT_READY,
+            can_apply=False,
+            blocking_reason="This Growth project is unavailable.",
+            stored_balance_after_units=quote.stored_balance_before_units,
+            project_funded_after_units=quote.project_funded_before_units,
+            accepted_growth_units=0,
+            crossed_threshold_ids=(),
+            coin_cost=0,
+            wallet_balance_after_coins=quote.wallet_balance_before_coins,
+        )
 
     def confirm_growth_project(
         self,
@@ -4184,19 +4198,23 @@ class GardenGameEngine:
             # no-op would make retry behavior depend on today's mutable state.
             return growth_project_outcome_from_dict(existing.outcome)
         fresh = self.growth_projects_snapshot()
-        quote = quote_growth_project_request(fresh, request)
-        if quote.quote_fingerprint != confirmation.quote_fingerprint:
+        quote = self._available_growth_project_quote(
+            quote_growth_project_request(fresh, request)
+        )
+        stale = quote.quote_fingerprint != confirmation.quote_fingerprint
+        if stale or not quote.can_apply:
             return GrowthProjectOutcome(
                 request.request_id,
                 request.fingerprint,
                 quote.quote_fingerprint,
-                ProgressionDisposition.NO_CHANGE,
+                ProgressionDisposition.NO_CHANGE if stale else quote.disposition,
                 False,
                 0,
                 0,
                 None,
                 fresh,
-                "The Garden changed. Refresh this quote before continuing.",
+                "The Garden changed. Refresh this quote before continuing."
+                if stale else quote.blocking_reason,
                 ledger_identity=f"growth-project:{request.request_id}",
                 state_revision_before=fresh.state_revision,
                 state_revision_after=fresh.state_revision,
@@ -4320,7 +4338,10 @@ class GardenGameEngine:
         target_id = str(
             getattr(self.state, "active_growth_target_id", "") or ""
         )
-        if available <= 0 or not target_type or not target_id:
+        if (
+            available <= 0 or not target_type or not target_id
+            or not growth_target_enabled(target_type)
+        ):
             return 0, ()
         aggregates = self.state.lifetime_economy_aggregates
         contribution = 0
@@ -4534,6 +4555,8 @@ class GardenGameEngine:
                 event_ms=event_ms,
             )
 
+        self.state.collect_completed_card_effects()
+
         landmark_units = sum(
             item.units
             for item in project_allocations
@@ -4587,17 +4610,15 @@ class GardenGameEngine:
         streak_units = self.BASE_GROWTH_PER_REVIEW * bonus_percent
         proposed_fertilizer_bonus = (
             self.fertilizer_growth(plant, now=event_ms / 1000)
-            if plant is not None else 0
         )
         proposed_booster_bonus = (
             self.booster_growth(plant, now=event_ms / 1000)
-            if plant is not None else 0
         )
         answer_number = max(1, int(answer_number))
         decoration = (
             decoration_result
             if decoration_result is not None
-            else self._project_decoration_answer()
+            else self._project_decoration_answer(answer_number)
             if environment_growth_known
             else DecorationResult(active_bonus_id=self.active_garden_feature_id())
         )
@@ -4609,6 +4630,7 @@ class GardenGameEngine:
         booster_units = proposed_booster_bonus * GROWTH_UNITS_PER_POINT
         weather_units = max(0, int(decoration.decoration_growth_awarded_units))
         scenery_units = proposed_scenery_bonus * GROWTH_UNITS_PER_POINT
+        trophies = trophy_effects(self.state, event_ms=event_ms)
         return (
             ReviewAward(
                 plant.plant_id if plant is not None else None,
@@ -4623,6 +4645,10 @@ class GardenGameEngine:
                 booster_growth=proposed_booster_bonus,
                 weather_growth=weather_units // GROWTH_UNITS_PER_POINT,
                 scenery_growth=proposed_scenery_bonus,
+                trophy_growth=trophies.review_growth,
+                trophy_growth_units=trophies.review_growth * GROWTH_UNITS_PER_POINT,
+                shared_growth_numerator=trophies.shared_growth_numerator,
+                shared_growth_denominator=trophies.shared_growth_denominator,
                 base_growth_units=base_units,
                 streak_growth_units=streak_units,
                 fertilizer_growth_units=fertilizer_units,
@@ -4661,6 +4687,8 @@ class GardenGameEngine:
         shared_plan = self._shared_growth_plan(
             self._shared_growth_anchor(target),
             award.total_growth_units,
+            numerator=award.shared_growth_numerator,
+            denominator=award.shared_growth_denominator,
         )
         requested_with_shared = award.total_growth_units + sum(
             units for _recipient, units in shared_plan
@@ -4715,7 +4743,7 @@ class GardenGameEngine:
             return (), 0
         projects = self.growth_projects_snapshot()
         target = projects.active_target
-        if target is None:
+        if target is None or not growth_target_enabled(target.target_type):
             return (), available
         if target.target_type is GrowthTargetType.LANDMARK:
             track = projects.landmark_track
@@ -4793,7 +4821,9 @@ class GardenGameEngine:
 
         project_lane(plant, award.total_growth_units, "nurtured")
         for recipient, shared_units in self._shared_growth_plan(
-            plant, award.total_growth_units
+            plant, award.total_growth_units,
+            numerator=award.shared_growth_numerator,
+            denominator=award.shared_growth_denominator,
         ):
             project_lane(recipient, shared_units, "passive")
         return tuple(allocations)
@@ -4808,7 +4838,7 @@ class GardenGameEngine:
         environment_growth_known: bool = True,
     ) -> ReviewAward:
         decoration = (
-            self._advance_decoration_answer()
+            self._advance_decoration_answer(answer_number)
             if environment_growth_known
             else DecorationResult(active_bonus_id=self.active_garden_feature_id())
         )
@@ -4828,9 +4858,9 @@ class GardenGameEngine:
             return award
         # Card-counted effects spend one card only when their Growth is part of
         # this committed award. Save rollback restores both queues exactly.
-        if plant is not None and award.fertilizer_growth_units > 0:
+        if award.fertilizer_growth_units > 0:
             self._consume_card_effect(plant, "fertilizer", event_ms=event_ms)
-        if plant is not None and award.booster_growth_units > 0:
+        if award.booster_growth_units > 0:
             self._consume_card_effect(plant, "booster", event_ms=event_ms)
         stats = self.state.daily_stats
         card_growth_seen_before = {
@@ -4840,6 +4870,8 @@ class GardenGameEngine:
         shared_plan = self._shared_growth_plan(
             self._shared_growth_anchor(plant),
             award.total_growth_units,
+            numerator=award.shared_growth_numerator,
+            denominator=award.shared_growth_denominator,
         )
         primary = self._route_growth_units(
             plant,
@@ -4876,6 +4908,7 @@ class GardenGameEngine:
             ("booster_growth", award.booster_growth_units),
             ("weather_growth", award.weather_growth_units),
             ("scenery_growth", award.scenery_growth_units),
+            ("trophy_growth", award.trophy_growth_units),
         ):
             setattr(
                 stats,
@@ -5713,7 +5746,6 @@ class GardenGameEngine:
         for _point, order, next_stage, kind, percent in sorted(crossings):
             base_reward = self.STAGE_REWARD_SPLITS[next_stage][order]
             reward = self._checkpoint_reward_amount(base_reward)
-            display_stage = self._stage_display_name(next_stage)
             if kind == "checkpoint":
                 event_key = (
                     f"stage_checkpoint:{plant.plant_id}:{next_stage}:{percent}"
@@ -5724,11 +5756,11 @@ class GardenGameEngine:
                         plant.checkpoint_claims.append(claim)
                 credit_crossing(
                     event_key,
-                    f"{plant.name} reached {percent}% toward {display_stage}",
+                    plant_stage_event(plant, next_stage, checkpoint_percent=percent),
                     base_reward=base_reward,
                     total_reward=reward,
                     feedback=(
-                        f"{plant.name} reached {percent}% toward {display_stage}. "
+                        f"{plant_stage_event(plant, next_stage, checkpoint_percent=percent)}. "
                         f"{_garden_coin_amount(reward, signed=True)}"
                     ),
                 )
@@ -5749,16 +5781,16 @@ class GardenGameEngine:
                 plant.species,
                 previous_stage,
                 next_stage,
-                plant.name,
+                plant_species_name(plant),
                 source,
             ))
             credit_crossing(
                 f"stage:{plant.plant_id}:{next_stage}",
-                f"{plant.name} reached {display_stage}",
+                plant_stage_event(plant, next_stage),
                 base_reward=base_reward,
                 total_reward=reward,
                 feedback=(
-                    f"{plant.name} reached {display_stage}. "
+                    f"{plant_stage_event(plant, next_stage)}. "
                     f"{_garden_coin_amount(reward, signed=True)}"
                 ),
             )
@@ -5767,7 +5799,7 @@ class GardenGameEngine:
                     f"full_bloom:{plant.plant_id}",
                     source="full_bloom",
                     source_id=plant.plant_id,
-                    reason=f"{plant.name} reached Full Bloom",
+                    reason=plant_stage_event(plant, "rare"),
                     scheduler_day=self.state.daily_stats.day,
                     correlation_id=self._current_correlation_id or f"full_bloom:{plant.plant_id}",
                     inventory_items={"growth_charge_small": 1},
@@ -6236,6 +6268,21 @@ class GardenGameEngine:
                 plant=self.active_plant(),
                 title="Today’s cards complete",
             )
+            journal_coins = trophy_effects(
+                self.state, event_ms=self._now_ms()
+            ).completion_coins
+            if journal_coins:
+                self._grant_reward_bundle(
+                    f"achievement-trophy:garden_journal:{stats.day}",
+                    source="achievement_trophy",
+                    source_id="garden_journal",
+                    reason="Garden Journal",
+                    scheduler_day=stats.day,
+                    correlation_id=reward_correlation_id,
+                    coins=journal_coins,
+                    title="Garden Journal",
+                    description="Today’s Cards completed",
+                )
             cycle_before = max(
                 0,
                 min(
@@ -6365,6 +6412,7 @@ class GardenGameEngine:
             self.last_completion_result = CompletionResult(
                 base_coins=self.ALL_DUE_BASE_COINS,
                 harvest_bell_coins=harvest_coins + autumn_coins,
+                trophy_coins=journal_coins,
                 garden_cycle_coins=(
                     self.GARDEN_CYCLE_COINS if cycle_after == 0 else 0
                 ),
@@ -6466,7 +6514,7 @@ class GardenGameEngine:
     def _committed_plant_snapshot(plant: Plant) -> CommittedPlantSnapshot:
         return CommittedPlantSnapshot(
             plant_id=str(plant.plant_id),
-            name=str(plant.name or "Plant"),
+            name=str(PlantIdentity.from_plant(plant).display_name or "Plant"),
             species=str(plant.species or ""),
             stage=str(plant.growth_stage or ""),
             growth_units=max(0, int(plant.growth_units)),
@@ -6975,60 +7023,21 @@ class GardenGameEngine:
         }
 
     def environment_catalog_summary(self) -> dict[str, Any]:
-        schedule = self.state.daily_loadout
-        bonus_locked = bool(
-            self.state.daily_economy_snapshot is not None
-            and self.state.daily_economy_snapshot.anki_day
-            == self.state.daily_stats.day
-        )
         return {
             kind: [
                 {
                     "item": item,
                     "owned": self.owns_environment(kind, item.item_id),
-                    "equipped": self.locked_environment_id(kind) == item.item_id,
-                    "displayed_in_garden": bool(
-                        (
-                            kind == "garden_feature"
-                            and self.state.loadout.display_decoration_id
-                            == item.item_id
-                        )
-                        or (
-                            kind == "scenery"
-                            and self.state.loadout.display_scenery_id
-                            == item.item_id
-                        )
-                    ) and bool(
-                        self.state.loadout.visibility.get(kind, True)
-                    ),
-                    "garden_bonus_active_today": bool(
-                        kind == "garden_feature"
-                        and bonus_locked
-                        and self.active_garden_feature_id() == item.item_id
-                    ),
-                    "garden_bonus_ready_today": bool(
-                        kind == "garden_feature"
-                        and not bonus_locked
-                        and self.state.loadout.active_garden_bonus_id
-                        == item.item_id
-                    ),
-                    "garden_bonus_queued_next_day": bool(
-                        kind == "garden_feature"
-                        and schedule.pending_garden_feature_id == item.item_id
-                    ),
-                    "hidden": bool(
-                        kind == "garden_feature"
-                        and self.state.loadout.display_decoration_id == item.item_id
-                        and not self.state.loadout.visibility.get("garden_feature", True)
-                    ),
-                    "queued_tomorrow": (
-                        schedule.pending_garden_feature_id == item.item_id
-                        if kind == "garden_feature"
-                        else schedule.queued_scenery_id == item.item_id
-                    ),
-                    "visible": bool(
-                        self.state.environment_visibility.get(kind, True)
-                    ),
+                    "equipped": (
+                        self.state.loadout.display_decoration_id if kind == "garden_feature"
+                        else self.state.loadout.display_scenery_id
+                    ) == item.item_id,
+                    "displayed_in_garden": (
+                        self.state.loadout.display_decoration_id if kind == "garden_feature"
+                        else self.state.loadout.display_scenery_id
+                    ) == item.item_id,
+                    "hidden": False,
+                    "visible": True,
                 }
                 for item in catalog.values()
             ]
@@ -7224,6 +7233,7 @@ class GardenGameEngine:
             duration_delta_seconds=max(0, int(duration_delta_seconds)),
             card_queue_delta=max(0, int(card_queue_delta)),
             fertilizer_expires_at_ms=fertilizer_expires_at_ms,
+            destination_kind=("garden" if target_id == self.GARDEN_SUPPLY_TARGET else "plant" if target_id else "inventory"),
         )
 
     def quote_purchase(
@@ -7260,7 +7270,7 @@ class GardenGameEngine:
 
         if purchase_kind is PurchaseKind.SPECIES:
             species = normalized_item.lower()
-            name = f"{species.replace('_', ' ').title()} Seed" if species else "Plant Seed"
+            name = plant_stage_title(species, "seed")
             price = self.SPECIES_PRICES.get(species)
             descriptor = EffectDescriptor(
                 function=f"Adds {species.replace('_', ' ').title()} to your collection.",
@@ -7421,7 +7431,9 @@ class GardenGameEngine:
         if purchase_kind is PurchaseKind.FERTILIZER:
             tier = normalized_item.lower()
             spec = self.FERTILIZERS.get(tier)
-            plant = self.plant_story(str(target_id or ""))
+            plant = self._consumable_target(target_id) if target_id is not None else None
+            garden = isinstance(plant, GardenCardEffects)
+            target_name = "Garden" if garden else PlantIdentity.from_plant(plant).display_name
             if spec is None:
                 return self._make_purchase_quote(
                     kind=purchase_kind,
@@ -7446,7 +7458,7 @@ class GardenGameEngine:
                     f"+{spec.growth_per_answer:,} Growth per eligible "
                     "card answer."
                 ),
-                activation_condition="Use on a nurtured plant that is still growing.",
+                activation_condition="Use for garden-wide Growth." if garden else "Use on a nurtured plant that is still growing.",
                 duration=f"Lasts {spec.card_count:,} eligible cards.",
                 stacking="Same tier adds cards; a different tier waits its turn.",
                 replacement="Remaining paid cards are never replaced.",
@@ -7475,12 +7487,7 @@ class GardenGameEngine:
                         "target": None,
                     },
                 )
-            if (
-                plant is None
-                or self.state.active_plant_id != plant.plant_id
-                or not plant.planted
-                or plant.fully_grown
-            ):
+            if plant is None:
                 return self._make_purchase_quote(
                     kind=purchase_kind,
                     item_id=tier,
@@ -7492,7 +7499,7 @@ class GardenGameEngine:
                     disposition=PurchaseDisposition.APPLIED,
                     descriptor=descriptor,
                     target_id=target_id,
-                    target_name=getattr(plant, "name", ""),
+                    target_name=target_name,
                     status=PurchaseStatus.TARGET_INVALID,
                     message=f"This plant can’t use {spec.name}.",
                     state_signature={
@@ -7522,7 +7529,7 @@ class GardenGameEngine:
                 else PurchaseStatus.READY
             )
             message = (
-                "This plant already has five Fertilizer doses."
+                f"{target_name} already has five Fertilizer doses."
                 if status is PurchaseStatus.TARGET_INVALID else ""
             )
             # Bind confirmation copy to the last scheduled card batch.
@@ -7557,8 +7564,8 @@ class GardenGameEngine:
                 unit_price=spec.price,
                 disposition=disposition,
                 descriptor=descriptor,
-                target_id=plant.plant_id,
-                target_name=plant.name,
+                target_id=str(target_id),
+                target_name=target_name,
                 status=status,
                 message=message,
                 replacement_required=False,
@@ -7588,9 +7595,10 @@ class GardenGameEngine:
                 ),
                 card_queue_delta=spec.card_count,
                 state_signature={
-                    "plant_id": plant.plant_id,
-                    "planted": plant.planted,
-                    "fully_grown": plant.fully_grown,
+                    "plant_id": str(target_id),
+                    "planted": bool(getattr(plant, "planted", False)),
+                    "fully_grown": bool(getattr(plant, "fully_grown", False)),
+                    "garden": garden,
                     "active_plant_id": self.state.active_plant_id,
                     "fertilizer_batches": [
                         (
@@ -7683,8 +7691,8 @@ class GardenGameEngine:
             function="Adds another permanent planting space as the garden grows.",
             buff=(
                 "Beds 3 through 6 are earned at Mature and unique Full Bloom "
-                "collection milestones. Each other planted bed adds one 10% "
-                "Shared Growth lane."
+                "collection milestones. Each other planted bed adds one "
+                f"{trophy_effects(self.state).shared_growth_percent}% Shared Growth lane."
             ),
             activation_condition="Granted automatically when its milestone is committed.",
             duration="Stays unlocked.",
@@ -7943,19 +7951,14 @@ class GardenGameEngine:
         quote: PurchaseQuote,
         event_key: str,
     ) -> PurchaseOutcome:
-        fertilizer_target: Plant | None = None
+        fertilizer_target: Plant | GardenCardEffects | None = None
         if (
             quote.kind is PurchaseKind.FERTILIZER
             and quote.disposition is not PurchaseDisposition.INVENTORY
         ):
             spec = self.FERTILIZERS[quote.item_id]
-            fertilizer_target = self.plant_story(str(quote.target_id or ""))
-            if (
-                fertilizer_target is None
-                or self.state.active_plant_id != fertilizer_target.plant_id
-                or not fertilizer_target.planted
-                or fertilizer_target.fully_grown
-            ):
+            fertilizer_target = self._consumable_target(str(quote.target_id or ""))
+            if fertilizer_target is None:
                 return self._purchase_failure(
                     quote,
                     PurchaseStatus.TARGET_INVALID,
@@ -8102,12 +8105,12 @@ class GardenGameEngine:
                 source_event_key=event_key,
             )
             applied = True
-            result_id = plant.plant_id
+            result_id = str(quote.target_id)
             self._queue_feedback(
                 event_key,
                 "fertilizer",
                 message,
-                plant.plant_id,
+                "" if isinstance(plant, GardenCardEffects) else plant.plant_id,
                 title=message.rstrip("."),
                 asset_category="ui",
                 asset_key=f"fertilizer_{spec.tier}",
@@ -8140,6 +8143,8 @@ class GardenGameEngine:
             message=message,
             next_actions=next_actions,
             result_id=result_id,
+            destination_kind=quote.destination_kind,
+            remaining_cards=quote.resulting_cards_remaining,
             applied=applied,
             equipped=equipped,
             fertilizer_stored_item_disposition=(
@@ -8189,60 +8194,17 @@ class GardenGameEngine:
         return outcome.success, outcome.message
 
     def equip_environment(self, kind: str, item_id: str) -> tuple[bool, str]:
-        """Select an owned mechanical bonus/effect for today or next day."""
-
-        self.rollover_if_needed()
+        """Equip an owned item, committing its artwork and effect together."""
         normalized_kind = "garden_feature" if str(kind) == "weather" else str(kind)
-        item = environment_item(normalized_kind, str(item_id))
-        if item is None:
-            return False, "That Garden Decoration or Scenery item is unavailable."
-        if not self.owns_environment(normalized_kind, item.item_id):
-            return False, (
-                f"Unlock {item.name} before using its Garden Bonus."
-                if normalized_kind == "garden_feature" else
-                f"Unlock {item.name} before equipping it."
-            )
-        snapshot = self._state_snapshot()
-        schedule = self.state.daily_loadout
-        daily_snapshot = getattr(self.state, "daily_economy_snapshot", None)
-        locked = bool(
-            daily_snapshot is not None
-            and daily_snapshot.anki_day == self.state.daily_stats.day
+        item_id = canonical_garden_feature_id(item_id) if normalized_kind == "garden_feature" else str(item_id)
+        if normalized_kind not in {"garden_feature", "scenery"}:
+            return False, "Choose garden decorations or scenery."
+        state = self.state
+        return self.apply_garden_appearance(
+            item_id if normalized_kind == "garden_feature" else state.loadout.display_decoration_id,
+            item_id if normalized_kind == "scenery" else state.loadout.display_scenery_id,
+            state.loadout.visibility,
         )
-        current = self.locked_environment_id(normalized_kind)
-        queued = (
-            schedule.pending_garden_feature_id
-            if normalized_kind == "garden_feature"
-            else schedule.queued_scenery_id
-        )
-        if normalized_kind == "garden_feature" and queued == item.item_id:
-            return True, f"{item.name} is already queued for the next Anki day."
-        if normalized_kind == "garden_feature" and locked:
-            self._queue_environment_for_next_day(normalized_kind, item.item_id)
-            message = f"{item.name} queued for the next Anki day."
-        elif locked and normalized_kind == "scenery":
-            self._queue_environment_for_next_day(normalized_kind, item.item_id)
-            message = f"{item.name} queued for tomorrow."
-        elif current == item.item_id:
-            return True, (
-                f"{item.name} supplies today’s Garden Bonus."
-                if normalized_kind == "garden_feature" and locked else
-                f"{item.name} is already ready for today."
-                if normalized_kind == "garden_feature" else
-                f"{item.name} is already equipped."
-            )
-        elif normalized_kind == "garden_feature":
-            self.state.loadout.active_garden_bonus_id = item.item_id
-            schedule.pending_garden_feature_id = ""
-            message = f"{item.name} is ready for today."
-        else:
-            self.state.loadout.active_scenery_effect_id = item.item_id
-            message = f"{item.name} effect is ready for today."
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "Couldn’t save changes. Your garden is unchanged."
-        return True, message
 
     def display_garden_feature(self, item_id: str) -> tuple[bool, str]:
         """Compatibility alias for changing the Display Decoration."""
@@ -8255,20 +8217,17 @@ class GardenGameEngine:
         display_scenery_id: str,
         visibility: Mapping[str, bool] | None = None,
     ) -> tuple[bool, str]:
-        """Atomically commit appearance without changing economic effects."""
+        """Atomically equip both selections and their catalog effects."""
 
-        decoration_id = str(display_decoration_id)
+        self.rollover_if_needed()
+
+        decoration_id = canonical_garden_feature_id(display_decoration_id)
         scenery_id = str(display_scenery_id)
         feature = environment_item("garden_feature", decoration_id)
-        cosmetic = COSMETIC_BY_ID.get(decoration_id)
         owns_decoration = bool(
             (
                 feature is not None
                 and self.owns_environment("garden_feature", feature.item_id)
-            )
-            or (
-                cosmetic is not None
-                and decoration_id in self.state.inventory.get("cosmetics", [])
             )
         )
         scenery = environment_item("scenery", scenery_id)
@@ -8281,97 +8240,42 @@ class GardenGameEngine:
         if not owns_scenery:
             return False, "That Scenery appearance is not owned."
 
-        layers = visibility if isinstance(visibility, Mapping) else {}
+        # Keep the legacy argument readable, but equipment always displays.
+        desired_visibility = {"garden_feature": True, "scenery": True}
+        if (self.state.loadout.display_decoration_id == decoration_id
+                and self.state.loadout.display_scenery_id == scenery_id
+                and self.state.loadout.visibility == desired_visibility):
+            return True, "Already equipped."
         snapshot = self._state_snapshot()
         self.state.loadout.display_decoration_id = decoration_id
         self.state.loadout.display_scenery_id = scenery_id
-        self.state.loadout.visibility["garden_feature"] = bool(
-            layers.get("garden_feature", layers.get("weather", True))
-        )
-        self.state.loadout.visibility["scenery"] = bool(
-            layers.get("scenery", True)
-        )
+        self.state.loadout.visibility.update(desired_visibility)
         try:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "Couldn’t save changes. Your garden is unchanged."
-        return True, "Garden appearance saved."
+        return True, "Garden updated."
 
     def display_decoration(self, item_id: str) -> tuple[bool, str]:
-        """Change scene artwork without changing the active Garden Bonus."""
-
-        normalized = str(item_id)
-        feature = environment_item("garden_feature", normalized)
-        cosmetic = COSMETIC_BY_ID.get(normalized)
-        feature_owned = bool(
-            feature is not None
-            and self.owns_environment("garden_feature", feature.item_id)
-        )
-        cosmetic_owned = bool(
-            cosmetic is not None
-            and normalized in self.state.inventory.get("cosmetics", [])
-        )
-        if not feature_owned and not cosmetic_owned:
-            return False, "That Display Decoration is not owned."
-        snapshot = self._state_snapshot()
-        self.state.loadout.display_decoration_id = normalized
-        self.state.loadout.visibility["garden_feature"] = True
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "Couldn’t save changes. Your garden is unchanged."
-        display_name = (
-            feature.name if feature is not None else cosmetic.display_name
-        )
-        return True, f"{display_name} displayed in Garden."
+        """Compatibility alias for equipping a decoration."""
+        return self.equip_environment("garden_feature", item_id)
 
     def purchase_cosmetic(self, item_id: str) -> tuple[bool, str]:
         outcome = self._compat_purchase(PurchaseKind.COSMETIC, str(item_id))
         return outcome.success, outcome.message
 
     def display_scenery(self, item_id: str) -> tuple[bool, str]:
-        """Change the background art without changing its economic effect."""
-
-        scenery = environment_item("scenery", str(item_id))
-        if scenery is None or not self.owns_environment("scenery", scenery.item_id):
-            return False, "That Scenery appearance is not owned."
-        snapshot = self._state_snapshot()
-        self.state.loadout.display_scenery_id = scenery.item_id
-        self.state.loadout.visibility["scenery"] = True
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "Couldn’t save changes. Your garden is unchanged."
-        return True, f"{scenery.name} displayed in Garden."
-
-    def undo_queued_garden_bonus(self, kind: str = "garden_feature") -> tuple[bool, str]:
-        """Cancel a scheduled selection without touching today's locked effect."""
-        if kind not in {"garden_feature", "scenery"}:
-            return False, "Choose scenery or a decoration."
-        snapshot = self._state_snapshot()
-        if kind == "scenery":
-            self.state.daily_loadout.queued_scenery_id = ""
-            self.state.daily_loadout.queued_for_day = ""
-        else:
-            self.state.daily_loadout.pending_garden_feature_id = ""
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "Couldn’t undo that change."
-        return True, "Queued Garden Bonus change undone."
+        """Compatibility alias for equipping scenery."""
+        return self.equip_environment("scenery", item_id)
 
     def set_environment_visibility(self, kind: str, enabled: bool) -> tuple[bool, str]:
         normalized_kind = str(kind)
         normalized_kind = "garden_feature" if normalized_kind == "weather" else normalized_kind
         if normalized_kind not in {"garden_feature", "scenery"}:
             return False, "Choose garden decorations or scenery."
-        snapshot = self._state_snapshot()
-        self.state.loadout.visibility[normalized_kind] = bool(enabled)
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "Couldn’t save changes. Your garden is unchanged."
-        return True, "Garden appearance saved."
+        # Retired compatibility command: never hide equipment or write a save
+        # just to change a display preference that is no longer supported.
+        return True, "Equipped items are always displayed."
 
     def apply_environment_loadout(
         self,
@@ -8393,50 +8297,8 @@ class GardenGameEngine:
         scenery_id: str,
         visibility: dict[str, bool] | None = None,
     ) -> tuple[bool, str]:
-        """Validate and atomically persist the Collection loadout draft."""
-
-        self.rollover_if_needed()
-        feature = environment_item("garden_feature", str(garden_feature_id))
-        scenery = environment_item("scenery", str(scenery_id))
-        if feature is None or scenery is None:
-            return False, "That Garden Decoration or Scenery choice is unavailable."
-        if not self.owns_environment("garden_feature", feature.item_id):
-            return False, f"Unlock {feature.name} before displaying it."
-        if not self.owns_environment("scenery", scenery.item_id):
-            return False, f"Unlock {scenery.name} before equipping it."
-        visual_layers = visibility if isinstance(visibility, dict) else {}
-        snapshot = self._state_snapshot()
-        schedule = self.state.daily_loadout
-        daily_snapshot = getattr(self.state, "daily_economy_snapshot", None)
-        locked = bool(
-            daily_snapshot is not None
-            and daily_snapshot.anki_day == self.state.daily_stats.day
-        )
-        self.state.loadout.display_decoration_id = feature.item_id
-        self.state.loadout.display_scenery_id = scenery.item_id
-        if locked:
-            self._queue_environment_for_next_day("scenery", scenery.item_id)
-        else:
-            # Compatibility: the old two-choice draft treated Scenery as both
-            # art and effect. New callers use the explicit display/effect APIs.
-            self.state.loadout.active_scenery_effect_id = scenery.item_id
-        self.state.loadout.visibility["garden_feature"] = bool(
-            visual_layers.get(
-                "garden_feature", visual_layers.get("weather", True)
-            )
-        )
-        self.state.loadout.visibility["scenery"] = bool(
-            visual_layers.get("scenery", True)
-        )
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "Couldn’t save changes. Your garden is unchanged."
-        return True, (
-            "Scenery queued for tomorrow."
-            if locked
-            else "Garden appearance saved."
-        )
+        """Compatibility wrapper for the unified equipment transaction."""
+        return self.apply_garden_appearance(garden_feature_id, scenery_id, visibility)
 
     def purchase_growth_charge(self, charge_id: str) -> tuple[bool, str]:
         outcome = self._compat_purchase(
@@ -8452,19 +8314,22 @@ class GardenGameEngine:
     def quote_growth_charge(
         self,
         charge_id: str,
-        plant_id: str,
+        plant_id: str | None = None,
     ) -> GrowthChargeQuote:
         """Return an immutable, non-mutating Growth Charge projection."""
 
         normalized_charge = str(charge_id)
-        normalized_target = str(plant_id)
+        normalized_target = self.consumable_target_id() if plant_id is None else str(plant_id)
         spec = GROWTH_CHARGES.get(normalized_charge)
         plant = self.plant_story(normalized_target)
         inventory = max(
             0,
             int(self.state.consumables.get(normalized_charge, 0) or 0),
         )
-        if plant is None or plant not in self.state.plants:
+        garden = normalized_target == self.GARDEN_SUPPLY_TARGET and self.state.collection_complete
+        if garden:
+            target_state = GrowthChargeTargetState.GARDEN
+        elif plant is None or plant not in self.state.plants:
             target_state = GrowthChargeTargetState.UNAVAILABLE
         elif not plant.planted:
             target_state = GrowthChargeTargetState.STORED
@@ -8472,7 +8337,7 @@ class GardenGameEngine:
             target_state = GrowthChargeTargetState.FULLY_GROWN
         else:
             target_state = GrowthChargeTargetState.ELIGIBLE
-        valid_target = target_state is GrowthChargeTargetState.ELIGIBLE
+        valid_target = target_state in {GrowthChargeTargetState.ELIGIBLE, GrowthChargeTargetState.GARDEN}
         current_growth = max(0, int(getattr(plant, "growth_points", 0) or 0))
         requested = max(0, int(getattr(spec, "growth", 0) or 0))
         charge_projection = project_growth_charge_application(
@@ -8485,11 +8350,16 @@ class GardenGameEngine:
         projected = charge_projection.projected_growth
         stage_rewards = (
             self._project_stage_rewards(current_growth, projected)
-            if charge_projection.ready
+            if charge_projection.ready and not garden
             else ()
         )
         rewards = tuple(item[2] for item in stage_rewards)
         completed_stages = tuple(item[1] for item in stage_rewards)
+        route_capacity = sum(max(0, GROWTH_THRESHOLDS[-1] * GROWTH_UNITS_PER_POINT
+                                 - self._plant_growth_units(candidate))
+                             for candidate in self._growth_route_candidates(plant))
+        overflow_units = max(0, granted * GROWTH_UNITS_PER_POINT - route_capacity)
+        project_allocations, stored_units = self._project_active_growth_overflow(overflow_units)
         if spec is None:
             status = GrowthChargeStatus.TARGET_INVALID
             message = "Growth Charge unavailable."
@@ -8524,6 +8394,9 @@ class GardenGameEngine:
                 0, int(getattr(self.state, "stored_growth_units", 0) or 0)
             ),
             "rewards": [reward.to_dict() for reward in rewards],
+            "overflow_projects": [item.to_dict() for item in project_allocations],
+            "active_growth_target": (self.state.active_growth_target_type, self.state.active_growth_target_id,
+                                     self.state.active_growth_target_activation_identity),
         }
         quote_token = hashlib.sha256(json.dumps(
             token_payload,
@@ -8536,24 +8409,27 @@ class GardenGameEngine:
             charge_id=normalized_charge,
             charge_name=str(getattr(spec, "name", "Growth Charge") or "Growth Charge"),
             target_id=normalized_target,
-            target_name=str(getattr(plant, "name", "Plant") or "Plant"),
+            target_name="Garden" if garden else str(PlantIdentity.from_plant(plant).display_name or "Plant"),
             target_species=str(getattr(plant, "species", "") or ""),
-            target_stage=self._growth_stage_for_points(current_growth),
+            target_stage="" if garden else self._growth_stage_for_points(current_growth),
             target_state=target_state,
             current_growth=current_growth,
             current_growth_units=self._plant_growth_units(plant) if plant is not None else 0,
-            projected_growth_units=min(GROWTH_THRESHOLDS[-1] * GROWTH_UNITS_PER_POINT,
+            projected_growth_units=0 if garden else min(GROWTH_THRESHOLDS[-1] * GROWTH_UNITS_PER_POINT,
                 (self._plant_growth_units(plant) if plant is not None else 0) + granted * GROWTH_UNITS_PER_POINT),
             requested_growth=requested,
             granted_growth=granted,
             projected_growth=projected,
-            projected_stage=self._growth_stage_for_points(projected),
+            projected_stage="" if garden else self._growth_stage_for_points(projected),
             completed_stages=completed_stages,
             rewards=rewards,
             inventory_before=inventory,
             inventory_after=charge_projection.inventory_after,
             quote_token=quote_token,
             message=message,
+            destination_kind="garden" if garden else "plant",
+            stored_growth_units=stored_units,
+            project_allocations=project_allocations,
         )
 
     @staticmethod
@@ -8577,6 +8453,7 @@ class GardenGameEngine:
             rewards=(),
             inventory_remaining=quote.inventory_before,
             message=message,
+            destination_kind=quote.destination_kind,
         )
 
     def confirm_growth_charge(
@@ -8690,7 +8567,7 @@ class GardenGameEngine:
                 transition_source="charge",
             )
             awarded = growth_flow.requested_units // GROWTH_UNITS_PER_POINT
-            if awarded != quote.granted_growth or plant is None:
+            if awarded != quote.granted_growth or (plant is None and quote.destination_kind != "garden"):
                 raise RuntimeError("Growth Charge projection changed during commit")
             aggregates = self.state.lifetime_economy_aggregates
             aggregates.growth_generated_units += growth_flow.requested_units
@@ -8706,24 +8583,28 @@ class GardenGameEngine:
                 target_name=quote.target_name,
                 previous_growth=quote.current_growth,
                 previous_growth_units=quote.current_growth_units,
-                resulting_growth_units=self._plant_growth_units(plant),
-                resulting_growth=int(plant.growth_points),
+                resulting_growth_units=self._plant_growth_units(plant) if plant else 0,
+                resulting_growth=int(plant.growth_points) if plant else 0,
                 growth_granted=awarded,
                 previous_stage=quote.target_stage,
-                resulting_stage=plant.growth_stage,
+                resulting_stage=plant.growth_stage if plant else "",
                 completed_stages=quote.completed_stages,
                 rewards=quote.rewards,
                 inventory_remaining=max(
                     0,
                     int(self.state.consumables.get(quote.charge_id, 0) or 0),
                 ),
-                message=f"{awarded:,} Growth applied.",
+                message=self.growth_destination_text(growth_flow.stored_units, growth_flow.project_allocations)
+                        if quote.destination_kind == "garden" else f"{awarded:,} Growth applied.",
+                destination_kind=quote.destination_kind,
+                stored_growth_units=growth_flow.stored_units,
+                project_allocations=growth_flow.project_allocations,
             )
             self._queue_feedback(
                 f"growth-charge-use:{request.request_id}",
                 "growth_charge",
                 outcome.message,
-                plant.plant_id,
+                plant.plant_id if plant else "",
                 title=f"{awarded:,} Growth applied",
                 asset_category="ui",
                 asset_key=quote.charge_id,
@@ -8809,12 +8690,19 @@ class GardenGameEngine:
         charge_id: str,
         plant_id: str | None = None,
     ) -> tuple[bool, str]:
-        target_id = str(plant_id or self.state.active_plant_id or "")
-        quote = self.quote_growth_charge(str(charge_id), target_id)
+        quote = self.quote_growth_charge(str(charge_id), plant_id)
         if not quote.ready:
             return False, quote.message
         outcome = self.confirm_growth_charge(GrowthChargeRequest.from_quote(quote))
         return outcome.success, outcome.message
+
+    @staticmethod
+    def growth_destination_text(stored_units: int, allocations: tuple) -> str:
+        parts = [f"{item.units / GROWTH_UNITS_PER_POINT:,.0f} Growth to {item.target_id.replace('_', ' ').title()} Mastery"
+                 for item in allocations]
+        if stored_units:
+            parts.append(f"{stored_units / GROWTH_UNITS_PER_POINT:,.0f} Stored Growth")
+        return "; ".join(parts) + "."
 
     @staticmethod
     def _landmark_outcome_from_dict(value: Mapping[str, Any]) -> LandmarkOutcome | None:
@@ -8974,6 +8862,15 @@ class GardenGameEngine:
             available_growth_units=max(0, int(self.state.stored_growth_units)),
             available_coins=max(0, int(self.state.currency_balance)),
         )
+        if not landmarks_enabled():
+            return replace(
+                quote,
+                disposition=ProgressionDisposition.NOT_READY,
+                can_apply=False,
+                message="This Growth project is unavailable.",
+                growth_spend_units=0,
+                coin_spend=0,
+            )
         if not self._landmark_unlocked():
             return replace(
                 quote,
@@ -9118,6 +9015,8 @@ class GardenGameEngine:
         ))
 
     def set_landmark_auto_contribute(self, enabled: bool) -> tuple[bool, str]:
+        if not landmarks_enabled():
+            return False, "This Growth project is unavailable."
         if enabled and not self.state.garden_project.selected_project_id:
             return False, "Select a Garden Landmark first."
         snapshot = self._state_snapshot()
@@ -9145,6 +9044,8 @@ class GardenGameEngine:
         )
 
     def display_landmark(self, landmark_id: str) -> tuple[bool, str]:
+        if not landmarks_enabled():
+            return False, "This appearance is unavailable."
         item_id = str(landmark_id or "")
         if item_id not in self.state.garden_project.completed_project_ids:
             return False, "Complete this Landmark before displaying it."
@@ -9159,6 +9060,8 @@ class GardenGameEngine:
 
     def undo_landmark_appearance(self, previous_id: str, expected_id: str) -> tuple[bool, str]:
         """Restore only the displayed artwork while preserving later project work."""
+        if not landmarks_enabled():
+            return False, "This appearance is unavailable."
         project = self.state.garden_project
         if project.displayed_project_id != expected_id:
             return False, "Landmark appearance has changed since then."
@@ -9531,7 +9434,7 @@ class GardenGameEngine:
         self._queue_feedback(
             f"starter:{species}",
             "unlock",
-            f"{plant.name} is growing in Bed {destination + 1}.",
+            f"{PlantIdentity.from_plant(plant).display_name} is growing in Bed {destination + 1}.",
             plant.plant_id,
         )
         try:
@@ -9549,7 +9452,7 @@ class GardenGameEngine:
         )
         return (
             True,
-            f"{plant.name} is growing in Bed {destination + 1}.",
+            f"{PlantIdentity.from_plant(plant).display_name} is growing in Bed {destination + 1}.",
             plant,
             change,
         )
@@ -9629,6 +9532,77 @@ class GardenGameEngine:
 
         return self._create_starter_at(species, 0)
 
+    def _welcome_eligible(self) -> bool:
+        return (
+            self.state.onboarding.step != OnboardingStep.DONE
+            and self.state.garden_setup_version == 0
+            and not self._reward_applied(WELCOME_EVENT_KEY)
+        )
+
+    def _capture_welcome_history(self, history: Any) -> None:
+        """Snapshot paid historical rewards while setup is still unfinished.
+
+        Query committed/staged economy rows when available, so pausing setup
+        cannot lose historical amounts when the ordinary receipt cache prunes.
+        Imported badges without a payout are never advertised as fresh Coins.
+        """
+        if not self._welcome_eligible():
+            return
+        welcome = self.state.welcome_receipt or WelcomeReceipt()
+        if welcome.status != "collecting":
+            return
+        rewards: list[WelcomeReward] = []
+        achievement_ids: list[str] = []
+        event_resolver = getattr(self.storage, "economy_event", None)
+        for definition in ACHIEVEMENT_DEFINITIONS:
+            key = definition.achievement_id
+            achievement = self.state.achievements.get(key)
+            if (
+                not history.unlock_day(key) or achievement is None
+                or not achievement.unlocked or not achievement.rewarded_at
+                or not achievement.historical_backfill
+            ):
+                continue
+            event_key = achievement.reward_event_key
+            event = event_resolver(event_key) if callable(event_resolver) else None
+            if event is not None:
+                if event.coins_earned:
+                    rewards.append(WelcomeReward(event_key, "coins", int(event.coins_earned)))
+                for item_id, quantity in event.metric_deltas.get("consumables_earned", {}).items():
+                    if quantity:
+                        rewards.append(WelcomeReward(event_key, "inventory_item", int(quantity), str(item_id)))
+            else:
+                rewards.extend(
+                    WelcomeReward(row.event_key, row.reward_type, row.amount, row.item_id)
+                    for row in self.state.recent_reward_receipts
+                    if row.event_key == event_key and row.amount > 0
+                    and row.reward_type in {"coins", "inventory_item"}
+                )
+            for trophy_id in definition.reward.cosmetic_ids:
+                if trophy_id in self.state.inventory.get("cosmetics", []):
+                    rewards.append(WelcomeReward(event_key, "trophy", 1, trophy_id))
+            achievement_ids.append(key)
+        self.state.welcome_receipt = welcome.with_history(
+            review_count=int(history.lifetime_answers),
+            rewards=rewards, achievement_ids=achievement_ids,
+        )
+
+    def mark_welcome_presented(self, receipt_id: str, *, acknowledged: bool = False) -> bool:
+        welcome = self.state.welcome_receipt
+        if welcome is None or welcome.receipt_id != receipt_id or not welcome.pending:
+            return False
+        status = "acknowledged" if acknowledged else "started"
+        if welcome.status == status:
+            return True
+        snapshot = self._state_snapshot()
+        self.state.welcome_receipt = replace(welcome, status=status)
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            logger.exception("Anki Garden: welcome presentation acknowledgement failed")
+            return False
+        return True
+
     def finish_onboarding(self) -> tuple[bool, str]:
         progress = self.state.onboarding
         if progress.step == OnboardingStep.DONE:
@@ -9636,15 +9610,50 @@ class GardenGameEngine:
         if progress.step != OnboardingStep.COMPLETION:
             return False, "Finish nurturing your starter before completing setup."
         snapshot = self._state_snapshot()
-        self.state.onboarding = OnboardingProgress(
-            step=OnboardingStep.DONE,
-            starter_plant_id=progress.starter_plant_id,
-        )
-        self.state.garden_setup_version = 1
+        transitions = list(self._pending_stage_transitions)
+        correlation = self._current_correlation_id
         try:
+            if self._welcome_eligible():
+                plant = self.plant_story(str(progress.starter_plant_id or ""))
+                if plant is None or not plant.planted or self.state.active_plant_id != plant.plant_id:
+                    return False, "Nurture your starter before completing setup."
+                welcome = self.state.welcome_receipt or WelcomeReceipt()
+                before = self._plant_growth_units(plant)
+                self._current_correlation_id = WELCOME_EVENT_KEY
+                self._grant_reward_bundle(
+                    WELCOME_EVENT_KEY, source="welcome", source_id="first_garden",
+                    reason="Welcome gift", title="Welcome gift", coins=WELCOME_COINS,
+                    growth=WELCOME_GROWTH, plant=plant, correlation_id=WELCOME_EVENT_KEY,
+                )
+                gift = tuple(
+                    WelcomeReward(row.event_key, row.reward_type, row.amount, row.item_id)
+                    for row in self.state.recent_reward_receipts
+                    if row.correlation_id == WELCOME_EVENT_KEY and row.amount > 0
+                    and row.reward_type in {"coins", "growth", "inventory_item"}
+                )
+                self.state.welcome_receipt = replace(
+                    welcome, status="ready", gift_rewards=gift,
+                    plant_id=plant.plant_id, species=plant.species,
+                    growth_before_units=before, growth_after_units=self._plant_growth_units(plant),
+                )
+                self.state.pending_feedback = [
+                    event for event in self.state.pending_feedback
+                    if event.correlation_id != WELCOME_EVENT_KEY
+                    and event.event_id != f"starter:{plant.species}"
+                ]
+                self._pending_stage_transitions = transitions
+            self.state.onboarding = OnboardingProgress(
+                step=OnboardingStep.DONE, starter_plant_id=progress.starter_plant_id,
+            )
+            self.state.garden_setup_version = 1
             self._persist_or_restore(snapshot)
         except Exception:
+            self._pending_stage_transitions = transitions
+            self._restore_state(snapshot)
+            logger.exception("Anki Garden: first-garden welcome could not be saved")
             return False, "Couldn’t save your garden. Nothing was changed."
+        finally:
+            self._current_correlation_id = correlation
         return True, "Your garden is ready."
 
     def purchase_fertilizer(self, plant_id: str, tier: str, *, replace_active: bool = False) -> tuple[bool, str]:
@@ -9675,31 +9684,12 @@ class GardenGameEngine:
         # Any supplied value, including an empty or stale ID, is an immutable
         # explicit target and must never be rebound to whichever plant is now
         # active.
-        target_id = (
-            str(self.state.active_plant_id or "")
-            if plant_id is None
-            else str(plant_id)
-        )
-        plant = self.plant_story(target_id)
-        if (
-            plant is None
-            or self.state.active_plant_id != plant.plant_id
-            or not plant.planted
-            or plant.fully_grown
-        ):
-            return False, "Choose a nurtured plant that is still growing."
-        if self.state.consumables.get(inventory_key, 0) <= 0:
-            return False, f"You do not have any {spec.name} yet."
-        active_batches, queued_batches = self._card_effect_lists(
-            plant, "fertilizer"
-        )
-        dose_count = sum(
-            1
-            for batch in (*active_batches, *queued_batches)
-            if int(batch.remaining_cards) > 0
-        )
-        if dose_count >= self.EFFECT_DOSE_CAP:
-            return False, "This plant already has five Fertilizer doses."
+        projection = self.consumable_use_projection(inventory_key, plant_id)
+        if not projection.can_use:
+            return False, projection.message
+        plant = self._consumable_target(projection.target_id)
+        assert plant is not None
+        dose_count = projection.doses
         stored_item_result = build_fertilizer_stored_item_projection(
             FertilizerStoredItemDisposition.QUEUE
             if dose_count else FertilizerStoredItemDisposition.USE,
@@ -9743,7 +9733,7 @@ class GardenGameEngine:
                 event_id,
                 "fertilizer",
                 message,
-                plant.plant_id,
+                "" if projection.destination_kind == "garden" else projection.target_id,
                 title=(f"{spec.name} queued" if action == "queued" else f"{spec.name} active"),
                 asset_category="ui",
                 asset_key=inventory_key,
@@ -9766,7 +9756,10 @@ class GardenGameEngine:
         except Exception:
             self._restore_state(snapshot)
             return False, f"Couldn’t use {spec.name}."
-        self.last_fertilizer_stored_item_result = stored_item_result
+        self.last_fertilizer_stored_item_result = replace(
+            stored_item_result, target_id=projection.target_id, target_name=projection.target_name,
+            destination_kind=projection.destination_kind, remaining_cards=remaining_cards,
+        )
         return True, message
 
     def fertilizer_stored_item_projection(
@@ -9786,24 +9779,23 @@ class GardenGameEngine:
 
         normalized_tier = str(tier or "basic").lower()
         spec = self.FERTILIZERS.get(normalized_tier)
-        target_id = (
-            str(self.state.active_plant_id or "")
-            if plant_id is None else str(plant_id)
-        )
-        plant = self.plant_story(target_id)
-        if spec is None or plant is None or plant.fully_grown or not plant.planted:
+        plant = self._consumable_target(plant_id)
+        if spec is None or plant is None:
             return None
         active, queued = self._card_effect_lists(plant, "fertilizer")
         live_count = sum(
             1 for batch in (*active, *queued)
             if int(batch.remaining_cards) > 0
         )
-        return build_fertilizer_stored_item_projection(
+        return replace(build_fertilizer_stored_item_projection(
             FertilizerStoredItemDisposition.QUEUE
             if live_count else FertilizerStoredItemDisposition.USE,
             card_queue_delta=spec.card_count,
             expires_at_ms=None,
-        )
+        ), target_id=self.consumable_target_id() if plant_id is None else str(plant_id),
+            target_name="Garden" if isinstance(plant, GardenCardEffects) else PlantIdentity.from_plant(plant).display_name,
+            destination_kind="garden" if isinstance(plant, GardenCardEffects) else "plant",
+            remaining_cards=sum(batch.remaining_cards for batch in (*active, *queued)) + spec.card_count)
 
     def use_fertilizer_item_with_result(
         self,
@@ -9835,32 +9827,20 @@ class GardenGameEngine:
 
     def use_booster_potion(self, plant_id: str | None = None) -> tuple[bool, str]:
         self.last_booster_result = BoosterResult()
-        plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
-        if plant is None:
-            return False, "Choose a nurtured plant that is still growing."
-        if self.state.active_plant_id != plant.plant_id or not plant.planted or plant.fully_grown:
-            return False, "This plant can’t use a Booster Potion."
-        if self.state.consumables.get("booster_potion", 0) <= 0:
-            return False, "No Booster Potions available."
-        active = [
-            batch for batch in plant.booster_card_batches
-            if int(batch.remaining_cards) > 0
-        ]
-        queued = [
-            batch for batch in plant.booster_card_queue
-            if int(batch.remaining_cards) > 0
-        ]
-        if len(active) + len(queued) >= self.EFFECT_DOSE_CAP:
-            return False, "This plant already has five Booster Potion doses."
+        projection = self.consumable_use_projection("booster_potion", plant_id)
+        if not projection.can_use:
+            return False, projection.message
+        plant = self._consumable_target(projection.target_id)
+        assert plant is not None
         snapshot = self._state_snapshot()
         try:
             self._lock_scenery_loadout(event_ms=self._now_ms())
             base_cards = self.BOOSTER_CARD_COUNT
-            hourglass_bonus = 0
-            if FEATURE_EFFECT_KEYS[self.active_garden_feature_id()] == "hourglass_completion_booster":
-                hourglass_bonus = (base_cards + 3) // 4
-            card_count = base_cards + hourglass_bonus
-            event_key = f"booster:{plant.plant_id}:{uuid.uuid4().hex}"
+            bonuses = self.booster_card_bonuses()
+            hourglass_bonus = bonuses.get("herbalist_hourglass", 0)
+            full_moon_bonus = bonuses.get("full_moon", 0)
+            card_count = base_cards + sum(bonuses.values())
+            event_key = f"booster:{projection.target_id}:{uuid.uuid4().hex}"
             self.state.consumables["booster_potion"] -= 1
             action = self._add_card_effect_batch(
                 plant,
@@ -9883,6 +9863,9 @@ class GardenGameEngine:
                 hourglass_bonus_cards=hourglass_bonus,
                 total_cards_added=card_count,
                 remaining_booster_cards=remaining_cards,
+                full_moon_bonus_cards=full_moon_bonus,
+                target_id=projection.target_id,
+                destination_kind=projection.destination_kind,
             )
             message = (
                 f"Booster Potion added {card_count:,} cards."
@@ -9896,7 +9879,7 @@ class GardenGameEngine:
                 event_key,
                 "booster",
                 message,
-                plant.plant_id,
+                "" if projection.destination_kind == "garden" else projection.target_id,
                 title="Booster Potion active",
                 asset_category="ui",
                 asset_key="booster_potion",
@@ -9964,7 +9947,7 @@ class GardenGameEngine:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "Couldn’t place the plant. Your garden is unchanged."
-        return True, f"{plant.name} was placed in Bed {destination + 1}."
+        return True, f"{PlantIdentity.from_plant(plant).display_name} was placed in Bed {destination + 1}."
 
     def move_plant(self, plant_id: str, slot_index: int) -> tuple[bool, str]:
         """Atomically move a planted Collection item to an empty garden bed."""
@@ -9989,14 +9972,14 @@ class GardenGameEngine:
         if not self.slot_accepts_plant(plant, destination):
             return False, self.SOIL_PLANT_MESSAGE
         if plant.slot_index == destination:
-            return True, f"{plant.name} is already in Bed {destination + 1}."
+            return True, f"{PlantIdentity.from_plant(plant).display_name} is already in Bed {destination + 1}."
         snapshot = self._state_snapshot()
         plant.slot_index = destination
         try:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "Couldn’t move the plant. Your garden is unchanged."
-        return True, f"{plant.name} moved to Bed {destination + 1}."
+        return True, f"{PlantIdentity.from_plant(plant).display_name} moved to Bed {destination + 1}."
 
     def move_to_collection(self, plant_id: str) -> tuple[bool, str]:
         plant = self.plant_story(plant_id)
@@ -10010,7 +9993,7 @@ class GardenGameEngine:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "Couldn’t store the plant. Your garden is unchanged."
-        return True, f"{plant.name} stored."
+        return True, f"{PlantIdentity.from_plant(plant).display_name} stored."
 
     def _repair_active_plant(self) -> Plant | None:
         requested_active_id = self.state.active_plant_id
@@ -10114,7 +10097,7 @@ class GardenGameEngine:
                     self._persist_or_restore(snapshot)
                 except Exception:
                     return False, "Couldn’t nurture the plant. Your garden is unchanged."
-            return True, f"{plant.name} is already nurtured."
+            return True, f"{PlantIdentity.from_plant(plant).display_name} is already nurtured."
         snapshot = self._state_snapshot()
         self.state.active_plant_id = plant.plant_id
         activated_at = self._now_ms()
@@ -10137,25 +10120,7 @@ class GardenGameEngine:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "Couldn’t nurture the plant. Your garden is unchanged."
-        return True, f"{plant.name} is now nurtured."
-
-    def rename_plant(self, plant_id: str, name: str) -> tuple[bool, str]:
-        plant = self.plant_story(plant_id)
-        if plant is None:
-            return False, "That plant is no longer in your collection."
-        clean = " ".join(str(name).split())
-        if not clean:
-            return False, "Enter a name for this plant."
-        if len(clean) > MAX_PLANT_NAME_LENGTH:
-            return False, f"Use {MAX_PLANT_NAME_LENGTH} characters or fewer."
-        snapshot = self._state_snapshot()
-        plant.name = clean
-        plant.name_customized = True
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "Couldn’t rename the plant. Nothing was changed."
-        return True, f"This plant is now named {clean}."
+        return True, f"{PlantIdentity.from_plant(plant).display_name} is now nurtured."
 
     def rename_garden(self, name: str, *, complete_setup: bool = True) -> tuple[bool, str]:
         clean = " ".join(str(name).split())
@@ -10497,10 +10462,9 @@ class GardenGameEngine:
             return ""
         if len(transitions) == 1:
             item = transitions[0]
-            plant_name = item.plant_name or item.species.replace("_", " ").title()
-            return f"{plant_name} reached {item.new_stage.title()}."
+            return plant_stage_event(item.species, item.new_stage) + "."
         names = ", ".join(
-            item.plant_name or item.species.replace("_", " ").title()
+            plant_species_name(item.species)
             for item in transitions[:3]
         )
         if len(transitions) > 3:
@@ -10666,6 +10630,7 @@ class GardenGameEngine:
             "fertilizer": max(0, int(stats.fertilizer_growth)),
             "weather": max(0, int(stats.weather_growth)),
             "scenery": max(0, int(stats.scenery_growth)),
+            "trophies": max(0, int(stats.trophy_growth)),
             "other": max(0, int(stats.booster_growth)),
         }
         ledger = list(self.state.completed_growth_charge_requests)
@@ -10701,7 +10666,7 @@ class GardenGameEngine:
             },
             "plants": [
                 {
-                    "name": plant.name,
+                    "name": PlantIdentity.from_plant(plant).display_name,
                     "species": plant.species,
                     "stage": plant.growth_stage,
                     "growth": plant.growth_points,
@@ -10856,13 +10821,7 @@ class GardenGameEngine:
         plant_requests: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         state = getattr(self, "state", None)
-        visibility = getattr(state, "environment_visibility", {})
-        selected_scenery = getattr(state, "selected_background", DEFAULT_SCENERY_ID)
-        scenery = (
-            selected_scenery
-            if not isinstance(visibility, dict) or visibility.get("scenery", True)
-            else DEFAULT_SCENERY_ID
-        )
+        scenery = getattr(state, "selected_background", DEFAULT_SCENERY_ID)
         normalized_theme = self.assets.normalize_theme(theme)
         background = self.assets.resolve(
             "backgrounds",
@@ -10873,17 +10832,12 @@ class GardenGameEngine:
             quality_preference="balanced",
         )
         feature_id = canonical_garden_feature_id(weather)
-        feature_asset = (
-            self.assets.resolve(
-                "garden_features",
-                f"garden_feature_{feature_id}",
-                f"slot:garden_features:{feature_id}",
-                theme=normalized_theme,
-                quality_preference="balanced",
-            )
-            if not isinstance(visibility, dict)
-            or visibility.get("garden_feature", visibility.get("weather", True))
-            else None
+        feature_asset = self.assets.resolve(
+            "garden_features",
+            f"garden_feature_{feature_id}",
+            f"slot:garden_features:{feature_id}",
+            theme=normalized_theme,
+            quality_preference="balanced",
         )
         garden_overlay = self.resolve_garden_overlay_asset(
             theme=normalized_theme, quality_preference="balanced"
@@ -10922,11 +10876,7 @@ class GardenGameEngine:
         return str(asset.path) if asset else None
 
     def resolve_background_asset(self) -> Optional[ResolvedAsset]:
-        scenery = (
-            self.state.selected_background
-            if self.state.environment_visibility.get("scenery", True)
-            else DEFAULT_SCENERY_ID
-        )
+        scenery = self.state.selected_background
         return self.assets.resolve(
             "backgrounds",
             f"bg_{scenery}_any",
@@ -11005,28 +10955,11 @@ class GardenGameEngine:
         preview: bool = False,
         respect_visibility: bool = True,
     ) -> Optional[ResolvedAsset]:
-        if (
-            respect_visibility
-            and not self.state.loadout.visibility.get("garden_feature", True)
-        ):
-            return None
+        # respect_visibility remains accepted for older callers. Equipped
+        # artwork is always shown, including saves with retired false flags.
         feature_id = canonical_garden_feature_id(
             item_id or self.state.loadout.display_decoration_id
         )
-        raw_item_id = str(item_id or self.state.loadout.display_decoration_id)
-        cosmetic = COSMETIC_BY_ID.get(raw_item_id)
-        if cosmetic is not None:
-            return self.assets.resolve(
-                "cosmetics",
-                cosmetic.asset_id,
-                (
-                    f"slot:cosmetics:{raw_item_id}:preview"
-                    if preview
-                    else f"slot:cosmetics:{raw_item_id}"
-                ),
-                theme=self.config.value("visual_theme", "verdant_twilight"),
-                quality_preference="balanced",
-            )
         if feature_id not in GARDEN_FEATURE_CATALOG:
             return None
         resolved = self.assets.resolve(
@@ -11043,13 +10976,8 @@ class GardenGameEngine:
         return resolved
 
     def resolve_garden_feature_pad_asset(self) -> Optional[ResolvedAsset]:
-        return self.assets.resolve(
-            "garden_features",
-            "garden_feature_pad",
-            "slot:garden_features:pad",
-            theme=self.config.value("visual_theme", "verdant_twilight"),
-            quality_preference="balanced",
-        )
+        """Compatibility hook: physical support now comes from each decoration."""
+        return None
 
     def resolve_garden_feature_preview_asset(
         self,

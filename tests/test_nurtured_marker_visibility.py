@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ankigarden.ui.formatters import format_plant_name
+
 import ast
 import json
 from pathlib import Path
@@ -41,7 +43,7 @@ def _compiled_class_method(
     node = _class_method_node(path, class_name, method_name)
     node.decorator_list = []
     module = ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[]))
-    scope: dict[str, object] = dict(namespace or {})
+    scope: dict[str, object] = {"format_plant_name": format_plant_name, **(namespace or {})}
     exec(compile(module, str(path), "exec"), scope)
     return scope[method_name]
 
@@ -70,7 +72,7 @@ def test_native_accessibility_names_nurtured_state_without_a_visual_cue() -> Non
         "_update_scene_accessible_description",
     )
     scene = SimpleNamespace(
-        scene={"plants": [{"name": "Briar", "is_active": True}]},
+        scene={"plants": [{"name": "Briar", "species": "rose", "stage": "young", "is_active": True}]},
         interactive=False,
     )
     scene.setAccessibleDescription = lambda value: setattr(
@@ -82,7 +84,7 @@ def test_native_accessibility_names_nurtured_state_without_a_visual_cue() -> Non
     update_description(scene)
 
     assert scene.accessible_description == (
-        "This preview is not interactive. Briar is nurtured."
+        "This preview is not interactive. Young Rose is nurtured."
     )
     assert "Watering can" not in scene.accessible_description
 

@@ -1,6 +1,6 @@
 # Anki Garden 🌿
 
-Turn your Anki study sessions into a growing, hand-painted garden. Choose a plant, complete cards, and earn new plants, scenery, decorations, and garden landmarks as you go.
+Turn your Anki study sessions into a growing, hand-painted garden. Choose a plant, complete cards, and earn new plants, scenery, and decorations as you go.
 
 **Anki Garden 2.2.0** · [What’s new](docs/release-notes-2.2.0.md)
 
@@ -13,14 +13,14 @@ Turn your Anki study sessions into a growing, hand-painted garden. Choose a plan
 3. Pick a free starter and choose its garden bed.
 4. Study as usual. Your nurtured plant gains Growth as you complete cards.
 
-Bonsai, Rose, Sunflower, and Lavender are the free starter choices. All plants grow at the same rate. You can rename your garden in Settings and rename individual plants in Plant details.
+Bonsai, Rose, Sunflower, and Lavender are the free starter choices. All plants grow at the same rate. Plants are identified by their growth stage and species. You can rename your garden in Settings.
 
 ## Find your way around
 
 | Tab | What you can do |
 |---|---|
 | **Garden** | See your plants, choose which one to nurture, move plants, and use supplies. |
-| **Collection** | Browse your plants, compare bonuses, change your garden’s appearance, and build Landmarks. |
+| **Collection** | Browse your plants, compare bonuses, change your garden’s appearance. |
 | **Shop** | Spend Coins on plants, supplies, scenery, and decorations. |
 | **Progress** | See today’s cards, your Anki streak, achievements, and Coin activity. |
 
@@ -28,16 +28,14 @@ Click a plant to see its progress and actions. **Nurture** chooses the plant tha
 
 ## Make the garden yours
 
-Scenery, Decorations, and Landmarks share one garden preview in Collection. Each browsing tile shows a short bonus summary; select it for the full details.
+Scenery and Decorations share one garden preview in Collection. Each browsing tile shows a short bonus summary; select it for the full details.
 
-- **Use appearance** applies the previewed artwork. Undo can restore the previous appearance.
-- **Use bonus today** selects a bonus before today’s bonuses are set. After that, **Schedule bonus** changes the bonus at the displayed date and time.
-- **In your garden** shows your current scenery, decoration, and Landmark, plus the source of today’s bonuses.
+- **Equip** selects an item's artwork and its bonus. **Apply** commits the previewed selection; **Undo** restores the previous equipment.
+- **In your garden** shows your equipped scenery and decoration, with their effects.
 - **Show artwork** only changes visibility. Hiding an item keeps its bonus active.
-- **Scheduled bonuses** shows upcoming changes and lets you cancel them individually.
 - **Other active bonuses** shows Fertilizer, Booster Potions, and Garden Rhythm, including the affected plant and remaining cards.
 
-Appearance and bonuses can come from different items. Previewing an item does not spend Coins, use supplies, or save changes.
+Previewing an item does not spend Coins, use supplies, or save changes. Cosmetic decorations have no study bonus. Purchases add items to your collection; choose **Equip** to use them.
 
 ## Growth and rewards
 
@@ -71,11 +69,9 @@ Session summaries show the rewards from that study session, with today’s progr
 
 Fertilizer and Potions last for cards, not time. The menu shows whether a dose starts now, extends an active supply, or waits its turn. Growth Charges apply to one planted, unfinished plant. Before you choose **Use 1 charge**, the confirmation shows the plant’s current and resulting stages, Growth, remaining charges, and any earned stage reward. Canceling changes nothing. After use, the matching receipt shows the updated plant and current totals, with **View plant** opening the affected plant.
 
-## Landmarks and longer-term goals
+## Stored Growth
 
-After your first Full Bloom, you can build six Landmarks using **Stored Growth** and Coins. Stored Growth is Growth saved for garden projects. Built Landmarks decorate your garden and give no bonus.
-
-The Landmark you display can differ from the one you are growing. Your original plants and earned Growth stay with you as you work toward Landmarks, Cultivation Mastery, and Garden Legacy.
+Growth that cannot fit in your planted plants stays in **Stored Growth**. Reaching Full Bloom never discards the Growth you earn from studying.
 
 ## Settings and help
 

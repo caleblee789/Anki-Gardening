@@ -288,9 +288,9 @@ def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
         "_environment_art_label", "_reward_art_label"
     )
     reward_art = _method_source("_reward_art_label", "_rebuild_footer")
-    assert '"garden_coin": "coin"' in reward_art
-    assert '"growth": "growth"' in reward_art
-    assert '"ui_growth_charge_small": "growth_charge_small"' in reward_art
+    assert '"garden_coins": "garden_coin"' in reward_art
+    assert '"growth": "growth_resource"' in reward_art
+    assert 'bundled_ui_asset_path(item_key)' in reward_art
     assert 'getattr(self._engine, "resolve_item_asset", None)' in reward_art
     assert "self._reward_art_label(art, 26)" in source
 
@@ -328,7 +328,7 @@ def test_canonical_garden_feature_art_uses_the_dedicated_asset_catalog():
     ]
 
 
-def test_earned_garden_feature_art_can_ignore_current_loadout_visibility():
+def test_earned_garden_feature_art_ignores_retired_loadout_visibility():
     resolved = object()
 
     class _Assets:
@@ -348,7 +348,7 @@ def test_earned_garden_feature_art_can_ignore_current_loadout_visibility():
         engine,
         "firefly_lantern",
         preview=True,
-    ) is None
+    ) is resolved
     assert GardenGameEngine.resolve_garden_feature_asset(
         engine,
         "firefly_lantern",

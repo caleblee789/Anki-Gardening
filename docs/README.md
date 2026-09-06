@@ -8,6 +8,7 @@ implementation disagree.
 ## Current product and release contracts
 
 - [Development guide](development.md): source installation, packaging, and local checks.
+- [Quick progression and balance audit](balance-audit-20260905.md): reduced simulation, equipped effects, scaling achievements, pacing results, and recommendations.
 - [UI release-quality review](ui/release-quality-20260904.md): the current 36-surface review, screenshots, package identities, and completion checklist.
 
 - `feature-evidence-matrix.md`: feature behavior and automated/live acceptance
@@ -51,6 +52,6 @@ audit ledgers remain available through Git history or preserved raw local
 evidence. They are not active product or release evidence. Raw runs, manifests,
 archives, and lineage may remain under ignored `build/`.
 
-The active UI evidence contract is **v27**, with 18 representative surfaces on two sheets and 36 full surfaces on five sheets. The [current UI review](ui/release-quality-20260904.md) identifies the exact production and capture packages, native checks, supplemental artwork and Landmark reviews, and final contact sheets. These checks record Codex visual review separately from human and platform release acceptance.
+The active UI evidence contract is **v28**, with 17 representative surfaces on two sheets and 35 full surfaces on five sheets. Landmark surfaces are dormant. The [historical UI review](ui/release-quality-20260904.md) identifies the exact production and capture packages, native checks, supplemental artwork and Landmark reviews, and final contact sheets. These checks record Codex visual review separately from human and platform release acceptance.
 
 The [September 4 polish report](ui/release-polish-20260904.md), [earlier 2.2.0 audit](ui/final-ui-audit-2.2.0.md), and [2.1.0 audit](ui/final-ui-audit-2.1.0.md) remain historical evidence. Their package identities and captures are preserved; they do not certify the current candidate.

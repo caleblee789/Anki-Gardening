@@ -22,7 +22,7 @@ from ankigarden.models.state import GardenState
 ADDON_ROOT = Path(ankigarden.__file__).resolve().parent
 MANIFEST_PATH = ADDON_ROOT / "assets" / "manifest.json"
 ECONOMY_ASSET_COUNTS = {
-    "cosmetics": 8,
+    "cosmetics": 3,
     "landmarks": 6,
     "mastery": 4,
 }
@@ -79,10 +79,10 @@ def test_economy_art_is_loadable_lossless_webp_with_real_transparency() -> None:
         assert path.is_file(), path
         assert row["format"] == "webp"
         assert row["alpha"] is True
-        assert (row["width"], row["height"]) == (1024, 1024)
+        assert min(row["width"], row["height"]) >= 1024
         with Image.open(path) as image:
             rgba = image.convert("RGBA")
-            assert rgba.size == (1024, 1024)
+            assert rgba.size == (row["width"], row["height"])
             alpha_min, alpha_max = rgba.getchannel("A").getextrema()
             assert alpha_min == 0
             assert alpha_max == 255
@@ -157,14 +157,14 @@ def test_shared_item_resolver_routes_every_new_economy_art_identity() -> None:
 
 def test_collection_registry_is_complete_and_fertilizer_copy_is_card_counted() -> None:
     rows = collectible_registry()
-    assert len(rows) == 93
+    assert len(rows) == 88
     assert Counter(row.category for row in rows) == {
         "plants": 10,
         "scenery": 9,
         "garden_features": 7,
         "garden_beds": 6,
         "growth_items": 7,
-        "cosmetics": 8,
+        "cosmetics": 3,
         "landmarks": 6,
         "mastery": 40,
     }
@@ -191,30 +191,27 @@ def test_collection_registry_is_complete_and_fertilizer_copy_is_card_counted() -
     assert "second" not in joined
 
 
-def test_collection_projects_display_appearance_independently_from_active_bonus() -> None:
+def test_collection_projects_equipped_artwork_and_its_effect() -> None:
     state = GardenState()
     state.inventory["cosmetics"] = ["garden_bench"]
     state.inventory["garden_features"] = ["watering_station"]
-    state.loadout.display_decoration_id = "garden_bench"
     state.loadout.active_garden_bonus_id = "watering_station"
-    state.loadout.daily_snapshot_anki_day = "2026-08-30"
-    state.loadout.snapshot_garden_bonus_id = "wind_chime"
+    state.loadout.display_decoration_id = "watering_station"
 
     views = collectible_views(state)
-    bench = next(
-        row for row in views if row.definition.item_id == "cosmetics:garden_bench"
-    )
+    assert all(row.definition.item_id != "cosmetics:garden_bench" for row in views)
+    assert all(not row.equipped for row in views if row.definition.category == "cosmetics")
     watering = next(
         row
         for row in views
         if row.definition.item_id == "garden_features:watering_station"
     )
 
-    assert bench.selected is True
-    assert bench.equipped is False
     assert watering.equipped is True
-    assert watering.selected is False
-    assert state.loadout.snapshot_garden_bonus_id == "wind_chime"
+    assert watering.selected is True
+    assert [view.definition.item_id for view in views if view.equipped] == [
+        "scenery:default", "garden_features:watering_station",
+    ]
 
 
 def test_landmark_resolver_rejects_unfinished_display_and_accepts_completed_art() -> None:

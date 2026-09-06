@@ -334,7 +334,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         )
     )
     if kind is PurchaseKind.GROWTH_CHARGE:
-        assert presentation.outcome == "Adds 100 Growth to one plant when used."
+        assert presentation.outcome == "Adds 100 Growth when used."
         assert [
             (fact.label, fact.value) for fact in presentation.facts
         ] == [("You own", "0 → 1")]
@@ -361,7 +361,7 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     assert extension_quote.card_queue_delta == 100
     assert extension_quote.fertilizer_expires_at_ms is None
     assert extension.facts == ()
-    assert extension.outcome == "Adds 100 eligible cards to Moss."
+    assert extension.outcome == "Adds 100 eligible cards to Bonsai Seed."
 
     queued_quote = engine.quote_purchase(
         PurchaseKind.FERTILIZER,
@@ -398,7 +398,7 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     assert extended.success
     assert extended.message == "Basic Fertilizer extended."
     assert storage.state.currency_transactions[-1].reason == (
-        "Extended Basic Fertilizer on Moss"
+        "Extended Basic Fertilizer on Bonsai Seed"
     )
 
 
@@ -549,7 +549,7 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
     if status is PurchaseStatus.STALE_BALANCE:
         assert presentation.title == "Buy Small Growth Charge?"
         assert presentation.update_label == "Balance updated"
-        assert presentation.outcome == "Adds 100 Growth to one plant when used."
+        assert presentation.outcome == "Adds 100 Growth when used."
     else:
         assert presentation.update_label == ""
     if status is PurchaseStatus.STALE_PRICE:
@@ -587,7 +587,7 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
     assert storage.state.currency_transactions[-1].reason == {
         PurchaseKind.SPECIES: "Purchased Sunflower Seed",
         PurchaseKind.GROWTH_CHARGE: "Purchased Small Growth Charge",
-        PurchaseKind.FERTILIZER: "Applied Basic Fertilizer to Moss",
+        PurchaseKind.FERTILIZER: "Applied Basic Fertilizer to Bonsai Seed",
         PurchaseKind.GARDEN_FEATURE: "Purchased Wind Chime",
         PurchaseKind.SCENERY: "Purchased Spring Bloom",
     }[kind]
@@ -612,6 +612,9 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
         assert batches[0].remaining_cards == 100
     elif kind is PurchaseKind.GARDEN_FEATURE:
         assert item_id in storage.state.inventory["garden_features"]
+        assert engine.garden_decoration_obtained_at(item_id) == storage.state.completed_purchase_requests[-1].occurred_at
+        from ankigarden.ui.copy import garden_bonus_summary
+        assert quote.descriptor.buff == garden_bonus_summary(item_id)
     elif kind is PurchaseKind.SCENERY:
         assert item_id in storage.state.inventory["scenery"]
 
@@ -842,7 +845,7 @@ def test_different_fertilizer_tier_queues_without_authorization_or_discard() -> 
     assert queued.disposition is PurchaseDisposition.QUEUED
     assert queued.message == "Magical Fertilizer queued."
     assert storage.state.currency_transactions[-1].reason == (
-        "Queued Magical Fertilizer on Moss"
+        "Queued Magical Fertilizer on Bonsai Seed"
     )
     plant = storage.state.plants[0]
     assert [batch.effect_id for batch in plant.fertilizer_card_batches] == [
@@ -1350,6 +1353,7 @@ def test_nursery_timed_fertilizer_queues_without_confirmation_and_uses_item_once
     )
     nursery.engine = SimpleNamespace(
         active_plant=lambda: plant,
+        consumable_use_projection=lambda _item, target: SimpleNamespace(can_use=True, target_id=target or "p1", message=""),
         FERTILIZERS={"basic": basic},
         use_fertilizer_item=use_item,
     )
@@ -1454,6 +1458,7 @@ def test_nursery_owned_fertilizer_keeps_the_card_source_plant_id() -> None:
             FERTILIZERS={"basic": basic},
             plant_story=lambda plant_id: source if plant_id == source.plant_id else None,
             active_plant=active_plant,
+            consumable_use_projection=lambda _item, target: SimpleNamespace(can_use=True, target_id=target, message=""),
             use_fertilizer_item=lambda plant_id, *, tier, replace_active: (
                 calls.append((plant_id, tier, replace_active)) or True,
                 "Basic Fertilizer queued.",
@@ -1513,6 +1518,7 @@ def test_nursery_owned_fertilizer_fails_when_explicit_source_disappears() -> Non
             FERTILIZERS={"basic": basic},
             plant_story=lambda _plant_id: None,
             active_plant=active_plant,
+            consumable_use_projection=lambda _item, target: SimpleNamespace(can_use=False, target_id=target, message="That plant is no longer in your garden. Basic Fertilizer was not used."),
             use_fertilizer_item=lambda plant_id, *, tier, replace_active: (
                 calls.append((plant_id, tier, replace_active)) or True,
                 "Basic Fertilizer queued.",
@@ -1704,7 +1710,7 @@ def test_production_addon_ignores_capture_environment_without_build_capability(
     assert app._ui_face_capture_active is False
 
 
-def test_garden_setup_reads_independent_saved_facts_without_writing() -> None:
+def test_garden_setup_reads_equipped_items_without_writing() -> None:
     from copy import deepcopy
     from ankigarden.models.state import CardEffectBatch, DailyEconomySnapshot
     from ankigarden.presentation import project_garden_setup
@@ -1730,20 +1736,18 @@ def test_garden_setup_reads_independent_saved_facts_without_writing() -> None:
 
     assert state == before
     assert storage.save_count == saves
-    scenery, decoration, landmark = setup.items
+    decoration = next(item for item in setup.items if item.kind == "garden_feature")
     assert decoration.appearance_id == "seedling_sign"
-    assert not decoration.visible
-    assert decoration.bonus_id == "watering_station"
-    assert decoration.timing == "Active today"
-    assert decoration.scheduled_id == "wind_chime"
-    assert landmark.appearance_id == ""
-    assert landmark.effect == "Cosmetic · No bonus"
+    assert decoration.visible
+    assert decoration.bonus_id == "seedling_sign"
     assert setup.effects[0].plant_id == "p1"
     assert setup.effects[0].remaining_cards == 37
     assert setup.effects[0].effect == "+1 Growth per card"
 
 
-def test_landmark_appearance_undo_preserves_construction_and_rolls_back_failed_save() -> None:
+def test_landmark_appearance_undo_preserves_construction_and_rolls_back_failed_save(monkeypatch) -> None:
+    from ankigarden import feature_availability
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", True)
     engine, storage = _make_engine()
     project = storage.state.garden_project
     project.completed_project_ids = ["mossy_stone_path"]

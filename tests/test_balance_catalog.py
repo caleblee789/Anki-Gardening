@@ -152,9 +152,9 @@ def test_environment_prices_effects_and_persistent_contracts_are_exact() -> None
         1,
         None,
     )
-    assert effects["growth_every_10_plus_1"].cadence.every_n == 10
+    assert effects["growth_every_10_plus_1"].cadence.every_n == 5
     watering = effects["growth_every_5_first_100_plus_1"]
-    assert (watering.cadence.every_n, watering.cadence.first_n_per_day) == (5, 100)
+    assert (watering.cadence.every_n, watering.cadence.first_n_per_day) == (2, 200)
     hourglass = effects["hourglass_completion_booster"]
     assert (hourglass.cadence.every_n, grant_signature(hourglass.grant)) == (
         30,
@@ -165,6 +165,9 @@ def test_environment_prices_effects_and_persistent_contracts_are_exact() -> None
         25,
         None,
     )
+    assert not effects["booster_cards_plus_25"].cadence.active_only
+    assert not effects["full_moon_booster_cards_plus_25"].cadence.active_only
+    assert hourglass.cadence.active_only
     firefly = effects["instant_growth_every_5_plus_3_closest_checkpoint"]
     assert firefly.cadence.every_n == 5
     assert firefly.target_policy is catalog.TargetPolicy.CLOSEST_CHECKPOINT
@@ -339,11 +342,6 @@ def test_cosmetic_bed_landmark_and_mastery_spend_catalogs_are_exact() -> None:
         item.cosmetic_id.value: (item.price_coins, item.source_achievement_id)
         for item in catalog.COSMETICS
     } == {
-        "garden_bench": (150, None),
-        "birdhouse": (200, None),
-        "butterfly_house": (250, None),
-        "stone_lantern": (300, None),
-        "sundial": (400, None),
         "botanists_plaque": (None, catalog.AchievementId.BOTANICAL_COLLECTION),
         "garden_journal": (None, catalog.AchievementId.YEAR_OF_HARVESTS),
         "golden_trowel": (None, catalog.AchievementId.ANCIENT_GARDEN),
@@ -432,6 +430,7 @@ def test_user_facing_economy_metadata_is_catalog_owned_and_valid() -> None:
     assert not any(
         "eligible" in f"{item.effect_description} {item.acquisition_route}".casefold()
         for item in catalog_item_projections()
+        if item.category != "cosmetic"
     )
     assert (
         catalog.GARDEN_LEGACY.legacy_id,

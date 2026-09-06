@@ -1,8 +1,10 @@
 """Capture the v27 single-window navigation while retaining historical IDs."""
 
 from copy import deepcopy
+from ..feature_availability import landmarks_enabled
 
 from ._surface_specs import SURFACE_ROWS as LEGACY_ROWS
+from .handoff import ADDITIONS
 
 
 # (surface ID, renderer, route, representative). Empty routes retain the
@@ -59,6 +61,13 @@ GROUPS = (
 )
 
 
+# The v27 contract retains the historical Landmark surface. Only active
+# release routes participate in the current capture inventory.
+GROUPS = tuple(
+    (name, tuple(row for row in rows if row[0] != "collection-landmarks-page" or landmarks_enabled()))
+    for name, rows in GROUPS
+)
+
 def workspace_surface_rows():
     old = {row["id"]: row for row in LEGACY_ROWS}
     active = {row[0] for _, group in GROUPS for row in group}
@@ -106,12 +115,13 @@ def workspace_surface_rows():
                     "cleanup": ("close-dialog", "drain-deferred-delete", "restore-checkpoint"),
                     "evidence_requirements": ("fixture-identity", "geometry", "semantic-state", "nonblank-pixels"),
                     "owned_dependency_groups": (),
-                    "owned_module_dependencies": ("ui/dashboard.py", "ui/dialog_foundations.py", "ui/theme.py", "ui/copy.py", "ui/garden_studio.py", "ui/formatters.py", "ui/plant_display.py", "ui/scene.py"),
+                    "owned_module_dependencies": ("capture/workspace.py", "feature_availability.py", "ui/dashboard.py", "ui/dialog_foundations.py", "ui/theme.py", "ui/copy.py", "ui/garden_studio.py", "ui/formatters.py", "ui/plant_display.py", "ui/scene.py"),
                     "state_contract": {
                         "kind": "workspace",
                         "profile": {"profile_id": label, "window_family": family, "kind": "workspace", "state": label, "route": route},
-                        "required_facts": ("ordered_fixture_label", "state_profile_declared", "window_family", "workspace_route", "visible_content"),
-                        "expected_fact_values": {"ordered_fixture_label": label, "state_profile_declared": label, "window_family": family, "workspace_route": route, "visible_content": True},
+                        "required_facts": ("ordered_fixture_label", "state_profile_declared", "window_family", "workspace_route", "visible_content", "plant_naming"),
+                        "expected_fact_values": {"ordered_fixture_label": label, "state_profile_declared": label, "window_family": family, "workspace_route": route, "visible_content": True,
+                                                 "plant_naming": {"custom_names_visible": (), "rename_visible": False, "passed": True}},
                         "fact_constraints": {},
                     },
                 }
@@ -132,6 +142,33 @@ def workspace_surface_rows():
             if label == "active-deck-browser-home-after-nurture":
                 row["prerequisites"] = ("garden-inspector-nurtured",)
             rows.append(row)
+    template = next(row for row in rows if row["id"] == "garden-overview")
+    for within, (label, route, representative) in enumerate(ADDITIONS):
+        row = deepcopy(template)
+        placements = [("full", "Refinement views", len(GROUPS), full_order, within)]
+        full_order += 1
+        if representative:
+            rep_within = sum(1 for _, _, enabled in ADDITIONS[:within] if enabled)
+            placements.append(("representative", "Refinement views", len(GROUPS), representative_order, rep_within))
+            representative_order += 1
+        family = "AnkiQt" if route.startswith("reviewer-") else "GardenDashboard"
+        row.update(id=label, placements=tuple(placements), executor="_capture_handoff_surface",
+                   arguments=(label, route), scenario_id=label, fixture_id=f"{label}-v1",
+                   scenario_step=1, renderer_family=family)
+        row["owned_module_dependencies"] += ("capture/handoff_runtime.py", "ui/welcome.py", "ui/welcome_animation.py", "welcome_presentation.py", "models/welcome.py", "ui/trophy_room.py", "trophies.py", "ui/decoration_card.py", "ui/reviewer_hud_widget.py", "hooks/reviewer.py")
+        if route.startswith("reviewer-"):
+            row.update(acquisition_policy="qt-shell-webview-verified", allow_foreground_fallback=True)
+        row["state_contract"] = {
+            "kind": "workspace-handoff", "profile": {"profile_id": label, "window_family": family,
+                "kind": "workspace-handoff", "state": label, "route": route},
+            "required_facts": ("ordered_fixture_label", "state_profile_declared", "window_family", "handoff_checks"),
+            "expected_fact_values": {"ordered_fixture_label": label, "state_profile_declared": label,
+                                    "window_family": family, "handoff_checks": True},
+            "fact_constraints": {},
+        }
+        if route.startswith("reviewer-"):
+            row["state_contract"]["reviewable_native_ui_issues"] = ("reviewer-collapsed-status-width",)
+        rows.append(row)
     return tuple(rows)
 
 

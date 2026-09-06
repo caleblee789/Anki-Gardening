@@ -233,3 +233,38 @@ def test_seed_shards_merge_to_the_exact_monolithic_report(tmp_path):
     )
 
     assert actual == expected
+
+
+def test_quick_cli_runs_custom_cohorts_and_writes_censored_results(tmp_path):
+    import json
+    from scripts.simulate_balance_profiles import main
+
+    assert main(["--quick", "--seeds", "1", "--days", "2", "--workers", "1",
+                 "--output-dir", str(tmp_path)]) == 0
+    report = json.loads((tmp_path / "quick-audit.json").read_text())
+    stress = next(row for row in report["scenarios"] if row["group"] == "stress")
+    metrics = stress["samples"]["2"][0]
+    assert metrics["answers.total"] == 2000  # Custom cohort must really execute.
+    timing = next(row for row in stress["statistics"]
+                  if row["metric_id"] == "plants.all_catalog_full_bloom_day")
+    assert timing["p50"] is None
+    assert stress["completed_by_day30"] is None
+    assert stress["choices"]["2"][0]["decoration"]
+    assert report["validation"]["full_release_matrix"] == "not_run"
+    original = (tmp_path / "quick-audit.json").read_bytes()
+    with pytest.raises(FileExistsError):
+        from scripts.balance_analysis.quick import write_quick_artifacts
+        write_quick_artifacts(report, tmp_path)
+    assert (tmp_path / "quick-audit.json").read_bytes() == original
+
+
+def test_quick_serial_and_parallel_runs_use_the_same_paired_population():
+    from scripts.balance_analysis.quick import quick_cases, run_quick_audit
+
+    cases = quick_cases(seeds=2, days=7)[6:8]
+    serial = run_quick_audit(cases=cases)
+    parallel = run_quick_audit(cases=cases, workers=2)
+    for left, right in zip(serial["scenarios"], parallel["scenarios"]):
+        assert left["samples"] == right["samples"]
+        assert left["choices"] == right["choices"]
+        assert left["statistics"] == right["statistics"]

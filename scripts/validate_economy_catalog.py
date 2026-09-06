@@ -26,6 +26,7 @@ from ankigarden.balance_catalog import (
     validate_balance_catalog,
 )
 from ankigarden.environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
+from ankigarden.bonus_copy import GARDEN_BONUS_EFFECT_COPY
 from ankigarden.collectibles import collectible_registry
 from ankigarden.ui.economy_presenters import (
     CATALOG_UI_ENTRY_IDS,
@@ -124,14 +125,10 @@ def validate_catalog_integrity(
         *GARDEN_FEATURE_CATALOG.values(),
         *SCENERY_CATALOG.values(),
     ):
-        for field_name, copy in (
-            ("effect copy", item.effect),
-            ("acquisition route", item.how_to_earn),
-        ):
-            if _BARE_COIN_COPY.search(str(copy)):
-                raise ValueError(
-                    f"bare Coin wording in environment {field_name}: {item.item_id}"
-                )
+        if item.effect != GARDEN_BONUS_EFFECT_COPY[item.item_id]:
+            raise ValueError(f"inconsistent environment bonus copy: {item.item_id}")
+        if _BARE_COIN_COPY.search(str(item.how_to_earn)):
+            raise ValueError(f"bare Coin wording in environment acquisition route: {item.item_id}")
 
     for source in COIN_SOURCES:
         for field_name, copy in (
@@ -150,6 +147,10 @@ def validate_catalog_integrity(
             )
     for item in collectible_registry():
         for field_name, copy in item.descriptor.to_dict().items():
+            if field_name == "buff" and item.source_kind in {"garden_feature", "scenery"}:
+                if copy != GARDEN_BONUS_EFFECT_COPY[item.source_id]:
+                    raise ValueError(f"inconsistent Collection bonus copy: {item.item_id}")
+                continue
             if _BARE_COIN_COPY.search(str(copy)):
                 raise ValueError(
                     f"bare Coin wording in Collection {field_name}: {item.item_id}"

@@ -86,8 +86,9 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str, palette:
     color = palette["coin_accent"] if icon_name == "coin" else palette["growth_accent"] if icon_name == "growth" else palette["text_secondary"]
     icon = QLabel(tile)
     icon.setFixedSize(14, 14)
+    icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
     icon.setPixmap(garden_icon(icon_name, color=color).pixmap(14, 14))
-    heading.addWidget(icon)
+    heading.addWidget(icon, 0, Qt.AlignmentFlag.AlignVCenter)
     caption = QLabel(label, tile)
     caption.setProperty("receiptMetricLabel", True)
     caption.setMinimumWidth(0)

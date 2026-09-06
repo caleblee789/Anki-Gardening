@@ -201,9 +201,9 @@ def test_exact_derived_totals_and_expected_find_values_are_frozen():
     assert growth["full_bloom_growth"] == 35_000
     assert growth["full_bloom_stage_coin_reward"] == 50
     assert growth["full_lifecycle_coin_reward"] == 120
-    assert coins["pre_endgame_permanent_cost_total"] == 7_125
+    assert coins["pre_endgame_permanent_cost_total"] == 5_825
     assert coins["permanent_cost_by_category"]["mastery"] == 7_500
-    assert coins["permanent_cost_total"] == 19_775
+    assert coins["permanent_cost_total"] == 18_475
     assert finds["expected_coins"] == {"numerator": 2_320, "denominator": 1_000}
     assert finds["expected_growth_equivalent"] == {
         "numerator": 44_000,
@@ -231,7 +231,7 @@ def test_exact_derived_totals_and_expected_find_values_are_frozen():
         assert statistic["pooled_total"] == exact_total
 
 
-def test_landmark_mastery_case_spends_both_growth_and_coins():
+def test_endgame_spending_preserves_mastery_while_landmarks_are_dormant():
     facts = load_catalog_facts()
     scenario = next(
         row for row in approved_scenarios()
@@ -244,7 +244,8 @@ def test_landmark_mastery_case_spends_both_growth_and_coins():
         return next(row for row in report["statistics"] if row["metric_id"] == metric_id)
 
     assert metric("growth.spent_units")["max"] > 0
-    assert metric("growth.contributed_to_landmarks_units")["max"] > 0
+    assert metric("growth.contributed_to_landmarks_units")["max"] == 0
+    assert metric("legacy.level")["max"] == 0
     assert metric("landmarks.tiers_funded")["max"] >= metric(
         "landmarks.tiers_claimed"
     )["max"]
@@ -311,7 +312,7 @@ def test_optimal_environment_strategies_receive_catalog_effects():
     ) > 0
 
 
-def test_shared_scenery_and_unusable_consumables_follow_production_routing():
+def test_shared_scenery_and_post_collection_consumables_follow_production_routing():
     facts = load_catalog_facts()
     scenarios = {row.scenario_id: row for row in approved_scenarios()}
 
@@ -337,7 +338,9 @@ def test_shared_scenery_and_unusable_consumables_follow_production_routing():
         ),
     )
     assert scenery.checkpoints[2]["growth.opening_plant_units"] == 35_000_000
-    assert scenery.checkpoints[2]["growth.total_units"] == 161_250
+    # The seeded Botanical Collection activates its permanent +1 Growth after
+    # the first answer; the following 99 answers also share that bonus.
+    assert scenery.checkpoints[2]["growth.total_units"] == 176_100
     assert scenery.checkpoints[2][
         "environments.effect_growth_units"
     ] == 7_500
@@ -360,9 +363,9 @@ def test_shared_scenery_and_unusable_consumables_follow_production_routing():
     )
     metrics = preserved.checkpoints[2]
     assert metrics["consumables.growth_charge_small.units_earned"] == 1
-    assert metrics["consumables.growth_charge_small.units_activated"] == 0
-    assert metrics["consumables.growth_charge_small.units_remaining"] == 1
-    assert metrics["consumables.growth_charge_small.growth_generated"] == 0
+    assert metrics["consumables.growth_charge_small.units_activated"] == 1
+    assert metrics["consumables.growth_charge_small.units_remaining"] == 0
+    assert metrics["consumables.growth_charge_small.growth_generated"] == 10_000
 
     bloom_state = _initial_state(facts, scenarios[
         "very_light:no_spend:baseline"

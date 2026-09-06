@@ -1,0 +1,660 @@
+{
+  "schema_version": 1,
+  "species": "bonsai",
+  "review_id": "bonsai-redesign-20260905-v1",
+  "installer": "scripts/install_direct_soil_catalog_v6.py",
+  "installer_observed_sha256": "ad8fa053b057f9e34c42633f1263c7f6e7c48921f17a545fdce975e7eb1164a8",
+  "source_override_base": "artwork_source/plants/v6/bonsai",
+  "placement_application": "Apply each complete placement override after the generic installer geometry calculation. Keep existing canonical IDs and paths.",
+  "thumbnail_scale_policy": "Use shared audited AssetPlacement calibration; do not add a per-entry thumbnail_scale.",
+  "asset_overrides": {
+    "plant_bonsai_seed_twilight_v6": {
+      "species": "bonsai",
+      "stage": "seed",
+      "source_file_override": "redesign_20260905/bonsai_seed_master_v1.png",
+      "source_description": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_seed_master_v1.png",
+      "source_master_sha256": "08bf7a84c28f8a09ac3ce91ecadd974c1d2e91785e6364614380b7d3e1709abb",
+      "canonical_runtime_file": "assets/v6_storybook_gouache/plants/bonsai/seed/bonsai_seed_twilight_v6.webp",
+      "runtime_sha256": "b2147c9385be5c5e810683209be04a7ea4840187e18624cc4c35971c8c8a9398",
+      "scene_scale_correction": 0.5,
+      "visual_scale_correction": 0.5,
+      "placement_override": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.479665,
+          0.509569
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.5,
+        "visual_scale_correction": 0.5,
+        "art_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "base_bounds": [
+          0.272727,
+          0.888357,
+          0.454545,
+          0.051834
+        ],
+        "support_bounds": [
+          0.272727,
+          0.888357,
+          0.454545,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "plant_above_rim_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "interaction_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.130781,
+          0.077352,
+          0.697767,
+          0.864434
+        ],
+        "thumbnail_optical_center": [
+          0.479665,
+          0.509569
+        ],
+        "thumbnail_safe_padding": 0.1
+      },
+      "prior_entry_sha256": "0bd48e682cb37ed1e2a8b46a15d18a6bda6237ba5f02c853c1e6b966eec778c3"
+    },
+    "plant_bonsai_sprout_twilight_v6": {
+      "species": "bonsai",
+      "stage": "sprout",
+      "source_file_override": "redesign_20260905/bonsai_sprout_master_v1.png",
+      "source_description": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_sprout_master_v1.png",
+      "source_master_sha256": "9c4eedb5548a1d6a062909d7df86d511457e9b828992003d48c32acbfd3a7bed",
+      "canonical_runtime_file": "assets/v6_storybook_gouache/plants/bonsai/sprout/bonsai_sprout_twilight_v6.webp",
+      "runtime_sha256": "0662a5b745a0fd9276ca10d8d90a01c284585e6bc09574cf6b79710b2b88396f",
+      "scene_scale_correction": 0.58,
+      "visual_scale_correction": 0.592399,
+      "placement_override": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.480463,
+          0.508373
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.592399,
+        "art_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "base_bounds": [
+          0.335726,
+          0.888357,
+          0.330144,
+          0.051834
+        ],
+        "support_bounds": [
+          0.335726,
+          0.888357,
+          0.330144,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "plant_above_rim_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "interaction_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.15311,
+          0.07496,
+          0.654705,
+          0.866826
+        ],
+        "thumbnail_optical_center": [
+          0.480463,
+          0.508373
+        ],
+        "thumbnail_safe_padding": 0.1
+      },
+      "prior_entry_sha256": "acb368a5b98801958dabbd940686812597dda5226b25b0f73fa2969f42d5b5eb"
+    },
+    "plant_bonsai_young_twilight_v6": {
+      "species": "bonsai",
+      "stage": "young",
+      "source_file_override": "redesign_20260905/bonsai_young_master_v1.png",
+      "source_description": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_young_master_v1.png",
+      "source_master_sha256": "0c4dfd684b7192e4cbf7c761597764108eff56b622f3dfffd09a56ed2f36df25",
+      "canonical_runtime_file": "assets/v6_storybook_gouache/plants/bonsai/young/bonsai_young_twilight_v6.webp",
+      "runtime_sha256": "fa42e0a4b3ff748cf1eef9e7410c12bbfd986a9bfa545b0347a99c32897d1b25",
+      "scene_scale_correction": 0.7,
+      "visual_scale_correction": 0.754528,
+      "placement_override": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.508772,
+          0.509569
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.754528,
+        "art_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "base_bounds": [
+          0.305423,
+          0.888357,
+          0.389952,
+          0.051834
+        ],
+        "support_bounds": [
+          0.305423,
+          0.888357,
+          0.389952,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "plant_above_rim_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "interaction_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.160287,
+          0.077352,
+          0.69697,
+          0.864434
+        ],
+        "thumbnail_optical_center": [
+          0.508772,
+          0.509569
+        ],
+        "thumbnail_safe_padding": 0.1
+      },
+      "prior_entry_sha256": "046ffef2805030f8d66db225ee0bea929a52807a674ae7cd2f99bb21b1397493"
+    },
+    "plant_bonsai_mature_twilight_v6": {
+      "species": "bonsai",
+      "stage": "mature",
+      "source_file_override": "redesign_20260905/bonsai_mature_master_v1.png",
+      "source_description": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_mature_master_v1.png",
+      "source_master_sha256": "69a4582974cdb0307263f84f3b4ce7ed0f4dfca96f181096c0ab917603048f08",
+      "canonical_runtime_file": "assets/v6_storybook_gouache/plants/bonsai/mature/bonsai_mature_twilight_v6.webp",
+      "runtime_sha256": "b368c5d895f8710ab2df17fbbe698dc47d05d7d0c40cbaffcc4848b056a07a0c",
+      "scene_scale_correction": 0.8,
+      "visual_scale_correction": 1.084971,
+      "placement_override": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.480463,
+          0.508373
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 1.084971,
+        "art_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "base_bounds": [
+          0.273525,
+          0.888357,
+          0.452153,
+          0.051834
+        ],
+        "support_bounds": [
+          0.273525,
+          0.888357,
+          0.452153,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "plant_above_rim_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "interaction_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.066986,
+          0.07496,
+          0.826954,
+          0.866826
+        ],
+        "thumbnail_optical_center": [
+          0.480463,
+          0.508373
+        ],
+        "thumbnail_safe_padding": 0.1
+      },
+      "prior_entry_sha256": "e9a22ba610df57d00557f9de8e6786cec287afd57546bcb4e1ade5025f176caa"
+    },
+    "plant_bonsai_flowering_twilight_v6": {
+      "species": "bonsai",
+      "stage": "flowering",
+      "source_file_override": "redesign_20260905/bonsai_flowering_master_v1.png",
+      "source_description": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_flowering_master_v1.png",
+      "source_master_sha256": "61c56876a3cffce1ce9d4fa4847f74f6dc1ee9495c61e7bf0f045dab30807369",
+      "canonical_runtime_file": "assets/v6_storybook_gouache/plants/bonsai/flowering/bonsai_flowering_twilight_v6.webp",
+      "runtime_sha256": "b54ad1f184c97178d0f7a2543aab0777a150315978ad397125ab97fe014eb415",
+      "scene_scale_correction": 0.98,
+      "visual_scale_correction": 1.068936,
+      "placement_override": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.483254,
+          0.508772
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.068936,
+        "art_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "base_bounds": [
+          0.273525,
+          0.888357,
+          0.452951,
+          0.051834
+        ],
+        "support_bounds": [
+          0.273525,
+          0.888357,
+          0.452951,
+          0.051834
+        ],
+        "foliage_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "plant_above_rim_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "interaction_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.067783,
+          0.075758,
+          0.830941,
+          0.866029
+        ],
+        "thumbnail_optical_center": [
+          0.483254,
+          0.508772
+        ],
+        "thumbnail_safe_padding": 0.1
+      },
+      "prior_entry_sha256": "aff5fb52ad24b84e5c83141f7d6e3cf59d4c092f4cb0edfc6cded39fc5bcb13e"
+    },
+    "plant_bonsai_rare_twilight_v6": {
+      "species": "bonsai",
+      "stage": "rare",
+      "source_file_override": "redesign_20260905/bonsai_rare_master_v1.png",
+      "source_description": "ImageGen cohesive Bonsai redesign; approved alpha/edge cleanup; lossless RGBA export",
+      "source_master_file": "artwork_source/plants/v6/bonsai/redesign_20260905/bonsai_rare_master_v1.png",
+      "source_master_sha256": "0592207c3ef77cdac4e1e42f02e23d62d36d55983c5ad598c62d6cec077e2cf2",
+      "canonical_runtime_file": "assets/v6_storybook_gouache/plants/bonsai/rare/bonsai_rare_twilight_v6.webp",
+      "runtime_sha256": "ffc5fe9e0758dea76317e8c09d46afe23eda11de7a1d948c770c3f9827c41252",
+      "scene_scale_correction": 0.98,
+      "visual_scale_correction": 1.068936,
+      "placement_override": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9401913875598086,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.490032,
+          0.486842
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "ground_anchor": [
+          0.5,
+          0.940191
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.940191,
+        "soil_contact": [
+          0.5,
+          0.940191
+        ],
+        "contact_shadow": [
+          0.82,
+          0.075
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "bonsai-redesign-20260905-v1",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.068936,
+        "art_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "base_bounds": [
+          0.235247,
+          0.885965,
+          0.528708,
+          0.054226
+        ],
+        "support_bounds": [
+          0.235247,
+          0.885965,
+          0.528708,
+          0.054226
+        ],
+        "foliage_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "plant_above_rim_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "interaction_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.067783,
+          0.031898,
+          0.844498,
+          0.909888
+        ],
+        "thumbnail_optical_center": [
+          0.490032,
+          0.486842
+        ],
+        "thumbnail_safe_padding": 0.1
+      },
+      "prior_entry_sha256": "919b1eebb8c50c301b5e99425a69c373726fbca1f2009605bfd51ee540210c44"
+    }
+  }
+}

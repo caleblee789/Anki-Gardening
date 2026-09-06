@@ -144,7 +144,7 @@ def assert_concise_player_copy(message: str) -> None:
 
 
 def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract():
-    assert STATE_VERSION == 27
+    assert STATE_VERSION == 30
     assert {item_id: item.price for item_id, item in WEATHER_CATALOG.items()} == {
         "seedling_sign": None,
         "wind_chime": 100,
@@ -188,8 +188,8 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
     bed = next(
         item for item in registry if item.item_id == "garden_beds:0"
     )
-    assert "Each planted plant adds a 10% Shared Growth share" in bed.descriptor.buff
-    assert "reaches Full Bloom" in bed.descriptor.buff
+    assert "Shared Growth lane: 10%, or 15% with the Golden Trowel" in bed.descriptor.buff
+    assert "Full Bloom lanes redirect" in bed.descriptor.buff
     booster = next(
         item for item in registry
         if item.item_id == "growth_items:booster_potion"
@@ -477,7 +477,7 @@ def test_schema15_migration_adds_environment_fields_without_losing_existing_stat
     }
 
 
-def test_one_time_purchase_does_not_auto_equip_and_hidden_visual_keeps_passive():
+def test_one_time_purchase_does_not_auto_equip_and_equipment_always_displays():
     engine, storage = make_engine()
     storage.state.currency_balance = 500
 
@@ -489,52 +489,43 @@ def test_one_time_purchase_does_not_auto_equip_and_hidden_visual_keeps_passive()
     assert storage.state.currency_balance == 400
     assert not engine.purchase_environment("weather", "breeze")[0]
     assert engine.equip_environment("weather", "breeze")[0]
+    storage.state.loadout.visibility = {"garden_feature": False, "scenery": False}
+    before = storage.state.to_dict()
+    saves = storage.save_count
     assert engine.set_environment_visibility("weather", False)[0]
-    storage.state.wind_chime_progress = 9
+    assert storage.state.to_dict() == before
+    assert storage.save_count == saves
+    assert engine.resolve_garden_feature_asset() is not None
+    assert engine.resolve_garden_feature_asset().path == engine.resolve_garden_feature_preview_asset("wind_chime").path
+    equipped = next(row for row in engine.environment_catalog_summary()["garden_feature"] if row["equipped"])
+    assert equipped["displayed_in_garden"] and equipped["visible"] and not equipped["hidden"]
+    storage.state.wind_chime_progress = 4
     award = answer(engine, storage)
     assert award.weather_growth == 1
     assert award.total_growth == 11
-    assert engine.resolve_garden_feature_asset() is None
+    assert engine.resolve_garden_feature_asset() is not None
 
 
-def test_first_progress_event_locks_mechanics_and_later_equips_queue_for_tomorrow():
+def test_equipment_changes_apply_after_reviews_and_survive_session_and_day_changes():
     engine, storage = make_engine()
     storage.state.inventory["weather"].extend(["breeze", "gentle_rain"])
     storage.state.inventory["scenery"].extend(["spring", "summer"])
-    assert engine.equip_environment("weather", "breeze")[0]
-    assert engine.apply_environment_loadout("breeze", "spring")[0]
-
+    assert engine.apply_environment_loadout("breeze", "spring", {"weather": False, "scenery": False})[0]
+    assert storage.state.loadout.visibility == {"garden_feature": True, "scenery": True}
     first = answer(engine, storage)
-    locked_at = storage.state.daily_loadout.locked_at_ms
-    ok, message = engine.apply_environment_loadout("gentle_rain", "summer")
-    bonus_ok, bonus_message = engine.equip_environment("weather", "gentle_rain")
+    assert engine.apply_environment_loadout("gentle_rain", "summer")[0]
     second = answer(engine, storage)
-
-    assert first.weather_growth == second.weather_growth == 0
-    assert first.scenery_growth == second.scenery_growth == 2
-    assert locked_at > 0
-    assert engine.locked_environment_id("garden_feature") == "wind_chime"
-    assert engine.locked_environment_id("scenery") == "spring"
-    assert ok
-    assert bonus_ok
-    assert "next anki day" in message.lower() or "tomorrow" in message.lower()
-    assert "next anki day" in bonus_message.lower()
-    assert_concise_player_copy(message)
-    assert storage.state.daily_loadout.pending_garden_feature_id == "watering_station"
-    assert storage.state.daily_loadout.queued_scenery_id == "summer"
-
+    assert (first.scenery_growth, second.scenery_growth) == (2, 1)
+    assert engine.active_garden_feature_id() == "watering_station"
+    assert engine.locked_environment_id("scenery") == "summer"
     engine.end_review_session()
     engine.begin_review_session()
-    assert storage.state.selected_garden_feature == "wind_chime"
-
     storage.day = "2026-08-09"
     storage.day_start_ms += 86_400_000
     storage.now_ms += 86_400_000
     engine.rollover_if_needed()
-
     assert storage.state.selected_background == "summer"
-    assert storage.state.selected_garden_feature == "watering_station"
-    assert storage.state.daily_loadout.locked_at_ms == 0
+    assert storage.state.displayed_garden_feature == "watering_station"
 
 
 def test_growth_charge_does_not_create_a_review_session_feature_snapshot():
@@ -546,7 +537,7 @@ def test_growth_charge_does_not_create_a_review_session_feature_snapshot():
     assert engine.use_growth_charge("growth_charge_small")[0]
     ok, message = engine.equip_environment("weather", "gentle_rain")
 
-    assert storage.state.daily_loadout.locked_at_ms > 0
+    assert storage.state.daily_loadout.locked_at_ms == 0
     assert storage.state.daily_loadout.garden_bonus_locked_at_ms == 0
     assert engine.locked_environment_id("garden_feature") == "watering_station"
     assert ok
@@ -564,9 +555,9 @@ def test_weather_and_scenery_review_passives_stack_and_stop_at_their_exact_limit
     assert awards[9].total_growth == 13
     assert awards[10].total_growth == 12
     assert awards[19].total_growth == 13
-    assert awards[24].total_growth == 10
+    assert awards[24].total_growth == 11
     assert awards[25].total_growth == 10
-    assert storage.state.daily_stats.weather_growth == 2
+    assert storage.state.daily_stats.weather_growth == 5
     assert storage.state.daily_stats.scenery_growth == 40
 
 
@@ -688,14 +679,14 @@ def test_growth_charges_purchase_apply_transitions_without_losing_overflow():
     assert grand_purchase[1] == "This item is unavailable right now."
 
 
-def test_equipped_weather_and_scenery_extend_booster_card_count_additively():
+def test_owned_decoration_and_scenery_extend_booster_card_count_additively():
     engine, storage = make_engine()
     own_and_equip(engine, weather="snow_flurry", scenery="full_moon")
     storage.state.consumables["booster_potion"] = 1
     assert engine.use_booster_potion()[0]
 
     batch = storage.state.plants[0].booster_card_batches[0]
-    assert batch.total_cards == batch.remaining_cards == 125
+    assert batch.total_cards == batch.remaining_cards == 150
 
 
 def test_todays_cards_scenery_gift_is_independent_of_capped_find_pools():
@@ -753,7 +744,8 @@ def test_environment_purchase_and_growth_charge_use_restore_state_on_save_failur
 
 
 def test_every_scenery_resolves_its_own_art_with_shared_surface_geometry():
-    engine, _storage = make_engine()
+    engine, storage = make_engine()
+    storage.state.loadout.visibility = {"garden_feature": False, "scenery": False}
     base = engine.resolve_scenery_preview_asset("default")
     assert base is not None
     base_placement = base.placement.to_dict()
@@ -762,6 +754,11 @@ def test_every_scenery_resolves_its_own_art_with_shared_surface_geometry():
     for item_id in SCENERY_CATALOG:
         asset = engine.resolve_scenery_preview_asset(item_id)
         assert asset is not None
+        storage.state.selected_background = item_id
+        assert engine.resolve_background_asset().path == asset.path
+        preview = engine.resolve_preview_assets("verdant_twilight", "seedling_sign", "seed", "balanced")
+        assert preview["background"]["path"] == str(asset.path)
+        assert preview["garden_feature"] is not None
         placement = asset.placement.to_dict()
         profile = placement["surface_profile"]
         assert profile["geometry_version"] == 6

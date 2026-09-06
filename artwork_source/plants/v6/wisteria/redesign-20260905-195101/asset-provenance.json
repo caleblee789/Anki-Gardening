@@ -1,0 +1,387 @@
+{
+  "created_at": "2026-09-05T19:55:43.635870",
+  "generator": "built-in imagegen",
+  "cutout": "process_direct_soil_asset.py; cyan; transparent threshold 35, connection threshold 100",
+  "stages": {
+    "seed": {
+      "normalization": {
+        "uniform_scale": 1.0,
+        "translation": [
+          4,
+          255
+        ],
+        "source_root": [
+          622.5,
+          874
+        ]
+      },
+      "post_transform_edge_repairs": 0,
+      "ground_anchor": [
+        0.5,
+        0.9003189792663477
+      ],
+      "support_bounds": [
+        0.472089,
+        0.885965,
+        0.055821,
+        0.014354
+      ],
+      "visible_bounds": [
+        0.242424,
+        0.455343,
+        0.498405,
+        0.450558
+      ],
+      "generated_source": "build/wisteria-redesign/20260905-195101-final/generated/wisteria_seed_cyan.png",
+      "generated_source_sha256": "77c0c022f588df5cb71faa31335fc9d22b080f204b593ab313503c48a1edd050",
+      "rgba_master": "build/wisteria-redesign/20260905-195101-final/masters/wisteria_seed_rgba.png",
+      "rgba_master_sha256": "52db8530d7b149921ec3c26620f5e6ca78f715923e4ce19e786530afa6ae36ba",
+      "runtime_file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/seed/wisteria_seed_twilight_v6.webp",
+      "runtime_sha256": "ad31f158b6e5e8bcbbafcadbb3c93777c2709351f80effdbe3c9d0ea1458f6d6",
+      "compatibility_source": "artwork_source/plants/v6/wisteria/wisteria_seed_retina_chroma.png",
+      "compatibility_source_sha256": "758a5c4acb4481ad6560632842824ad0d967894ef84bef6c8892f48d9531dfd7",
+      "decoded_rgba_sha256": "27dd1fba96ed28483decba59da6ffc20a25021a9469eff2a03f6e5855d8db186",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "reference_layout": {
+        "scene_size": [
+          1260,
+          840
+        ],
+        "visible": [
+          445.7788641133293,
+          322.5347851042058,
+          35.69932403565226,
+          32.20509374751094
+        ],
+        "ground_anchor": [
+          464.24,
+          354.6816
+        ],
+        "relative_height": 0.3,
+        "warnings": []
+      },
+      "retained_generated_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/generated/wisteria_seed_cyan.png",
+      "retained_rgba_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_seed_rgba.png"
+    },
+    "sprout": {
+      "normalization": {
+        "uniform_scale": 1.0,
+        "translation": [
+          -2,
+          2
+        ],
+        "source_root": [
+          629.0,
+          1127
+        ]
+      },
+      "post_transform_edge_repairs": 0,
+      "ground_anchor": [
+        0.5,
+        0.9003189792663477
+      ],
+      "support_bounds": [
+        0.374801,
+        0.874801,
+        0.250399,
+        0.025518
+      ],
+      "visible_bounds": [
+        0.212121,
+        0.106061,
+        0.58453,
+        0.799841
+      ],
+      "generated_source": "build/wisteria-redesign/20260905-195101-final/generated/wisteria_sprout_cyan.png",
+      "generated_source_sha256": "845ae8e785c84067db12bfb451a88e210f3c28a18f1cbae3affd52a0aa8fe453",
+      "rgba_master": "build/wisteria-redesign/20260905-195101-final/masters/wisteria_sprout_rgba.png",
+      "rgba_master_sha256": "b49eb9a36407cadb777731369e2ee8aadb0c04db31fd0dab6d2bfcd73f9ab07a",
+      "runtime_file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/sprout/wisteria_sprout_twilight_v6.webp",
+      "runtime_sha256": "e5692480340cc2ca301269befaa184ceb6d679038438ccbcc53e913c317cf3d6",
+      "compatibility_source": "artwork_source/plants/v6/wisteria/wisteria_sprout_chroma.png",
+      "compatibility_source_sha256": "ac20089837d32b9f3a7c322e424bee8edd3c8c0e97d35e0b5cbf073a816332cf",
+      "decoded_rgba_sha256": "d43b36463b48c35078bf25b9e4217987dd2938c4388ced2ebff6664cbff84143",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "reference_layout": {
+        "scene_size": [
+          1260,
+          840
+        ],
+        "visible": [
+          445.0122734577593,
+          301.06057735187625,
+          39.05124676865888,
+          53.67515624585156
+        ],
+        "ground_anchor": [
+          464.24,
+          354.6816
+        ],
+        "relative_height": 0.5,
+        "warnings": []
+      },
+      "retained_generated_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/generated/wisteria_sprout_cyan.png",
+      "retained_rgba_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_sprout_rgba.png"
+    },
+    "young": {
+      "normalization": {
+        "uniform_scale": 0.9695009242144177,
+        "translation": [
+          10,
+          -11
+        ],
+        "source_root": [
+          636.5,
+          1176
+        ]
+      },
+      "post_transform_edge_repairs": 4880,
+      "ground_anchor": [
+        0.5,
+        0.9003189792663477
+      ],
+      "support_bounds": [
+        0.368421,
+        0.873206,
+        0.263158,
+        0.027113
+      ],
+      "visible_bounds": [
+        0.101276,
+        0.059011,
+        0.769537,
+        0.84689
+      ],
+      "generated_source": "build/wisteria-redesign/20260905-195101-final/generated/wisteria_young_cyan.png",
+      "generated_source_sha256": "52998fb1757ec3f642a728b1a262954313908fef11926657e32324f56e305557",
+      "rgba_master": "build/wisteria-redesign/20260905-195101-final/masters/wisteria_young_rgba.png",
+      "rgba_master_sha256": "1f183c46ed4cee00638ac011444e0897915bab6d937d48a6cbcec7098b341f7d",
+      "runtime_file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/young/wisteria_young_twilight_v6.webp",
+      "runtime_sha256": "b15aec872cc5fc25bac059c87cd6e3c688a05a196a97672dbefdf77e4c392f8d",
+      "compatibility_source": "artwork_source/plants/v6/wisteria/wisteria_young_chroma.png",
+      "compatibility_source_sha256": "257203972bcb758b57a6a51a163c3a1a61b65aea656c21e02d8be0858aef97c0",
+      "decoded_rgba_sha256": "08da115728bc1a8d9349be447b335f126e5d8bd9f01e0094b4432530504c0d30",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "reference_layout": {
+        "scene_size": [
+          1260,
+          840
+        ],
+        "visible": [
+          422.8253343016733,
+          266.73823939014903,
+          79.89516311262896,
+          88.02725624319656
+        ],
+        "ground_anchor": [
+          464.24,
+          354.6816
+        ],
+        "relative_height": 0.8200000000000001,
+        "warnings": []
+      },
+      "retained_generated_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/generated/wisteria_young_cyan.png",
+      "retained_rgba_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_young_rgba.png"
+    },
+    "mature": {
+      "normalization": {
+        "uniform_scale": 0.9105902777777778,
+        "translation": [
+          41,
+          35
+        ],
+        "source_root": [
+          644.0,
+          1201
+        ]
+      },
+      "post_transform_edge_repairs": 8911,
+      "ground_anchor": [
+        0.5,
+        0.9003189792663477
+      ],
+      "support_bounds": [
+        0.360447,
+        0.873206,
+        0.279107,
+        0.027113
+      ],
+      "visible_bounds": [
+        0.062201,
+        0.059011,
+        0.862041,
+        0.846093
+      ],
+      "generated_source": "build/wisteria-redesign/20260905-195101-final/generated/wisteria_mature_cyan.png",
+      "generated_source_sha256": "daf66a783a22107e01acef5f58109db494a4eb3d30ecb366932cda7c82039018",
+      "rgba_master": "build/wisteria-redesign/20260905-195101-final/masters/wisteria_mature_rgba.png",
+      "rgba_master_sha256": "324321cc2d24b0352829d4c93487b0c918884ee9e8a8c05fd18335ac935a2a7e",
+      "runtime_file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/mature/wisteria_mature_twilight_v6.webp",
+      "runtime_sha256": "f5b6340d1d2606f4093096819a2973e3a65bc5867ee855fbe478613ea9104e1e",
+      "compatibility_source": "artwork_source/plants/v6/wisteria/wisteria_mature_chroma.png",
+      "compatibility_source_sha256": "a8ae24e3e0e10cb49289a9614058ec4e3da8e7434182a55533a196b49b9c27d0",
+      "decoded_rgba_sha256": "b83a28aeed6839821f5b5026f38f2948cb76d7c26fd5d8e13a52f5f09c20a9e6",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "reference_layout": {
+        "scene_size": [
+          1260,
+          840
+        ],
+        "visible": [
+          414.22850074420654,
+          258.0663211521266,
+          98.45733115692508,
+          96.61528124253282
+        ],
+        "ground_anchor": [
+          464.24,
+          354.6816
+        ],
+        "relative_height": 0.9,
+        "warnings": []
+      },
+      "retained_generated_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/generated/wisteria_mature_cyan.png",
+      "retained_rgba_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_mature_rgba.png"
+    },
+    "flowering": {
+      "normalization": {
+        "uniform_scale": 0.9154471544715447,
+        "translation": [
+          29,
+          41
+        ],
+        "source_root": [
+          653.0,
+          1188
+        ]
+      },
+      "post_transform_edge_repairs": 7446,
+      "ground_anchor": [
+        0.5,
+        0.9003189792663477
+      ],
+      "support_bounds": [
+        0.375598,
+        0.874003,
+        0.248804,
+        0.026316
+      ],
+      "visible_bounds": [
+        0.046252,
+        0.082935,
+        0.878788,
+        0.822169
+      ],
+      "generated_source": "build/wisteria-redesign/20260905-195101-final/generated/wisteria_flowering_cyan.png",
+      "generated_source_sha256": "2f0965d4783543ab0f46a4000d690fba214a0f7b8a773fbbdb631cf70299d8d1",
+      "rgba_master": "build/wisteria-redesign/20260905-195101-final/masters/wisteria_flowering_rgba.png",
+      "rgba_master_sha256": "2f3b928028c7ebe59ac55cbc15b51c3756727458172f94f239291b8b117d041e",
+      "runtime_file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/flowering/wisteria_flowering_twilight_v6.webp",
+      "runtime_sha256": "9c4f6e14d615756d06b60d0c5e06d3397464b682b6078a840f6d2a3bd009978d",
+      "compatibility_source": "artwork_source/plants/v6/wisteria/wisteria_flowering_chroma.png",
+      "compatibility_source_sha256": "b130d0007f6a9c02ad14b880101ee515cd281b20c32fdef092e0de24ad68fd5a",
+      "decoded_rgba_sha256": "038e113d37b18fc37f3e74f755f6968416b443c85234cf63f2d0d9d16b153b38",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "reference_layout": {
+        "scene_size": [
+          1260,
+          840
+        ],
+        "visible": [
+          404.9287541875308,
+          247.3312902473617,
+          114.83009017194891,
+          107.35031249170311
+        ],
+        "ground_anchor": [
+          464.24,
+          354.6816
+        ],
+        "relative_height": 0.9999999999999999,
+        "warnings": []
+      },
+      "retained_generated_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/generated/wisteria_flowering_cyan.png",
+      "retained_rgba_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_flowering_rgba.png"
+    },
+    "rare": {
+      "normalization": {
+        "uniform_scale": 0.929140832595217,
+        "translation": [
+          46,
+          25
+        ],
+        "source_root": [
+          625.0,
+          1188
+        ]
+      },
+      "post_transform_edge_repairs": 6586,
+      "ground_anchor": [
+        0.5,
+        0.9003189792663477
+      ],
+      "support_bounds": [
+        0.34051,
+        0.873206,
+        0.318979,
+        0.027113
+      ],
+      "visible_bounds": [
+        0.055821,
+        0.059011,
+        0.89075,
+        0.846093
+      ],
+      "generated_source": "build/wisteria-redesign/20260905-195101-final/generated/wisteria_rare_cyan.png",
+      "generated_source_sha256": "23b54bf836d904cb3dcbd9798a5e2669c1d54fe055bc75cbcc0fa6e1b9156afb",
+      "rgba_master": "build/wisteria-redesign/20260905-195101-final/masters/wisteria_rare_rgba.png",
+      "rgba_master_sha256": "73f9e9f70ceb4c97057b235854224f3bc398556b983469f8d20054e6dfe43030",
+      "runtime_file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/rare/wisteria_rare_twilight_v6.webp",
+      "runtime_sha256": "aa692b3c328bf9100fdf0d99fc4491e100fbbc1a01fe841d75c2a16cf750457b",
+      "compatibility_source": "artwork_source/plants/v6/wisteria/wisteria_rare_chroma.png",
+      "compatibility_source_sha256": "a2d4910d60e933f4edac4486ae265c973ba52987c999018318d59ad4400fb1a9",
+      "decoded_rgba_sha256": "bb95bbf62bdff6985ae2e695a01bb68fe52e735373d6a9925c7c5e45849caafe",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "reference_layout": {
+        "scene_size": [
+          1260,
+          840
+        ],
+        "visible": [
+          405.0335736766014,
+          241.96377467748098,
+          118.7351642208414,
+          112.71782811628829
+        ],
+        "ground_anchor": [
+          464.24,
+          354.6816
+        ],
+        "relative_height": 1.05,
+        "warnings": []
+      },
+      "retained_generated_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/generated/wisteria_rare_cyan.png",
+      "retained_rgba_master": "artwork_source/plants/v6/wisteria/redesign-20260905-195101/rgba/wisteria_rare_rgba.png"
+    }
+  },
+  "edge_cleanup": "clean_cyan_edges.py before and after normalization; exact alpha preserved; see edge-cleanup.json and alpha-integrity.json",
+  "young_scale_note": "Young is 82 percent of Flowering height to meet the existing minimum far-Home readability contract. Its open crown remains distinct from the denser Mature stage."
+}

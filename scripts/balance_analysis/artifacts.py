@@ -144,6 +144,7 @@ ANALYSIS_FIELDS = (
 ANALYSIS_SOURCE_PATHS = (
     "ankigarden/balance_catalog.py",
     "ankigarden/game.py",
+    "ankigarden/feature_availability.py",
     "scripts/simulate_balance_profiles.py",
     "scripts/shard_balance_profiles.py",
     "scripts/build_balance_report.py",

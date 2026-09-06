@@ -1,10 +1,11 @@
 from __future__ import annotations
+from ankigarden.feature_availability import landmarks_enabled
 
 from bisect import bisect_left, bisect_right
 from array import array
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import blake2b, sha256
 from fractions import Fraction
 import math
@@ -766,6 +767,7 @@ def _permanent_priority(
         option for option in options
         if option.permanent
         and option.available
+        and (option.category != "landmark" or landmarks_enabled())
         and option.price_coins > 0
         and (
             allowed_endgame
@@ -895,6 +897,9 @@ class RunState:
     daily_find_count: int
     environment_card_pity: Dict[str, int]
     environment_completion_pity: Dict[str, int]
+    active_trophy_ids: set[str] = field(default_factory=set)
+    planted_order: Optional[List[int]] = None
+    garden_effects_collected: bool = False
 
 
 def _initial_state(facts: CatalogFacts, scenario: ScenarioSpec) -> RunState:
@@ -941,7 +946,7 @@ def _initial_state(facts: CatalogFacts, scenario: ScenarioSpec) -> RunState:
         [facts.full_bloom_growth * GROWTH_UNITS_PER_POINT] * species_owned
         if scenario.all_plants_complete else [0] * species_owned
     )
-    return RunState(
+    state = RunState(
         wallet=0,
         gross_coins=0,
         spent_coins=0,
@@ -1058,6 +1063,21 @@ def _initial_state(facts: CatalogFacts, scenario: ScenarioSpec) -> RunState:
         environment_completion_pity={},
     )
 
+    if scenario.opening is not None:
+        opening = scenario.opening
+        state.wallet = state.gross_coins = opening.coins
+        state.coin_sources.update(dict(opening.coin_sources))
+        state.answers = opening.lifetime_answers
+        if not scenario.all_plants_complete:
+            state.plant_growth_units[0] = opening.starter_growth_units
+            state.opening_plant_growth_units = opening.starter_growth_units
+        state.inventory.update(dict(opening.consumables))
+        state.consumable_units_earned.update(dict(opening.consumables))
+        state.claimed_achievements.update(opening.claimed_achievements)
+        state.permanent_owned.update(opening.trophies)
+        state.active_trophy_ids.update(opening.trophies)
+    return state
+
 
 def _credit(state: RunState, source: str, amount: int) -> None:
     value = max(0, int(amount))
@@ -1113,7 +1133,7 @@ def _endgame_target_plan(
             continue
         mastery_by_species[item_id.split(":", 2)[1]].append(item_id)
     targets: List[Tuple[str, str, Tuple[str, ...]]] = []
-    if landmark_ids:
+    if landmark_ids and landmarks_enabled():
         targets.append(("landmark", "garden_landmark", landmark_ids))
     for species_id in facts.species_ids:
         item_ids = mastery_by_species.get(species_id, ())
@@ -1184,7 +1204,8 @@ def _fund_endgame_projects(
         return remaining
     options_by_id = _endgame_option_by_id(facts)
     targets = _endgame_target_plan(state, facts)
-    _advance_endgame_active_target(state, facts)
+    if allow_target_switches:
+        _advance_endgame_active_target(state, facts)
 
     while remaining > 0:
         target_index = max(0, int(state.endgame_active_target_index))
@@ -1237,12 +1258,46 @@ def _fund_endgame_projects(
 
 
 def _planted_indices(state: RunState) -> Tuple[int, ...]:
+    if state.planted_order is not None:
+        return tuple(state.planted_order)
     planted = min(
         max(0, int(state.beds_owned)),
         max(0, int(state.species_owned)),
         len(state.plant_growth_units),
     )
     return tuple(range(planted))
+
+
+def _rotate_completed_plants(state: RunState, facts: CatalogFacts) -> None:
+    """Model one end-of-day Collection visit, preserving occupied bed order.
+
+    Full Blooms stay on display until an owned unfinished plant needs their
+    bed. Plant identity and prior Growth are preserved; remaining consumable
+    coverage follows the production engine's retargeting behavior.
+    """
+    if state.planted_order is None:
+        return
+    full = facts.full_bloom_growth * GROWTH_UNITS_PER_POINT
+    waiting = [index for index in range(state.species_owned)
+               if index not in state.planted_order
+               and state.plant_growth_units[index] < full]
+    for index in waiting:
+        if len(state.planted_order) < state.beds_owned:
+            state.planted_order.append(index)
+            continue
+        slot = next((slot for slot, planted in enumerate(state.planted_order)
+                     if state.plant_growth_units[planted] >= full), None)
+        if slot is None:
+            break
+        state.planted_order[slot] = index
+    if (state.active_plant_index not in state.planted_order
+            or (state.active_plant_index is not None
+                and state.plant_growth_units[state.active_plant_index] >= full)):
+        state.active_plant_index = _next_unfinished_plant_index(state, facts)
+    if state.active_plant_index is not None:
+        for index, growth in enumerate(state.plant_growth_units):
+            if growth >= full:
+                _transfer_consumable_effects(state, index, state.active_plant_index)
 
 
 def _has_unfinished_planted_plant(
@@ -1345,7 +1400,7 @@ def _transfer_consumable_effects(
         target_plant_index,
         [],
     )
-    transferable = max(0, 5 - len(target_order))
+    transferable = len(source_order) if target_plant_index == -1 else max(0, 5 - len(target_order))
     moved_order = source_order[:transferable]
     retained_order = source_order[transferable:]
     moved_batch_indices: Dict[str, set[int]] = defaultdict(set)
@@ -1382,7 +1437,7 @@ def _transfer_consumable_effects(
         and max(0, int(batch[0])) > 0
         for batch in booster_batches
     )
-    transferable_boosters = max(0, 5 - target_booster_count)
+    transferable_boosters = len(booster_batches) if target_plant_index == -1 else max(0, 5 - target_booster_count)
     for batch in booster_batches:
         if transferable_boosters <= 0:
             break
@@ -1393,6 +1448,16 @@ def _transfer_consumable_effects(
         ):
             batch[2] = target_plant_index
             transferable_boosters -= 1
+
+
+def _garden_supplies_available(state: RunState, facts: CatalogFacts) -> bool:
+    return (state.species_owned >= len(facts.species_ids)
+            and all(growth >= facts.full_bloom_growth * GROWTH_UNITS_PER_POINT
+                    for growth in state.plant_growth_units))
+
+
+def _supply_target_index(state: RunState, facts: CatalogFacts) -> Optional[int]:
+    return -1 if _garden_supplies_available(state, facts) else state.active_plant_index
 
 
 def _apply_growth(
@@ -1473,6 +1538,30 @@ def _apply_growth(
         state.active_plant_index = replacement
     elif active is None and _has_unfinished_planted_plant(state, facts):
         state.active_plant_index = _next_unfinished_plant_index(state, facts)
+    if not state.garden_effects_collected and _garden_supplies_available(state, facts):
+        for index in range(state.species_owned):
+            _transfer_consumable_effects(state, index, -1)
+        state.garden_effects_collected = True
+
+
+def _active_trophies(state: RunState, facts: CatalogFacts):
+    return tuple(item for item in facts.trophies
+                 if item.trophy_id in state.active_trophy_ids
+                 or item.achievement_id in state.claimed_achievements)
+
+
+def _activate_earned_trophies(
+    state: RunState, facts: CatalogFacts, *, answers: int,
+    include_completions: bool = False,
+) -> None:
+    # Called after the unlocking card/completion, just like the production engine.
+    metrics = {"lifetime_answers": answers,
+               "unique_full_blooms": _progression_counts(state, facts)[1]}
+    if include_completions:
+        metrics["valid_completions"] = state.completed_days
+    for item in facts.trophies:
+        if metrics.get(item.progress_metric, -1) >= item.progress_target:
+            state.active_trophy_ids.add(item.trophy_id)
 
 
 def _apply_review_growth(
@@ -1506,11 +1595,11 @@ def _apply_review_growth(
     other_plants = tuple(
         index for index in planted if anchor is not None and index != anchor
     )
-    shared_per_lane = (
-        requested_primary * facts.shared_growth_numerator
-        // facts.shared_growth_denominator
-        if other_plants else 0
-    )
+    numerator, denominator = facts.shared_growth_numerator, facts.shared_growth_denominator
+    for trophy in _active_trophies(state, facts):
+        if trophy.shared_growth_numerator * denominator > numerator * trophy.shared_growth_denominator:
+            numerator, denominator = trophy.shared_growth_numerator, trophy.shared_growth_denominator
+    shared_per_lane = requested_primary * numerator // denominator if other_plants else 0
     state.shared_remainder = 0
     state.shared_growth_units += shared_per_lane * len(other_plants)
 
@@ -1592,6 +1681,9 @@ def _purchase_day(
         elif option.category == "bed":
             state.beds_owned += 1
 
+    if scenario.rotate_completed_plants:
+        _rotate_completed_plants(state, facts)
+
     # The endgame strategy acknowledges an active project and contributes the
     # entire existing reserve. Funding is independent from later Coin claims.
     if state.auto_fund_endgame and state.stored_growth_units:
@@ -1622,7 +1714,7 @@ def _purchase_day(
             if option.category == "mastery":
                 mastery_by_species[item_id.split(":", 2)[1]].append(item_id)
 
-        claim_sequences = [landmark_ids, *(
+        claim_sequences = [landmark_ids if landmarks_enabled() else (), *(
             tuple(sorted(
                 mastery_by_species.get(species_id, ()),
                 key=lambda item_id: (
@@ -1652,7 +1744,7 @@ def _purchase_day(
         # One-session cover prevents an unbounded repeatable sink and makes the
         # spend policy comparable across cohorts.
         if (
-            _has_unfinished_planted_plant(state, facts)
+            (_has_unfinished_planted_plant(state, facts) or _garden_supplies_available(state, facts))
             and
             state.wallet >= consumable.price_coins
             and state.inventory[consumable.item_id] < 1
@@ -1660,7 +1752,7 @@ def _purchase_day(
             and (
                 not consumable.item_id.startswith("fertilizer_")
                 or len(state.fertilizer_activation_order_by_plant.get(
-                    state.active_plant_index,
+                    _supply_target_index(state, facts),
                     (),
                 )) < 5
             )
@@ -1673,7 +1765,7 @@ def _purchase_day(
                 row for row in facts.consumables
                 if row.consumable_id == consumable.item_id
             ), None)
-            target_index = state.active_plant_index
+            target_index = _supply_target_index(state, facts)
             if (
                 consumable_fact is not None
                 and target_index is not None
@@ -2098,7 +2190,8 @@ def _apply_firefly_review_day(
         _apply_review_growth(
             state,
             facts,
-            base_per_answer + consumable_units + environment_units,
+            base_per_answer + consumable_units + environment_units
+            + GROWTH_UNITS_PER_POINT * sum(t.review_growth for t in _active_trophies(state, facts)),
             milestone_schedule,
         )
 
@@ -2131,6 +2224,9 @@ def _apply_firefly_review_day(
                 find_units,
                 milestone_schedule,
             )
+        _activate_earned_trophies(
+            state, facts, answers=state.answers - event.answers + answer_number,
+        )
     return frozenset(handled)
 
 
@@ -2155,14 +2251,12 @@ def _consume_inventory_growth(
     )
     if not activate:
         return
-    if not _has_unfinished_planted_plant(state, facts):
-        # Production requires an unfinished planted target. Earned inventory
-        # remains untouched while every legal plant is Full Bloom.
+    if not _has_unfinished_planted_plant(state, facts) and not _garden_supplies_available(state, facts):
         return
-    target_plant_index = state.active_plant_index
+    target_plant_index = _supply_target_index(state, facts)
     if target_plant_index is None:
         return
-    for item_id in tuple(sorted(state.inventory)):
+    for item_id in tuple(sorted(consumables_by_id)):
         if state.inventory[item_id] <= 0:
             continue
         option = options_by_id.get(item_id)
@@ -2192,12 +2286,12 @@ def _consume_inventory_growth(
             is_booster = consumable.consumable_kind.lower() == "booster"
             extension_cards = sum(
                 effect.grant.amount
-                for effect in facts.effects_by_item_id.get(
-                    state.active_garden_bonus_id, ()
-                )
+                for owned in state.permanent_owned
+                for effect in facts.effects_by_item_id.get(owned, ())
                 if effect.trigger == "booster_activation"
                 and effect.grant is not None
                 and effect.grant.kind.lower() == "booster_card_limit"
+                and (not effect.active_only or owned in {state.active_garden_bonus_id, state.active_scenery_id})
             ) if is_booster else 0
             card_count += extension_cards
             state.consumable_effect_cards[item_id] += card_count
@@ -2219,6 +2313,20 @@ def _consume_inventory_growth(
             state.consumable_growth_by_item_units[item_id] += units
             state.consumable_units_consumed[item_id] += 1
             _apply_growth(state, facts, units, milestone_schedule)
+            # A Charge can itself unlock progression rewards and the Plaque.
+            # Production claims these before the next item/answer, while
+            # review-count trophies still use the pre-session answer total.
+            metrics = {"mature_plants", "unique_full_blooms"}
+            _claim_achievements(
+                state, facts, event_answers=0,
+                achievements_by_metric={metric: tuple(sorted(
+                    (row for row in facts.achievements if row.progress_metric == metric),
+                    key=lambda row: (row.progress_target, row.achievement_id),
+                )) for metric in metrics},
+                beds_by_item_id={f"bed_{row.bed_number}": row.bed_number for row in facts.bed_unlocks},
+                milestone_schedule=milestone_schedule, activate_trophies=False,
+            )
+            _activate_earned_trophies(state, facts, answers=max(0, state.answers - answers))
 
 
 def _apply_active_consumable_growth(
@@ -2229,9 +2337,9 @@ def _apply_active_consumable_growth(
     milestone_schedule: MilestoneSchedule,
 ) -> int:
     del milestone_schedule
-    if not _has_unfinished_planted_plant(state, facts):
+    if not _has_unfinished_planted_plant(state, facts) and not _garden_supplies_available(state, facts):
         return 0
-    active_plant_index = state.active_plant_index
+    active_plant_index = _supply_target_index(state, facts)
     if active_plant_index is None:
         return 0
     total_units = 0
@@ -2391,6 +2499,7 @@ def _claim_achievements(
     achievements_by_metric: Mapping[str, Sequence[object]],
     beds_by_item_id: Mapping[str, int],
     milestone_schedule: MilestoneSchedule,
+    activate_trophies: bool = True,
 ) -> None:
     """Apply one-time catalog achievement grants to the simulation ledger."""
 
@@ -2408,10 +2517,15 @@ def _claim_achievements(
         "consecutive_non_again": 0,
     }
     for metric, value in progress.items():
+        if metric not in achievements_by_metric:
+            continue
         achievements = achievements_by_metric.get(metric, ())
         cursor = state.achievement_cursors.get(metric, 0)
         while cursor < len(achievements):
             achievement = achievements[cursor]
+            if achievement.achievement_id in state.claimed_achievements:
+                cursor += 1
+                continue
             if value < achievement.progress_target:
                 break
             if event_answers >= achievement.minimum_answers:
@@ -2443,6 +2557,8 @@ def _claim_achievements(
                         )
             cursor += 1
         state.achievement_cursors[metric] = cursor
+    if activate_trophies:
+        _activate_earned_trophies(state, facts, answers=state.answers, include_completions=True)
 
 
 def _checkpoint_metrics(state: RunState, facts: CatalogFacts) -> Mapping[str, Optional[float]]:
@@ -2774,6 +2890,7 @@ class ScenarioOutcome:
     assertion_failures: Tuple[str, ...]
     trace_rows: Tuple[Mapping[str, object], ...] = ()
     release_state_rows: Tuple[Mapping[str, object], ...] = ()
+    checkpoint_choices: Mapping[int, Mapping[str, object]] = field(default_factory=dict)
 
 
 def _annual_release_state_row(
@@ -2899,9 +3016,12 @@ def simulate_scenario(
     seed_index: int,
     events: Optional[Sequence[DayEvents]] = None,
     capture_trace: bool = False,
+    capture_choices: bool = False,
 ) -> ScenarioOutcome:
     stream = tuple(events or generate_event_stream(facts, scenario, config, seed_index))
     state = _initial_state(facts, scenario)
+    if scenario.rotate_completed_plants:
+        state.planted_order = list(_planted_indices(state))
     _equip_best_environment(state, facts, scenario)
     permanent_plan = _permanent_priority(facts, scenario)
     consumable = _best_consumable(
@@ -2927,6 +3047,7 @@ def simulate_scenario(
     # is therefore reused for every routed Growth lane.
     milestone_schedule = _milestone_schedule(facts, 1)
     checkpoints = {}
+    choices = {}
     trace_rows = []
     release_state_rows = []
     active_index = 0
@@ -2950,6 +3071,9 @@ def simulate_scenario(
             _credit(state, "first_eligible_answer", facts.daily_activity_coins)
             if complete:
                 _credit(state, "todays_cards", facts.completion_coins)
+                journal_coins = sum(t.completion_coins for t in _active_trophies(state, facts))
+                if journal_coins:
+                    _credit(state, "achievement_trophy", journal_coins)
                 state.garden_cycle_remainder += 1
                 if (
                     state.garden_cycle_remainder
@@ -3001,9 +3125,17 @@ def simulate_scenario(
                 for batch in batches
             )
             if (
-                state.active_garden_bonus_id == "firefly_lantern"
+                (state.active_garden_bonus_id == "firefly_lantern"
+                 and not _garden_supplies_available(state, facts))
                 or active_consumable_is_order_sensitive
                 or bool(event.find_growth_units_by_answer)
+                or any(
+                    t not in _active_trophies(state, facts) and (
+                        (t.progress_metric == "lifetime_answers" and state.answers >= t.progress_target)
+                        or (t.progress_metric == "unique_full_blooms"
+                            and len(state.plant_species_ids) >= t.progress_target)
+                    ) for t in facts.trophies
+                )
             ):
                 pre_shared_effect_ids = _apply_firefly_review_day(
                     state,
@@ -3035,6 +3167,7 @@ def simulate_scenario(
                         facts.base_growth_per_review
                         * GROWTH_UNITS_PER_POINT
                         + facts.base_growth_per_review * rhythm_percent
+                        + GROWTH_UNITS_PER_POINT * sum(t.review_growth for t in _active_trophies(state, facts))
                     )
                     + consumable_primary_units
                     + environment_primary_units
@@ -3202,6 +3335,14 @@ def simulate_scenario(
             })
         if event.day in config.checkpoint_days:
             checkpoints[event.day] = _checkpoint_metrics(state, facts)
+            if capture_choices:
+                choices[event.day] = {
+                    "decoration": state.active_garden_bonus_id,
+                    "scenery": state.active_scenery_id,
+                    "active_trophies": sorted(t.trophy_id for t in _active_trophies(state, facts)),
+                    "achievements": sorted(state.claimed_achievements),
+                    "owned_species": list(state.plant_species_ids),
+                }
 
     failures = []
     if state.gross_coins - state.spent_coins != state.wallet:
@@ -3294,6 +3435,7 @@ def simulate_scenario(
         seed_index=seed_index,
         checkpoints=checkpoints,
         assertion_failures=tuple(failures),
+        checkpoint_choices=choices,
         trace_rows=tuple(trace_rows),
         release_state_rows=tuple(release_state_rows),
     )
@@ -3764,7 +3906,7 @@ def _catalog_analysis(facts: CatalogFacts) -> Mapping[str, object]:
             ),
             "cost_definitions": {
                 "functional": "paid species plus Garden Bonuses plus paid Scenery",
-                "pre_endgame": "functional catalog plus optional paid cosmetics",
+                "pre_endgame": "functional catalog; decorative-only purchases are retired",
                 "all_permanent": "pre-endgame plus Landmark and per-species Mastery claims",
             },
         },
@@ -4431,6 +4573,7 @@ def simulate_balance(
             "release_target": "2.2.0",
             "report_schema_version": 2,
             "model": "catalog-ledger-v2",
+            "feature_availability": {"landmarks_enabled": landmarks_enabled()},
             "days": config.days,
             "seed_count": config.seeds,
             "seed_root_sha256": config.seed_root_sha256,

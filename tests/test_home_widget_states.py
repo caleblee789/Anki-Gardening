@@ -1,6 +1,8 @@
 import json
 import logging
 import sys
+from dataclasses import replace
+from html import escape
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,7 +21,6 @@ from ankigarden.ui.home_widget import (
 )
 from ankigarden.models.state import Achievement
 from ankigarden.ui.state import garden_preview_from_values
-from ankigarden.ui.landmark_display import GARDEN_LANDMARK_ANCHORS
 
 
 def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str = "sunny") -> HomeWidgetData:
@@ -45,7 +46,7 @@ def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str 
         },),
         unlocked_slots=2,
         collection_count=2,
-        active_plant_name="Moss",
+        active_plant_name="Bonsai Seed",
         active_plant_stage="seed",
         active_growth_points=growth_earned,
         active_stage_points=growth_earned,
@@ -64,7 +65,7 @@ def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str 
         ({"active_stage_points": 125}, HomeSurfaceMode.ACTIVE_PARTIAL, 125, 500, 25.0),
         (
             {
-                "active_plant_name": "Clover",
+                "active_plant_name": "Full Bloom Clover",
                 "active_fully_grown": True,
                 "active_growth_points": 50_000,
                 "active_stage_points": 0,
@@ -168,7 +169,7 @@ def test_partial_state_renders_available_data_and_error_banner() -> None:
     assert 'data-state="partial"' in html
     assert 'data-testid="home-partial-error"' in html
     assert 'class="ag-home__partial-message"' in html
-    assert 'data-testid="home-support" title="Moss · Seed · 30 / 500 Growth"' in html
+    assert 'data-testid="home-support" title="Bonsai Seed · 30 / 500 Growth"' in html
     assert 'data-testid="home-today-answers"' not in html
     assert 'data-testid="home-streak"' not in html
     assert 'data-testid="home-currency"' not in html
@@ -181,8 +182,8 @@ def test_success_state_renders_key_fields() -> None:
 
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews"' not in html
-    assert 'data-testid="home-title" aria-label="My Garden"' in html
-    assert 'data-testid="home-support" title="Moss · Seed · 30 / 500 Growth"' in html
+    assert 'data-testid="home-title" aria-label="Anki Garden"' in html
+    assert 'data-testid="home-support" title="Bonsai Seed · 30 / 500 Growth"' in html
     assert 'data-testid="home-active-name"' not in html
     assert 'data-testid="home-growth"' not in html
     assert 'data-testid="home-currency"' not in html
@@ -198,12 +199,12 @@ def test_success_state_renders_key_fields() -> None:
     assert 'role="region"' in html
     assert 'role="button" tabindex="0"' not in html
     assert (
-        'aria-label="My Garden Anki Garden summary. Moss · Seed · 30 / 500 Growth"'
+        'aria-label="Anki Garden summary. Bonsai Seed · 30 / 500 Growth"'
         in html
     )
-    assert 'aria-label="Open My Garden"' in html
+    assert 'aria-label="Open Anki Garden"' in html
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' not in html
-    assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
+    assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="Anki Garden"' in html
     assert "width:min(calc(100% - 48px), 520px)" in html
     assert "max-width:520px" in html
     assert "height:100px" in html
@@ -276,9 +277,8 @@ def test_success_state_uses_resolved_background_as_compact_scene() -> None:
     assert "background-size:100% 100%" in html
     assert 'data-preview-crop="0.000,0.080,1.000,0.840"' in html
     assert "aspect-ratio:var(--ag-source-aspect, 2.4)" in html
-    assert 'data-landmark="mossy_stone_path"' in html
-    anchor = GARDEN_LANDMARK_ANCHORS["mossy_stone_path"]
-    assert f'data-landmark-anchor="{anchor.identity}"' in html
+    assert 'data-landmark=' not in html
+    assert 'data-landmark-anchor=' not in html
     assert 'data-plant-id="plant-bonsai" data-slot-index="0" data-mastery-rank="gold"' in html
 
     mismatched = HomeWidgetData(**{
@@ -399,9 +399,9 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
 
-    assert f'title="{name} · Flowering · 30 / 500 Growth"' in html
+    assert f'title="{name} · 30 / 500 Growth"' in html
     assert f'class="ag-home__plant-name">{name}</span>' in html
-    assert 'class="ag-home__plant-stage">· Flowering</span>' in html
+    assert 'class="ag-home__plant-stage"' not in html
     assert '>To Full Bloom: 30 / 500 Growth</span>' in html
     assert "white-space:nowrap" in html
     assert ".ag-home__support" in html
@@ -536,7 +536,7 @@ def test_success_state_is_garden_wide_and_does_not_duplicate_selected_plant_deta
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=base))
 
     assert 'data-testid="home-focus"' not in html
-    assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
+    assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="Anki Garden"' in html
     assert "Study garden" not in html
     assert "Your garden</" not in html
     assert "A quiet view of your current garden" not in html
@@ -618,9 +618,14 @@ def test_large_streak_and_coin_values_never_leak_into_compact_preview() -> None:
         assert 'data-testid="home-currency"' not in html
 
 
-def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() -> None:
+@pytest.mark.parametrize("garden_name", (
+    "My Garden",
+    "A Very Long Garden Name That Must Not Move The Open Button",
+    'Moss & Moon <Garden> "Study"',
+))
+@pytest.mark.parametrize("prebuilt_preview", (False, True))
+def test_long_preview_values_keep_plant_names_and_hide_custom_garden_name(garden_name, prebuilt_preview) -> None:
     base = _sample_data()
-    garden_name = "A Very Long Garden Name That Must Not Move The Open Button"
     plant_name = "Japanese Maple With An Extra Long Generated Name"
     data = HomeWidgetData(**{
         **base.__dict__,
@@ -636,10 +641,21 @@ def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() ->
         "garden_currency": 54_321,
     })
 
+    if prebuilt_preview:
+        preview = garden_preview_from_values(
+            consumer="home", active_plant_name=plant_name, active_stage="rare",
+            active_growth_points=50_000, active_fully_grown=True,
+        )
+        data = replace(data, preview_snapshot=replace(
+            preview, garden_name=garden_name, title=garden_name,
+        ))
+
     html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=data))
 
-    assert f'aria-label="{garden_name}"' in html
-    assert f'title="{plant_name} · Full Bloom · 50,000 total Growth"' in html
+    assert 'data-testid="home-title" aria-label="Anki Garden"' in html
+    assert garden_name not in html
+    assert escape(garden_name) not in html
+    assert f'title="{plant_name} · 50,000 total Growth"' in html
     assert "365-day streak" not in html
     assert "54,321 coins" not in html
     assert "text-overflow:ellipsis" in html
@@ -693,6 +709,7 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
         plants=[SimpleNamespace(
             plant_id="plant-1",
             name="Briar",
+            species="rose",
             growth_stage="sprout",
             growth_points=600,
         )],
@@ -721,11 +738,11 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     data = build_home_widget_success_data(state=state, reviews_today=3, scene_items=[])
     html = render_home_widget(HomeWidgetSnapshot(request_id=9, phase="success", data=data))
 
-    assert data.active_plant_name == "Briar"
+    assert data.active_plant_name == "Rose Sprout"
     assert data.active_stage_points == 200
     assert data.active_stage_goal == 1_600
     assert data.active_next_stage == "young"
-    assert 'data-testid="home-support" title="Briar · Sprout · 200 / 1,600 Growth"' in html
+    assert 'data-testid="home-support" title="Rose Sprout · 200 / 1,600 Growth"' in html
     assert 'data-testid="home-growth-progress"' in html
     assert 'data-testid="home-progress-copy"' in html
     assert "background:rgba(99,217,159,.26)" in html
@@ -738,7 +755,12 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert "Reward: +10 Garden Coins" not in html
 
 
-def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured() -> None:
+@pytest.mark.parametrize("points,stage,name,progress,mode", [
+    (0, "seed", "Rose Seed", "0 / 400 Growth", HomeSurfaceMode.ACTIVE_ZERO),
+    (750, "sprout", "Rose Sprout", "350 / 1,600 Growth", HomeSurfaceMode.ACTIVE_PARTIAL),
+    (35000, "rare", "Full Bloom Rose", "35,000 total Growth", HomeSurfaceMode.ACTIVE_COMPLETE),
+])
+def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(points, stage, name, progress, mode) -> None:
     state = SimpleNamespace(
         daily_stats=SimpleNamespace(
             growth_earned=0,
@@ -751,8 +773,9 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
         plants=[SimpleNamespace(
             plant_id="starter-1",
             name="Briar",
-            growth_stage="seed",
-            growth_points=0,
+            species="rose",
+            growth_stage=stage,
+            growth_points=points,
             planted=True,
             slot_index=0,
         )],
@@ -778,11 +801,14 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
     assert data.starter_selected is True
     assert data.active_plant_name == ""
     assert data.starter_planted_not_nurtured is True
-    assert data.planted_starter_name == "Briar"
-    assert data.planted_starter_stage == "seed"
+    assert data.planted_starter_name == name
+    assert data.planted_starter_stage == stage
+    assert data.planted_starter_growth_points == points
+    assert data.active_growth_points == 0
+    assert home_surface_view_model(data).mode is mode
     assert (
         'data-testid="home-support" '
-        'title="Briar · Seed · 0 / 400 Growth"'
+        f'title="{name} · {progress}"'
     ) in html
     assert "Planted starter" not in html
     assert 'data-testid="home-growth-progress"' in html
@@ -791,7 +817,7 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
     assert 'data-anki-garden-command="anki-garden:choose-starter"' not in html
 
 
-def test_home_builder_projects_visibility_without_mutating_selected_environment() -> None:
+def test_home_keeps_scenery_and_equipment_state_but_omits_decoration_art() -> None:
     state = SimpleNamespace(
         daily_stats=SimpleNamespace(
             growth_earned=0,
@@ -814,20 +840,23 @@ def test_home_builder_projects_visibility_without_mutating_selected_environment(
         garden_name="Willow Garden",
     )
 
-    hidden = build_home_widget_success_data(
+    data = build_home_widget_success_data(
         state=state,
         reviews_today=0,
         scene_items=[],
+        weather_url="/garden-feature.webp",
+        garden_feature_pad_url="/garden-feature-pad.webp",
     )
 
-    assert hidden.weather_visible is False
-    assert hidden.visible_scenery == "default"
-    assert hidden.preview_snapshot is not None
-    assert hidden.preview_snapshot.selected_scenery == "default"
+    assert data.weather_visible is True
+    assert data.visible_scenery == "eclipse"
+    assert data.preview_snapshot is not None
+    assert data.preview_snapshot.selected_scenery == "eclipse"
     assert state.selected_weather == "rainbow_sunshower"
     assert state.selected_background == "eclipse"
-    assert 'data-testid="home-weather-layer"' not in render_home_widget(
-        HomeWidgetSnapshot(12, "success", hidden)
+    assert state.environment_visibility == {"weather": False, "scenery": False}
+    assert 'data-testid="home-garden-feature"' not in render_home_widget(
+        HomeWidgetSnapshot(12, "success", data)
     )
 
     state.environment_visibility = {"weather": True, "scenery": True}
@@ -835,6 +864,8 @@ def test_home_builder_projects_visibility_without_mutating_selected_environment(
         state=state,
         reviews_today=0,
         scene_items=[],
+        weather_url="/garden-feature.webp",
+        garden_feature_pad_url="/garden-feature-pad.webp",
     )
 
     assert visible.weather_visible is True
@@ -865,7 +896,7 @@ def test_fully_grown_active_plant_has_complete_progress() -> None:
     base = _sample_data()
     data = HomeWidgetData(**{
         **base.__dict__,
-        "active_plant_name": "Clover",
+        "active_plant_name": "Full Bloom Clover",
         "active_plant_stage": "rare",
         "active_growth_points": 50_000,
         "active_stage_points": 0,
@@ -876,8 +907,8 @@ def test_fully_grown_active_plant_has_complete_progress() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=11, phase="success", data=data))
 
-    assert 'data-testid="home-support" title="Clover · Full Bloom · 50,000 total Growth"' in html
-    assert "Clover · Full Bloom · 50,000 total Growth" in html
+    assert 'data-testid="home-support" title="Full Bloom Clover · 50,000 total Growth"' in html
+    assert "Full Bloom Clover · 50,000 total Growth" in html
     assert 'data-testid="home-growth-progress"' in html
 
 
@@ -1058,15 +1089,15 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     assert stale_applied is False
     assert fresh_applied is True
     assert 'data-testid="home-reviews"' not in html
-    assert 'data-testid="home-support" title="Moss · Seed · 14 / 500 Growth"' in html
-    assert "Moss · Seed · 99 / 500 Growth" not in html
+    assert 'data-testid="home-support" title="Bonsai Seed · 14 / 500 Growth"' in html
+    assert "Bonsai Seed · 99 / 500 Growth" not in html
 
     refresh_request = controller.begin_request()
     assert refresh_request > request_2
     stale_html = render_home_widget(controller.snapshot)
     assert 'data-state="stale"' in stale_html
     assert 'data-testid="home-preview-status"' in stale_html
-    assert "Moss · Seed · 14 / 500 Growth" in stale_html
+    assert "Bonsai Seed · 14 / 500 Growth" in stale_html
     assert "Refreshing…" in stale_html
     assert "--ag-scene-opacity:0.720" in stale_html
     assert '#ag-home-root[data-state="stale"] .ag-home__partial-message' in stale_html
@@ -1095,7 +1126,7 @@ def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
         consumer=consumer,
         phase=phase,
         garden_name="The Long Moss and Moon Garden",
-        active_plant_name="Moss",
+        active_plant_name="Bonsai Seed",
         active_stage="young",
         selected_weather="gentle_rain",
         selected_scenery="spring",
@@ -1107,6 +1138,8 @@ def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
     )
 
     assert preview.consumer == consumer
+    assert preview.garden_name == "Anki Garden"
+    assert preview.title == ("Grow your first plant" if phase == "empty" else "Anki Garden")
     assert preview.phase == ("disabled" if not enabled else phase)
     assert preview.scene_items == scene_items
     assert preview.selected_weather == "gentle_rain"
@@ -1163,5 +1196,5 @@ def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
 
     assert 'data-state="success"' in success_html
     assert 'data-testid="home-reviews"' not in success_html
-    assert 'data-testid="home-support" title="Moss · Seed · 33 / 500 Growth"' in success_html
+    assert 'data-testid="home-support" title="Bonsai Seed · 33 / 500 Growth"' in success_html
     assert "Temporary backend failure" not in success_html

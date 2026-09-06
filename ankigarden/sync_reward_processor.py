@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .presentation import PlantIdentity, plant_species_name, plant_stage_event
+
 """Atomic processing and presentation shaping for sync-introduced answers."""
 
 from collections import defaultdict
@@ -230,7 +232,7 @@ def build_sync_reward_summary(
         stage_after = str(after_progress.stage)
         plant_rows.append({
             "plant_id": plant_id,
-            "plant_name": str(after.get("plant_name") or after.get("name") or "Plant"),
+            "plant_name": PlantIdentity.from_plant(after).display_name,
             "species": species,
             "plant_image": _plant_art(engine, species, stage_after),
             "growth_delta_units": delta_units,
@@ -446,7 +448,7 @@ def build_sync_reward_summary(
         count = len(transitions)
         full_bloom = str(final.new_stage).casefold() in {"rare", "full_bloom", "full bloom"}
         stage_name = "Full Bloom" if full_bloom else str(final.new_stage).replace("_", " ").title()
-        name = str(final.plant_name or "Plant")
+        name = plant_species_name(final.species)
         progression.append({
             "event_id": f"stage:{batch_id}:{plant_id}:{final.new_stage}",
             "plant_id": plant_id,
@@ -454,9 +456,9 @@ def build_sync_reward_summary(
             "event_type": "full_bloom" if full_bloom else "stage",
             "stage_name": stage_name,
             "display_text": (
-                f"{name} reached Full Bloom" if full_bloom
-                else f"{name} advanced {count} stages and reached {stage_name}" if count > 1
-                else f"{name} reached {stage_name}"
+                plant_stage_event(final.species, "rare") if full_bloom
+                else plant_stage_event(final.species, final.new_stage) if count > 1
+                else plant_stage_event(final.species, final.new_stage)
             ),
             "transition_source": str(final.source or ""),
         })
@@ -487,24 +489,19 @@ def build_sync_reward_summary(
                 "Full Bloom" if full_bloom
                 else final_stage.replace("_", " ").title()
             )
-            name = str(after.get("plant_name") or after.get("name") or "Plant")
+            name = plant_species_name(after)
             progression.append({
                 "event_id": f"stage:{batch_id}:{plant_id}:{final_stage}",
                 "plant_id": plant_id,
                 "plant_name": name,
                 "event_type": "full_bloom" if full_bloom else "stage",
                 "stage_name": stage_name,
-                "display_text": (
-                    f"{name} reached Full Bloom" if full_bloom
-                    else f"{name} advanced {len(newly_claimed)} stages and reached {stage_name}"
-                    if len(newly_claimed) > 1
-                    else f"{name} reached {stage_name}"
-                ),
+                "display_text": plant_stage_event(after, final_stage),
             })
     for plant_id, after in after_plants.items():
         before_claims = set(before_plants.get(plant_id, {}).get("checkpoint_claims", ()) or ())
         after_claims = set(after.get("checkpoint_claims", ()) or ())
-        name = str(after.get("plant_name") or after.get("name") or "Plant")
+        name = plant_species_name(after)
         for claim in sorted(after_claims - before_claims):
             stage_id, _separator, percent = str(claim).partition(":")
             stage_name = "Full Bloom" if stage_id == "rare" else stage_id.replace("_", " ").title()
@@ -517,7 +514,7 @@ def build_sync_reward_summary(
                 "checkpoint_percent": (
                     max(0, min(100, int(percent))) if percent.isdigit() else 0
                 ),
-                "display_text": f"{checkpoint_name} reached",
+                "display_text": plant_stage_event(after, stage_id, checkpoint_percent=int(percent) if percent.isdigit() else 0),
             })
 
     current_day_resolver = getattr(engine, "_scheduler_day", None)
@@ -564,12 +561,7 @@ def build_sync_reward_summary(
         species = str(after.get("species", "") or "")
         grouped_rows[plant_id] = {
             "plant_id": plant_id,
-            "plant_name": str(
-                after.get("plant_name")
-                or after.get("name")
-                or event.get("plant_name")
-                or "Plant"
-            ),
+            "plant_name": PlantIdentity.from_plant(after).display_name,
             "species": species,
             "plant_image": _plant_art(engine, species, str(after_progress.stage)),
             "growth_delta_units": max(0, after_units - before_units),

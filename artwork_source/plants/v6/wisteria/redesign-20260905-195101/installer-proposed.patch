@@ -1,0 +1,120 @@
+--- a/scripts/install_direct_soil_catalog_v6.py
++++ b/scripts/install_direct_soil_catalog_v6.py
+@@ -3,6 +3,7 @@
+ import hashlib
+ import json
+ from collections import deque
++from copy import deepcopy
+ from pathlib import Path
+ from typing import Any
+ 
+@@ -292,6 +293,87 @@
+     )
+ 
+ 
++# Authored Wisteria geometry and calibration from the reviewed six-stage redesign.
++WISTERIA_REDESIGN_OVERRIDES = {'seed': {'source': 'ImageGen Wisteria six-stage storybook redesign; cyan cutout with retained '
++                    'RGBA and compatibility source provenance',
++          'placement': {'baseline_y': 0.9003189792663477,
++                        'ground_anchor': [0.5, 0.9003189792663477],
++                        'ground_anchor_x': 0.5,
++                        'ground_anchor_y': 0.9003189792663477,
++                        'soil_contact': [0.5, 0.9003189792663477],
++                        'visible_bounds': [0.242424, 0.455343, 0.498405, 0.450558],
++                        'foliage_bounds': [0.242424, 0.455343, 0.498405, 0.450558],
++                        'plant_above_rim_bounds': [0.242424, 0.455343, 0.498405, 0.450558],
++                        'base_bounds': [0.472089, 0.885965, 0.055821, 0.014354],
++                        'support_bounds': [0.472089, 0.885965, 0.055821, 0.014354],
++                        'visual_scale_correction': 0.5905491198175096}},
++ 'sprout': {'source': 'ImageGen Wisteria six-stage storybook redesign; cyan cutout with retained '
++                      'RGBA and compatibility source provenance',
++            'placement': {'baseline_y': 0.9003189792663477,
++                          'ground_anchor': [0.5, 0.9003189792663477],
++                          'ground_anchor_x': 0.5,
++                          'ground_anchor_y': 0.9003189792663477,
++                          'soil_contact': [0.5, 0.9003189792663477],
++                          'visible_bounds': [0.212121, 0.106061, 0.58453, 0.799841],
++                          'foliage_bounds': [0.212121, 0.106061, 0.58453, 0.799841],
++                          'plant_above_rim_bounds': [0.212121, 0.106061, 0.58453, 0.799841],
++                          'base_bounds': [0.374801, 0.874801, 0.250399, 0.025518],
++                          'support_bounds': [0.374801, 0.874801, 0.250399, 0.025518],
++                          'visual_scale_correction': 0.612583977741385}},
++ 'young': {'source': 'ImageGen Wisteria six-stage storybook redesign; cyan cutout with retained '
++                     'RGBA and compatibility source provenance',
++           'placement': {'baseline_y': 0.9003189792663477,
++                         'ground_anchor': [0.5, 0.9003189792663477],
++                         'ground_anchor_x': 0.5,
++                         'ground_anchor_y': 0.9003189792663477,
++                         'soil_contact': [0.5, 0.9003189792663477],
++                         'visible_bounds': [0.101276, 0.059011, 0.769537, 0.84689],
++                         'foliage_bounds': [0.101276, 0.059011, 0.769537, 0.84689],
++                         'plant_above_rim_bounds': [0.101276, 0.059011, 0.769537, 0.84689],
++                         'base_bounds': [0.368421, 0.873206, 0.263158, 0.027113],
++                         'support_bounds': [0.368421, 0.873206, 0.263158, 0.027113],
++                         'visual_scale_correction': 1.0384394319021586}},
++ 'mature': {'source': 'ImageGen Wisteria six-stage storybook redesign; cyan cutout with retained '
++                      'RGBA and compatibility source provenance',
++            'placement': {'baseline_y': 0.9003189792663477,
++                          'ground_anchor': [0.5, 0.9003189792663477],
++                          'ground_anchor_x': 0.5,
++                          'ground_anchor_y': 0.9003189792663477,
++                          'soil_contact': [0.5, 0.9003189792663477],
++                          'visible_bounds': [0.062201, 0.059011, 0.862041, 0.846093],
++                          'foliage_bounds': [0.062201, 0.059011, 0.862041, 0.846093],
++                          'plant_above_rim_bounds': [0.062201, 0.059011, 0.862041, 0.846093],
++                          'base_bounds': [0.360447, 0.873206, 0.279107, 0.027113],
++                          'support_bounds': [0.360447, 0.873206, 0.279107, 0.027113],
++                          'visual_scale_correction': 1.1197389762873997}},
++ 'flowering': {'source': 'ImageGen Wisteria six-stage storybook redesign; cyan cutout with '
++                         'retained RGBA and compatibility source provenance',
++               'placement': {'baseline_y': 0.9003189792663477,
++                             'ground_anchor': [0.5, 0.9003189792663477],
++                             'ground_anchor_x': 0.5,
++                             'ground_anchor_y': 0.9003189792663477,
++                             'soil_contact': [0.5, 0.9003189792663477],
++                             'visible_bounds': [0.046252, 0.082935, 0.878788, 0.822169],
++                             'foliage_bounds': [0.046252, 0.082935, 0.878788, 0.822169],
++                             'plant_above_rim_bounds': [0.046252, 0.082935, 0.878788, 0.822169],
++                             'base_bounds': [0.375598, 0.874003, 0.248804, 0.026316],
++                             'support_bounds': [0.375598, 0.874003, 0.248804, 0.026316],
++                             'visual_scale_correction': 1.0660764588941274}},
++ 'rare': {'source': 'ImageGen Wisteria six-stage storybook redesign; cyan cutout with retained '
++                    'RGBA and compatibility source provenance',
++          'placement': {'baseline_y': 0.9003189792663477,
++                        'ground_anchor': [0.5, 0.9003189792663477],
++                        'ground_anchor_x': 0.5,
++                        'ground_anchor_y': 0.9003189792663477,
++                        'soil_contact': [0.5, 0.9003189792663477],
++                        'visible_bounds': [0.055821, 0.059011, 0.89075, 0.846093],
++                        'foliage_bounds': [0.055821, 0.059011, 0.89075, 0.846093],
++                        'plant_above_rim_bounds': [0.055821, 0.059011, 0.89075, 0.846093],
++                        'base_bounds': [0.34051, 0.873206, 0.318979, 0.027113],
++                        'support_bounds': [0.34051, 0.873206, 0.318979, 0.027113],
++                        'visual_scale_correction': 1.1023309589779358}}}
++
++
+ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
+     with Image.open(path) as image:
+         rgba = image.convert("RGBA")
+@@ -326,7 +408,7 @@
+     source_master_file = source.relative_to(ROOT).as_posix()
+     relative = path.relative_to(ADDON).as_posix()
+     asset_id = f"plant_{species}_{stage}_twilight_v6"
+-    return {
++    row = {
+         "asset_id": asset_id,
+         "category": "plants",
+         "slot": {"species": species, "stage": stage},
+@@ -393,6 +475,12 @@
+             "release_layout_candidate": True,
+         },
+     }
++    if species == "wisteria" and stage in WISTERIA_REDESIGN_OVERRIDES:
++        review = WISTERIA_REDESIGN_OVERRIDES[stage]
++        row["placement"].update(deepcopy(review["placement"]))
++        row["source"] = review["source"]
++    return row
++
+ 
+ 
+ def main() -> None:

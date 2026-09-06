@@ -1,4 +1,4 @@
-"""Compile and independently validate the immutable v27 capture contract."""
+"""Compile and independently validate the immutable v29 capture contract."""
 
 from __future__ import annotations
 
@@ -12,19 +12,20 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .registry import REGISTRY, SurfaceRegistry
+from .handoff import sheet_layout
 
 
-CONTRACT_VERSION = 27
+CONTRACT_VERSION = 29
 CONTRACT_SCHEMA_VERSION = 2
 SCENARIO_SCHEMA_VERSION = 3
-CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v27.json")
+CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v29.json")
 
 _IDENTITY_ID = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 _EXPECTED_PROFILE_TOTALS = {
-    "representative": (18, 2),
-    "full": (36, 5),
+    "representative": (22, 5),
+    "full": (51, 5),
 }
-_EXPECTED_ACTIVE_SURFACE_COUNT = 36
+_EXPECTED_ACTIVE_SURFACE_COUNT = 51
 _RENAMED_SURFACE = "nursery-garden-decorations-scenery"
 _RETIRED_SURFACE = "nursery-weather-scenery"
 _SCENARIO_OVERRIDES: dict[str, tuple[str, int]] = {
@@ -93,12 +94,16 @@ def compile_contract(registry: SurfaceRegistry = REGISTRY) -> dict[str, Any]:
                 {"name": name, "labels": list(labels)}
                 for name, labels in registry.profile_groups(profile)
             ],
+            "contact_sheets": sheet_layout(registry.profile_labels(profile)),
             "surface_count": len(registry.profile_labels(profile)),
             "contact_sheet_page_count": registry.profile_page_count(profile),
             "topology_digest": registry.profile_digest(profile),
         }
         for profile in registry.profile_names
     }
+    assignments = {label: {"sheet": page["sheet"], "sheet_name": page["name"], "display_order": order}
+                   for page in profiles["full"]["contact_sheets"]
+                   for order, label in enumerate(page["labels"], 1)}
     payload: dict[str, Any] = {
         "schema_version": CONTRACT_SCHEMA_VERSION,
         "contract_version": CONTRACT_VERSION,
@@ -109,6 +114,7 @@ def compile_contract(registry: SurfaceRegistry = REGISTRY) -> dict[str, Any]:
         "surfaces": [
             {
                 **surface.as_dict(),
+                "handoff": assignments.get(surface.stable_id),
                 "dependency_digest": registry.surface_digest(surface.stable_id),
             }
             for surface in registry.surfaces
@@ -126,7 +132,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
     if payload.get("schema_version") != CONTRACT_SCHEMA_VERSION:
         issues.append("unsupported capture-contract schema version")
     if payload.get("contract_version") != CONTRACT_VERSION:
-        issues.append("capture contract is not v27")
+        issues.append("capture contract is not v29")
     if payload.get("scenario_schema_version") != SCENARIO_SCHEMA_VERSION:
         issues.append("unsupported scenario schema version")
     surfaces = payload.get("surfaces")
@@ -225,7 +231,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
             )
             if scenario_id != expected_scenario or scenario_step != expected_step:
                 issues.append(
-                    f"surface {stable_id!r} has unexpected v27 scenario identity"
+                    f"surface {stable_id!r} has unexpected v29 scenario identity"
                 )
             if raw.get("retired_reason"):
                 issues.append(f"active surface {stable_id!r} has a retirement reason")
@@ -258,12 +264,12 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
         issues.append("capture contract active surface count is stale")
     if len(active_ids) != _EXPECTED_ACTIVE_SURFACE_COUNT:
         issues.append(
-            f"v27 must contain exactly {_EXPECTED_ACTIVE_SURFACE_COUNT} active surfaces"
+            f"v29 must contain exactly {_EXPECTED_ACTIVE_SURFACE_COUNT} active surfaces"
         )
     if set(payload.get("retired_ids", ())) != retired_ids:
         issues.append("capture contract retired ID ledger is stale")
     if _RETIRED_SURFACE not in retired_ids:
-        issues.append(f"v27 must permanently retire {_RETIRED_SURFACE!r}")
+        issues.append(f"v29 must permanently retire {_RETIRED_SURFACE!r}")
     for scenario_id, steps in active_scenario_steps.items():
         if sorted(steps) != list(range(1, len(steps) + 1)):
             issues.append(
@@ -271,7 +277,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
             )
 
     if set(profiles) != set(_EXPECTED_PROFILE_TOTALS):
-        issues.append("v27 capture profiles must be representative and full")
+        issues.append("v29 capture profiles must be representative and full")
 
     for profile, raw_profile in profiles.items():
         if not isinstance(profile, str) or not isinstance(raw_profile, dict):
@@ -316,7 +322,13 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
                 f"profile {profile!r} must contain exactly "
                 f"{expected_totals[0]} surfaces"
             )
-        page_count = _contact_sheet_page_count(groups)
+        sheets = raw_profile.get("contact_sheets", [])
+        sheet_labels = [label for page in sheets for label in page.get("labels", [])]
+        if len(sheet_labels) != len(set(sheet_labels)) or set(sheet_labels) != set(labels):
+            issues.append(f"profile {profile!r} sheet assignments must cover every surface exactly once")
+        if sheets != sheet_layout(labels):
+            issues.append(f"profile {profile!r} sheet assignments do not match the five review areas")
+        page_count = len(sheets)
         if raw_profile.get("contact_sheet_page_count") != page_count:
             issues.append(f"profile {profile!r} contact-sheet page count is stale")
         if expected_totals is not None and page_count != expected_totals[1]:

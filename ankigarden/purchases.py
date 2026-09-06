@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -102,6 +102,10 @@ class FertilizerStoredItemProjection:
     duration_delta_seconds: int
     card_queue_delta: int
     expires_at_ms: int | None = None
+    target_id: str = ""
+    target_name: str = ""
+    destination_kind: str = "plant"
+    remaining_cards: int = 0
 
 
 def fertilizer_stored_item_projection(
@@ -275,6 +279,8 @@ class PurchaseQuote:
     duration_delta_seconds: int = 0
     card_queue_delta: int = 0
     fertilizer_expires_at_ms: int | None = None
+
+    destination_kind: str = "inventory"
 
     @property
     def ready(self) -> bool:
@@ -551,7 +557,7 @@ def purchase_presentation(
             _without_period(quote.descriptor.buff).lstrip("+"),
             flags=re.IGNORECASE,
         )
-        outcome = f"Adds {growth_effect or 'Growth'} to one plant when used."
+        outcome = f"Adds {growth_effect or 'Growth'} when used."
         # The title already carries the item identity. Repeating it beside the
         # artwork creates a visually duplicated heading in the compact dialog.
         show_item_name = False
@@ -600,7 +606,8 @@ def purchase_presentation(
             activity_label = f"Applied {item_name} to {fertilizer_target}"
             success_message = f"{item_name} applied."
         if quote.disposition is not PurchaseDisposition.INVENTORY:
-            next_actions = ("View plant", "Keep browsing")
+            next_actions = (("View garden", "Keep browsing") if quote.destination_kind == "garden"
+                            else ("View plant", "Keep browsing"))
     elif quote.kind in {PurchaseKind.GARDEN_FEATURE, PurchaseKind.SCENERY}:
         title = f"Buy {item_name}?"
         outcome = "Adds it to garden decorations and scenery."
@@ -618,8 +625,8 @@ def purchase_presentation(
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
         title = f"Unlock {bed_name}?"
         outcome = (
-            "Adds one permanent garden bed. Each other planted bed adds a 10% "
-            "Shared Growth share. A Full Bloom plant still adds its share."
+            "Adds one permanent garden bed. Each other planted bed adds a "
+            "Shared Growth lane (10%; 15% with the Golden Trowel). A Full Bloom plant still adds its share."
         )
         preview_style = PurchasePreviewStyle.GARDEN_BED
         activity_label = f"Unlocked {item_name}"
@@ -980,6 +987,9 @@ class PurchaseOutcome:
     card_queue_delta: int = 0
     fertilizer_expires_at_ms: int | None = None
 
+    destination_kind: str = "inventory"
+    remaining_cards: int = 0
+
     @property
     def success(self) -> bool:
         return self.status is PurchaseStatus.SUCCESS
@@ -988,12 +998,13 @@ class PurchaseOutcome:
     def fertilizer_stored_item(self) -> FertilizerStoredItemProjection | None:
         if self.fertilizer_stored_item_disposition is None:
             return None
-        return fertilizer_stored_item_projection(
+        return replace(fertilizer_stored_item_projection(
             self.fertilizer_stored_item_disposition,
             duration_delta_seconds=self.duration_delta_seconds,
             card_queue_delta=self.card_queue_delta,
             expires_at_ms=self.fertilizer_expires_at_ms,
-        )
+        ), target_id=self.result_id, destination_kind=self.destination_kind,
+            remaining_cards=self.remaining_cards)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1018,6 +1029,8 @@ class PurchaseOutcome:
             "duration_delta_seconds": self.duration_delta_seconds,
             "card_queue_delta": self.card_queue_delta,
             "fertilizer_expires_at_ms": self.fertilizer_expires_at_ms,
+            "destination_kind": self.destination_kind,
+            "remaining_cards": self.remaining_cards,
         }
 
     @staticmethod
@@ -1091,6 +1104,10 @@ class PurchaseOutcome:
                 )
             except ValueError:
                 return None
+        destination_kind = value.get("destination_kind", "inventory")
+        remaining_cards = value.get("remaining_cards", 0)
+        if destination_kind not in {"plant", "garden", "inventory"} or type(remaining_cards) is not int or remaining_cards < 0:
+            return None
         return PurchaseOutcome(
             status=status,
             item_id=str(value["item_id"]),
@@ -1109,6 +1126,7 @@ class PurchaseOutcome:
             duration_delta_seconds=duration_delta_seconds,
             card_queue_delta=card_queue_delta,
             fertilizer_expires_at_ms=fertilizer_expires_at_ms,
+            destination_kind=destination_kind, remaining_cards=remaining_cards,
         )
 
 

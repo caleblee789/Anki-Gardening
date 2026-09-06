@@ -168,7 +168,7 @@ def test_today_page_copy_has_no_goal_or_find_drought_language() -> None:
         assert forbidden not in literals
 
 
-def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> None:
+def test_today_projection_shows_equipped_items_without_scheduling() -> None:
     project = _page_projection_function()
     state = SimpleNamespace(
         daily_completion=SimpleNamespace(
@@ -216,9 +216,6 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
     assert result.status.secondary == ("176 cards studied",)
     assert result.weather_name == "Watering Station"
     assert result.scenery_name == "Spring Bloom"
-    assert result.loadout_locked is True
-    assert result.queued_weather_name == "Herbalist’s Hourglass"
-    assert result.queued_scenery_name == "Full Moon Garden"
     assert result.claim_state == "pending"
 
 

@@ -6,6 +6,85 @@ import pytest
 pytestmark = pytest.mark.release_evidence
 
 
+def test_starter_previews_cycle_independently_without_choosing_a_plant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        from aqt.qt import QApplication, QDialog, QHBoxLayout, QPushButton, QSize, Qt
+        from PyQt6.QtTest import QTest
+        from ankigarden.capture.runtime import _UiFaceCaptureRunner
+        from ankigarden.ui.dashboard import GardenIconButton, _StarterPlantCard, _asset_preview_label
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+
+    assets = Path(__file__).resolve().parents[1] / "ankigarden/assets/v6_storybook_gouache/plants"
+    engine = SimpleNamespace(
+        state={"plants": []},
+        resolve_plant_image=lambda species, stage: str(
+            assets / species / stage / f"{species}_{stage}_twilight_v6.webp"
+        ),
+    )
+    application = QApplication.instance() or QApplication([])
+    dialog = QDialog()
+    layout = QHBoxLayout(dialog)
+    choices = []
+    cards = [_StarterPlantCard(engine, species, lambda: False, dialog)
+             for species in ("rose", "bonsai")]
+    for card in cards:
+        card.chosen.connect(choices.append)
+        layout.addWidget(card)
+    default = QPushButton("Choose a bed", dialog)
+    default.setDefault(True)
+    default.clicked.connect(lambda: choices.append("default"))
+    layout.addWidget(default)
+    ordinary_icon = GardenIconButton("chevron-right", "Ordinary navigation", dialog)
+    layout.addWidget(ordinary_icon)
+    dialog.show()
+    application.processEvents()
+    try:
+        auditor = _UiFaceCaptureRunner.__new__(_UiFaceCaptureRunner)
+        audit, _warnings = auditor._visual_contract_audit(dialog, "starter-preview-regression")
+        assert "icon-control-size" not in audit["issues"]
+        ordinary_icon.setIconSize(QSize(12, 12))
+        audit, _warnings = auditor._visual_contract_audit(dialog, "starter-preview-regression")
+        assert "icon-control-size" in audit["issues"]
+        ordinary_icon.setIconSize(QSize(18, 18))
+        assert [card.stage_label.text() for card in cards] == ["Full Bloom", "Full Bloom"]
+        assert "undiscovered" not in cards[0].artwork.accessibleName().lower()
+        for stage, title in (
+            ("Seed", "Rose Seed"), ("Sprout", "Rose Sprout"),
+            ("Young", "Young Rose"), ("Mature", "Mature Rose"),
+            ("Flowering", "Flowering Rose"), ("Full Bloom", "Full Bloom Rose"),
+        ):
+            QTest.mouseClick(cards[0].next_button, Qt.MouseButton.LeftButton)
+            assert cards[0].stage_label.text() == stage
+            assert cards[0].stage_label.accessibleName() == title
+            assert cards[0].artwork.accessibleName() == f"{title} stage preview"
+            assert cards[1].stage_label.text() == "Full Bloom"
+        QTest.keyClick(cards[0].next_button, Qt.Key.Key_Return)
+        assert cards[0].stage_label.text() == "Seed"
+        QTest.keyClick(cards[0].previous, Qt.Key.Key_Space)
+        assert cards[0].stage_label.text() == "Full Bloom"
+        assert choices == []
+        assert engine.state == {"plants": []}
+
+        # Previewing a starter must not reveal Full Bloom on other surfaces.
+        concealed = _asset_preview_label(engine, "rose", "rare")
+        assert concealed.accessibleName() == "Full Bloom Rose undiscovered"
+        concealed.deleteLater()
+        QTest.keyClick(cards[0].selection, Qt.Key.Key_Return)
+        assert choices == ["rose"]
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        application.processEvents()
+
+
 def test_progress_grid_preserves_full_single_and_empty_heights_when_qt_is_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -63,7 +142,7 @@ def test_progress_grid_preserves_full_single_and_empty_heights_when_qt_is_availa
     application.processEvents()
 
 
-def test_collection_subtabs_preserve_state_and_landmarks_fit_canonical_width(
+def test_collection_hides_dormant_landmarks_and_retains_enabled_layout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Exercise the 950 px dialog's Collection content without launching Anki."""
@@ -117,6 +196,20 @@ def test_collection_subtabs_preserve_state_and_landmarks_fit_canonical_width(
 
     application = QApplication.instance() or QApplication([])
     engine = _AssetEngine()
+    from ankigarden import feature_availability
+
+    dormant = CollectionSection(engine, PlantCollectionPane(), None)
+    assert tuple(dormant.subtabs.buttons) == (
+        CollectionTab.PLANTS, CollectionTab.SCENERY, CollectionTab.DECORATIONS,
+    )
+    dormant.set_current(CollectionTab.GARDEN_LANDMARKS, focus_tier_id="lily_pond")
+    assert dormant.current_tab is CollectionTab.PLANTS
+    dormant.close()
+    dormant.deleteLater()
+    application.processEvents()
+
+    # Keep the retained pane usable for a later release without exposing it now.
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", True)
     target = GrowthTargetRef(GrowthTargetType.LANDMARK, "garden_landmark")
     snapshot = build_growth_projects_snapshot(
         state_revision=4,

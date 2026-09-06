@@ -1,4 +1,7 @@
 from __future__ import annotations
+from .feature_availability import landmarks_enabled
+
+from .ui.formatters import format_plant_name
 
 import json
 import logging
@@ -666,11 +669,11 @@ class AnkiGardenApp:
         )
         normalized_tab = (
             "garden-landmarks"
-            if requested_tab == "garden-landmarks" or focus_tier_id else
+            if landmarks_enabled() and (requested_tab == "garden-landmarks" or focus_tier_id) else
             "plants"
         )
         self._collection_tab_pending = normalized_tab
-        self._collection_focus_tier_id_pending = str(focus_tier_id or "")
+        self._collection_focus_tier_id_pending = str(focus_tier_id or "") if landmarks_enabled() else ""
         self._collection_open_pending = True
         self.open_dashboard()
 
@@ -1535,8 +1538,6 @@ class AnkiGardenApp:
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
                 garden_overlay_url=self._home_garden_overlay_url(),
-                weather_url=self._home_garden_feature_url(),
-                garden_feature_pad_url=self._home_garden_feature_pad_url(),
                 landmark_id=landmark_id,
                 landmark_asset=landmark_asset,
                 landmark_url=landmark_url,
@@ -1558,7 +1559,7 @@ class AnkiGardenApp:
             return '<div class="ag-home__plant"><div class="ag-home__plant-name">Seedling</div></div>'
         badges = []
         for plant in plants:
-            plant_name = escape(str(plant.name))
+            plant_name = escape(str(format_plant_name(plant)))
             image_html = self._plant_badge_image_html(plant)
             badges.append(
                 f'<div class="ag-home__plant">{image_html}'
@@ -1666,7 +1667,7 @@ class AnkiGardenApp:
             item = {
                 "plant_id": plant.plant_id,
                 "slot_index": plant.slot_index,
-                "name": plant.name,
+                "name": format_plant_name(plant),
                 "species": plant.species,
                 "stage": plant.growth_stage,
                 "is_active": plant.plant_id == self.storage.state.active_plant_id,
@@ -1699,7 +1700,7 @@ class AnkiGardenApp:
         src = self._asset_web_url(path)
         if not src:
             return ""
-        plant_name = escape(str(getattr(plant, "name", "Plant")), quote=True)
+        plant_name = escape(format_plant_name(plant), quote=True)
         return f'<img class="ag-home__plant-thumb" src="{src}" alt="{plant_name}">'
 
     def _home_background_url(self) -> str:
@@ -1722,37 +1723,14 @@ class AnkiGardenApp:
             return ""
         return self._asset_web_url(path)
 
-    def _home_garden_feature_url(self) -> str:
-        resolver = getattr(self.engine, "resolve_garden_feature_asset", None)
-        try:
-            asset = resolver() if callable(resolver) else None
-            path = asset.path if asset is not None and hasattr(asset, "path") else None
-        except Exception:
-            logger.debug(
-                "Anki Garden: unable to resolve Home Garden Decoration",
-                exc_info=True,
-            )
-            return ""
-        return self._asset_web_url(path)
-
-    def _home_garden_feature_pad_url(self) -> str:
-        resolver = getattr(self.engine, "resolve_garden_feature_pad_asset", None)
-        try:
-            asset = resolver() if callable(resolver) else None
-            path = asset.path if asset is not None and hasattr(asset, "path") else None
-        except Exception:
-            logger.debug(
-                "Anki Garden: unable to resolve Home Garden Decoration pad",
-                exc_info=True,
-            )
-            return ""
-        return self._asset_web_url(path)
-
     def _home_landmark_presentation(
         self,
         state: object | None = None,
     ) -> tuple[str, dict[str, object] | None, str]:
         """Return one coherent displayed-Landmark identity and Home URL."""
+
+        if not landmarks_enabled():
+            return "", None, ""
 
         source_state = state if state is not None else self.storage.state
         landmark_id = str(

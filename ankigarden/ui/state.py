@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from .formatters import format_plant_name
+
 from dataclasses import dataclass, replace
 from typing import Any
 from weakref import WeakMethod
 
 from .formatters import format_garden_coins, format_growth, format_integer
+from .copy import GARDEN_TITLE
 from .plant_display import growth_display, plant_growth_points
 
 
@@ -65,6 +68,7 @@ class GardenUiSnapshot:
     fertilizer_growth_today: int = 0
     weather_growth_today: int = 0
     scenery_growth_today: int = 0
+    trophy_growth_today: int = 0
     other_modifier_growth_today: int = 0
 
 
@@ -106,7 +110,7 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
     plants = tuple(
         PlantUiSnapshot(
             plant_id=str(getattr(plant, "plant_id", "") or ""),
-            name=str(getattr(plant, "name", "Plant") or "Plant"),
+            name=format_plant_name(plant),
             species=str(getattr(plant, "species", "plant") or "plant"),
             stage=str(getattr(plant, "growth_stage", "seed") or "seed"),
             growth_points=plant_growth_points(plant),
@@ -149,7 +153,7 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
     active = next((plant for plant in plants if plant.is_active), None)
     active_growth = growth_display(active.growth_points if active is not None else 0)
     return GardenUiSnapshot(
-        garden_name=str(getattr(state, "garden_name", "My Garden") or "My Garden"),
+        garden_name=GARDEN_TITLE,
         active_plant_id=active_id,
         active_plant_name=active.name if active is not None else "",
         active_stage=active_growth.stage if active is not None else "",
@@ -202,6 +206,7 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
         scenery_growth_today=max(
             0, int(getattr(stats, "scenery_growth", 0) or 0)
         ),
+        trophy_growth_today=max(0, int(getattr(stats, "trophy_growth", 0) or 0)),
         other_modifier_growth_today=max(
             0, int(getattr(stats, "booster_growth", 0) or 0)
         ),
@@ -277,7 +282,7 @@ def garden_preview_snapshot(
     return garden_preview_from_values(
         consumer=consumer,
         phase=phase,
-        garden_name=(snapshot.garden_name if snapshot is not None else "My Garden"),
+        garden_name=GARDEN_TITLE,
         active_plant_name=(snapshot.active_plant_name if snapshot is not None else ""),
         active_stage=(snapshot.active_stage if snapshot is not None else ""),
         active_growth_points=(
@@ -311,7 +316,7 @@ def garden_preview_from_values(
     *,
     consumer: str,
     phase: str = "success",
-    garden_name: str = "My Garden",
+    garden_name: str = GARDEN_TITLE,
     active_plant_name: str = "",
     active_stage: str = "",
     active_growth_points: int = 0,
@@ -337,7 +342,8 @@ def garden_preview_from_values(
         normalized_phase = "error"
     if not enabled:
         normalized_phase = "disabled"
-    garden_name = str(garden_name or "My Garden")
+    # Retain the input for compatibility; custom names are editable only in Settings.
+    garden_name = GARDEN_TITLE
     active_name = str(active_plant_name or "")
     stage = str(active_stage or "") if active_name else ""
     stage_label = stage.replace("_", " ").title() if stage else ""

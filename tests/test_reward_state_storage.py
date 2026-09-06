@@ -72,7 +72,7 @@ def test_schema20_reward_migration_preserves_legacy_and_starts_new_find_drought(
 
     migrated = migrate_modern_state(payload)
 
-    assert migrated.version == STATE_VERSION == 27
+    assert migrated.version == STATE_VERSION
     assert migrated.reward_seed == "persisted-secret"
     assert migrated.currency_transactions[0].event_key == "legacy:event"
     assert migrated.reward_drop_history == [RewardDrop(
@@ -97,6 +97,7 @@ def test_schema20_reward_migration_preserves_legacy_and_starts_new_find_drought(
 def test_reward_authorities_round_trip_without_using_bounded_history_for_replay(
     tmp_path,
 ) -> None:
+    from ankigarden.models.welcome import WelcomeReceipt, WelcomeReward
     lineage = "v1|2026-08-20|42|1"
     original_revlog_id = 1_776_700_000_001
     reanswer_floor = original_revlog_id + 50_000
@@ -122,6 +123,11 @@ def test_reward_authorities_round_trip_without_using_bounded_history_for_replay(
     )
     state = GardenState(
         currency_balance=10,
+        welcome_receipt=WelcomeReceipt(
+            status="started", plant_id="starter", history_review_count=1_000,
+            history_rewards=(WelcomeReward("achievement:reviews_1000_total", "inventory_item", 1, "growth_charge_standard"),),
+            achievement_ids=("reviews_1000_total",),
+        ),
         currency_transactions=[CurrencyTransaction(
             "tx",
             "event:bundle",
@@ -224,6 +230,7 @@ def test_reward_authorities_round_trip_without_using_bounded_history_for_replay(
     reloaded_state = reopened._load_authoritative_state()
     reopened.state = reloaded_state
     assert reloaded_state.currency_balance == 10
+    assert reloaded_state.welcome_receipt == state.welcome_receipt
     assert reopened.reward_applied("event:bundle")
     assert reopened.answer_consumed("answer:0")
     assert reloaded_state.pending_reanswer_lineages == {

@@ -26,8 +26,10 @@ from ..growth import (
 )
 from ..purchases import CompletedPurchaseRequest
 from .sync_reward import SyncRewardSummary
+from .welcome import WelcomeReceipt
 
-STATE_VERSION = 27
+STATE_VERSION = 30
+DEFAULT_GARDEN_NAME = "Anki Garden"
 
 STORED_GROWTH_OPENING_SOURCES = frozenset({
     "new_profile_zero",
@@ -110,10 +112,7 @@ COSMETIC_DISPLAY_IDS = frozenset({
     "garden_journal",
     "golden_trowel",
 })
-DECORATION_DISPLAY_IDS = frozenset({
-    *GARDEN_FEATURE_CATALOG,
-    *COSMETIC_DISPLAY_IDS,
-})
+DECORATION_DISPLAY_IDS = frozenset(GARDEN_FEATURE_CATALOG)
 CURRENT_CATALOG_SPECIES_ORDER = (
     "bonsai",
     "rose",
@@ -219,7 +218,11 @@ CARD_EFFECT_SPECS = {
     "fertilizer_basic": (100, 100, 100),
     "fertilizer_quality": (200, 200, 200),
     "fertilizer_premium": (300, 400, 400),
-    "booster_potion": (500, 100, 125),
+    "booster_potion": (500, 100, 100 + sum(
+        effect.amount for catalog in (GARDEN_FEATURE_CATALOG, SCENERY_CATALOG)
+        for item in catalog.values() for effect in item.effects
+        if effect.trigger == "booster_activation" and effect.value_kind == "booster_cards"
+    )),
 }
 
 logger = logging.getLogger(__name__)
@@ -285,6 +288,30 @@ class CardEffectBatch:
 
 
 @dataclass
+class GardenCardEffects:
+    """Paid card coverage retained after the botanical collection is complete."""
+
+    fertilizer_card_batches: List[CardEffectBatch] = field(default_factory=list)
+    fertilizer_card_queue: List[CardEffectBatch] = field(default_factory=list)
+    booster_card_batches: List[CardEffectBatch] = field(default_factory=list)
+    booster_card_queue: List[CardEffectBatch] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {name: [dict(batch.__dict__) for batch in batches]
+                for name, batches in vars(self).items()}
+
+    @classmethod
+    def from_dict(cls, value: Any, issues: list[str]) -> "GardenCardEffects":
+        raw = value if isinstance(value, dict) else {}
+        # Existing coverage may exceed the five-dose activation limit after
+        # several plants finish. Loading must never truncate that paid value.
+        return cls(**{name: _card_effect_batches(
+            raw.get(name), family=name.split("_", 1)[0],
+            label=f"garden_card_effects.{name}", issues=issues, limit=None,
+        ) for name in cls.__dataclass_fields__})
+
+
+@dataclass
 class CardEffectQueue:
     """Card-counted effects attached to one plant.
 
@@ -307,7 +334,7 @@ class CardEffectQueue:
 
 @dataclass(frozen=True)
 class DailyEconomySnapshot:
-    """Immutable mechanical choices captured by the first eligible answer."""
+    """Daily Rhythm authority; equipment IDs are historical metadata only."""
 
     anki_day: str
     garden_rhythm_percent: int = 0
@@ -745,6 +772,7 @@ class DailyStats:
     booster_growth: int = 0
     weather_growth: int = 0
     scenery_growth: int = 0
+    trophy_growth: int = 0
     plant_nurtured_growth: Dict[str, int] = field(default_factory=dict)
     plant_passive_growth_fifths: Dict[str, int] = field(default_factory=dict)
     plant_passive_growth_credited: Dict[str, int] = field(default_factory=dict)
@@ -783,6 +811,7 @@ class DailyStats:
             + self.booster_growth
             + self.weather_growth
             + self.scenery_growth
+            + self.trophy_growth
         ))
 
     @property
@@ -1145,12 +1174,10 @@ class OnboardingProgress:
 
 @dataclass(init=False)
 class GardenLoadoutState:
-    """Independent cosmetic display and mechanical-effect selections."""
+    """One equipped item per category supplies both artwork and its effect."""
 
     display_decoration_id: str = DEFAULT_GARDEN_FEATURE_ID
-    active_garden_bonus_id: str = DEFAULT_GARDEN_FEATURE_ID
     display_scenery_id: str = DEFAULT_SCENERY_ID
-    active_scenery_effect_id: str = DEFAULT_SCENERY_ID
     visibility: Dict[str, bool] = field(default_factory=lambda: {
         "garden_feature": True,
         "scenery": True,
@@ -1178,10 +1205,7 @@ class GardenLoadoutState:
             if display_decoration_id is not None
             else displayed_garden_feature_id
             if displayed_garden_feature_id is not None
-            else legacy_feature
-        ) or DEFAULT_GARDEN_FEATURE_ID
-        self.active_garden_bonus_id = canonical_garden_feature_id(
-            active_garden_bonus_id
+            else active_garden_bonus_id
             if active_garden_bonus_id is not None
             else active_bonus_garden_feature_id
             if active_bonus_garden_feature_id is not None
@@ -1191,10 +1215,7 @@ class GardenLoadoutState:
         self.display_scenery_id = str(
             display_scenery_id
             if display_scenery_id is not None
-            else legacy_scenery
-        )
-        self.active_scenery_effect_id = str(
-            active_scenery_effect_id
+            else active_scenery_effect_id
             if active_scenery_effect_id is not None
             else legacy_scenery
         )
@@ -1212,14 +1233,33 @@ class GardenLoadoutState:
     def to_dict(self) -> dict[str, Any]:
         return {
             "display_decoration_id": self.display_decoration_id,
-            "active_garden_bonus_id": self.active_garden_bonus_id,
             "display_scenery_id": self.display_scenery_id,
-            "active_scenery_effect_id": self.active_scenery_effect_id,
             "visibility": {
                 "garden_feature": bool(self.visibility.get("garden_feature", True)),
                 "scenery": bool(self.visibility.get("scenery", True)),
             },
         }
+
+    @property
+    def active_garden_bonus_id(self) -> str:
+        """Compatibility projection; cosmetic decorations have no effect."""
+        return (
+            self.display_decoration_id
+            if self.display_decoration_id in GARDEN_FEATURE_CATALOG
+            else DEFAULT_GARDEN_FEATURE_ID
+        )
+
+    @active_garden_bonus_id.setter
+    def active_garden_bonus_id(self, value: str) -> None:
+        self.display_decoration_id = canonical_garden_feature_id(value)
+
+    @property
+    def active_scenery_effect_id(self) -> str:
+        return self.display_scenery_id
+
+    @active_scenery_effect_id.setter
+    def active_scenery_effect_id(self, value: str) -> None:
+        self.display_scenery_id = str(value)
 
     @property
     def weather_id(self) -> str:
@@ -1269,7 +1309,7 @@ class GardenLoadoutState:
 @dataclass
 class GardenState:
     version: int = STATE_VERSION
-    garden_name: str = "My Garden"
+    garden_name: str = DEFAULT_GARDEN_NAME
     garden_setup_version: int = 0
     streak_days: int = 0
     total_reviews: int = 0
@@ -1282,13 +1322,17 @@ class GardenState:
     onboarding: OnboardingProgress = field(default_factory=OnboardingProgress)
     loadout: GardenLoadoutState = field(default_factory=GardenLoadoutState)
     plants: List[Plant] = field(default_factory=list)
+    garden_card_effects: GardenCardEffects = field(default_factory=GardenCardEffects)
     achievements: Dict[str, Achievement] = field(default_factory=dict)
+    # Event-time boundary: unlocked trophies never backpay imported reviews.
+    trophy_activation_ms: Dict[str, int] = field(default_factory=dict)
     daily_stats: DailyStats = field(default_factory=DailyStats)
     daily_completion: DailyCompletionState = field(default_factory=DailyCompletionState)
     daily_loadout: DailyLoadoutSchedule = field(default_factory=DailyLoadoutSchedule)
     daily_economy_snapshot: Optional[DailyEconomySnapshot] = None
     wind_chime_progress: int = 0
     watering_station_progress: int = 0
+    watering_station_progress_by_day: Dict[str, int] = field(default_factory=dict)
     firefly_lantern_progress: int = 0
     prism_pending_growth_units: int = 0
     prism_released_anki_day_id: str = ""
@@ -1389,6 +1433,9 @@ class GardenState:
     processed_revlog_ids: List[int] = field(default_factory=list)
     revlog_ledger_migration_pending: bool = False
     pending_sync_reward_summary: Optional[Dict[str, Any]] = None
+    # Additive, versioned presentation data. Missing on an established garden
+    # means there is no welcome to present; the reward ledger owns its claim.
+    welcome_receipt: Optional[WelcomeReceipt] = None
     scene_geometry_version: int = 6
     # Runtime-only repair marker. A non-null saved reference that cannot route
     # Growth is recoverable, while an explicit null means the user intentionally
@@ -1485,6 +1532,37 @@ class GardenState:
         self.loadout.visibility = source
 
     @property
+    def collection_complete(self) -> bool:
+        return set(CURRENT_CATALOG_SPECIES_ORDER).issubset({
+            plant.species for plant in self.plants if plant.fully_grown
+        })
+
+    def collect_completed_card_effects(self) -> None:
+        """Move remaining plant coverage once, preserving each dose's identity."""
+        if not self.collection_complete:
+            return
+        for family in ("fertilizer", "booster"):
+            destination = getattr(self.garden_card_effects, f"{family}_card_batches")
+            waiting = getattr(self.garden_card_effects, f"{family}_card_queue")
+            seen = {batch.source_event_key for batch in (*destination, *waiting)
+                    if batch.source_event_key}
+            for plant in sorted(self.plants, key=lambda item: (
+                item.slot_index is None, item.slot_index or 0, item.plant_id,
+            )):
+                if not plant.fully_grown:
+                    continue
+                for suffix in ("batches", "queue"):
+                    batches = getattr(plant, f"{family}_card_{suffix}")
+                    for batch in batches:
+                        if batch.remaining_cards > 0 and (
+                            not batch.source_event_key or batch.source_event_key not in seen
+                        ):
+                            waiting.append(batch)
+                            if batch.source_event_key:
+                                seen.add(batch.source_event_key)
+                    batches.clear()
+
+    @property
     def stored_growth_balance_units(self) -> int:
         """Current spendable Stored Growth balance in exact units."""
 
@@ -1523,7 +1601,9 @@ class GardenState:
             "unlocked_species": list(self.unlocked_species),
             "starter_selection_complete": self.starter_selection_complete,
             "onboarding": self.onboarding.to_dict(),
+            "welcome_receipt": self.welcome_receipt.to_dict() if self.welcome_receipt else None,
             "loadout": self.loadout.to_dict(),
+            "garden_card_effects": self.garden_card_effects.to_dict(),
             "plants": [
                 _plant_to_dict(plant)
                 for plant in sorted(
@@ -1536,6 +1616,7 @@ class GardenState:
                 )
             ],
             "achievements": {key: value.__dict__ for key, value in self.achievements.items()},
+            "trophy_activation_ms": dict(self.trophy_activation_ms),
             "daily_stats": {
                 **{
                     key: value
@@ -1581,7 +1662,6 @@ class GardenState:
                 ),
             },
             "daily_completion": self.daily_completion.__dict__,
-            "daily_loadout": self.daily_loadout.to_dict(),
             "daily_economy_snapshot": (
                 self.daily_economy_snapshot.to_dict()
                 if self.daily_economy_snapshot is not None
@@ -1589,6 +1669,7 @@ class GardenState:
             ),
             "wind_chime_progress": max(0, min(9, int(self.wind_chime_progress))),
             "watering_station_progress": max(0, min(4, int(self.watering_station_progress))),
+            "watering_station_progress_by_day": dict(self.watering_station_progress_by_day),
             "firefly_lantern_progress": max(0, min(4, int(self.firefly_lantern_progress))),
             "prism_pending_growth_units": max(
                 0, min(30_000, int(self.prism_pending_growth_units))
@@ -1760,6 +1841,9 @@ class GardenState:
             return GardenState()
         issues: list[str] = []
         state = GardenState()
+        state.garden_card_effects = GardenCardEffects.from_dict(
+            data.get("garden_card_effects"), issues,
+        )
         state.garden_name = _garden_name(data.get("garden_name"), issues)
         state.garden_setup_version = _bounded_int(
             data.get("garden_setup_version"), 0, 0, 1, "garden_setup_version", issues
@@ -1779,9 +1863,8 @@ class GardenState:
         state.daily_completion = _daily_completion_state(
             data.get("daily_completion"), state.daily_stats.day, issues
         )
-        state.daily_loadout = _daily_loadout_schedule(
-            data.get("daily_loadout"), issues
-        )
+        # Legacy schedules are accepted but cannot restore a pending selection.
+        state.daily_loadout = DailyLoadoutSchedule()
         state.daily_economy_snapshot = _daily_economy_snapshot(
             data.get("daily_economy_snapshot"), issues
         )
@@ -1792,6 +1875,16 @@ class GardenState:
             data.get("watering_station_progress"), 0, 0, 4,
             "watering_station_progress", issues
         )
+        progress_days = data.get("watering_station_progress_by_day", {})
+        if isinstance(progress_days, dict):
+            for day_value, progress in progress_days.items():
+                normalized_day = _iso_date(day_value, "", "watering_station_progress_by_day", issues)
+                if normalized_day:
+                    state.watering_station_progress_by_day[normalized_day] = _bounded_int(
+                        progress, 0, 0, 4, "watering_station_progress_by_day", issues
+                    )
+        if "watering_station_progress_by_day" not in data and state.watering_station_progress:
+            state.watering_station_progress_by_day[state.daily_stats.day] = state.watering_station_progress
         state.firefly_lantern_progress = _bounded_int(
             data.get("firefly_lantern_progress"), 0, 0, 4,
             "firefly_lantern_progress", issues
@@ -1984,7 +2077,17 @@ class GardenState:
             state.plants,
             issues,
         )
+        state.welcome_receipt = WelcomeReceipt.from_dict(data.get("welcome_receipt"))
+        if data.get("welcome_receipt") is not None and state.welcome_receipt is None:
+            issues.append("welcome_receipt: invalid presentation data ignored")
         state.achievements = _achievements(data.get("achievements"), issues)
+        activations = data.get("trophy_activation_ms", {})
+        if isinstance(activations, dict):
+            state.trophy_activation_ms = {
+                key: value for key, value in activations.items()
+                if key in {"botanists_plaque", "garden_journal", "golden_trowel"}
+                and isinstance(value, int) and not isinstance(value, bool) and value > 0
+            }
         state.currency_balance = _nonnegative_int(data.get("currency_balance"), 0, "currency_balance", issues)
         state.currency_transactions = _transactions(data.get("currency_transactions"), state.currency_balance, issues)
         state.completed_purchase_requests = _completed_purchase_requests(
@@ -2291,6 +2394,7 @@ class GardenState:
         state.scene_geometry_version = _bounded_int(
             data.get("scene_geometry_version"), 0, 0, 99, "scene_geometry_version", issues
         )
+        state.collect_completed_card_effects()
         if issues:
             logger.error("Garden state contract mismatches (%s): %s", len(issues), "; ".join(issues))
         return state
@@ -2393,11 +2497,11 @@ def _garden_name(value: Any, issues: list[str]) -> str:
     if not isinstance(value, str):
         if value is not None:
             issues.append("garden_name: expected string")
-        return "My Garden"
+        return DEFAULT_GARDEN_NAME
     clean = " ".join(value.split())
     if not clean:
         issues.append("garden_name: repaired blank name")
-        return "My Garden"
+        return DEFAULT_GARDEN_NAME
     if len(clean) > MAX_GARDEN_NAME_LENGTH:
         issues.append("garden_name: truncated to the current length limit")
     return clean[:MAX_GARDEN_NAME_LENGTH]
@@ -2525,7 +2629,7 @@ def _daily_stats(value: Any, issues: list[str]) -> DailyStats:
     for key in (
         "reviewed", "correct", "wrong", "new_count", "learning_count", "review_count",
         "difficult_count", "recovered_lapses", "base_growth", "streak_bonus_growth",
-        "fertilizer_growth", "booster_growth", "weather_growth", "scenery_growth",
+        "fertilizer_growth", "booster_growth", "weather_growth", "scenery_growth", "trophy_growth",
         "legacy_unattributed_growth",
         "answer_growth_units", "instant_growth_units", "applied_growth_units",
         "redirected_growth_units", "shared_growth_units", "stored_growth_units",
@@ -3534,7 +3638,7 @@ def _card_effect_batches(
     family: str,
     label: str,
     issues: list[str],
-    limit: int = MAX_CARD_EFFECT_BATCHES,
+    limit: int | None = MAX_CARD_EFFECT_BATCHES,
 ) -> list[CardEffectBatch]:
     if value is None:
         return []
@@ -3549,7 +3653,7 @@ def _card_effect_batches(
             or (family == "booster" and effect_id == "booster_potion")
         )
     }
-    bounded_limit = max(0, min(MAX_CARD_EFFECT_BATCHES, int(limit)))
+    bounded_limit = len(value) if limit is None else max(0, min(MAX_CARD_EFFECT_BATCHES, int(limit)))
     result: list[CardEffectBatch] = []
     event_keys: set[str] = set()
     for index, raw in enumerate(value):

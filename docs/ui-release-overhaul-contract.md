@@ -23,9 +23,9 @@ font enlargement, or a broad accessibility audit.
   shared Qt/Home projections and cache invalidation.
 - Renderer-neutral stage, `PlantIdentity`, collection-count, appearance, and
   reward projections own learner-facing names and arithmetic. Internal `rare`
-  remains stable while rendering **Full Bloom**; default identities such as
-  **Bonsai Plant** propagate across first-run selection, placement, and the
-  created plant.
+  remains stable while rendering **Full Bloom**; owned plant titles such as
+  **Full Bloom Bonsai** derive from stage and species. Seed selection and Shop
+  products retain **Bonsai Seed**.
 - `SceneGeometryLayout` and the asset manifest own bed, plant, marker, move,
   landmark, occlusion, and popover geometry.
 - `ConfigManager` owns add-on configuration separately from Garden state.
@@ -55,10 +55,11 @@ landmark activation.
 
 - The canonical stage projection has six positions: Seed, Sprout, Young,
   Mature, Flowering, and Full Bloom. It preserves internal `rare` while compact
-  UI renders `Sprout · 2 of 6 stages`.
+  UI renders a single **Bonsai Sprout** heading.
 - `PlantIdentity(plant_id, display_name, species_name)` is renderer-neutral and
-  preserves defaults such as **Bonsai Plant** across onboarding, placement,
-  Garden, Progress, and transaction surfaces.
+  preserves durable plant IDs and derives titles from stage and species across
+  Garden, Progress, and transaction targets. Rewards use sentences such as
+  **Bonsai reached full bloom** based on each recorded event. Renaming is disabled.
 - Collection counts are deliberately orthogonal. The canonical fixture renders
   `10 of 10 species discovered` and separately
   `30 of 39 collection entries discovered`; 30 is never labeled as plants.

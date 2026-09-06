@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..feature_availability import landmarks_enabled
 
 from dataclasses import dataclass
 from enum import Enum
@@ -13,10 +14,12 @@ from ..models.state import STREAK_BONUS_TIERS
 from .copy import (
     CHOOSE_STARTER_ACTION,
     FALLBACK_GARDEN_NAME,
+    GARDEN_TITLE,
     HOME_ACTIVE_ACTION,
     HOME_NO_STARTER_BODY,
     HOME_NO_STARTER_ACCESSIBLE,
     HOME_NO_STARTER_TITLE,
+    garden_preview_title,
 )
 from .formatters import format_growth, format_plant_name, format_stage_progress, format_status_label
 from .landmark_display import (
@@ -102,6 +105,7 @@ class HomeWidgetData:
     growth_accounting_stale: bool = False
     weather_visible: bool = True
     visible_scenery: str = DEFAULT_SCENERY_ID
+    planted_starter_growth_points: int = 0
 
 
 class HomeSurfaceMode(str, Enum):
@@ -168,15 +172,14 @@ def home_surface_view_model(data: HomeWidgetData) -> HomeSurfaceViewModel:
         )
 
     if not str(data.active_plant_name or ""):
-        starter_progress = growth_display(max(0, data.active_growth_points))
-        current = max(0, starter_progress.stage_points)
-        maximum = max(0, int(starter_progress.stage_goal))
+        starter_progress = growth_display(max(0, data.planted_starter_growth_points))
+        completed = bool(starter_progress.fully_grown)
+        current = max(0, data.planted_starter_growth_points if completed else starter_progress.stage_points)
+        maximum = max(1, current) if completed else max(0, int(starter_progress.stage_goal))
         mode = (
-            HomeSurfaceMode.ACTIVE_ZERO
-            if current <= 0
-            else HomeSurfaceMode.ACTIVE_COMPLETE
-            if bool(starter_progress.fully_grown)
-            else HomeSurfaceMode.ACTIVE_PARTIAL
+            HomeSurfaceMode.ACTIVE_COMPLETE if completed else
+            HomeSurfaceMode.ACTIVE_ZERO if current <= 0 else
+            HomeSurfaceMode.ACTIVE_PARTIAL
         )
         return HomeSurfaceViewModel(
             mode,
@@ -433,12 +436,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__scenery-layer { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; pointer-events:none; }
 .ag-home__scenery-layer { z-index:2; }
 .ag-home__scene-frame { container-type:size; }
-.ag-home__feature-pad,.ag-home__garden-feature { position:absolute; pointer-events:none; object-fit:contain; z-index:3; }
-.ag-home__feature-pad { left:calc(21.5cqw - 14cqh); top:calc(84.2cqh - 3.5cqh); width:28cqh; height:7cqh; }
-.ag-home__garden-feature { left:calc(21.5cqw - 12.5cqh); top:calc(83cqh - 22cqh); width:25cqh; height:25cqh; }
 .ag-home__landmark { position:absolute; pointer-events:none; object-fit:contain; z-index:5; filter:drop-shadow(0 1.2cqh 1.4cqh rgba(8,18,14,.34)); }
-.ag-home__scene-frame[data-feature-scene='light'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.8cqh rgba(35,48,35,.28)); }
-.ag-home__scene-frame[data-feature-scene='dark'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.9cqh rgba(5,10,10,.48)); }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
 .ag-home__mastery { position:absolute; object-fit:contain; pointer-events:none; animation:none !important; transition:none !important; }
 .ag-home__planter { position:absolute; object-fit:contain; pointer-events:none; }
@@ -615,7 +613,7 @@ HOME_WIDGET_STYLE = """
   filter:brightness(1.12);
 }
 .ag-home__scene::after {
-  z-index:88;
+  z-index:90;
   background:
     linear-gradient(90deg,rgba(3,12,9,.99) 0%,rgba(3,13,10,.86) 42%,rgba(4,14,11,.42) 66%,rgba(4,14,11,.05) 100%),
     linear-gradient(180deg,rgba(4,14,11,.18) 0%,transparent 58%,rgba(4,14,11,.08) 100%);
@@ -836,38 +834,15 @@ def _log_home_weather_failure_once(key: str, message: str, *, exc_info: bool = F
     logger.warning(message, exc_info=exc_info)
 
 
-def _home_weather_markup(
-    snapshot: HomeWidgetSnapshot,
-    data: HomeWidgetData,
-    *,
-    phase: str,
-    source_width: int,
-    source_height: int,
-) -> str:
-    """Render the one static Home Garden Decoration at the shared anchor."""
-
-    if (
-        not data.weather_visible
-        or phase in {"loading", "error", "disabled"}
-        or not data.weather_url
-        or not data.garden_feature_pad_url
-    ):
-        return ""
-    return (
-        f'<img class="ag-home__feature-pad" data-testid="home-garden-feature-pad" '
-        f'src="{escape(data.garden_feature_pad_url, quote=True)}" alt="" aria-hidden="true">'
-        f'<img class="ag-home__garden-feature" data-testid="home-garden-feature" '
-        f'data-garden-feature="{escape(data.weather, quote=True)}" '
-        f'src="{escape(data.weather_url, quote=True)}" alt="" aria-hidden="true">'
-    )
-
-
 def _home_landmark_markup(
     data: HomeWidgetData,
     *,
     phase: str,
 ) -> str:
     """Render one noninteractive completed Landmark with exact artwork."""
+
+    if not landmarks_enabled():
+        return ""
 
     landmark_id = str(data.landmark_id or "")
     landmark_url = str(data.landmark_url or "")
@@ -1351,18 +1326,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         if data.garden_overlay_url else
         ""
     )
-    weather_layer = _home_weather_markup(
-        snapshot,
-        data,
-        phase=phase,
-        source_width=source_width,
-        source_height=source_height,
-    )
+
     landmark_layer = _home_landmark_markup(data, phase=phase)
     starter_selected = bool(data.starter_selected)
-    garden_name_value = str(preview.garden_name or FALLBACK_GARDEN_NAME)
-    garden_name = escape(garden_name_value)
-    preview_title = preview.title
+    preview_title = garden_preview_title(preview.title)
     display_growth_current = max(0, preview.growth_current)
     display_growth_goal = max(0, int(preview.growth_goal))
     display_fully_grown = bool(data.active_fully_grown)
@@ -1382,7 +1349,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             growth_text = f"To {destination}: {format_growth(display_growth_current, display_growth_goal)}"
         else:
             growth_text = preview.growth_text or "0"
-        preview_identity = f"{preview.active_plant_name} · {stage}"
+        preview_identity = preview.active_plant_name
         preview_plant_name, preview_plant_stage = preview.active_plant_name, stage
         preview_progress = growth_text
         preview_support_progress = (
@@ -1392,18 +1359,21 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
         preview_support = f"{preview_identity} · {preview_support_progress}"
     elif data.planted_starter_name:
-        starter_progress = growth_display(max(0, data.active_growth_points))
+        starter_progress = growth_display(max(0, data.planted_starter_growth_points))
         display_growth_current = max(0, starter_progress.stage_points)
         display_growth_goal = max(0, int(starter_progress.stage_goal))
         starter_stage = format_status_label(
             data.planted_starter_stage or starter_progress.stage or "Seed"
         )
-        preview_identity = f"{data.planted_starter_name} · {starter_stage}"
+        preview_identity = data.planted_starter_name
         preview_plant_name, preview_plant_stage = data.planted_starter_name, starter_stage
-        preview_support_progress = format_growth(
-            display_growth_current,
-            display_growth_goal,
-        )
+        display_fully_grown = bool(starter_progress.fully_grown)
+        if display_fully_grown:
+            display_growth_current = max(0, data.planted_starter_growth_points)
+            display_growth_goal = max(1, display_growth_current)
+            preview_support_progress = f"{display_growth_current:,} total Growth"
+        else:
+            preview_support_progress = format_growth(display_growth_current, display_growth_goal)
         preview_progress = preview_support_progress
         if starter_progress.next_stage:
             preview_progress += (
@@ -1415,7 +1385,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         preview_identity = preview_support
     identity_content = (
         f'<span class="ag-home__plant-name">{escape(preview_plant_name)}</span> '
-        f'<span class="ag-home__plant-stage">· {escape(preview_plant_stage)}</span>'
         if preview_plant_name else escape(preview_identity)
     )
     support_class = "ag-home__support ag-home__support--plant" if preview_plant_name else "ag-home__support"
@@ -1443,7 +1412,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         + '</div>'
     )
     action_text = surface_view.action_text
-    action_label = f"Open {garden_name_value}" if starter_selected else CHOOSE_STARTER_ACTION
+    action_label = f"Open {GARDEN_TITLE}" if starter_selected else CHOOSE_STARTER_ACTION
     action_command = surface_view.action_command
     action_reset = HOME_ACTIVE_ACTION if starter_selected else CHOOSE_STARTER_ACTION
     no_starter_body = (
@@ -1490,14 +1459,13 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
 <div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-home-mode=\"{surface_view.mode.value}\" data-progress-current=\"{surface_view.progress_current}\" data-progress-maximum=\"{surface_view.progress_maximum}\" data-progress-percent=\"{surface_view.progress_percent:.2f}\" data-motion=\"{motion_mode}\" data-active-slot=\"{active_slot}\" data-active-band=\"{active_band}\" data-active-side=\"{active_side}\" data-summary-clearance=\"{summary_clearance}\"{focal_style} role=\"region\"
-  aria-label=\"{escape(garden_name_value, quote=True)} Anki Garden summary. {escape(preview_support, quote=True)}\">
+  aria-label=\"{GARDEN_TITLE} summary. {escape(preview_support, quote=True)}\">
   <div class=\"ag-home__body\">
     {stage_up_html}
     {partial_banner}
     <div class=\"ag-home__scene\" data-testid=\"home-scene\" aria-hidden=\"true\">
       <div class=\"ag-home__scene-frame\"{scenery_identity} data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
         {scenery_layer}
-        {weather_layer}
         {landmark_layer}
         <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
       </div>
@@ -1559,24 +1527,12 @@ def build_home_widget_success_data(
         starter_complete and active_plant is None and planted_starter is not None
     )
     active_growth = growth_display(plant_growth_points(active_plant))
-    environment_visibility = getattr(state, "environment_visibility", {})
-    weather_visible = (
-        bool(environment_visibility.get(
-            "garden_feature", environment_visibility.get("weather", True)
-        ))
-        if isinstance(environment_visibility, dict)
-        else True
-    )
-    scenery_visible = (
-        bool(environment_visibility.get("scenery", True))
-        if isinstance(environment_visibility, dict)
-        else True
-    )
+    weather_visible = True
     selected_scenery = str(
         getattr(state, "selected_background", DEFAULT_SCENERY_ID)
         or DEFAULT_SCENERY_ID
     )
-    visible_scenery = selected_scenery if scenery_visible else DEFAULT_SCENERY_ID
+    visible_scenery = selected_scenery
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
             route="home_widget",
@@ -1587,7 +1543,7 @@ def build_home_widget_success_data(
     preview_snapshot = garden_preview_from_values(
         consumer="home",
         phase="success",
-        garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
+        garden_name=GARDEN_TITLE,
         active_plant_name=format_plant_name(active_plant) if active_plant is not None else "",
         active_stage=str(getattr(active_plant, "growth_stage", "") or ""),
         active_growth_points=plant_growth_points(active_plant),
@@ -1674,7 +1630,10 @@ def build_home_widget_success_data(
             if starter_waiting_for_nurture else ""
         ),
         starter_planted_not_nurtured=starter_waiting_for_nurture,
-        garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
+        planted_starter_growth_points=(
+            plant_growth_points(planted_starter) if starter_waiting_for_nurture else 0
+        ),
+        garden_name=GARDEN_TITLE,
         starter_selected=bool(starter_complete),
         preview_snapshot=preview_snapshot,
         study_growth_generated=max(

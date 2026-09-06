@@ -670,7 +670,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         480,
         340,
         560,
-        460,
+        560,
         1.0,
         1.0,
         False,
@@ -833,6 +833,11 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "uncollected": DialogHeightProfile(300, 380, 580, 600, 660, 740),
     },
     DialogSizeClass.GROWTH_CHARGE: {
+        # Garden overflow has a short destination receipt without plant artwork.
+        "garden-ready": DialogHeightProfile(280, 320, 440, 460, 480, 560),
+        "garden-loading": DialogHeightProfile(280, 320, 440, 460, 480, 560),
+        "garden-stale": DialogHeightProfile(300, 350, 480, 460, 480, 560),
+        "garden-success": DialogHeightProfile(220, 260, 380, 460, 480, 560),
         # Preview, commit, and result all use one markup tree and one geometry
         # envelope. Content-fit may settle anywhere inside these bounds, but
         # changing tense or footer callbacks must not resize the window.

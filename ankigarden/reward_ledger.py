@@ -1331,6 +1331,26 @@ class RewardLedger:
         ).fetchone()
         return _economy_event_from_row(row) if row is not None else None
 
+    def first_item_acquisition_at(self, item_id: str) -> str | None:
+        """Read the original purchase/discovery date after display history prunes."""
+        self._ensure_open()
+        row = self._connection.execute(
+            "SELECT occurred_at FROM economy_event WHERE item_id = ? "
+            "AND event_kind IN ('purchase', 'environment_discovery') "
+            "AND occurred_at != '' ORDER BY julianday(occurred_at) LIMIT 1",
+            (str(item_id),),
+        ).fetchone()
+        candidates = [row[0]] if row is not None else []
+        candidates.extend(
+            event.occurred_at for event in self._pending_economy_events.values()
+            if event.item_id == item_id
+            and event.event_kind in {"purchase", "environment_discovery"}
+            and event.occurred_at
+        )
+        return min(candidates, key=lambda value: datetime.fromisoformat(
+            value.replace("Z", "+00:00")
+        ).timestamp()) if candidates else None
+
     def stage_economy_event(self, record: EconomyEventRecord) -> None:
         self._ensure_open()
         normalized = _normalize_economy_event(record)

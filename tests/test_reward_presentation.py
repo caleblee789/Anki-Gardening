@@ -16,6 +16,18 @@ from ankigarden.reward_presentation import (
 )
 
 
+@pytest.mark.parametrize("count, expected", ((0, "0 card reviews"), (1, "1 card review"), (1_234_567, "1,234,567 card reviews")))
+def test_past_study_receipt_copy_counts_reviews_and_never_promises_unearned_rewards(count, expected):
+    from ankigarden.models.welcome import WelcomeReceipt
+    from ankigarden.welcome_presentation import present_welcome
+
+    view = present_welcome(WelcomeReceipt(history_review_count=count))
+    assert expected + " in Anki." in view.history_intro
+    assert "earned you" not in view.history_intro
+    assert view.show_history == bool(count)
+    assert not view.history and view.achievement_count == 0
+
+
 def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event_joining() -> None:
     state = GardenState(recent_reward_receipts=[
         RewardReceipt(
@@ -321,3 +333,30 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
     }
     assert fallback_rules["all_due"].reward_coins == 10
     assert fallback_rules["all_due"].reward_growth == 0
+
+
+def test_dormant_reward_details_are_hidden_without_rewriting_history():
+    from copy import deepcopy
+    from ankigarden.models.state import FeedbackEvent
+    from ankigarden.reward_presentation import reward_content_visible
+
+    allocations = (
+        SimpleNamespace(target_type="landmark", target_id="garden_landmark", units=250),
+        SimpleNamespace(target_type="mastery", target_id="rose", units=100),
+    )
+    rows = project_growth_allocations(allocations, landmark_growth_units=300)
+    assert [(row.target_type, row.units) for row in rows] == [("mastery", 100)]
+    hidden = RewardReceipt(
+        "landmark:1", "inventory_item", "landmark", "mossy_stone_path", "2026-09-05",
+        "landmark:1", "2026-09-05T12:00:00+00:00", item_id="mossy_stone_path",
+        title="Mossy Stone Path", description="Garden Landmark completed.",
+    )
+    visible = replace(hidden, event_key="daily:1", reward_type="coins", source="daily_activity",
+                      source_id="2026-09-05", correlation_id="answer:1", item_id="", amount=4,
+                      title="Daily activity", description="")
+    state = GardenState(recent_reward_receipts=[hidden, visible])
+    before = deepcopy(state.to_dict())
+    summaries = recent_reward_summaries(state)
+    assert len(summaries) == 1 and summaries[0].receipts == (visible,)
+    assert state.to_dict() == before
+    assert not reward_content_visible(FeedbackEvent("landmark:1", "landmark", hidden.description, hidden.occurred_at))

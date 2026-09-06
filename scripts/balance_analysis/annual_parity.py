@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ankigarden.feature_availability import growth_target_enabled, landmarks_enabled
 
 """Annual production-engine parity driven by primitive review identities.
 
@@ -20,6 +21,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from hashlib import sha256
+import json
 import os
 from pathlib import Path
 from time import perf_counter
@@ -56,6 +58,7 @@ from ankigarden.garden_finds import (
 )
 from ankigarden.models.state import (
     ActivePlantPeriod,
+    Achievement,
     DailyStats,
     GardenFindOutcome,
     GardenState,
@@ -249,6 +252,22 @@ class FastAnnualStorage:
             self.state.lifetime_economy_aggregates.environment_discoveries = {
                 item_id: 1 for item_id in facts.environment_discovery_ids
             }
+
+        if scenario.opening is not None:
+            opening = scenario.opening
+            self.state.currency_balance = opening.coins
+            self.coin_sources.update(dict(opening.coin_sources))
+            self.state.lifetime_eligible_answers = opening.lifetime_answers
+            self.state.achievements = {key: Achievement(**value) for key, value
+                                       in json.loads(opening.achievement_state_json).items()}
+            self.state.inventory["cosmetics"] = list(opening.trophies)
+            self.state.trophy_activation_ms = {key: self.day_start_ms for key in opening.trophies}
+            self.state.consumables.update(dict(opening.consumables))
+            if not scenario.all_plants_complete:
+                self.state.plants[0].growth_points, self.state.plants[0].growth_remainder_units = divmod(opening.starter_growth_units, 100)
+                self.state.plants[0].checkpoint_claims = list(opening.checkpoint_claims)
+                self.state.plants[0].stage_reward_claims = list(opening.stage_reward_claims)
+                self.opening_plant_growth_units = opening.starter_growth_units
 
     def save(self) -> None:
         # The public engine transaction commits exactly once through this
@@ -847,15 +866,12 @@ def _annual_production_row(
     # Growth, not a HUD projection of the currently accumulated rhythm.
     if max(0, int(event.payload.get("answers", 0) or 0)) == 0:
         row["garden_rhythm_percent"] = 0
-    schedule = engine.state.daily_loadout
     row["active_garden_bonus_id"] = str(
-        schedule.pending_garden_feature_id
-        or engine.state.loadout.active_garden_bonus_id
+        engine.state.loadout.active_garden_bonus_id
         or ""
     )
     row["active_scenery_id"] = str(
-        schedule.queued_scenery_id
-        or engine.state.loadout.active_scenery_effect_id
+        engine.state.loadout.active_scenery_effect_id
         or ""
     )
     return row
@@ -869,15 +885,12 @@ def _apply_modeled_environment_selection(
 
     selected_bonus = str(expected_row["active_garden_bonus_id"] or "")
     selected_scenery = str(expected_row["active_scenery_id"] or "")
-    schedule = engine.state.daily_loadout
     current_bonus = str(
-        schedule.pending_garden_feature_id
-        or engine.state.loadout.active_garden_bonus_id
+        engine.state.loadout.active_garden_bonus_id
         or ""
     )
     current_scenery = str(
-        schedule.queued_scenery_id
-        or engine.state.loadout.active_scenery_effect_id
+        engine.state.loadout.active_scenery_effect_id
         or ""
     )
     if selected_bonus and selected_bonus != current_bonus:
@@ -946,6 +959,33 @@ def _plant_owned_species_if_space(engine: GardenGameEngine) -> None:
         _plant_if_space(engine, plant)
 
 
+def _rotate_completed_species(engine: GardenGameEngine) -> None:
+    """Replay the quick audit's once-daily replacement through public actions."""
+    waiting = [plant for plant in engine.state.plants if not plant.planted and not plant.fully_grown]
+    for plant in waiting:
+        occupied = sorted((p for p in engine.state.plants if p.planted), key=lambda p: p.slot_index)
+        destination = None
+        if len(occupied) >= engine.state.unlocked_slots:
+            finished = next((p for p in occupied if p.fully_grown), None)
+            if finished is None:
+                break
+            destination = finished.slot_index
+            success, message = engine.move_to_collection(finished.plant_id)
+            if not success:
+                raise AssertionError(f"Quick audit could not store Full Bloom: {message}")
+        success, message = engine.plant_from_collection(plant.plant_id, destination)
+        if not success:
+            raise AssertionError(f"Quick audit could not plant owned seedling: {message}")
+    if engine.active_plant() is None:
+        replacement = next((p for p in sorted(engine.state.plants,
+                           key=lambda p: p.slot_index if p.slot_index is not None else 99)
+                            if p.planted and not p.fully_grown), None)
+        if replacement is not None:
+            success, message = engine.set_active_plant(replacement.plant_id)
+            if not success:
+                raise AssertionError(f"Quick audit could not nurture replacement: {message}")
+
+
 def _buy_permanent(engine: GardenGameEngine, option: object) -> None:
     category = str(getattr(option, "category", "") or "")
     item_id = str(getattr(option, "item_id", "") or "")
@@ -975,7 +1015,7 @@ def _has_active_fertilizer(engine: GardenGameEngine, item_id: str) -> bool:
     return any(
         str(batch.effect_id) == str(item_id)
         and max(0, int(batch.remaining_cards)) > 0
-        for plant in engine.state.plants
+        for plant in (*engine.state.plants, engine.state.garden_card_effects)
         for batch in (
             *plant.fertilizer_card_batches,
             *plant.fertilizer_card_queue,
@@ -1016,10 +1056,9 @@ def _apply_modeled_inventory_use(
         consumable = facts_by_id.get(item_id)
         if consumable is None or consumable.maximum_growth <= 0:
             continue
-        plant = engine.active_plant()
-        if plant is None or plant.fully_grown:
-            # Production preserves earned items until a legal unfinished
-            # plant exists; the accelerated strategy follows the same rule.
+        target_id = engine.consumable_target_id()
+        plant = engine._consumable_target(target_id)
+        if plant is None:
             continue
         if item_id.startswith("fertilizer_"):
             fertilizer_dose_count = sum(
@@ -1033,7 +1072,7 @@ def _apply_modeled_inventory_use(
             if fertilizer_dose_count >= engine.EFFECT_DOSE_CAP:
                 continue
             success, message = engine.use_fertilizer_item(
-                plant.plant_id,
+                target_id,
                 tier=item_id.removeprefix("fertilizer_"),
             )
         elif item_id == "booster_potion":
@@ -1049,8 +1088,8 @@ def _apply_modeled_inventory_use(
                     *plant.booster_card_queue,
                 )
             }
-            success, message = engine.use_booster_potion(plant.plant_id)
-            if success and engine.last_booster_result.hourglass_bonus_cards:
+            success, message = engine.use_booster_potion(target_id)
+            if success and (engine.last_booster_result.hourglass_bonus_cards + engine.last_booster_result.full_moon_bonus_cards):
                 new_batches = [
                     batch
                     for batch in (
@@ -1077,12 +1116,12 @@ def _apply_modeled_inventory_use(
                     )
                 recorder(
                     batch.source_event_key,
-                    cards=engine.last_booster_result.hourglass_bonus_cards,
+                    cards=(engine.last_booster_result.hourglass_bonus_cards + engine.last_booster_result.full_moon_bonus_cards),
                     growth_per_card_units=batch.growth_per_card_units,
                 )
         elif item_id.startswith("growth_charge_"):
             success, message = engine.use_growth_charge(
-                item_id, plant.plant_id
+                item_id, target_id
             )
         else:
             continue
@@ -1121,6 +1160,8 @@ def _apply_modeled_purchases(
         _buy_permanent(engine, option)
         cursor += 1
 
+    if scenario.rotate_completed_plants:
+        _rotate_completed_species(engine)
     if scenario.strategy.buys_consumables and consumable is not None:
         item_id = str(getattr(consumable, "item_id", "") or "")
         price = max(0, int(getattr(consumable, "price_coins", 0) or 0))
@@ -1132,8 +1173,9 @@ def _apply_modeled_purchases(
             and stored < 1
             and not active
         ):
-            plant = engine.active_plant()
-            if plant is None or plant.fully_grown:
+            target_id = engine.consumable_target_id()
+            plant = engine._consumable_target(target_id)
+            if plant is None:
                 return cursor
             fertilizer_dose_count = sum(
                 1
@@ -1147,7 +1189,7 @@ def _apply_modeled_purchases(
                 return cursor
             tier = item_id.removeprefix("fertilizer_")
             success, message = engine.purchase_fertilizer(
-                plant.plant_id, tier
+                target_id, tier
             )
             if not success:
                 raise AssertionError(
@@ -1183,7 +1225,7 @@ def _next_available_growth_target(snapshot) -> GrowthTargetRef | None:
     return next(
         (
             choice.target for choice in snapshot.target_choices
-            if choice.available
+            if choice.available and growth_target_enabled(choice.target.target_type)
         ),
         None,
     )
@@ -1224,7 +1266,7 @@ def _ensure_modeled_active_growth_target(
 
     snapshot = engine.growth_projects_snapshot()
     active = snapshot.active_target
-    if active is not None:
+    if active is not None and growth_target_enabled(active.target_type):
         track = _growth_track_for_target(snapshot, active)
         if track.remaining_capacity_units is None:
             return
@@ -1327,7 +1369,7 @@ def _apply_modeled_growth_projects(
         claim = next((
             (snapshot.landmark_track.target, tier)
             for tier in snapshot.landmark_track.tiers
-            if tier.claimable and tier.can_claim_now
+            if landmarks_enabled() and tier.claimable and tier.can_claim_now
         ), None)
         if claim is None:
             for _species_id, track in snapshot.mastery_tracks_by_species:

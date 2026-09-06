@@ -1,147 +1,107 @@
-# Garden Decorations implementation
+# Garden Decorations and Gardening Trophies
 
-Garden Decorations directly replace the former Weather customization through
-the legacy migration path. Normal runtime rendering draws one static prop and one
-shared stone pad; it does not request a scene overlay, create particles, or run
-a decoration animation loop.
+The full Garden and Garden Setup preview show the equipped decoration as a
+static, grounded object. The Home banner omits decoration artwork. Equipment
+and permanent trophy bonuses still apply while using Home.
 
-See the [illustrated Garden Decorations reference](references/garden-decorations-reference.docx)
-for the current catalog, acquisition methods, Garden Find rates, bonuses, and
-runtime artwork.
+## Outdoor catalog
 
-## Registry and preserved value
+| Decoration | Source | Price | Effect |
+|---|---|---:|---|
+| Seedling Sign | Included | — | No study bonus |
+| Wind Chime | Shop | 100 Coins | +1 Growth every 5 cards |
+| Harvest Bell | Shop | 175 Coins | +5 Coins per Today’s Cards completion |
+| Watering Station | Shop | 250 Coins | +1 Growth every 2 cards, first 200 each day |
+| Herbalist’s Hourglass | Shop | 350 Coins | 1 Booster Potion every 30 completed days; Potions last 25 extra cards |
+| Firefly Lantern | Garden Find | — | +3 Growth every 5 cards to the unfinished plant closest to a checkpoint |
+| Prism Trellis | Garden Find | — | Banks 1 Growth per card for release on completion |
 
-| ID | Rarity | Source | Price | Effect key |
-|---|---|---|---:|---|
-| `seedling_sign` | Common | Included | — | `none` |
-| `wind_chime` | Common | Nursery | 100 | `growth_every_10_plus_1` |
-| `harvest_bell` | Common | Nursery | 175 | `completion_coins_plus_5` |
-| `watering_station` | Uncommon | Nursery | 250 | `growth_every_5_plus_1` |
-| `herbalist_hourglass` | Uncommon | Nursery | 350 | `booster_cards_multiplier_1_25` |
-| `firefly_lantern` | Rare | Garden Find | — | `growth_every_4_plus_3` |
-| `prism_trellis` | Very Rare | Garden Find | — | `prism_bank_per_answer_1_5` |
+The catalog and committed engine results remain authoritative. Scenery and
+decoration artwork match the equipped items; previews do not change equipment.
+There is one outdoor decoration slot, and the Seedling Sign is its neutral
+fallback.
 
-Names, prices, rarity, acquisition paths, and ownership value are preserved
-from the migrated catalog; the revised recurring effects are authoritative in
-the reward engine. Cards, previews, and summaries display its committed data.
-The shared appearance projection keeps **Scenery**, **Displayed decoration**,
-**Active garden bonus**, and **Visual effects** as four independent facts.
+## Placement and depth
 
-## One layout contract
+`ui/garden_feature_layout.py` projects the common ground point `(0.215, 0.830)`.
+The base canvas is `0.25 × scene height`, adjusted by each asset’s measured scale.
+The asset manifest records its physical ground contact, footprint, support and
+art bounds, and contact-shadow dimensions. These values do not change by theme.
 
-- Anchor: `(0.215, 0.830)` in visible-scene coordinates.
-- Square decoration canvas: `sceneHeight × 0.25`.
-- Asset contact point: `(0.500, 0.880)`.
-- Pad center: `(0.215, 0.842)`; size `0.28h × 0.07h`.
-- Decoration and pad ignore pointer input and inherit scene clipping.
-- All seven decoration masters are transparent 1024 × 1024 images normalized to
-  the same contact line. No item or theme stores an offset or rarity scale.
+A subtle elliptical shadow sits under the actual support. The old common stone
+pad is retired; each object keeps its original support artwork. Decoration
+painting follows the bed and plant layers, so tall pieces such as the Wind
+Chime’s hook stay visible in front of the middle bed. Plant, bed, building, and
+interaction geometry are unchanged. Garden Setup uses the same scene renderer.
 
-Home uses its dedicated artwork and container-query units, so placement follows
-the actual visible scene height. Native Garden uses an exact 3:2 canvas. The
-existing 4:3 scenery image covers it at `50% 48%`, preserving the full width and
-cropping only the top and bottom. There is no active 16:9 or standalone 4:3
-Garden Decoration presentation.
+Foreground color and brightness follow each scenery: warm daylight, cool snow
+and moonlight, and subdued eclipse lighting. The Firefly Lantern keeps its glow.
+Each object has its own physical scale: the hourglass and lantern are smaller
+than the barrel, while the chime and trellis stay tall.
 
-## Migration and compatibility
+Hover or keyboard focus outlines the actual artwork. Clicking or pressing Enter
+opens a compact **Garden Decoration** menu with its name, **Garden Bonus:** and
+**Date obtained:**. Escape or clicking outside closes it. The single-column menu
+uses the same concise description as Collection, Shop, purchase confirmations,
+and equipped-item panels, from `bonus_copy.py`.
 
-The state migration maps the seven legacy IDs, ownership, displayed selection,
-active Garden Bonus, queued bonus, visibility, reward records, Garden Find records, and purchase
-records. The transform is idempotent, never charges again, and never emits a
-discovery. Missing or invalid IDs fall back to Seedling Sign.
+Acquisition dates come from the permanent purchase/discovery ledger, with saved
+history as a fallback. The included sign uses its starter plant's date. Missing
+legacy dates display **Not recorded**; opening a menu never fabricates one.
 
-Legacy IDs and the old `weather` purchase kind are accepted only at migration
-boundaries. Canonical saves contain `garden_features`,
-`displayed_garden_feature_id`, `active_bonus_garden_feature_id`,
-`pending_garden_feature_id`, and `garden_feature`
-visibility. Migration maps the old IDs directly and does not require legacy
-visual assets.
+The native Garden retains its 3:2 canvas and the existing scenery cover crop at
+`50% 48%`. No placement adjustment or decoration asset is needed for Home.
 
-## Intentional limitations
+## Gardening Trophies
 
-- One displayed decoration and one active Garden Bonus; no bonus stacking,
-  multiple slots, scene click target, or
-  per-theme/per-decoration position.
-- One light/dark local contrast treatment; no recolored scene variants.
-- No decoration opacity, intensity, particle, or animation control.
-- Decoration visibility is cosmetic. The Anki-day-locked Garden Bonus remains
-  active when the art is hidden or a different prop is displayed.
-- Manual visual approval remains required before release.
+The house and Progress → Trophy Room open the same page, headed **Gardening
+Trophies**. A walnut case holds the Plaque, Journal, and Trowel in that order.
+Each bay has inline **Unlock Requirement:**, **Permanent Bonus:**, and
+**Date obtained:** details. Dates use the saved achievement unlock record. Locked trophies appear
+muted with progress; unlocked trophies use full-color artwork. No trophy has an
+Equip action or an outdoor placement.
 
-## Implementation report
+| Trophy | Unlock requirement | Permanent bonus |
+|---|---|---|
+| Botanist’s Plaque | All 10 species at Full Bloom | +1 Growth per eligible card |
+| Garden Journal | 365 verified completed review days | +5 Coins per subsequent Today’s Cards completion |
+| Golden Trowel | 100,000 eligible answers | 15% Shared Growth for every other planted bed, up from 10% |
 
-### Primary files changed
+All three bonuses work together and stack with equipped scenery and the outdoor
+decoration. The Plaque contributes before Shared Growth: a plain 10-Growth card
+becomes 11, and the Trowel adds 1.65 to each other planted bed. Full Bloom lanes
+retain normal redirection and overflow conservation. Growth Charges keep their
+fixed values, with no trophy multiplier or Shared Growth fanout.
 
-- Registry and effect authority: `ankigarden/environment.py`,
-  `ankigarden/garden_features.py`, `ankigarden/collectibles.py`, and
-  `ankigarden/garden_finds.py`.
-- Persistence and compatibility: `ankigarden/models/state.py`,
-  `ankigarden/storage.py`, and `ankigarden/purchases.py`.
-- Reward behavior and Anki-day Garden Bonus/Scenery locks: `ankigarden/game.py` and
-  `ankigarden/hooks/reviewer.py`.
-- Shared placement and rendering: `ankigarden/ui/garden_feature_layout.py`,
-  `ankigarden/ui/scene.py`, `ankigarden/ui/plant_display.py`, and
-  `ankigarden/ui/home_widget.py`.
-- Nursery, Collection, Garden Bonus, preview, and Settings surfaces:
-  `ankigarden/ui/dashboard.py`, `ankigarden/ui/environment_art.py`, and
-  `ankigarden/ui/garden_studio.py`.
-- Asset registration and validation: `ankigarden/assets/manifest.json`,
-  `scripts/normalize_garden_feature_assets.py`, and `scripts/audit_assets.py`.
-- Deterministic evidence and packaging:
-  `scripts/build_garden_feature_evidence.py` and `scripts/package_addon.py`.
+The trophy activation timestamp, introduced in schema 29, remains in schema 30. The unlocking event receives
+no new bonus; later eligible events do. Upgrading an already earned trophy
+initializes this timestamp once. Old events receive no backpay, existing one-off
+achievement rewards are not reissued, and the Journal’s reward is deduplicated
+by Anki day. Transactions restore activations and rewards together on save failure.
 
-### Assets
+## Retired artwork and migration
 
-Eight runtime WebP assets were added under
-`ankigarden/assets/v6_storybook_gouache/garden_features/`: seven transparent
-decoration canvases and one shared pad. Generation masters and prompts are retained
-under `artwork_source/garden_features/`. Retired Weather visual assets are not
-part of the runtime bundle.
+Garden Bench, Birdhouse, Butterfly House, Stone Lantern, and Sundial are absent
+from Shop, Collection, equipment, and the runtime package. Original artwork is
+saved byte-for-byte under `artwork_source/retired_cosmetics/`. Historical
+ownership and purchase records remain intact. A retired prop or trophy saved in
+the outdoor slot falls back to Seedling Sign.
 
-### Removed and retired Weather behavior
+The three original trophy images, replacement masters, generation notes, and
+original manifest entries are preserved under
+`artwork_source/achievement_trophies/`. The runtime includes only the remade
+transparent trophy artwork, sized and aligned to rest naturally in the case.
 
-Production painting and Home markup no longer invoke a Weather plan compiler,
-overlay compositor, particles, opacity, or Weather animation path. The retired
-compiler, capture matrix, evidence builder, tests, documentation, SVG assets,
-and scene-painting helpers have been removed.
+## Verification
 
-### UI and reward surfaces
+Existing engine tests cover all eight trophy combinations, actual unlock
+thresholds, duplicate reviews/completions, restart and upgrade, transaction
+rollback, unchanged Growth Charges, and zero/one/six-bed overflow. Asset and
+package checks preserve original hashes and exclude retired files.
 
-Nursery and Collection use the Garden Decorations category. Collection keeps
-the displayed decoration and Garden Bonus controls independent; Settings does
-not expose Decoration selection or visibility. There is no decoration opacity
-or animation control. Rare and Very Rare reward reveals use the static
-decoration art and Garden Bonus copy. Session Summary uses engine-confirmed
-Growth and Garden Coin totals and does not create an empty decoration section.
-Standard Finds remain a separate player-facing taxonomy from Garden
-discoveries even though both retain their stable internal ledger and event IDs.
-Collection completion reports `10 of 10 species discovered` and separately
-`30 of 39 collection entries discovered`.
-
-### Tests and evidence
-
-`tests/test_garden_features.py` covers registry resolution, recurring cadence,
-Prism banking, Hourglass doses, idempotent migration, legacy aliases, shared geometry,
-normalized assets, hidden-bonus behavior, and Anki-day locking. Retired
-Weather-compositor tests were deleted instead of being treated as active product
-requirements. Deterministic decoration-matrix raw frames remain available, but
-their superseded review sheets were removed. The current retained full UI
-contact-sheet set is indexed by the
-[2.2.0 five-page contact-sheet record](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json),
-and its remaining acceptance gates are recorded in the
-[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md). It remains review evidence
-rather than release approval.
-
-Capture contract v26 uses contract schema 2 and scenario schema 3. Its
-18-surface representative and 34-surface full profiles render two and five
-sheet pages. Every evidence layer requires `scenario_id`, `fixture_id`, and
-one-based `scenario_step`; v25 evidence cannot be reused. Deprecated visible
-copy, root/DOM overflow, progress fractions, asset mappings, Reviewer exclusion
-rectangles, four-state scroll coverage, and lineage are hard gates.
-
-Current run paths, archive and capture hashes, artifact sizes, and validation
-totals are recorded only in the
-[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md). The record remains
-`quality_status: review-required` and `release_ready: false`; manual macOS
-interaction, Windows/Linux, mixed-DPI, forced-colors, screen-reader,
-broader-keyboard, and human approval remain open.
+`scripts/build_garden_feature_evidence.py --captures <native-run> <output>`
+assembles review sheets from completed isolated-Anki captures. It does not
+recreate the garden with a separate renderer. The targeted matrix contains 63
+visible native combinations, nine native hidden baselines, and nine actual Home
+banners without decorations. Raw screenshots are authoritative; review sheets
+are navigation aids, and targeted QA does not constitute release approval.

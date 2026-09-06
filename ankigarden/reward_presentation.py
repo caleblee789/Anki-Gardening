@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
+from .feature_availability import growth_target_enabled, landmarks_enabled
 
 from .achievements import ACHIEVEMENT_DEFINITIONS, ACHIEVEMENTS_BY_ID, AchievementDefinition
 from .environment import (
@@ -33,6 +34,8 @@ from .presentation import (
     GARDEN_DISCOVERY_INTERNAL_ID,
     STANDARD_FIND_INTERNAL_ID,
     visible_reward_term,
+    plant_species_name,
+    plant_stage_event,
 )
 from .ui.copy import learner_card_copy
 from .ui.economy_presenters import coin_reward_receipt
@@ -219,6 +222,8 @@ def project_growth_allocations(
 
     result: list[ProjectGrowthPresentation] = []
     for target_type, target_id in order:
+        if not growth_target_enabled(target_type):
+            continue
         committed_units = totals[(target_type, target_id)]
         track = _growth_project_track(snapshot, target_type, target_id)
         if track is None:
@@ -500,12 +505,8 @@ class RewardDetailRow:
             for event_id in self.event_ids
             if str(event_id or "").strip()
         ))
-        if not category_label:
-            raise ValueError("reward detail category_label must not be empty")
         if not name:
             raise ValueError("reward detail name must not be empty")
-        if not value:
-            raise ValueError("reward detail value must not be empty")
         if not event_ids:
             raise ValueError("reward detail row must reference an event")
         object.__setattr__(self, "category_label", category_label)
@@ -885,6 +886,29 @@ def reward_summary(
     )
 
 
+def reward_content_visible(value: Any) -> bool:
+    """Hide dormant feature details without changing durable reward records."""
+    if landmarks_enabled():
+        return True
+    from .balance_catalog import LANDMARK_BY_ID
+
+    for field in (
+        "kind", "reward_type", "source", "source_id", "item_id",
+        "asset_category", "asset_key", "event_id", "event_key", "correlation_id",
+    ):
+        identity = str(
+            value.get(field, "") if isinstance(value, Mapping)
+            else getattr(value, field, "")
+        )
+        if (
+            identity in {"landmark", "landmarks", "garden_landmark"}
+            or identity in LANDMARK_BY_ID
+            or identity.startswith(("landmark_", "landmark:"))
+        ):
+            return False
+    return True
+
+
 def recent_reward_summaries(
     state_or_receipts: GardenState | Iterable[RewardReceipt],
     *,
@@ -901,6 +925,8 @@ def recent_reward_summaries(
     for receipt in receipts:
         if not isinstance(receipt, RewardReceipt):
             raise TypeError("recent reward history requires RewardReceipt values")
+        if not reward_content_visible(receipt):
+            continue
         identity = _receipt_group_key(receipt)
         if identity not in groups:
             groups[identity] = []
@@ -1005,11 +1031,7 @@ def _same_full_bloom_plant(
 
     if candidate.kind is not RewardHero.STAGE_CHANGE:
         return False
-    if hero.plant_id and candidate.plant_id:
-        return hero.plant_id == candidate.plant_id
-    hero_name = str(hero.plant_name or hero.title).strip().casefold()
-    candidate_name = str(candidate.plant_name or candidate.title).strip().casefold()
-    return bool(hero_name and candidate_name and hero_name == candidate_name)
+    return bool(hero.plant_id and hero.plant_id == candidate.plant_id)
 
 
 def _same_stage_change_plant(
@@ -1020,11 +1042,7 @@ def _same_stage_change_plant(
 
     if candidate.kind is not RewardHero.STAGE_CHANGE:
         return False
-    if hero.plant_id and candidate.plant_id:
-        return hero.plant_id == candidate.plant_id
-    hero_name = str(hero.plant_name or hero.title).strip().casefold()
-    candidate_name = str(candidate.plant_name or candidate.title).strip().casefold()
-    return bool(hero_name and candidate_name and hero_name == candidate_name)
+    return bool(hero.plant_id and hero.plant_id == candidate.plant_id)
 
 
 def _stage_advance_count(
@@ -1180,18 +1198,12 @@ def _reward_detail_value(item: RewardItemProjection) -> str:
 
     values: list[str] = []
 
+    plant_milestone = item.kind in {
+        RewardHero.FULL_BLOOM, RewardHero.STAGE_CHANGE, RewardHero.CHECKPOINT,
+    }
     detail = str(item.detail or "").strip()
-    if detail:
+    if detail and not plant_milestone:
         values.append(detail)
-    elif item.kind is RewardHero.FULL_BLOOM:
-        values.append("Reached Full Bloom")
-    elif item.kind is RewardHero.STAGE_CHANGE and item.new_stage:
-        values.append(f"Reached {_stage_label(item.new_stage)}")
-    elif item.kind is RewardHero.CHECKPOINT and item.checkpoint_percent:
-        values.append(
-            f"{item.checkpoint_percent:,}% toward "
-            f"{_stage_label(item.new_stage)}"
-        )
 
     if item.growth_units:
         values.append(
@@ -1216,7 +1228,7 @@ def _reward_detail_value(item: RewardItemProjection) -> str:
         return " · ".join(unique)
     if item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
         return "New discovery"
-    return item.category_label
+    return "" if plant_milestone else item.category_label
 
 
 def project_reward_detail_rows(
@@ -1227,59 +1239,33 @@ def project_reward_detail_rows(
     typed_items = tuple(items)
     if not all(isinstance(item, RewardItemProjection) for item in typed_items):
         raise TypeError("reward detail rows require RewardItemProjection values")
-    return tuple(
-        RewardDetailRow(
-            category_label=item.category_label,
-            name=item.title,
-            value=_reward_detail_value(item),
-            event_ids=(item.event_id,),
-            artwork_ref=item.artwork_ref,
-        )
-        for item in typed_items
+    return tuple(_reward_detail_row(item) for item in typed_items)
+
+
+def _reward_detail_row(item: RewardItemProjection) -> RewardDetailRow:
+    milestone = item.kind in {
+        RewardHero.FULL_BLOOM, RewardHero.STAGE_CHANGE, RewardHero.CHECKPOINT,
+    }
+    return RewardDetailRow(
+        category_label="" if milestone else item.category_label,
+        name=plant_stage_event(
+            item.plant_class,
+            "rare" if item.kind is RewardHero.FULL_BLOOM else item.new_stage,
+            checkpoint_percent=item.checkpoint_percent if item.kind is RewardHero.CHECKPOINT else 0,
+        ) if milestone else item.title,
+        value=_reward_detail_value(item),
+        event_ids=(item.event_id,),
+        artwork_ref=item.artwork_ref,
     )
 
 
 def _session_history_row(item: RewardItemProjection) -> RewardDetailRow:
     """Project one meaningful atomic item with concise event-specific copy."""
 
-    category = item.category_label
-    name = item.title
-    value = _reward_detail_value(item)
-
-    if item.kind is RewardHero.FULL_BLOOM:
-        category = "Milestone"
-        name = "Full Bloom reached"
-        values = tuple(value for value in (
-            str(item.plant_name or item.title).strip(),
-            (
-                format_garden_coins(item.garden_coins, signed=True)
-                if item.garden_coins
-                else ""
-            ),
-        ) if value)
-        value = " · ".join(values) or "Milestone reached"
-    elif item.kind is RewardHero.STAGE_CHANGE:
-        category = "Growth stage"
-        name = f"{_stage_label(item.new_stage)} reached"
-    elif item.kind is RewardHero.CHECKPOINT:
-        category = "Checkpoint reward"
-        name = (
-            f"{item.checkpoint_percent:,}% checkpoint"
-            if item.checkpoint_percent
-            else "Checkpoint reached"
-        )
-    elif item.kind is RewardHero.GARDEN_FIND:
-        category = "Garden Find"
-    elif item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
-        category = "Discovery"
-
-    return RewardDetailRow(
-        category_label=category,
-        name=name,
-        value=value,
-        event_ids=(item.event_id,),
-        artwork_ref=item.artwork_ref,
-    )
+    row = _reward_detail_row(item)
+    if item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
+        return replace(row, category_label="Discovery")
+    return row
 
 
 def project_reward_session_history(
@@ -1335,10 +1321,10 @@ def _project_compact_reward(
 
     hero = bundle.hero
     if hero.kind is RewardHero.FULL_BLOOM:
-        hero_title = "Full Bloom reached"
-        hero_subtitle = hero.plant_name or hero.title
+        hero_title = plant_stage_event(hero.plant_class, "rare")
+        hero_subtitle = ""
     elif hero.kind is RewardHero.STAGE_CHANGE:
-        hero_title = f"{_stage_label(hero.new_stage)} reached"
+        hero_title = plant_stage_event(hero.plant_class, hero.new_stage)
         stages_advanced = _stage_advance_count(bundle, hero)
         hero_subtitle = (
             f"Advanced {stages_advanced:,} stages"
@@ -1346,10 +1332,8 @@ def _project_compact_reward(
             else ""
         )
     elif hero.kind is RewardHero.CHECKPOINT:
-        hero_title = (
-            f"{hero.checkpoint_percent:,}% checkpoint"
-            if hero.checkpoint_percent
-            else "Checkpoint reached"
+        hero_title = plant_stage_event(
+            hero.plant_class, hero.new_stage, checkpoint_percent=hero.checkpoint_percent,
         )
         hero_subtitle = _next_checkpoint_context(hero.checkpoint_percent)
     else:
@@ -1584,14 +1568,14 @@ def project_committed_reward_bundle(
         items.append(RewardItemProjection(
             event_id=milestone.event_id,
             kind=kind,
-            title=milestone.plant_name or "Plant milestone",
+            title=plant_species_name(milestone.plant_class),
             category_label=category,
             occurred_at=milestone.occurred_at or event.occurred_at,
             garden_coins=max(0, int(milestone.coin_reward)),
             artwork_ref=milestone.plant_art_asset,
             detail=detail,
             plant_id=milestone.plant_id,
-            plant_name=milestone.plant_name,
+            plant_name=plant_species_name(milestone.plant_class),
             plant_class=milestone.plant_class,
             checkpoint_percent=milestone.checkpoint_percent,
             previous_stage=milestone.previous_stage,

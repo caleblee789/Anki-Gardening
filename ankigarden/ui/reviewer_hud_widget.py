@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from ..presentation import plant_stage_title
+
 from collections import deque
 import re
 from typing import Any, Callable, Literal, Mapping, Optional
 
 from .formatters import format_garden_coins, format_growth, format_quantity, format_status_label
-from .plant_art import normalized_plant_pixmap
+from .plant_art import normalized_plant_pixmap, plant_art_source_identity
 from .reviewer_hud import (
     FULL_BLOOM_GROWTH_ROUTE_COPY,
     HUD_ANSWER_CONTROLS_SCHEMA_VERSION,
@@ -366,15 +368,7 @@ def _reward_hero_subtitle(bundle: Any) -> str:
 
 
 def _full_bloom_plant_name(bundle: Any) -> str:
-    hero = _bundle_hero(bundle)
-    explicit = str(_value(hero, "plant_name", default="") or "").strip()
-    if explicit:
-        return explicit
-    subtitle = _reward_hero_subtitle(bundle)
-    if subtitle and subtitle.casefold() not in {"full bloom", "milestone reached"}:
-        return subtitle
-    title = _hero_title(bundle)
-    return title if title.casefold() != "full bloom achieved" else "Completed plant"
+    return plant_stage_title(_full_bloom_plant_class(bundle), "rare")
 
 
 def _full_bloom_plant_class(bundle: Any) -> str:
@@ -919,10 +913,9 @@ class _TwoLineLabel(QLabel):  # type: ignore[misc,valid-type]
         try:
             metrics = self.fontMetrics()
             width = max(1, self.contentsRect().width())
-            line_count = 1 if self.property("singleLine") else 2
-            self.setMinimumHeight(metrics.lineSpacing() * line_count + 3)
-            self.setMaximumHeight(metrics.lineSpacing() * line_count + 3)
-            if not text or metrics.horizontalAdvance(text) <= width:
+            if self.property("singleLine"):
+                visible = metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
+            elif not text or metrics.horizontalAdvance(text) <= width:
                 visible = text
             else:
                 words = text.split()
@@ -944,6 +937,8 @@ class _TwoLineLabel(QLabel):  # type: ignore[misc,valid-type]
                     width,
                 )
                 visible = first_line + (f"\n{second_line}" if second_line else "")
+            line_count = 2 if "\n" in visible else 1
+            self.setFixedHeight(metrics.lineSpacing() * line_count + 3)
         except Exception:
             visible = text
         QLabel.setText(self, visible)
@@ -1874,8 +1869,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QLabel[hudRewardChip='true'] {background:transparent;color:" + t["text_primary"] + ";"
             "border:0;padding:0;font-size:11px;}"
             "QLabel[hudRewardChip='true'][metricTone='growth'] {color:" + t["reviewer_hud_growth_strong"] + ";}"
-            "QLabel[hudCollapsedStatus='true'] {color:" + t["text_secondary"] + ";"
-            "font-size:10px;font-weight:650;}"
             "QLabel[hudCollapsedNext='true'] {color:" + t["reviewer_hud_growth_strong"] + ";"
             "font-size:9px;font-weight:700;}"
             "QLabel[metricChanged='true'] {background:rgba(103,220,169,24);border-radius:6px;}"
@@ -1996,6 +1989,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         coin_layout.setSpacing(5)
         self._coin_icon = QLabel(self._coin_cluster)
         self._coin_icon.setFixedSize(17, 17)
+        self._coin_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._coin_icon.setPixmap(self._icon_pixmap("coin", 16, GARDEN_THEME["reviewer_hud_coin"]))
         _set_decoration(self._coin_icon)
         coin_layout.addWidget(self._coin_icon)
@@ -2748,7 +2742,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         category = _ElidedLabel("", row)
         category.setProperty("hudMuted", True)
         _set_decoration(category)
-        name = _ElidedLabel("", row)
+        name = _TwoLineLabel(row)
         _set_decoration(name)
         value = QLabel("", row)
         apply_tabular_numerals(value)
@@ -2803,13 +2797,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._collapsed_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         _set_decoration(self._collapsed_art)
         layout.addWidget(self._collapsed_ring, 0, Qt.AlignmentFlag.AlignHCenter)
-        self._collapsed_status = QLabel("", self._collapsed_tab)
-        self._collapsed_status.setProperty("hudCollapsedStatus", True)
-        self._collapsed_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._collapsed_status.setFixedHeight(12)
-        apply_tabular_numerals(self._collapsed_status)
-        _set_decoration(self._collapsed_status)
-        layout.addWidget(self._collapsed_status)
         self._collapsed_next = QLabel("", self._collapsed_tab)
         self._collapsed_next.setObjectName("reviewerHudCollapsedNext")
         self._collapsed_next.setProperty(
@@ -3509,29 +3496,17 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._sync_collapsed_summary()
 
     def _sync_collapsed_summary(self) -> None:
-        """Expose the daily state and next useful value in the compact tab."""
+        """Expose the next useful Growth value in the compact tab."""
 
         projection = self._projection
         if projection is None:
-            self._collapsed_status.clear()
             self._collapsed_next.clear()
+            self._collapsed_next.setToolTip("")
             self._collapsed_tab.setToolTip("")
+            self._collapsed_tab.setAccessibleName("Expand Anki Garden review panel")
             self._collapsed_tab.setProperty("collapsedNextValueCopy", "")
             self._collapsed_tab.setProperty("collapsedNextVisibleCopy", "")
             return
-        today = projection.today
-        complete = bool(today.complete)
-        if complete:
-            compact_today = "Done"
-            today_copy = "Today’s cards complete"
-        elif int(getattr(today, "remaining_count", 0) or 0) > 0:
-            remaining = int(today.remaining_count)
-            compact_today = f"{remaining:,} remaining"
-            today_copy = f"Today’s cards · {format_quantity(remaining, 'card')} remaining"
-        else:
-            compact_today = str(today.primary or "Today")
-            today_copy = f"Today’s cards · {today.primary}"
-
         nurture = projection.nurture
         next_copy = ""
         compact_next = ""
@@ -3573,17 +3548,15 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                     flags=re.IGNORECASE,
                 )
 
-        tooltip = "\n".join(value for value in (today_copy, next_copy) if value)
-        self._collapsed_status.setText(compact_today)
         self._collapsed_next.setText(compact_next)
         self._collapsed_next.setVisible(bool(compact_next))
-        self._collapsed_status.setToolTip(tooltip)
-        self._collapsed_next.setToolTip(tooltip)
-        self._collapsed_tab.setToolTip(tooltip)
+        self._collapsed_next.setToolTip(next_copy)
+        self._collapsed_tab.setToolTip(next_copy)
         self._collapsed_tab.setAccessibleName(
-            ". ".join(value for value in (today_copy, next_copy) if value)
+            ". ".join(
+                value for value in ("Expand Anki Garden review panel", next_copy) if value
+            )
         )
-        self._collapsed_tab.setProperty("collapsedTodayCopy", today_copy)
         self._collapsed_tab.setProperty("collapsedNextValueCopy", next_copy)
         self._collapsed_tab.setProperty("collapsedNextVisibleCopy", compact_next)
 
@@ -3687,7 +3660,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._plant_card.setProperty("titleAnchorStable", True)
         self.setProperty("hudActivePlantId", nurture.plant_id)
         self.setProperty("hudProgressPercent", nurture.progress_percent)
-        self._species.set_full_text(nurture.species_name)
+        self._species.set_full_text("")
+        self._species.hide()
         self._bed.setText(nurture.bed_label)
         self._bed.hide()
         self._plant_name.set_full_text(
@@ -3698,7 +3672,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.set_full_text(nurture.stage_label)
         self._stage.setProperty("fullBloomAccent", bool(nurture.fully_grown))
         _repolish(self._stage)
-        self._stage.setVisible(bool(nurture.stage_label))
+        self._stage.hide()
         self._percent.setText(format_growth(nurture.stage_points, nurture.stage_goal) if nurture.next_stage_key else "Full Bloom")
         self._progress_destination.setText(f"To {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else "")
         self._progress_destination.setVisible(normal)
@@ -3902,10 +3876,15 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def _update_plant_art(self, nurture: Any, *, animate: bool) -> None:
         self._collapsed_ring.set_progress(nurture.progress_percent)
+        try:
+            dpr = max(1.0, float(self.devicePixelRatioF()))
+        except Exception:
+            dpr = 2.0
         key = (
-            nurture.art_path,
+            plant_art_source_identity(nurture.art_path),
             repr(nurture.art_placement),
             nurture.stage_key,
+            dpr,
         )
         if key == self._art_key:
             return
@@ -3915,10 +3894,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             previous_pixmap = QPixmap(self._plant_art.pixmap())
         except Exception:
             previous_pixmap = QPixmap()
-        try:
-            dpr = max(1.0, float(self.devicePixelRatioF()))
-        except Exception:
-            dpr = 2.0
         try:
             pixmap = normalized_plant_pixmap(
                 nurture.art_path,
@@ -3936,11 +3911,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._sync_art_grounding(pixmap, nurture.stage_key)
         try:
             collapsed = pixmap.scaled(
-                28,
-                28,
+                max(1, round(28 * dpr)),
+                max(1, round(28 * dpr)),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
+            collapsed.setDevicePixelRatio(dpr)
         except Exception:
             collapsed = pixmap
         self._collapsed_art.setPixmap(collapsed)
@@ -4593,8 +4569,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         plant_class = _full_bloom_plant_class(bundle)
         if not plant_class and self._projection is not None:
             plant_class = str(self._projection.nurture.species_name or "")
-        self._plant_name.set_full_text(_full_bloom_plant_name(bundle))
-        self._species.set_full_text(plant_class)
+        self._plant_name.set_full_text(plant_stage_title(plant_class, "rare"))
+        self._species.set_full_text("")
+        self._species.hide()
         self._plant_card.setProperty("plantClassLabel", plant_class)
         self._plant_card.setProperty("fullBloomSettled", bool(settled))
         self._art_region.setProperty("fullBloomSettled", bool(settled))
@@ -4608,7 +4585,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.set_full_text("Full Bloom")
         self._stage.setProperty("fullBloomAccent", True)
         _repolish(self._stage)
-        self._stage.show()
+        self._stage.hide()
         self._percent.hide()
         self._progress_destination.hide()
         self._checkpoint_track.hide()
@@ -4662,7 +4639,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.set_full_text("Full Bloom")
         self._stage.setProperty("fullBloomAccent", True)
         _repolish(self._stage)
-        self._stage.show()
+        self._stage.hide()
         self._percent.hide()
         self._progress_destination.hide()
         self._checkpoint_track.hide()
@@ -4705,14 +4682,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             pass
 
     def _apply_stage_change_override(self, bundle: Any) -> None:
-        hero = _bundle_hero(bundle)
-        detail = str(_value(hero, "detail", default="") or "").strip()
-        if detail.casefold().startswith("reached "):
-            detail = detail[8:]
-        self._stage.set_full_text(
-            "Stage reached" + (f" · {detail}" if detail else "")
-        )
-        self._stage.show()
+        # Keep the heading from the current committed projection. An older
+        # queued reward names its own stage in the reward row only.
+        self._stage.hide()
 
     def _clear_celebration(self, revision: int | None = None) -> None:
         if self._disposed:
@@ -5449,9 +5421,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                     f"{name or category or 'Reward'} artwork"
                 )
                 self._reward_detail_categories[index].set_full_text(category)
+                self._reward_detail_categories[index].setVisible(bool(category))
                 self._reward_detail_names[index].set_full_text(name)
                 value_widget = self._reward_detail_values[index]
                 value_widget.setText(value)
+                value_widget.setVisible(bool(value))
                 value_widget.setProperty("hudGrowth", "growth" in value.casefold())
                 value_widget.setProperty(
                     "hudCoin", "coin" in value.casefold()

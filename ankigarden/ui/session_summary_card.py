@@ -8,11 +8,14 @@ the card remains usable.
 
 from __future__ import annotations
 
+from ..presentation import plant_stage_event
+
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..asset_manager import bundled_ui_asset_path
 from ..environment import (
     DEFAULT_SCENERY_ID,
     GARDEN_FEATURE_CATALOG,
@@ -1423,22 +1426,13 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         supporting = str(getattr(highlight, "supporting_text", "") or "")
         reward = str(getattr(highlight, "reward_text", "") or "")
         if isinstance(source, PlantMilestone):
-            if kind == "full_bloom":
-                eyebrow = eyebrow or "FULL BLOOM"
-                plant_name = str(source.plant_name or "Plant")
-                title = f"{plant_name} reached Full Bloom"
-                if supporting.casefold() == "final growth stage reached":
-                    supporting = ""
-            elif kind == "stage_change":
-                title = title or source.plant_name or "Plant"
-                eyebrow = eyebrow or "PLANT ADVANCED"
-                supporting = supporting or f"Advanced to {_title_case(source.new_stage)}"
-            else:
-                title = title or source.plant_name or "Plant"
-                eyebrow = eyebrow or "GROWTH CHECKPOINT"
-                supporting = supporting or (
-                    f"{source.checkpoint_percent}% growth checkpoint reached"
-                )
+            eyebrow = ""
+            title = plant_stage_event(
+                source.plant_class,
+                "rare" if kind == "full_bloom" else source.new_stage,
+                checkpoint_percent=source.checkpoint_percent if source.milestone_type == "checkpoint" else 0,
+            )
+            supporting = ""
             component = getattr(source, "reward", None)
             coin_reward = int(
                 getattr(component, "amount", 0)
@@ -2213,12 +2207,14 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 row.addWidget(self._plant_art_label(milestone, 28))
                 copy = QVBoxLayout()
                 copy.setSpacing(1)
-                copy.addWidget(self._name_label(milestone.plant_name or "Plant"))
+                copy.addWidget(self._name_label(plant_stage_event(
+                    milestone.plant_class, milestone.new_stage, checkpoint_percent=milestone.checkpoint_percent,
+                )))
                 supporting = QLabel(
                     f"{milestone.checkpoint_percent}% growth checkpoint reached"
                 )
                 supporting.setProperty("summaryMuted", True)
-                copy.addWidget(supporting)
+                supporting.hide()
                 row.addLayout(copy, 1)
                 layout.addWidget(row_widget)
         if summary.coin_sources:
@@ -2681,31 +2677,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             else getattr(record, "art_asset", "") or ""
         )
         source_path = reference if Path(reference).exists() else ""
-        icon_name = {
-            "garden_coin": "coin",
-            "garden_coins": "coin",
-            "growth": "growth",
-        }.get(reference, "")
         pixmap = QPixmap()
-        if icon_name:
-            source_path = f"icon:{icon_name}"
-            pixmap = garden_icon(
-                icon_name,
-                color=(
-                    self._summary_theme["coin_accent"]
-                    if icon_name == "coin"
-                    else self._summary_theme["growth_accent"]
-                ),
-                logical_size=size,
-            ).pixmap(size, size)
-        elif not source_path and reference:
+        if not source_path and reference:
             item_key = {
-                "ui_growth_charge_small": "growth_charge_small",
-                "ui_growth_charge_standard": "growth_charge_standard",
-                "ui_fertilizer_basic": "fertilizer_basic",
-                "ui_rich_compost": "rich_compost",
-                "ui_booster_potion": "booster_potion",
-            }.get(reference, reference)
+                "garden_coins": "garden_coin",
+                "growth": "growth_resource",
+            }.get(reference, reference).removeprefix("ui_")
             resolver = getattr(self._engine, "resolve_item_asset", None)
             if callable(resolver):
                 try:
@@ -2713,6 +2690,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     source_path = str(getattr(resolved, "path", "") or "")
                 except Exception:
                     source_path = ""
+            if not source_path:
+                source_path = str(bundled_ui_asset_path(item_key) or "")
         source = _source_pixmap(source_path)
         if pixmap.isNull() and not source.isNull():
             pixmap = _alpha_bounded_thumbnail(source, size)
@@ -2725,8 +2704,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             fallback_icon=fallback_icon,
             source_pixmap=source,
         )
-        if icon_name:
-            label.setProperty("summaryArtVector", True)
         label.setProperty("summaryRewardArtReference", reference)
         return label
 

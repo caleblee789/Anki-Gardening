@@ -14,7 +14,7 @@ from ankigarden.models.state import (
 )
 
 
-def test_schema26_round_trips_independent_effects_and_economy_models() -> None:
+def test_round_trip_preserves_unified_equipment_and_economy_models() -> None:
     batch = CardEffectBatch(
         "fertilizer_quality",
         200,
@@ -84,20 +84,18 @@ def test_schema26_round_trips_independent_effects_and_economy_models() -> None:
     state.inventory["garden_features"].append("wind_chime")
 
     payload = state.to_dict()
-    assert payload["version"] == STATE_VERSION == 27
+    assert payload["version"] == STATE_VERSION
     assert payload["loadout"] == {
         "display_decoration_id": "garden_bench",
-        "active_garden_bonus_id": "wind_chime",
         "display_scenery_id": "full_moon",
-        "active_scenery_effect_id": "default",
         "visibility": {"garden_feature": True, "scenery": True},
     }
 
     restored = GardenState.from_dict(payload)
-    assert restored.loadout.display_decoration_id == "garden_bench"
-    assert restored.loadout.active_garden_bonus_id == "wind_chime"
+    assert restored.loadout.display_decoration_id == "seedling_sign"
+    assert restored.loadout.active_garden_bonus_id == "seedling_sign"
     assert restored.loadout.display_scenery_id == "full_moon"
-    assert restored.loadout.active_scenery_effect_id == "default"
+    assert restored.loadout.active_scenery_effect_id == "full_moon"
     assert restored.inventory["cosmetics"] == ["garden_bench"]
     assert restored.plants[0].card_effect_queue.fertilizer_batches == [batch]
     assert restored.plants[0].card_effect_queue.booster_remaining_cards == 211

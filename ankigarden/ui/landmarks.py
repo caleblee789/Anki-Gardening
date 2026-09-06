@@ -37,6 +37,10 @@ DEFAULT_LANDMARK_ACTIONS: Mapping[str, LandmarkAction] = {
         accessible_name="Progress",
         tooltip="Open progress",
     ),
+    "garden.trophies.open": LandmarkAction(
+        accessible_name="Trophy Room",
+        tooltip="Open Trophy Room",
+    ),
     "garden.collection.open": LandmarkAction(
         accessible_name="Collection",
         tooltip="Open collection",

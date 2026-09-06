@@ -1,104 +1,197 @@
-# Anki Garden UI interface inventory
+# Anki Garden UI surface inventory
 
-Status: current Release 2.2.0 capture contract v26, contract schema 2 and
-scenario schema 3. The exact ordered source is the Qt-free `SurfaceSpec`
-registry compiled into
-`ankigarden/capture/capture-contract-v26.json`. Inspect it without mutation via
-`python scripts/capture_sequence.py --list-surfaces` or explain one ID with
-`--explain-surface ID`. The current immutable
-[full manifest](../build/ui-face-captures/full/capture-sequence-20260831-155312/assembled/manifest.json)
-and [five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json)
-are bound to the exact package and contract digest in the
-[canonical UI audit](ui/final-ui-audit-2.2.0.md).
+The current capture contract is **v29**, schema 2, scenario schema 3. The full
+profile contains **51 active surfaces on five explicit sheets**. Representative
+preflight covers 22 surfaces across those same five assignments. Both use
+canonical 100% UI scale; macOS Retina pixels remain at the native device ratio.
 
-The current v26 registry contains 18 representative and 34 full surfaces,
-rendered as two and five sheets. Those values are generated observations, not
-fixed acceptance constants. Redundant or behavioral-only IDs are permanently
-retired, including the starter-confirmation ID and every watering-can capture.
-`nursery-weather-scenery` is retired; its ordinal-24 replacement is
-`nursery-garden-decorations-scenery`.
-Future counts are computed from active registry entries and their presentation
-groups. Both profiles run under `QT_SCALE_FACTOR=1.0`. Null, blank, unpainted,
-wrong-window, wrong-process, invalid-geometry/crop, open, cleanup, and
-checkpoint failures reject a capture. Deprecated visible copy, DOM/root
-overflow, progress fractions, asset mapping, Reviewer exclusion rectangles,
-four-state scrolling, scenario identity, and per-step state contracts are also
-hard gates. Narrow non-visible allowlists exist only for compatibility keys and
-historical migration fixtures. Raw manifest-owned PNGs remain the runtime
-geometry authority; the sheets are review aids.
+The authoritative registry is `ankigarden/capture/workspace_specs.py`, compiled
+into `ankigarden/capture/capture-contract-v29.json`. The shared presentation map
+is `ankigarden/capture/handoff.py`. The renderer, index and independent validator
+consume the compiled `profiles[].contact_sheets` map. Each active surface also
+carries `handoff.sheet`, `handoff.sheet_name` and `handoff.display_order`.
 
-## Interface profiles
+## Coverage and ownership
 
-| Profile | Surface and entry point | Authoritative data | Primary behavior |
-|---|---|---|---|
-| First run | Garden onboarding, starter Nursery, and placement | Schema-27 onboarding, catalog, plants, slots, request revision | Choose starter, place, Nurture, resume, retry |
-| Home | Deck Browser preview | One renderer-neutral Home-card projection and shared preview snapshot | Render starter, empty, active, zero, partial, and complete states in one shell; Open Garden or retry without scene mutation |
-| Garden | Dashboard, scene, plant card, Move, and Story | Plants, slots, active plant, Growth, effects, scene geometry | Select, Nurture, Move, Story, Progress, Collection, Nursery, Settings |
-| Fertilizer | Application dialog | Engine quote, immutable source `plant_id`, target status, interval history, balance, and replay record | Keep one source through selection, quote, confirmation, and queued period; use Apply/Queue, Buy-and-apply/Buy-and-queue, and Extend only for the same-tier extension disposition |
-| Progress | Today’s Cards, Plant Growth, Anki streak, Garden Coins, Achievements, and Collection | Canonical stage, `PlantIdentity`, Today’s Cards, reward, catalog, ownership, collection-count, and appearance projections | Open on Today’s Cards, inspect all six pages, and keep `10 of 10 species discovered` separate from `30 of 39 collection entries discovered` |
-| Collection | Species overview and loadout details | Inventory, entitlements and one reversible loadout draft | Inspect, preview, apply atomically, cancel and restore |
-| Nursery | Four commerce tabs plus a normal-flow receipt | Engine catalogs, quotes, ownership, inventory, slots, manifest readiness | Purchase, use, unlock, plant, route to Collection |
-| Growth Charge | Targeted Charge confirmation | Inventory, eligible target, quote/request/outcome, stage reward | Select Charge, use, retry, open Nursery |
-| Settings | Expanded Display state and Diagnostics warning | Staged add-on config, Garden name, sync-receipt presentation, capabilities and telemetry | Save, discard, refresh/copy diagnostics |
-| Reviewer | Persistent content-driven HUD with integrated reward dock | Global Today’s Cards projection, committed plant/checkpoint state, active effects, stable reward bundles, and the local-session accumulator | Render the canonical `176 + 18 = 194` reconciliation, keep `Sprout · 2 of 6 stages`, and stay inside the 296/44/16 safe area with measured answer-control clearance and a 72 px fallback |
-| Review exit | Focus-safe, nonmodal Session Summary over the normal Anki surface | Proven local session events, Today’s Cards start/end snapshots, exact Growth/Coins/Finds, milestones, discoveries, and frozen remaining effects | Keep session and daily scopes separate, including canonical `126 + 19 = 145`, while the shared summary coordinator owns mutual exclusion, focus restoration, and Escape |
-| Sync completion | Upper-right, nonmodal Sync Rewards receipt over stable Anki Home | Presentation-ready committed rewards spanning every eligible imported answer since the desktop baseline, with exact Growth allocation, Finds, discoveries, progression, All Clear, and changed effects | Render canonical `420 + 80 + 20 = 520`, dock safely, and prioritize Full Bloom, stage change, the highest valid resulting-stage checkpoint, then ordinary Growth |
+All 35 active v28 surfaces are retained, plus 16 new views. Collection and Shop
+remain separate assignments. Item-use dialogs and Growth Charge outcomes belong
+to Shop so the complete purchase/use flow has one owner. The Garden/onboarding
+owner integrates shared navigation, theme and copy changes. Agents should own
+classes or methods in shared files, rather than replacing whole files.
 
-All mutations remain engine-authoritative, rollback-safe, and atomically saved.
-Capture-only viewport, route, hover, focus, filter, and draft state must never be
-persisted.
+Landmarks (`collection-landmarks-page`) is disabled by the current feature gate.
+It is excluded from this set. Its prior 36-surface completed sets, stable ID and
+historical evidence remain preserved; the disabled view is not counted as missing.
 
-## Ordered profiles
+## Sheet 1: Garden and onboarding (12)
 
-Profile membership, groups, ordinals, and page counts are generated from the
-registry. `--list-surfaces` is the human-readable inventory and
-`--plan-only --profile PROFILE` is the single-session execution and
-checkpoint-domain view. Adding a surface requires one registry row; removal
-retires its stable ID permanently; reordering changes sheet presentation
-without invalidating that surface's PNG.
+| Order | Stable surface ID | Native path | Coverage |
+|---:|---|---|---|
+| 1 | `starter-deck-browser-home` | Anki Decks → first-run Garden Home card | Retained |
+| 2 | `garden-starter-picker` | Home card → Open Garden → choose first plant | Retained |
+| 3 | `garden-starter-selected` | Select starter → placement → Back (selection retained) | Retained |
+| 4 | `garden-starter-placement` | Choose starter → Choose a bed | Retained |
+| 5 | `workspace-starter-awaiting-nurture` | Place starter → select its bed → Nurture available | New in v29 |
+| 6 | `workspace-welcome-settled` | Nurture first starter → welcome animation settles | New in v29 |
+| 7 | `workspace-welcome-rewards-expanded` | First Nurture → welcome → View rewards (past-study fixture) | New in v29 |
+| 8 | `garden-overview` | Open Garden → Garden tab | Retained |
+| 9 | `garden-inspector-nurtured` | Garden → select nurtured plant | Retained |
+| 10 | `garden-inspector-available` | Garden → select another planted plant | Retained |
+| 11 | `garden-move-plant` | Garden → plant inspector → More → Move | Retained |
+| 12 | `workspace-decoration-inspector` | Garden → select displayed decoration | New in v29 |
 
-Every spec, dependency digest, runtime record, manifest row, validator result,
-contact-sheet index entry, and PNG metadata record carries `scenario_id`,
-`fixture_id`, and a one-based `scenario_step`. Shared seeded lineages are
-`first_run` for 01–04, `fertilizer_queue` for 09–10, and
-`growth_charge_transition` for 33–34. Named single-surface scenarios are
-`reviewer_hud_base` (27), `session_summary` (28), `sync_rewards` (29), and
-`reviewer_hud_full_bloom` (30). Every other surface defaults to its stable ID,
-fixture version `v1`, and step 1. Fixture identity denotes shared seeded
-lineage; the exact state contract is still validated at every step. V25
-evidence is categorically ineligible for v26 reuse.
+## Sheet 2: Collection and appearance (10)
 
-The full profile keeps one image per structurally distinct surface or
-high-value interaction. Copy variants, transient loading states, transaction
-error permutations, repeated plot positions, filtered views of the same
-Collection window, locked variants of a captured Nursery tab, and alternate
-host routes stay in focused parameterized tests instead of becoming duplicate
-screenshots.
+| Order | Stable surface ID | Native path | Coverage |
+|---:|---|---|---|
+| 1 | `collection-plants-page` | Collection → Plants | Retained |
+| 2 | `collection-species-details` | Collection → Plants → select a species | Retained |
+| 3 | `collection-plant-details` | Collection → Plants → species → plant name | Retained |
+| 4 | `workspace-collection-plant-menu` | Collection → Plants → species → planted row overflow icon | New in v29 |
+| 5 | `workspace-collection-storage-confirmation` | Collection → Plants → species → More → Move to storage | New in v29 |
+| 6 | `collection-scenery-page` | Collection → Scenery | Retained |
+| 7 | `workspace-scenery-preview` | Collection → Scenery → select Spring | New in v29 |
+| 8 | `workspace-scenery-applied-undo` | Collection → Scenery → select Spring → card Equip → Undo visible | New in v29 |
+| 9 | `collection-decorations-page` | Collection → Decorations | Retained |
+| 10 | `workspace-additional-bonuses-expanded` | Collection → Decorations → Other active bonuses → scroll to lower content | New in v29 |
 
-The representative profile includes the clean expanded Reviewer HUD, its
-seven-event integrated reward-bundle state, the Session Summary, and one rich
-Sync Rewards receipt using `Rewards from 42 card answers on another device.`
-The full profile also includes the default Today’s Cards page in Garden
-Progress. The Reviewer captures use a maximized window and prove content-driven
-shell bounds, sticky-header/internal-scroll ownership, zero horizontal scroll,
-integrated reward-dock containment, session-footer identity, and clearance
-above Anki’s bottom controls.
+## Sheet 3: Shop and item use (12)
 
-The art audit validates all 60 species-stage assets and all six bed positions.
-Plant placement metadata serializes `visual_scale_correction`; both scene art
-and thumbnails consume the calibrated scale rather than applying
-screenshot-specific sizing.
+| Order | Stable surface ID | Native path | Coverage |
+|---:|---|---|---|
+| 1 | `shop-plants-page` | Shop → Plants | Retained |
+| 2 | `shop-scenery-page` | Shop → Scenery | Retained |
+| 3 | `shop-decorations-page` | Shop → Decorations | Retained |
+| 4 | `shop-supplies-page` | Shop → Supplies (top) | Retained |
+| 5 | `workspace-shop-supplies-scroll-end` | Shop → Supplies → scroll to end (lower section) | New in v29 |
+| 6 | `shop-fertilizer-confirmation` | Shop → Supplies → buy Fertilizer | Retained |
+| 7 | `purchase-confirmation-growth-charge` | Shop → Supplies → buy Growth Charge | Retained |
+| 8 | `shop-purchase-receipt` | Shop → Plants → buy Sunflower Seed → confirm purchase → receipt | Retained |
+| 9 | `garden-use-fertilizer` | Garden → plant inspector → More → Plant supplies → Fertilizer | Retained |
+| 10 | `garden-use-growth-charges` | Garden → plant inspector → More → Plant supplies → Growth Charges | Retained |
+| 11 | `growth-charge-use-ready` | Choose Growth Charge → use confirmation | Retained |
+| 12 | `growth-charge-success-stage-reward` | Confirm Growth Charge → committed stage reward | Retained |
+
+## Sheet 4: Progress and settings (10)
+
+| Order | Stable surface ID | Native path | Coverage |
+|---:|---|---|---|
+| 1 | `progress-today-page` | Progress → Today | Retained |
+| 2 | `progress-today-details` | Progress → Today → expand details | Retained |
+| 3 | `progress-achievements-page` | Progress → Achievements (top) | Retained |
+| 4 | `workspace-achievements-scroll-end` | Progress → Achievements → scroll to end (final rows) | New in v29 |
+| 5 | `workspace-trophy-room` | Progress → Trophy Room (locked and unlocked) | New in v29 |
+| 6 | `progress-coins-page` | Progress → Coins | Retained |
+| 7 | `garden-settings` | Workspace gear → Settings | Retained |
+| 8 | `workspace-settings-unsaved` | Settings → edit Garden name → unsaved Save/Cancel state | New in v29 |
+| 9 | `garden-diagnostics` | Settings → Artwork check → scroll to result | Retained |
+| 10 | `workspace-diagnostics-warning-details` | Settings → Artwork check → warning → Technical details → scroll to end | New in v29 |
+
+## Sheet 5: Anki integration and rewards (7)
+
+| Order | Stable surface ID | Native path | Coverage |
+|---:|---|---|---|
+| 1 | `active-deck-browser-home-after-nurture` | Nurture plant → close Garden → Anki Decks Home card | Retained |
+| 2 | `reviewer-hud-expanded` | Anki study → expand Garden Reviewer HUD | Retained |
+| 3 | `workspace-reviewer-collapsed` | Anki study → collapse Garden Reviewer HUD | New in v29 |
+| 4 | `reviewer-reward-dock-bundle` | Anki study → committed reward → integrated reward dock | Retained |
+| 5 | `workspace-reviewer-rewards-list` | Collapsed Reviewer presentation → expand reward summary | New in v29 |
+| 6 | `session-summary-after-review` | Study cards → leave Reviewer → Session Summary | Retained |
+| 7 | `sync-rewards-summary` | Anki Home → Sync Rewards receipt (committed offline fixture; network sync disabled) | Retained |
+
+## Capture execution
+
+Acquisition order is independent of sheet placement. Preserve the first-run
+scenario prerequisites and transaction sequence even when their images appear
+in different sheet groups. The 16 additional IDs use deterministic isolated
+fixtures and per-surface postconditions. Onboarding, purchases and item use show
+native actions and committed engine results. The expanded welcome fixture
+reconciles 5,000 eligible past reviews through the engine; its gift and historical
+rewards are not manually written presentation values.
+
+Capture the current dirty source from a new timestamped snapshot, including
+untracked runtime files and assets. Build the production archive inside that
+snapshot, then verify its capture derivative byte-for-byte for all shared
+runtime members. Never overwrite a prior source snapshot, archive or evidence set.
+
+Use fresh disposable `/private/tmp/anki-release-qa.*` bases, sync-disabled
+profiles, and verified process/window/filesystem identities. Keep normal dialog
+sizes and maximized Home/Reviewer geometry. Popups are native widget pixels at
+their actual positions over their owning workspace; webview captures verify the
+HUD and reward-list overlays. The diagnostic-warning fixture runs the real
+filesystem check with one deliberately absent manifest entry while leaving the
+installed package untouched.
+
+Run representative preflight, then full capture. Reuse only validated surfaces
+from this task's frozen source baseline; renderer, fixture, package and scenario
+digests must still match. Preserve valid partial captures on failure, and report
+precise missing IDs instead of declaring an incomplete run complete. Additional
+responsive and animation checks are supporting evidence, not more sheet tiles.
+
+## Presentation and handoff
+
+### Full capture in one launch
+
+After the new plant assets are ready, freeze the current runtime and assets in
+a new source snapshot and build its production archive. Run the snapshot's own
+runner from inside that snapshot:
+
+```bash
+python scripts/capture_sequence.py --profile full --fresh-baseline --anki-version 26.8.1
+```
+
+This mode schedules all 51 surfaces in one disposable Anki process, includes
+the process shutdown gate in that session, and disables historical screenshot
+reuse. It then validates the raw set and renders the five sheets. It never
+starts a second Anki process to repair a failed surface. The ordinary
+incremental mode remains available when exact reuse is wanted.
+
+Add `--plan-only` to inspect the complete ordered plan without launching Anki,
+building packages or capturing images. Foreground fallback is bounded per
+Home/Reviewer surface; normal dialogs retain native background capture.
+
+The runner fixes have offline regression coverage. A fresh 51/51 native run
+with the new plant assets is still pending and must be verified when capture
+is authorized.
+
+Produce five PNGs, each 3,000 pixels wide with two columns. Explicit sheet
+boundaries replace the old five-row pagination limit: 12/10/12/10/7 surfaces
+require 6/5/6/5/4 rows. Use consistent thumbnail boxes, native aspect ratios,
+top alignment and clearly marked non-UI padding. Scroll-end views are named
+explicitly. Each surface appears exactly once.
+
+Each PNG receives a matching brief with stable IDs, native navigation paths,
+full-resolution raw links, frozen code sections, ownership boundaries and observed
+issues. The handoff includes a coverage index, raw PNGs, source inventory,
+manifest, independent validation report, visual review and evidence archive.
+`python scripts/build_refinement_handoff.py --help` describes the packager.
 
 ## Acceptance boundary
 
-A complete v26 `full` run closes the active ordered macOS Qt visual inventory
-for its exact package and compiled contract. The representative run is
-preflight evidence only. The current independent validator found 34 valid
-surfaces across five pages with no advisories and the automated gate passed;
-34/34 raw PNGs and 5/5 sheets were also visually reviewed. Those results do
-not close manual macOS interaction, native Windows/Linux behavior, 125%/150%
-and true OS scaling, mixed-DPI transitions, forced colors, screen-reader,
-broader keyboard, human/device visual, or full end-to-end acceptance. The
-add-on remains `quality_status: review-required`, `release_ready: false`, and
-unpublished until the separate gates are run and human release approval is
-recorded.
+A completed full run requires 51 expected surfaces, 51 valid native PNGs, five
+sheets and no omitted or duplicate assignments. Package hashes and each
+surface-to-image binding must verify. Inspect every raw PNG and all five sheets
+for the correct state, readable labels, complete controls, popup inclusion and
+visible lower content. Raw manifest-owned PNGs are the geometry authority.
+
+Fixture identity, native rendering, required overlay pixels, geometry, package
+provenance and cleanup remain fail-closed. Observed UI polish issues belong in
+the agent briefs; this task does not redesign the UI or change gameplay.
+Completion is evidence preparation only: `quality_status: review-required`,
+`release_ready: false`. It does not provide human release approval, publication,
+Windows/Linux acceptance, mixed-DPI or exhaustive responsive/animation coverage.
+
+### Native UI issue retained for refinement
+
+The collapsed Reviewer HUD currently clips its cards-remaining text at its unchanged native width. Both new collapsed Reviewer views preserve that product behavior and record `reviewer-collapsed-status-width` in raw text warnings, audit `native_ui_issues`, visual review and agent brief 5. This one role-specific horizontal text issue is advisory for the refinement evidence; missing pixels, wrong states, window or control clipping, and all unrelated layout warnings remain blocking. This exception is not a product fix or release approval.
+
+## Completed v29 handoff
+
+The [September 5 grouped handoff](../build/ui-refinement-v29-20260905-184218/handoff-20260905-205811/README.md)
+contains five sheets, five agent briefs and 51 independently validated native
+captures, with no omitted or duplicate assignments. All raw images and sheets
+were visually inspected. The [portable evidence archive](../build/ui-refinement-v29-20260905-184218/handoff-20260905-205811.zip)
+includes the raw images, manifests, validation, frozen code references, verified
+packages and source inventory. The obsolete scenery summary and Apply block
+are removed in this baseline. Evidence remains `review-required` and
+`release_ready: false`.

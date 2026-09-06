@@ -1,17 +1,28 @@
-"""One code-native SVG icon family for Garden product surfaces."""
+"""Canonical resource artwork and shared SVG controls for Garden surfaces."""
 
 from __future__ import annotations
 
 from functools import lru_cache
 from typing import Any
 
+from ..asset_manager import bundled_ui_asset_path
+
 
 ICON_VIEWBOX = 24
 ICON_STROKE_WIDTH = 1.8
 
-# Paths deliberately use round caps/joins and the same 24 px grid.  Feature
-# surfaces consume names from this registry instead of mixing glyphs, emoji,
-# and platform-dependent standard icons.
+# Resource labels use the same painted artwork as catalog and reward rows.
+# SVGs remain available for controls and as missing-art fallbacks.
+GARDEN_ICON_ASSETS: dict[str, str] = {
+    "coin": "garden_coin",
+    "currency": "garden_coin",
+    "growth": "growth_resource",
+    "fertilizer": "fertilizer_basic",
+    "booster": "booster_potion",
+    "reviews": "sync_review_cards",
+}
+
+# Control paths share round caps/joins and the same 24 px grid.
 GARDEN_ICON_PATHS: dict[str, str] = {
     # Keep the close mark as two independent strokes. QtSvg has historically
     # dropped the second sub-path of a compound, open path at some DPRs.
@@ -124,6 +135,21 @@ def _cached_garden_icon_pixmap(
 
     from aqt.qt import QByteArray, QPainter, QPixmap, Qt
 
+    physical_size = max(1, int(round(logical_size * device_pixel_ratio)))
+    artwork_id = GARDEN_ICON_ASSETS.get(identity)
+    artwork_path = bundled_ui_asset_path(artwork_id) if artwork_id else None
+    if artwork_path is not None:
+        source = QPixmap(str(artwork_path))
+        if not source.isNull():
+            pixmap = source.scaled(
+                physical_size,
+                physical_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            pixmap.setDevicePixelRatio(device_pixel_ratio)
+            return pixmap
+
     renderer_type = _svg_renderer_type()
     if renderer_type is None:
         return None
@@ -133,7 +159,6 @@ def _cached_garden_icon_pixmap(
     is_valid = getattr(renderer, "isValid", None)
     if callable(is_valid) and not is_valid():
         return None
-    physical_size = max(1, int(round(logical_size * device_pixel_ratio)))
     pixmap = QPixmap(physical_size, physical_size)
     pixmap.fill(Qt.GlobalColor.transparent)
     # Paint into the pixmap while it still exposes its physical dimensions.

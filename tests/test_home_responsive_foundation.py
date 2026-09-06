@@ -57,7 +57,15 @@ def test_home_breakpoints_are_container_scoped_and_have_no_viewport_width_cliffs
     assert "@container (max-width: 400px)" in HOME_WIDGET_STYLE
     assert "@container (max-width:340px)" in HOME_WIDGET_STYLE
     assert "@container (max-width:300px)" in HOME_WIDGET_STYLE
-    assert "@media (max-width" not in HOME_WIDGET_STYLE
+    # Preserve the reviewed starter-only exception without permitting viewport
+    # breakpoints to change the regular Home banner.
+    starter_breakpoint = '''@media (max-width:560px) {
+  #ag-home-root[data-home-mode="starter"] .ag-home__identity-row { grid-template-columns:minmax(0,1fr); row-gap:12px; }
+  #ag-home-root[data-home-mode="starter"] .ag-home__identity-row > button { grid-column:1; justify-self:start; }
+  #ag-home-root[data-home-mode="starter"] .ag-home__artwork-zone { display:none; }
+}'''
+    assert HOME_WIDGET_STYLE.count(starter_breakpoint) == 1
+    assert "@media (max-width" not in HOME_WIDGET_STYLE.replace(starter_breakpoint, "")
     assert ".ag-home__metrics { grid-template-columns" not in HOME_WIDGET_STYLE
     assert ".ag-home__scene { height:160px; }" not in HOME_WIDGET_STYLE
     assert "height:176px" not in HOME_WIDGET_STYLE
@@ -120,8 +128,6 @@ def test_addon_motion_preferences_are_preserved_across_request_states(
 
 
 def test_os_and_addon_reduced_motion_form_one_effective_css_policy() -> None:
-    assert ".ag-home__garden-feature" in HOME_WIDGET_STYLE
-    assert ".ag-home__feature-pad" in HOME_WIDGET_STYLE
     assert "pointer-events:none" in HOME_WIDGET_STYLE
     assert '#ag-home-root[data-motion="reduced"] { transition:none; }' in HOME_WIDGET_STYLE
     assert '#ag-home-root[data-motion="reduced"]:hover { transform:none; }' in HOME_WIDGET_STYLE

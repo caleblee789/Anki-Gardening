@@ -40,9 +40,9 @@ def test_nursery_uses_registered_copy_and_manifest_geometry() -> None:
     assert len(nursery.polygon) == 13
     house = landmarks[1]
     assert house.landmark_id == "garden_house"
-    assert house.action_id == "garden.collection.open"
-    assert house.accessible_name == "Collection"
-    assert house.tooltip == "Open collection"
+    assert house.action_id == "garden.trophies.open"
+    assert house.accessible_name == "Trophy Room"
+    assert house.tooltip == "Open Trophy Room"
     assert len(house.polygon) == 17
     assert tuple(len(path) for path in house.outline_paths) == (7, 2, 2)
 
@@ -173,13 +173,13 @@ def test_unknown_or_malformed_actions_fail_closed() -> None:
     landmark["action_id"] = "garden.unknown.open"
     assert [item.action_id for item in resolve_scene_landmarks(
         placement, width=800, height=600, interactive=True
-    )] == ["garden.collection.open"]
+    )] == ["garden.trophies.open"]
 
     landmark["action_id"] = "garden.nursery.open"
     landmark["variants"]["4:3"]["bounds"] = [0.9, 0.9, 0.2, 0.2]
     assert [item.action_id for item in resolve_scene_landmarks(
         placement, width=800, height=600, interactive=True
-    )] == ["garden.collection.open"]
+    )] == ["garden.trophies.open"]
 
 
 def test_registered_future_action_is_generic_and_tooltip_is_one_line() -> None:
@@ -196,7 +196,7 @@ def test_registered_future_action_is_generic_and_tooltip_is_one_line() -> None:
     )
     assert [(item.landmark_id, item.action_id, item.tooltip) for item in resolved] == [
         ("tool_shed", "garden.tools.open", "Open tool shed"),
-        ("garden_house", "garden.collection.open", "Open collection"),
+        ("garden_house", "garden.trophies.open", "Open Trophy Room"),
     ]
 
 

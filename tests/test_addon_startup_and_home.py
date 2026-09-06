@@ -1407,7 +1407,7 @@ def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
     assert items == [{
         "plant_id": "plant-1",
         "slot_index": 0,
-        "name": "Rose",
+        "name": "Flowering Rose",
         "species": "rose",
         "stage": "flowering",
         "is_active": True,
@@ -1869,7 +1869,7 @@ def test_dashboard_opens_public_collection_and_plant_selection_routes_after_pres
     assert app._collection_open_pending is False
 
 
-def test_dashboard_forwards_landmark_collection_deep_link_after_presenting(monkeypatch):
+def test_dormant_landmark_deep_link_opens_plants_after_presenting(monkeypatch):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     addon.mw = aqt_mod.mw
@@ -1887,8 +1887,8 @@ def test_dashboard_forwards_landmark_collection_deep_link_after_presenting(monke
     app.open_garden_landmarks(focus_tier_id="lily_pond")
     assert app._opened is True
     assert app._collection_open_pending is True
-    assert app._collection_tab_pending == "garden-landmarks"
-    assert app._collection_focus_tier_id_pending == "lily_pond"
+    assert app._collection_tab_pending == "plants"
+    assert app._collection_focus_tier_id_pending == ""
     app._dashboard_open_pending = True
     app._run_garden_maintenance = lambda _source: True
 
@@ -1898,7 +1898,7 @@ def test_dashboard_forwards_landmark_collection_deep_link_after_presenting(monke
         ("prepare",),
         ("show",),
         ("acknowledge",),
-        ("collection", "garden-landmarks", "lily_pond"),
+        ("collection", "plants", ""),
     ]
     assert app._collection_open_pending is False
     assert app._collection_tab_pending == "plants"

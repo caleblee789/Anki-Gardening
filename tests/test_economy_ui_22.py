@@ -96,18 +96,14 @@ def test_beds_are_presented_as_earned_milestones() -> None:
     assert rows[2].can_commit is False
 
 
-def test_cosmetic_projection_keeps_display_separate_from_bonus() -> None:
+def test_trophy_rows_exclude_retired_purchases_and_never_equip() -> None:
     state = GardenState()
-    state.inventory["cosmetics"] = ["garden_bench"]
-    state.loadout.display_decoration_id = "garden_bench"
-    state.loadout.active_garden_bonus_id = "watering_station"
-
+    state.inventory["cosmetics"] = ["garden_bench", "golden_trowel"]
+    state.loadout.display_decoration_id = "golden_trowel"
     rows = {row.item_id: row for row in cosmetic_rows(state)}
-
-    assert rows["garden_bench"].owned
-    assert rows["garden_bench"].displayed
-    assert rows["garden_bench"].price == 150
-    assert state.loadout.active_garden_bonus_id == "watering_station"
+    assert set(rows) == {"botanists_plaque", "garden_journal", "golden_trowel"}
+    assert rows["golden_trowel"].owned
+    assert all(not row.displayed and row.price is None for row in rows.values())
 
 
 def test_endgame_presenters_consume_engine_catalog_summaries() -> None:

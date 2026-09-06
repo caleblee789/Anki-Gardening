@@ -13,11 +13,11 @@ The Garden is one window with persistent Garden, Collection, Shop, and Progress 
 | Global navigation | Keep the same four tabs, garden name, coin balance, and Settings gear in every main page. Repeated entry points select the same destination. |
 | Garden | Keep a compact bottom summary of the nurtured plant with one View plant action. Clicking any plant opens its floating menu for inspection and actions. Retain the scene and placement controls. |
 | First run | Offer four free plants inline. Use one explicit Choose plant action, followed by placement and nurture. Remove the separate catalog/confirmation journey and repeated setup explanations. |
-| Collection | Use Plants, Scenery, Decorations, and Landmarks. Remove redundant category/filter controls and combined catalog-entry counts. Species counts remain useful on the Plants page. |
+| Collection | Use Plants, Scenery, and Decorations. Remove redundant category/filter controls and combined catalog-entry counts. Species counts remain useful on the Plants page. |
 | Shop | Use Plants, Supplies, Scenery, and Decorations. Replace large purchase cards and actions with compact rows. Show ownership beside each item. Earned beds belong in Progress, not among purchases. |
 | Progress | Combine daily cards and streak information in Today. Keep Achievements and Coins as separate pages. Put detailed rules and active/queued effect explanations behind Details. |
 | Settings | Keep naming and ordinary display/reward toggles together. Remove the repeated appearance summary. Collapse Diagnostics within the same scroll area. Keep Save and Cancel explicit. |
-| Appearance | Apply owned scenery/decoration choices immediately with Undo. Keep displayed artwork separate from the active or queued bonus. Show the selected effect and an explicit Use bonus today/tomorrow action. |
+| Appearance | Equip owned scenery/decoration with one action that selects both artwork and effect. Apply commits previews; Undo restores the previous equipment. Show the item’s effect without timing or scheduling controls. |
 | Item use | Group owned Fertilizer and Growth Charges in a target-specific dialog. Preserve the plant when opening Shop supplies. Refresh inventory after use. |
 | Plant bar and menu | Keep nurturing independent of selection. The 72 px summary tracks the nurtured plant; the 304 px floating menu tracks the clicked plant and stays closed after dismissal, including during Growth refreshes. |
 | Plant details | Keep name, species/stage, stage artwork, next-stage progress, and actual memories. Remove repeated current/required Growth lines and empty history sections. |
@@ -44,7 +44,7 @@ The Garden is one window with persistent Garden, Collection, Shop, and Progress 
 | Story / Plant Story | Details / Plant details. |
 | Combined Garden Decorations and Scenery | Separate Scenery and Decorations tabs. |
 | Combined species and catalog-entry coverage | Plant species discovered. |
-| Claim/fund terminology on Landmark actions | Build, Built, and Display; engine identifiers remain internal. |
+| Dormant Landmark feature | No tabs, appearance controls, artwork, or reward mentions. Preserve backend and saved data. |
 | Eligible/newly processed card implementation language | Cards studied/completed in ordinary presentation; detailed rules stay in Details where needed. |
 | Duplicate reward-applied reassurance | Omit it. Close and Open garden are sufficient. |
 | Hidden artwork conflated with inactive effects | Display controls and bonus selection have separate labels and actions. |

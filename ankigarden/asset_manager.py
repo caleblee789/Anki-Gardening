@@ -7,11 +7,41 @@ import stat as stat_module
 import xml.etree.ElementTree as ET
 from copy import deepcopy
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _bundled_ui_asset_paths() -> dict[str, Path]:
+    """Index packaged UI artwork for renderers that do not own an engine."""
+
+    root = Path(__file__).resolve().parent
+    try:
+        manifest = json.loads((root / "assets" / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    paths = {}
+    for row in manifest.get("assets", ()):
+        if row.get("category") != "ui" or not row.get("slot", {}).get("ui_id"):
+            continue
+        path = root / row["file"]
+        paths[str(row["slot"]["ui_id"])] = path
+        asset_id = str(row.get("asset_id", "")).removeprefix("ui_")
+        if asset_id:
+            paths[asset_id] = path
+    return paths
+
+
+def bundled_ui_asset_path(identity: str) -> Path | None:
+    """Resolve a bundled UI identity through the manifest without profile I/O."""
+
+    key = str(identity or "").strip().removeprefix("ui_")
+    path = _bundled_ui_asset_paths().get(key)
+    return path if path is not None and path.is_file() else None
 
 
 def _surface_contract_is_valid(

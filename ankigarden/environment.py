@@ -14,6 +14,7 @@ from .balance_catalog import (
     TriggerKind as BalanceTriggerKind,
 )
 from .purchases import EffectDescriptor
+from .bonus_copy import GARDEN_BONUS_EFFECT_COPY
 
 
 EnvironmentKind = Literal["garden_feature", "scenery"]
@@ -77,6 +78,7 @@ class EnvironmentEffect:
     every_nth_completion: int | None = None
     inventory_item_id: str | None = None
     weighted_rewards: tuple[WeightedEnvironmentReward, ...] = ()
+    active_only: bool = True
 
     def __post_init__(self) -> None:
         if not self.effect_id.strip():
@@ -135,7 +137,9 @@ class CatalogItem:
         return EffectDescriptor(
             function=f"Changes {kind_name}.",
             buff=self.effect,
-            activation_condition="Applies while equipped.",
+            activation_condition=("Completion gifts require equipping; extra Potion cards apply once owned."
+                                  if any(not effect.active_only for effect in self.effects)
+                                  else "Applies while equipped."),
             duration="Stays in your collection.",
             stacking=f"One {kind_name} at a time; {other_kind} remains equipped.",
             replacement=f"Another {kind_name} takes its place; ownership stays.",
@@ -161,7 +165,7 @@ class GrowthChargeSpec:
         return EffectDescriptor(
             function="Adds 1 Growth Charge to inventory.",
             buff=f"+{self.growth:,} Growth when used.",
-            activation_condition="Use on any owned, planted, unfinished garden plant.",
+            activation_condition="Use on an unfinished planted plant, or across the garden after all species reach Full Bloom.",
             duration="Instant; consumed on use.",
             stacking="Inventory quantities stack; each Charge is used separately.",
             replacement="Replaces nothing.",
@@ -185,7 +189,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Common",
         "purchase",
-        "Every 10 eligible cards: +1 Growth.",
+        "Every 5 eligible cards: +1 Growth.",
         "Nursery: 100 Garden Coins.",
         100,
         effects=(EnvironmentEffect(
@@ -193,7 +197,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
             "eligible_card",
             "growth",
             amount=1,
-            every_nth_card=10,
+            every_nth_card=5,
         ),),
     ),
     "harvest_bell": CatalogItem(
@@ -218,7 +222,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Uncommon",
         "purchase",
-        "Every fifth eligible card among the first 100 each Anki day: +1 Growth.",
+        "Every second eligible card among the first 200 each Anki day: +1 Growth.",
         "Nursery: 250 Garden Coins.",
         250,
         effects=(EnvironmentEffect(
@@ -226,8 +230,8 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
             "eligible_card",
             "growth",
             amount=1,
-            first_cards=100,
-            every_nth_card=5,
+            first_cards=200,
+            every_nth_card=2,
         ),),
     ),
     "herbalist_hourglass": CatalogItem(
@@ -521,6 +525,7 @@ def _runtime_environment_effect(effect: object) -> EnvironmentEffect:
             else None
         ),
         weighted_rewards=weighted,
+        active_only=effect.cadence.active_only,
     )
 
 
@@ -553,7 +558,7 @@ def _project_catalog_item(
         kind=kind,
         rarity=str(definition.rarity),
         acquisition=_runtime_acquisition(definition.acquisition),
-        effect=presentation.effect,
+        effect=GARDEN_BONUS_EFFECT_COPY.get(item_id, presentation.effect),
         how_to_earn=str(definition.how_to_acquire),
         price=definition.price_coins,
         drop_tier=_DISCOVERY_TIER_BY_ITEM.get(item_id),

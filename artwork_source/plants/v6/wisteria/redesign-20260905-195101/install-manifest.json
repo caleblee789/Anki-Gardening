@@ -1,0 +1,104 @@
+{
+  "species": "wisteria",
+  "installed_at": "2026-09-05T19:58:55.790142",
+  "changed_canonical_files": [
+    {
+      "file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/seed/wisteria_seed_twilight_v6.webp",
+      "kind": "runtime",
+      "stage": "seed",
+      "prior_sha256": "2520e6bc8bb05cbeab13dee2904ca6ea8873ccdcb2231dfb1768caa7c4d92696",
+      "sha256": "ad31f158b6e5e8bcbbafcadbb3c93777c2709351f80effdbe3c9d0ea1458f6d6"
+    },
+    {
+      "file": "artwork_source/plants/v6/wisteria/wisteria_seed_retina_chroma.png",
+      "kind": "compatibility_source",
+      "stage": "seed",
+      "prior_sha256": "f1a5ad730baa40e7d31c2d5819468e64edb6a45d2294d0efc00894b0d9a376e1",
+      "sha256": "758a5c4acb4481ad6560632842824ad0d967894ef84bef6c8892f48d9531dfd7"
+    },
+    {
+      "file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/sprout/wisteria_sprout_twilight_v6.webp",
+      "kind": "runtime",
+      "stage": "sprout",
+      "prior_sha256": "5c824384f8e65ba07f46c9f1d1bae3740523e2d8ce3e07faad84c3b791d0213f",
+      "sha256": "e5692480340cc2ca301269befaa184ceb6d679038438ccbcc53e913c317cf3d6"
+    },
+    {
+      "file": "artwork_source/plants/v6/wisteria/wisteria_sprout_chroma.png",
+      "kind": "compatibility_source",
+      "stage": "sprout",
+      "prior_sha256": "87fec42f5b94a96717ba15d000d40d78d3ed36c86d83f557c511f1cb4dae8f3f",
+      "sha256": "ac20089837d32b9f3a7c322e424bee8edd3c8c0e97d35e0b5cbf073a816332cf"
+    },
+    {
+      "file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/young/wisteria_young_twilight_v6.webp",
+      "kind": "runtime",
+      "stage": "young",
+      "prior_sha256": "ec4f97d73b65c8608df9d7a4e44b806b95a99314a224b39990036b0b374dcc40",
+      "sha256": "b15aec872cc5fc25bac059c87cd6e3c688a05a196a97672dbefdf77e4c392f8d"
+    },
+    {
+      "file": "artwork_source/plants/v6/wisteria/wisteria_young_chroma.png",
+      "kind": "compatibility_source",
+      "stage": "young",
+      "prior_sha256": "d81d4c227a5162e738463b9a79bfd020f0bce0832eccdfccbb5f0da73e27ade5",
+      "sha256": "257203972bcb758b57a6a51a163c3a1a61b65aea656c21e02d8be0858aef97c0"
+    },
+    {
+      "file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/mature/wisteria_mature_twilight_v6.webp",
+      "kind": "runtime",
+      "stage": "mature",
+      "prior_sha256": "6a6a3308dab3b5616381ec55354698aa0e5f9775f6001a14b316d2a0b90c4bed",
+      "sha256": "f5b6340d1d2606f4093096819a2973e3a65bc5867ee855fbe478613ea9104e1e"
+    },
+    {
+      "file": "artwork_source/plants/v6/wisteria/wisteria_mature_chroma.png",
+      "kind": "compatibility_source",
+      "stage": "mature",
+      "prior_sha256": "3a9ef179f58d9aab837a157a62ac9bcec512dba10f298a833e76e4f109b5bfb2",
+      "sha256": "a8ae24e3e0e10cb49289a9614058ec4e3da8e7434182a55533a196b49b9c27d0"
+    },
+    {
+      "file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/flowering/wisteria_flowering_twilight_v6.webp",
+      "kind": "runtime",
+      "stage": "flowering",
+      "prior_sha256": "1dab34d23e3f9f2f24dbf09cec8bba52020b46e89caccb171b80703605fcf2a5",
+      "sha256": "9c4f6e14d615756d06b60d0c5e06d3397464b682b6078a840f6d2a3bd009978d"
+    },
+    {
+      "file": "artwork_source/plants/v6/wisteria/wisteria_flowering_chroma.png",
+      "kind": "compatibility_source",
+      "stage": "flowering",
+      "prior_sha256": "d8c8eb63757bf2e616c8c15f466daf1a7305c98250088192a6e9789477a3d1cd",
+      "sha256": "b130d0007f6a9c02ad14b880101ee515cd281b20c32fdef092e0de24ad68fd5a"
+    },
+    {
+      "file": "ankigarden/assets/v6_storybook_gouache/plants/wisteria/rare/wisteria_rare_twilight_v6.webp",
+      "kind": "runtime",
+      "stage": "rare",
+      "prior_sha256": "9f2ecbe48b25f51e40f9a38f249629d1cf1b6fccd6ef4d655f1516c1026511b8",
+      "sha256": "aa692b3c328bf9100fdf0d99fc4491e100fbbc1a01fe841d75c2a16cf750457b"
+    },
+    {
+      "file": "artwork_source/plants/v6/wisteria/wisteria_rare_chroma.png",
+      "kind": "compatibility_source",
+      "stage": "rare",
+      "prior_sha256": "4351ab297f6566d2302c2bb0e9c2fc9220c007a7a76429f78c93671298d048cb",
+      "sha256": "a2d4910d60e933f4edac4486ae265c973ba52987c999018318d59ad4400fb1a9"
+    }
+  ],
+  "versioned_sources": "artwork_source/plants/v6/wisteria/redesign-20260905-195101",
+  "shared_manifest_edited": false,
+  "shared_installer_edited": false,
+  "integration_status": "Coordinator must merge six entry replacements and installer calibration",
+  "validation": {
+    "existing_tests_passed": 111,
+    "native_before_after_crops": 108,
+    "sceneries": 9,
+    "all_bed_states": 324,
+    "native_thumbnails": 336,
+    "home_views": 28,
+    "native_anki_window_capture": false,
+    "release_acceptance": false
+  }
+}

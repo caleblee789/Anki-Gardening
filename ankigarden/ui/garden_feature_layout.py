@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Mapping
 
 
 FEATURE_ANCHOR_X = 0.215
@@ -8,10 +9,6 @@ FEATURE_GROUND_Y = 0.830
 FEATURE_CANVAS_SCENE_HEIGHT = 0.250
 ASSET_CONTACT_X = 0.500
 ASSET_CONTACT_Y = 0.880
-PAD_CENTER_X = 0.215
-PAD_CENTER_Y = 0.842
-PAD_WIDTH_SCENE_HEIGHT = 0.280
-PAD_HEIGHT_SCENE_HEIGHT = 0.070
 # The fourth V6 bed is the only interactive bed that can enter the complete
 # feature-canvas reserve. Its canonical 3:2 anchor begins beyond this boundary.
 FEATURE_BAY_NEAR_LEFT_BED_X = 0.390
@@ -46,39 +43,38 @@ class FeatureRect:
 @dataclass(frozen=True)
 class GardenFeatureLayout:
     feature: FeatureRect
-    pad: FeatureRect
+    shadow: FeatureRect
     presentation_class: str
+    shadow_opacity: float
 
 
 def garden_feature_layout(
     scene_width: float,
     scene_height: float,
     scenery_id: str,
+    placement: Mapping[str, Any] | None = None,
 ) -> GardenFeatureLayout:
+    """Project the authored physical support, never the sprite's alpha bottom."""
     width = max(1.0, float(scene_width))
     height = max(1.0, float(scene_height))
-    size = height * FEATURE_CANVAS_SCENE_HEIGHT
+    metadata = placement or {}
+    contact_x, contact_y = metadata.get("ground_anchor", (ASSET_CONTACT_X, ASSET_CONTACT_Y))
+    scale = float(metadata.get("display_scale", 1.0))
+    size = height * FEATURE_CANVAS_SCENE_HEIGHT * scale
     feature = FeatureRect(
-        width * FEATURE_ANCHOR_X - size * ASSET_CONTACT_X,
-        height * FEATURE_GROUND_Y - size * ASSET_CONTACT_Y,
-        size,
-        size,
+        width * FEATURE_ANCHOR_X - size * contact_x,
+        height * FEATURE_GROUND_Y - size * contact_y,
+        size, size,
     )
-    pad_width = height * PAD_WIDTH_SCENE_HEIGHT
-    pad_height = height * PAD_HEIGHT_SCENE_HEIGHT
-    pad = FeatureRect(
-        width * PAD_CENTER_X - pad_width * 0.5,
-        height * PAD_CENTER_Y - pad_height * 0.5,
-        pad_width,
-        pad_height,
+    shadow_width, shadow_height = metadata.get("contact_shadow", (.34, .05))
+    offset_x, offset_y = metadata.get("shadow_offset", (0.0, 0.0))
+    shadow = FeatureRect(
+        width * FEATURE_ANCHOR_X + size * (offset_x - shadow_width / 2),
+        height * FEATURE_GROUND_Y + size * (offset_y - shadow_height / 2),
+        size * shadow_width, size * shadow_height,
     )
-    return GardenFeatureLayout(
-        feature=feature,
-        pad=pad,
-        presentation_class=(
-            "light" if str(scenery_id) in LIGHT_SCENERIES else "dark"
-        ),
-    )
+    light = str(scenery_id) in LIGHT_SCENERIES
+    return GardenFeatureLayout(feature, shadow, "light" if light else "dark", .28 if light else .38)
 
 
 def background_cover_crop(
@@ -106,27 +102,10 @@ def background_cover_crop(
     )
 
 
-def feature_css_variables(
-    scene_width: float,
-    scene_height: float,
-    scenery_id: str,
-) -> str:
-    layout = garden_feature_layout(scene_width, scene_height, scenery_id)
-    return ";".join((
-        f"--ag-feature-left:{layout.feature.x:.4f}px",
-        f"--ag-feature-top:{layout.feature.y:.4f}px",
-        f"--ag-feature-size:{layout.feature.width:.4f}px",
-        f"--ag-feature-pad-left:{layout.pad.x:.4f}px",
-        f"--ag-feature-pad-top:{layout.pad.y:.4f}px",
-        f"--ag-feature-pad-width:{layout.pad.width:.4f}px",
-        f"--ag-feature-pad-height:{layout.pad.height:.4f}px",
-    ))
-
 
 __all__ = [name for name in globals() if name.isupper()] + [
     "FeatureRect",
     "GardenFeatureLayout",
     "background_cover_crop",
-    "feature_css_variables",
     "garden_feature_layout",
 ]

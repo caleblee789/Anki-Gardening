@@ -7,6 +7,8 @@ this accumulator only deduplicates, reverses, segments, and projects them.
 
 from __future__ import annotations
 
+from ..presentation import plant_stage_event
+
 import logging
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, ROUND_HALF_UP
@@ -1698,9 +1700,12 @@ def _session_highlights(summary: SessionDaySummary) -> HighlightProjection:
             event_id=milestone.event_id,
             kind=kind,
             occurred_at=milestone.occurred_at,
-            eyebrow=eyebrow,
-            title=milestone.plant_name,
-            supporting_text=supporting,
+            eyebrow="",
+            title=plant_stage_event(
+                milestone.plant_class, milestone.new_stage,
+                checkpoint_percent=milestone.checkpoint_percent if milestone.milestone_type == "checkpoint" else 0,
+            ),
+            supporting_text="",
             art_asset=milestone.plant_art_asset,
             reward_text=_highlight_reward_text(
                 milestone,

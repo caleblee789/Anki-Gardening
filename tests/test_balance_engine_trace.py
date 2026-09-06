@@ -6,7 +6,7 @@ import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import ActivePlantPeriod, DailyStats, GardenState, Plant
+from ankigarden.models.state import ActivePlantPeriod, DailyStats, GardenState, Plant, STATE_VERSION
 from ankigarden.storage import DueObligationStatus
 from scripts.balance_analysis.catalog import load_catalog_facts
 from scripts.balance_analysis.kernel import DayEvents, generate_event_stream, simulate_scenario
@@ -238,7 +238,7 @@ def test_complete_release_manifest_matches_the_real_engine():
     assert focused["storage_adapter"] == "GardenStorage+RewardLedger(SQLite)"
     assert focused["case_count"] == 9
     assert focused["checkpoint_count"] == 27
-    assert focused["state_schema_version"] == 27
+    assert focused["state_schema_version"] == STATE_VERSION
     assert focused["ledger_schema_version"] == 3
     assert "booster_activation" in focused["covered_behaviors"]
     assert "garden_legacy_level" in focused["covered_behaviors"]
@@ -251,7 +251,7 @@ def test_complete_release_manifest_matches_the_real_engine():
     durable = evidence["durable_persistence"]
     assert durable["status"] == "pass"
     assert durable["storage_adapter"] == "GardenStorage+RewardLedger(SQLite)"
-    assert durable["state_schema_version"] == 27
+    assert durable["state_schema_version"] == STATE_VERSION
     assert durable["ledger_schema_version"] == 3
     assert durable["kernel_equivalence_claimed"] is False
     assert durable["pre_bloom_completion_counters_preserved"] is True
@@ -262,3 +262,53 @@ def test_complete_release_manifest_matches_the_real_engine():
     assert "undo_and_reanswer_lineage" in durable["behaviors"]
     assert "plant_exact_growth_units" in durable["nontrivial_state_fields"]
     assert "state_revision" in durable["nontrivial_state_fields"]
+
+
+@pytest.mark.parametrize("unlocks", (
+    ("botanical_collection",), ("year_of_harvests",), ("ancient_garden",),
+    ("botanical_collection", "year_of_harvests", "ancient_garden"),
+))
+def test_scaling_achievements_and_equipment_match_production(monkeypatch, unlocks):
+    from scripts.balance_analysis import kernel
+    from scripts.balance_analysis.model import StrategySpec
+
+    facts = load_catalog_facts()
+    scenario = ScenarioSpec("trophy-check", CohortSpec("trophy-check", 1, 7, 100),
+                            StrategySpec("no_spend", "Held equipment", optimize_for="manual",
+                                         consumable_policy="never_use_earned"))
+    state = kernel._initial_state(facts, scenario)
+    state.species_owned = 2
+    state.plant_species_ids.append("rose")
+    state.plant_growth_units.append(0)
+    state.claimed_achievements.update(unlocks)
+    state.active_garden_bonus_id = "wind_chime"
+    state.active_scenery_id = "spring"
+    monkeypatch.setattr(kernel, "_initial_state", lambda *_args: state)
+    outcome = simulate_scenario(facts, scenario, SimulationConfig(seeds=1, days=1, checkpoint_days=(1,)),
+                                0, events=(DayEvents(day=1, study=True, answers=1),))
+    assert not outcome.assertion_failures
+
+    engine = _production_engine()
+    storage = engine.storage
+    engine.state.plants.append(Plant("p2", "rose", "Rose", 1))
+    engine.state.unlocked_species.append("rose")
+    engine.state.inventory["garden_features"].append("wind_chime")
+    engine.state.inventory["scenery"].append("spring")
+    engine.state.loadout.display_decoration_id = "wind_chime"
+    engine.state.loadout.display_scenery_id = "spring"
+    for trophy in facts.trophies:
+        if trophy.achievement_id in unlocks:
+            engine.state.achievements[trophy.achievement_id].unlocked = True
+            engine.state.trophy_activation_ms[trophy.trophy_id] = storage.now_ms - 1
+    engine.observe_due_start(DueObligationStatus(review_count=1))
+    award = engine.register_review({
+        "queue": 2, "ease": 3, "card_id": 1, "revlog_id": storage.now_ms,
+        "answered_at_ms": storage.now_ms, "scheduler_day": storage.day,
+        "first_answer_of_day": True, "day_answer_number": 1,
+        "history_counted": True, "answer_identity": "trophy-check",
+    })
+    assert engine.evaluate_today_cards(DueObligationStatus(), record_completed_delta=True)[0]
+    metrics = outcome.checkpoints[1]
+    assert metrics["growth.generated_units"] == sum(p.growth_units for p in engine.state.plants)
+    assert metrics["growth.shared_units"] == award.shared_growth_units
+    assert metrics["coins.gross"] == engine.state.currency_balance

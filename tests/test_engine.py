@@ -144,6 +144,154 @@ def answer(engine: GardenGameEngine, storage: FakeStorage, *, ease: int = 3, rev
     })
 
 
+@pytest.mark.parametrize("unlocks", range(8))
+@pytest.mark.parametrize("feature", ("seedling_sign", "wind_chime"))
+def test_permanent_trophies_stack_and_survive_duplicate_events_and_restart(unlocks, feature):
+    from ankigarden.balance_catalog import ACHIEVEMENT_TROPHIES, GARDEN_BONUS_BY_ID
+
+    engine, storage = make_engine()
+    state = storage.state
+    for bit, trophy in enumerate(ACHIEVEMENT_TROPHIES):
+        if unlocks & (1 << bit):
+            state.achievements[str(trophy.source_achievement_id)].unlocked = True
+            state.trophy_activation_ms[str(trophy.cosmetic_id)] = storage.now_ms - 1
+    state.inventory["garden_features"].append(feature)
+    state.loadout.display_decoration_id = feature
+    state.wind_chime_progress = GARDEN_BONUS_BY_ID["wind_chime"].effects[0].cadence.every_n - 1
+    engine.observe_due_start(DueObligationStatus(review_count=1))
+    award = answer(engine, storage)
+    primary = (10 + bool(unlocks & 1) + (feature == "wind_chime")) * 100
+    share = primary * (3 if unlocks & 4 else 1) // (20 if unlocks & 4 else 10)
+    assert award.total_growth_units == primary
+    assert award.shared_growth_units == share
+    assert award.trophy_growth_units == (100 if unlocks & 1 else 0)
+    assert state.daily_stats.trophy_growth == bool(unlocks & 1)
+    assert engine.evaluate_today_cards(DueObligationStatus(), record_completed_delta=True)[0]
+    journal = [r for r in state.recent_reward_receipts if r.source == "achievement_trophy"]
+    assert sum(r.amount for r in journal) == (5 if unlocks & 2 else 0)
+    assert engine.last_completion_result.trophy_coins == (5 if unlocks & 2 else 0)
+    balance, growth = state.currency_balance, [p.growth_units for p in state.plants]
+    answer(engine, storage, revlog_id=storage.now_ms)
+    assert not engine.evaluate_today_cards(DueObligationStatus())[0]
+    assert (state.currency_balance, [p.growth_units for p in state.plants]) == (balance, growth)
+    boundary = dict(state.trophy_activation_ms)
+    storage.state = GardenState.from_dict(state.to_dict())
+    restarted = GardenGameEngine(FakeConfig(), storage)
+    assert restarted.state.trophy_activation_ms == boundary
+    before = restarted.project_review_growth(now=storage.now_ms / 1000)
+    restarted.state.loadout.visibility = {"garden_feature": False, "scenery": False}
+    after = restarted.project_review_growth(now=storage.now_ms / 1000)
+    assert (after.trophy_growth_units, after.shared_growth_units) == (before.trophy_growth_units, before.shared_growth_units)
+
+
+@pytest.mark.parametrize("trophy_id,achievement_id", (
+    ("botanists_plaque", "botanical_collection"),
+    ("garden_journal", "year_of_harvests"),
+    ("golden_trowel", "ancient_garden"),
+))
+def test_trophy_unlock_boundary_blocks_backpay_and_rolls_back_with_failed_save(trophy_id, achievement_id):
+    from ankigarden.trophies import trophy_effects
+
+    engine, storage = make_engine()
+    before = storage.state.to_dict()
+    engine._unlock_achievement(achievement_id, completion_day=storage.day, correlation_id="trophy-test")
+    boundary = storage.state.trophy_activation_ms[trophy_id]
+    from ankigarden.trophies import trophy_presentations
+    presentation = next(t for t in trophy_presentations(storage.state) if t.trophy_id == trophy_id)
+    assert presentation.obtained_at == storage.state.achievements[achievement_id].unlocked_at
+    before_effects = trophy_effects(storage.state, event_ms=boundary)
+    after_effects = trophy_effects(storage.state, event_ms=boundary + 1)
+    assert before_effects.review_growth == before_effects.completion_coins == 0
+    assert before_effects.shared_growth_percent == 10
+    assert after_effects.review_growth == (1 if trophy_id == "botanists_plaque" else 0)
+    assert after_effects.completion_coins == (5 if trophy_id == "garden_journal" else 0)
+    assert after_effects.shared_growth_percent == (15 if trophy_id == "golden_trowel" else 10)
+    storage.fail_save = True
+    with pytest.raises(OSError):
+        engine._persist_or_restore(before)
+    assert not storage.state.achievements[achievement_id].unlocked
+    assert storage.state.trophy_activation_ms == {}
+
+
+@pytest.mark.parametrize("beds", (0, 1, 6))
+@pytest.mark.parametrize("full_bloom", (False, True))
+def test_trophy_shared_growth_conserves_every_planted_lane_and_overflow(beds, full_bloom):
+    engine, storage = make_engine()
+    state = storage.state
+    state.plants = [Plant(f"p{i}", CURRENT_CATALOG_SPECIES_ORDER[i], f"Plant {i}", i,
+                          growth_points=GROWTH_THRESHOLDS[-1] if full_bloom else 0)
+                    for i in range(beds)]
+    state.active_plant_id = state.plants[0].plant_id if beds and not full_bloom else None
+    for trophy, achievement in (("botanists_plaque", "botanical_collection"), ("golden_trowel", "ancient_garden")):
+        state.achievements[achievement].unlocked = True
+        state.trophy_activation_ms[trophy] = storage.now_ms - 1
+    award = engine._award_review_growth(engine.active_plant(), storage.now_ms)
+    expected = 1100 + max(0, beds - 1) * 165
+    assert award.total_growth_units == 1100
+    assert award.applied_growth_units + award.stored_growth_units == expected
+    assert award.stored_growth_units == (expected if full_bloom or not beds else 0)
+
+
+def test_golden_trowel_unlocks_after_the_100000th_answer_without_retroactive_growth():
+    engine, storage = make_engine()
+    storage.state.lifetime_eligible_answers = 99_999
+    unlocking = answer(engine, storage)
+    assert storage.state.achievements["ancient_garden"].unlocked
+    assert unlocking.shared_growth_units == 100
+    assert answer(engine, storage).shared_growth_units == 150
+
+
+def test_botanists_plaque_starts_after_the_tenth_species_reaches_full_bloom():
+    engine, storage = make_engine()
+    storage.state.plants = [
+        Plant("p1", CURRENT_CATALOG_SPECIES_ORDER[0], "Last bloom", 0,
+              growth_points=GROWTH_THRESHOLDS[-1] - 5),
+        *(Plant(f"p{i}", species, species, None, growth_points=GROWTH_THRESHOLDS[-1])
+          for i, species in enumerate(CURRENT_CATALOG_SPECIES_ORDER[1:], start=2)),
+    ]
+    unlocking = answer(engine, storage)
+    assert storage.state.achievements["botanical_collection"].unlocked
+    assert unlocking.trophy_growth_units == 0
+    assert answer(engine, storage).trophy_growth_units == 100
+
+
+def test_garden_journal_starts_after_365_verified_completions_and_pays_once_next_day():
+    engine, storage = make_engine()
+    storage.state.lifetime_economy_aggregates.today_cards_completions = 364
+    engine.observe_due_start(DueObligationStatus(review_count=1))
+    answer(engine, storage)
+    assert engine.evaluate_today_cards(DueObligationStatus(), record_completed_delta=True)[0]
+    assert storage.state.achievements["year_of_harvests"].unlocked
+    assert engine.last_completion_result.trophy_coins == 0
+    storage.day = "2026-08-09"
+    storage.day_start_ms += 86_400_000
+    storage.now_ms += 86_400_000
+    engine.rollover_if_needed()
+    engine.observe_due_start(DueObligationStatus(review_count=1))
+    answer(engine, storage)
+    assert engine.evaluate_today_cards(DueObligationStatus(), record_completed_delta=True)[0]
+    assert engine.last_completion_result.trophy_coins == 5
+    assert not engine.evaluate_today_cards(DueObligationStatus())[0]
+    assert sum(r.amount for r in storage.state.recent_reward_receipts
+               if r.source == "achievement_trophy") == 5
+
+
+def test_existing_trophies_activate_once_on_upgrade_without_reissuing_rewards():
+    from ankigarden.balance_catalog import ACHIEVEMENT_TROPHIES
+    engine, storage = make_engine()
+    for trophy in ACHIEVEMENT_TROPHIES:
+        storage.state.achievements[str(trophy.source_achievement_id)].unlocked = True
+    before = (storage.state.currency_balance, dict(storage.state.consumables))
+    GardenGameEngine(FakeConfig(), storage)
+    activations = dict(storage.state.trophy_activation_ms)
+    assert len(activations) == 3 and set(activations.values()) == {storage.now_ms}
+    storage.now_ms += 1000
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    GardenGameEngine(FakeConfig(), storage)
+    assert storage.state.trophy_activation_ms == activations
+    assert (storage.state.currency_balance, storage.state.consumables) == before
+
+
 def test_review_semantics_helpers_remain_stable():
     assert difficulty_from_factor(0) == difficulty_from_factor(None) == 0.25
     assert difficulty_from_factor(1000) == 1.0
@@ -415,6 +563,67 @@ def test_first_history_failure_retains_activation_for_later_synced_answer():
     assert storage.state.currency_balance == 4
 
 
+def test_first_garden_receipt_preserves_all_paid_history_without_replaying_study():
+    from ankigarden.welcome_presentation import present_welcome
+
+    storage = FakeStorage()
+    storage.state = GardenState(daily_stats=DailyStats(day=storage.day))
+    # Repeat reviews of one card count as study events, over a past 365-day
+    # streak that has since ended. All ten historical milestones qualify.
+    start = datetime(2025, 1, 1)
+    entries = tuple(
+        HistoricalReviewEntry(
+            revlog_id=number, card_id=42, ease=3, interval=1, last_interval=0,
+            factor=2500, response_time_ms=500, review_type=1, answer_ms=number,
+            scheduler_day=(start + timedelta(days=min(364, number // 274))).date().isoformat(),
+            card_day_ordinal=number % 274 + 1,
+        )
+        for number in range(1, 100_001)
+    )
+    storage.load_eligible_review_history = lambda: HistoricalReviewSnapshot(
+        entries=entries, high_water_revlog_id=100_000, fingerprint="welcome-history",
+    )
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert engine.reconcile_reward_history()[0]
+    receipt = storage.state.welcome_receipt
+    view = present_welcome(receipt)
+    assert receipt.history_review_count == 100_000
+    assert view.achievement_count == 10
+    assert view.history_intro == (
+        "You’ve completed 100,000 card reviews in Anki. "
+        "Your past study has earned you these rewards:"
+    )
+    assert {row.item_id or row.label: row.amount for row in view.history} == {
+        "Coins": 1785, "growth_charge_small": 1, "growth_charge_standard": 2,
+        "growth_charge_grand": 1, "golden_trowel": 1,
+    }
+    assert storage.state.currency_balance == 1785
+    assert storage.state.streak_days == 0
+    assert storage.state.daily_stats.reviewed == 0
+    assert storage.state.stored_growth_units == 0
+    assert not storage.state.plants
+    assert not engine.peek_feedback()
+    assert engine.reconcile_reward_history()[0]
+    assert storage.state.welcome_receipt == receipt
+    assert storage.state.currency_balance == 1785
+
+    # A paused setup retains its receipt even after the general cache expires.
+    storage.state.recent_reward_receipts.clear()
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert engine.reconcile_reward_history()[0]
+    assert storage.state.welcome_receipt == receipt
+    ok, _, plant = engine.choose_starter("rose")
+    assert ok and engine.set_active_plant(plant.plant_id)[0]
+    assert engine.finish_onboarding()[0]
+    ready = storage.state.welcome_receipt
+    assert ready.history_rewards == receipt.history_rewards
+    assert storage.state.currency_balance == 1836
+    assert plant.growth_points == 100
+    assert engine.reconcile_reward_history()[0]
+    assert storage.state.welcome_receipt == ready
+
+
 def test_closed_day_delayed_ingestion_uses_durable_cutoffs_target_and_effects():
     storage = FakeStorage()
     storage.now_ms = 500
@@ -474,6 +683,12 @@ def test_full_history_sync_reconciliation_rewards_past_and_current_but_not_futur
     engine, storage = make_engine()
     past_day = "2026-08-07"
     current_day = storage.day
+    storage.state.inventory["garden_features"].append("watering_station")
+    assert engine.equip_environment("garden_feature", "watering_station")[0]
+    storage.state.watering_station_progress = 2
+    storage.state.watering_station_progress_by_day = {past_day: 4, current_day: 2}
+    storage.state.inventory["scenery"].append("spring")
+    assert engine.equip_environment("scenery", "spring")[0]
     future_day = "2026-08-09"
     storage.state.reward_state_initialized = True
     storage.state.reward_activation_ms = 100
@@ -566,6 +781,12 @@ def test_full_history_sync_reconciliation_rewards_past_and_current_but_not_futur
         current_day,
     ]
     assert all(result.award.total_growth_units > 0 for result in first_results)
+    assert [result.award.scenery_growth_units for result in first_results] == [200, 200]
+    assert [result.award.weather_growth_units for result in first_results] == [200, 100]
+    assert storage.state.watering_station_progress == 1
+    assert GardenState.from_dict(storage.state.to_dict()).watering_station_progress_by_day == {
+        past_day: 1, current_day: 1,
+    }
     assert not first_results[0].daily_completion_rewarded
     assert first_results[1].daily_completion_rewarded
     assert storage.state.daily_completion.scheduler_day == current_day
@@ -586,6 +807,7 @@ def test_full_history_sync_reconciliation_rewards_past_and_current_but_not_futur
         scheduler_day=past_day,
         ordinal=2,
     )
+    assert engine.equip_environment("scenery", "default")[0]
     rows.insert(1, late_lower_id)
     late_results = []
     repeated, _message = engine.reconcile_reward_history(
@@ -598,6 +820,10 @@ def test_full_history_sync_reconciliation_rewards_past_and_current_but_not_futur
     assert len(late_results) == 1
     assert late_results[0].scheduler_day == past_day
     assert late_results[0].award.total_growth_units > 0
+    assert late_results[0].award.scenery_growth_units == 0
+    assert late_results[0].award.weather_growth_units == 100
+    assert storage.state.watering_station_progress_by_day == {past_day: 0, current_day: 1}
+    assert storage.state.watering_station_progress == 1
     assert not late_results[0].daily_completion_rewarded
     assert answer_key(late_lower_id) in storage.state.processed_answer_keys
     assert answer_key(past) != answer_key(late_lower_id)
@@ -698,7 +924,7 @@ def test_progress_export_reports_growth_reconciliation_without_mutation():
 
     report = json.loads(engine.export_progress_summary())
 
-    assert report["schema_version"] == STATE_VERSION == 27
+    assert report["schema_version"] == STATE_VERSION
     assert report["growth_reconciliation"]["study_source_total"] == 10
     assert report["growth_reconciliation"]["study_growth_generated"] == 10
     assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 10}
@@ -973,7 +1199,8 @@ def test_garden_rhythm_uses_prior_seven_eligible_days_without_a_reset_cliff() ->
     assert storage.state.daily_economy_snapshot.garden_rhythm_percent == 8
 
 
-def test_historical_closed_day_without_snapshot_fails_permanent_effects_closed() -> None:
+@pytest.mark.parametrize("answer_number", [1, 101])
+def test_historical_reviews_use_current_equipment_and_preserve_unknown_rhythm(answer_number) -> None:
     engine, storage = make_engine()
     storage.state.reward_state_initialized = True
     storage.state.reward_activation_ms = 1
@@ -983,7 +1210,7 @@ def test_historical_closed_day_without_snapshot_fails_permanent_effects_closed()
     storage.state.inventory["scenery"].append("spring")
     storage.state.loadout.active_garden_bonus_id = "wind_chime"
     storage.state.loadout.active_scenery_effect_id = "spring"
-    storage.state.wind_chime_progress = 9
+    storage.state.wind_chime_progress = 4
     plant = storage.state.plants[0]
     plant.fertilizer_card_batches = [CardEffectBatch(
         "fertilizer_quality", 200, 200, 200
@@ -1000,15 +1227,16 @@ def test_historical_closed_day_without_snapshot_fails_permanent_effects_closed()
         "answered_at_ms": storage.now_ms,
         "scheduler_day": "2026-08-07",
         "historical_sync": True,
+        "day_answer_number": answer_number,
     })
 
     assert award.base_growth_units == 1_000
     assert award.fertilizer_growth_units == 200
     assert award.booster_growth_units == 500
     assert award.streak_growth_units == 0
-    assert award.weather_growth_units == 0
-    assert award.scenery_growth_units == 0
-    assert award.total_growth_units == 1_700
+    assert award.weather_growth_units == 100
+    assert award.scenery_growth_units == (200 if answer_number == 1 else 0)
+    assert award.total_growth_units == (2_000 if answer_number == 1 else 1_800)
     snapshot = storage.state.daily_economy_snapshot
     assert snapshot is not None
     assert snapshot.anki_day == "2026-08-07"
@@ -1052,7 +1280,7 @@ def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
                 "booster_potion", 500, 100, 100
             )]
         storage.state.selected_weather = "breeze" if "weather" in enabled else "sunny"
-        storage.state.wind_chime_progress = 9 if "weather" in enabled else 0
+        storage.state.wind_chime_progress = 4 if "weather" in enabled else 0
         storage.state.loadout.active_scenery_effect_id = (
             "summer" if "scenery" in enabled else "default"
         )
@@ -1183,7 +1411,7 @@ def test_shared_growth_excludes_ineligible_plants_and_redirects_overflow_exactly
     storage.state.plants.extend((unplanted, finished))
     storage.state.daily_stats.reviewed = 1
     storage.state.selected_weather = "breeze"
-    storage.state.wind_chime_progress = 9
+    storage.state.wind_chime_progress = 4
 
     award = answer(engine, storage)
 
@@ -1248,6 +1476,10 @@ def test_growth_charge_quote_confirm_targets_one_plant_without_fanout_or_buffs(
     charge_id,
 ):
     engine, storage = make_engine()
+    from ankigarden.balance_catalog import ACHIEVEMENT_TROPHIES
+    for trophy in ACHIEVEMENT_TROPHIES:
+        storage.state.achievements[str(trophy.source_achievement_id)].unlocked = True
+        storage.state.trophy_activation_ms[str(trophy.cosmetic_id)] = storage.now_ms - 1
     target = engine.plant_story(target_id)
     other = next(plant for plant in storage.state.plants if plant.plant_id != target_id)
     target.growth_points = 390
@@ -1438,7 +1670,7 @@ def test_stage_completion_uses_the_final_checkpoint_split_and_is_durable():
     )
     assert any(memory.memory_id == "stage:sprout" for memory in plant.memories)
     assert any(
-        event.message == "Moss reached Sprout. +2 Garden Coins"
+        event.message == "Bonsai reached sprout. +2 Garden Coins"
         for event in engine.peek_feedback()
     )
 
@@ -1755,6 +1987,12 @@ def test_todays_cards_completion_is_verified_live_and_claimed_once():
     assert storage.state.daily_completion.status == "complete"
     assert storage.state.daily_completion.reward_claimed
     balance = storage.state.currency_balance
+    growth = storage.state.plants[0].growth_units
+    storage.state.inventory["garden_features"].append("harvest_bell")
+    assert engine.equip_environment("garden_feature", "harvest_bell")[0]
+    assert not engine.evaluate_today_cards(DueObligationStatus())[0]
+    assert storage.state.currency_balance == balance
+    assert storage.state.plants[0].growth_units == growth
     assert not engine.evaluate_all_due(
         DueObligationStatus(review_count=9, learning_count=4)
     )[0]
@@ -2312,57 +2550,52 @@ def test_booster_count_pauses_without_a_target_and_resumes_when_growth_applies()
     assert plant.booster_card_batches[0].remaining_cards == 99
 
 
-def test_booster_uses_the_locked_loadout_to_set_its_exact_card_count():
+@pytest.mark.parametrize("hourglass,moon", [(False, False), (True, False), (False, True), (True, True)])
+def test_booster_combines_owned_extensions_for_new_doses(hourglass, moon):
     engine, storage = make_engine()
-    storage.state.inventory["weather"].append("snow_flurry")
-    storage.state.inventory["scenery"].append("full_moon")
-    storage.state.selected_weather = "snow_flurry"
-    storage.state.selected_background = "full_moon"
-    storage.state.loadout.active_scenery_effect_id = "full_moon"
-    storage.state.consumables["booster_potion"] = 1
+    state = storage.state
+    state.inventory["garden_features"] = ["seedling_sign"] + (["herbalist_hourglass"] if hourglass else [])
+    state.inventory["scenery"] = ["default"] + (["full_moon"] if moon else [])
+    state.loadout.display_decoration_id = "seedling_sign"
+    state.loadout.display_scenery_id = "default"
+    state.consumables["booster_potion"] = 2
+    expected = 100 + 25 * (hourglass + moon)
+    assert engine.consumable_use_projection("booster_potion").cards_added == expected
+    assert engine.use_booster_potion()[0]
+    batch = state.plants[0].booster_card_batches[0]
+    assert batch.total_cards == batch.remaining_cards == expected
+    # Buying or equipping later cannot rewrite an existing dose.
+    if "herbalist_hourglass" not in state.inventory["garden_features"]:
+        state.inventory["garden_features"].append("herbalist_hourglass")
+    if "full_moon" not in state.inventory["scenery"]:
+        state.inventory["scenery"].append("full_moon")
+    assert engine.equip_environment("garden_feature", "herbalist_hourglass")[0]
+    assert engine.equip_environment("scenery", "full_moon")[0]
+    assert engine.use_booster_potion()[0]
+    restored = GardenState.from_dict(state.to_dict())
+    assert [batch.total_cards for batch in restored.plants[0].booster_card_batches] == [expected, 150]
 
-    ok, message = engine.use_booster_potion()
-    batch = storage.state.plants[0].booster_card_batches[0]
 
-    assert ok
-    assert "card" in message.lower()
-    assert "hour" not in message.lower()
-    assert batch.total_cards == batch.remaining_cards == 125
-    assert engine.locked_environment_id("garden_feature") == "herbalist_hourglass"
-    assert engine.locked_environment_id("scenery") == "full_moon"
-
-
-def test_daily_effect_snapshot_is_independent_from_appearance_and_immutable() -> None:
+def test_equipment_controls_artwork_and_next_reward_without_rewriting_daily_rhythm() -> None:
     engine, storage = make_engine()
     storage.state.inventory["scenery"].extend(["spring", "summer"])
     assert engine.equip_environment("scenery", "spring")[0]
-    assert engine.display_scenery("summer")[0]
-    assert storage.state.loadout.display_scenery_id == "summer"
-    assert storage.state.loadout.active_scenery_effect_id == "spring"
-
     first = answer(engine, storage)
+    snapshot = storage.state.daily_economy_snapshot
     assert first.scenery_growth == 2
-    assert storage.state.daily_economy_snapshot is not None
-    assert storage.state.daily_economy_snapshot.active_scenery_effect_id == "spring"
-
-    assert engine.equip_environment("scenery", "summer")[0]
-    assert engine.display_scenery("default")[0]
-    second = answer(engine, storage)
-    assert second.scenery_growth == 2
-    assert storage.state.loadout.display_scenery_id == "default"
-    assert storage.state.daily_loadout.queued_scenery_id == "summer"
-    assert storage.state.daily_economy_snapshot.active_scenery_effect_id == "spring"
-
-    storage.day = "2026-08-09"
-    storage.day_start_ms += 86_400_000
-    storage.now_ms += 86_400_000
-    engine.rollover_if_needed()
-    assert storage.state.loadout.active_scenery_effect_id == "summer"
-    next_day_first = answer(engine, storage)
-    next_day_second = answer(engine, storage)
-    assert (next_day_first.scenery_growth, next_day_second.scenery_growth) == (
-        0, 1
-    )
+    assert engine.display_scenery("summer")[0]
+    assert storage.state.selected_background == "summer"
+    assert answer(engine, storage).scenery_growth == 1
+    assert storage.state.daily_economy_snapshot == snapshot
+    before = storage.state.to_dict()
+    storage.fail_save = True
+    assert not engine.equip_environment("scenery", "spring")[0]
+    assert storage.state.to_dict() == before
+    storage.fail_save = False
+    assert engine.equip_environment("scenery", "default")[0]
+    assert answer(engine, storage).scenery_growth == 0
+    assert engine.equip_environment("scenery", "default")[0]
+    assert storage.state.daily_economy_snapshot == snapshot
 
 
 def test_full_bloom_transfers_remaining_card_fertilizer_and_booster():
@@ -2965,7 +3198,7 @@ def test_development_population_builds_complete_state_without_touching_revlog_le
     "mutation",
     [
         "all_due", "feedback", "fertilizer", "booster", "species", "bed", "plant",
-        "collection", "active", "rename", "garden_name", "place", "commit", "restore",
+        "collection", "active", "garden_name", "place", "commit", "restore",
     ],
 )
 def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
@@ -3010,8 +3243,6 @@ def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
         result = engine.move_to_collection("p2")
     elif mutation == "active":
         result = engine.set_active_plant("p2")
-    elif mutation == "rename":
-        result = engine.rename_plant("p1", "Juniper")
     elif mutation == "garden_name":
         result = engine.rename_garden("Moss & Moon")
     elif mutation == "place":
@@ -3103,3 +3334,149 @@ def test_day_7_integrated_reward_remains_once_ever_when_visible_history_is_clear
 
     assert storage.state.currency_balance == 10
     assert storage.state.currency_transactions == []
+
+
+def completed_collection_engine(*, displayed=True):
+    engine, storage = make_engine()
+    state = storage.state
+    state.plants = [Plant(f"catalog-{index}", species, species.title(),
+                          index if displayed and index < 6 else None,
+                          growth_points=GROWTH_THRESHOLDS[-1])
+                    for index, species in enumerate(CURRENT_CATALOG_SPECIES_ORDER)]
+    state.unlocked_species = list(CURRENT_CATALOG_SPECIES_ORDER)
+    state.unlocked_slots = 6
+    state.active_plant_id = None
+    state.active_plant_periods = []
+    from dataclasses import replace
+    state.onboarding = replace(state.onboarding, starter_plant_id=state.plants[0].plant_id)
+    engine = GardenGameEngine(FakeConfig(), storage)
+    engine._update_achievements()
+    return engine, storage
+
+
+@pytest.mark.parametrize("displayed", [False, True])
+@pytest.mark.parametrize("charge_id,amount", [("growth_charge_small", 100), ("growth_charge_standard", 500), ("growth_charge_grand", 2000)])
+def test_completed_collection_charge_receipt_conserves_mastery_and_storage(displayed, charge_id, amount):
+    from ankigarden.economy_progression import MASTERY_MAX_GROWTH_UNITS
+
+    engine, storage = completed_collection_engine(displayed=displayed)
+    state = storage.state
+    species = CURRENT_CATALOG_SPECIES_ORDER[0]
+    state.active_growth_target_type = "mastery"
+    state.active_growth_target_id = species
+    state.active_growth_target_activation_identity = "test-mastery-selection"
+    state.cultivation_mastery.growth_units_funded_by_species[species] = MASTERY_MAX_GROWTH_UNITS - 5_000
+    state.consumables[charge_id] = 1
+    quote = engine.quote_growth_charge(charge_id)
+    assert quote.ready and quote.destination_kind == "garden"
+    assert quote.target_state is GrowthChargeTargetState.GARDEN
+    assert sum(row.units for row in quote.project_allocations) == 5_000
+    assert quote.stored_growth_units == amount * 100 - 5_000
+    for invalid in ("", "missing", state.plants[0].plant_id):
+        assert not engine.quote_growth_charge(charge_id, invalid).ready
+    request = GrowthChargeRequest.from_quote(quote)
+    before = state.to_dict()
+    storage.fail_save = True
+    assert engine.confirm_growth_charge(request).status is GrowthChargeStatus.PERSISTENCE_FAILURE
+    assert storage.state.to_dict() == before
+    storage.fail_save = False
+    outcome = engine.confirm_growth_charge(request)
+    assert outcome.success and outcome.destination_kind == "garden"
+    assert outcome.stored_growth_units + sum(row.units for row in outcome.project_allocations) == amount * 100
+    assert storage.state.stored_growth_units == amount * 100 - 5_000
+    assert storage.state.consumables[charge_id] == 0
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert engine.confirm_growth_charge(request) == outcome
+    assert "Mastery" in outcome.message and "Stored Growth" in outcome.message
+
+
+@pytest.mark.parametrize("displayed", [False, True])
+@pytest.mark.parametrize("tier", ["basic", "quality", "premium"])
+def test_completed_garden_supplies_contribute_once_and_preserve_paid_cards(displayed, tier):
+    from ankigarden.balance_catalog import ACHIEVEMENT_TROPHIES
+    from ankigarden.purchases import PurchaseKind, PurchaseRequest
+
+    engine, storage = completed_collection_engine(displayed=displayed)
+    state = storage.state
+    for trophy in ACHIEVEMENT_TROPHIES:
+        state.achievements[str(trophy.source_achievement_id)].unlocked = True
+        state.trophy_activation_ms[str(trophy.cosmetic_id)] = storage.now_ms - 1
+    state.inventory["garden_features"].extend(["watering_station", "herbalist_hourglass"])
+    state.inventory["scenery"].extend(["spring", "full_moon"])
+    assert engine.equip_environment("garden_feature", "watering_station")[0]
+    assert engine.equip_environment("scenery", "spring")[0]
+    state.consumables[f"fertilizer_{tier}"] = 1
+    state.consumables["booster_potion"] = 1
+    assert not engine.use_fertilizer_item("missing", tier=tier)[0]
+    assert not engine.use_booster_potion(state.plants[0].plant_id)[0]
+    before = state.to_dict()
+    storage.fail_save = True
+    assert not engine.use_fertilizer_item(tier=tier)[0]
+    assert storage.state.to_dict() == before
+    assert not engine.use_booster_potion()[0]
+    assert storage.state.to_dict() == before
+    storage.fail_save = False
+    assert engine.use_fertilizer_item(tier=tier)[0]
+    assert engine.use_booster_potion()[0]
+    first = answer(engine, storage)
+    assert first.fertilizer_growth_units == engine.FERTILIZERS[tier].growth_per_answer * 100
+    assert first.booster_growth_units == 500
+    assert first.trophy_growth_units == 100 and first.scenery_growth_units == 200
+    assert first.stored_growth_units == first.total_growth_units + ((first.total_growth_units * 15 // 100) * 5 if displayed else 0)
+    baseline = engine.sync_reward_baseline()
+    assert baseline["fertilizer_cards_remaining"] == engine.FERTILIZERS[tier].card_count - 1
+    assert baseline["booster_cards_remaining"] == 149
+    before = storage.state.to_dict()
+    assert answer(engine, storage, revlog_id=storage.now_ms).total_growth_units == 0
+    assert storage.state.garden_card_effects.to_dict() == before["garden_card_effects"]
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert engine.sync_reward_baseline()["booster_cards_remaining"] == 149
+    # Buying and applying uses the same explicit garden destination.
+    storage.state.currency_balance = 1000
+    quote = engine.quote_purchase(PurchaseKind.FERTILIZER, tier, target_id=engine.GARDEN_SUPPLY_TARGET)
+    assert quote.ready and quote.target_name == "Garden"
+    result = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
+    assert result.success
+    assert engine.sync_reward_baseline()["fertilizer_cards_remaining"] == 2 * engine.FERTILIZERS[tier].card_count - 1
+
+
+def test_schema29_final_bloom_transfers_inherited_queues_once_without_truncation():
+    from ankigarden.storage import migrate_modern_state
+
+    engine, storage = completed_collection_engine()
+    state = storage.state
+    last = state.plants[0]
+    last.growth_points = GROWTH_THRESHOLDS[-1] - 1
+    state.active_plant_id = last.plant_id
+    state.active_plant_periods = [ActivePlantPeriod(storage.day, last.plant_id, storage.now_ms - 1000)]
+    for index, plant in enumerate(state.plants):
+        plant.fertilizer_card_batches = [CardEffectBatch("fertilizer_basic", 100, 100, 1,
+            activated_at="2026-08-01T00:00:00+00:00", source_event_key=f"paid-{index}")]
+    payload = state.to_dict()
+    payload["version"] = 29
+    payload["wind_chime_progress"] = 9
+    payload["watering_station_progress"] = 4
+    payload["watering_station_progress_by_day"] = {storage.day: 4}
+    storage.state = migrate_modern_state(payload)
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert not storage.state.collection_complete
+    assert answer(engine, storage).fertilizer_growth_units == 100
+    assert storage.state.collection_complete
+    assert all(not p.fertilizer_card_batches and not p.fertilizer_card_queue for p in storage.state.plants)
+    garden = storage.state.garden_card_effects
+    batches = [*garden.fertilizer_card_batches, *garden.fertilizer_card_queue]
+    assert [batch.source_event_key for batch in batches] == [f"paid-{index}" for index in range(1, 10)]
+    assert all(batch.activated_at == "2026-08-01T00:00:00+00:00" and batch.remaining_cards == 1 for batch in batches)
+    storage.state.consumables["fertilizer_basic"] = 1
+    assert not engine.use_fertilizer_item()[0]
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert engine.sync_reward_baseline()["fertilizer_cards_remaining"] == 9
+    for _ in range(5):
+        assert answer(engine, storage).fertilizer_growth_units == 100
+    assert engine.use_fertilizer_item()[0]
+    assert engine.sync_reward_baseline()["fertilizer_cards_remaining"] == 104
+    assert storage.state.wind_chime_progress == 9
+    assert storage.state.watering_station_progress_by_day[storage.day] == 4

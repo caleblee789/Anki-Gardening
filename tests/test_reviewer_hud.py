@@ -281,7 +281,7 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
 
     nurture = project_reviewer_hud(engine, state, now_ms=1_000_000).nurture
 
-    assert nurture.plant_name == "Juniper of the Moonlit Terrace"
+    assert nurture.plant_name == "Mature Bonsai"
     assert nurture.stage_label == "Mature · Stage 4 of 6"
     assert nurture.species_name == "Bonsai"
     assert nurture.next_answer_value == "+13.5 Growth"
@@ -400,7 +400,7 @@ def test_plant_choices_are_engine_confirmed_planted_unfinished_alternatives() ->
     choices = project_plant_choices(engine, state)
 
     assert tuple(choice.plant_id for choice in choices) == ("first", "second")
-    assert choices[0].plant_name == "Amber Rose"
+    assert choices[0].plant_name == "Rose Sprout"
     assert choices[0].species_name == "Rose"
     assert choices[0].stage_label == "Sprout"
     assert choices[0].art_path == "/art/rose-sprout.webp"
@@ -484,7 +484,7 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
         full_state,
     ).nurture
     assert projection.growth_destination is not None
-    assert projection.growth_destination.kind == "choose_project"
+    assert projection.growth_destination.kind == "stored_growth"
     assert projection.growth_destination.stored_growth_units == 1_250
 
 
@@ -926,8 +926,8 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     )
 
     assert bundle.compact.eyebrow == "MILESTONE REACHED"
-    assert bundle.compact.hero_title == "Full Bloom reached"
-    assert bundle.compact.hero_subtitle == "Rose"
+    assert bundle.compact.hero_title == "Heritage Rose reached full bloom"
+    assert bundle.compact.hero_subtitle == ""
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
         "1 Garden Find",
         "2 Garden discoveries",

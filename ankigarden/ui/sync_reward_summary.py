@@ -8,6 +8,8 @@ the card remains usable.
 
 from __future__ import annotations
 
+from ..presentation import plant_stage_title, plant_stage_event
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -360,17 +362,14 @@ def _plant_progress_copy(row: Mapping[str, Any]) -> str:
 
 
 
-def _checkpoint_display_text(checkpoint: Mapping[str, Any]) -> str:
+def _checkpoint_display_text(checkpoint: Mapping[str, Any], species: str) -> str:
     """Normalize committed checkpoint fields into grammatical visible copy."""
 
-    stage_name = format_status_label(checkpoint.get("stage_name", ""))
     try:
         percent = max(0, min(100, int(checkpoint.get("percent", 0) or 0)))
     except (TypeError, ValueError):
         percent = 0
-    if stage_name and percent:
-        return f"Reached the {percent}% checkpoint toward {stage_name}"
-    return str(checkpoint.get("display_text", "") or "Checkpoint reached")
+    return plant_stage_event(species, checkpoint.get("stage_name", ""), checkpoint_percent=percent)
 
 
 def _progress_event_key(row: Mapping[str, Any]) -> str:
@@ -998,10 +997,10 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             or stage.casefold() in {"rare", "full_bloom", "full bloom"}
         )
         if full_bloom and not self._expanded:
-            name = str(row.get("display_name", "Plant") or "Plant")
+            name = plant_stage_title(row.get("species", ""), stage)
             art = self._art_label(parent, kind="plant", identity=str(row.get("species", "") or ""), stage=stage,
                 explicit=str(row.get("artwork_asset", "") or ""), width=36, height=36)
-            event = receipt_event_row(parent, art, f"{name} reached Full Bloom", milestone=True)
+            event = receipt_event_row(parent, art, plant_stage_event(row.get("species", ""), "rare"), milestone=True)
             event.widget.setProperty("syncFullBloom", True)
             return event.widget
         frame.setProperty("syncPrimaryCard", True)
@@ -1033,18 +1032,17 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         copy = QVBoxLayout()
         copy.setContentsMargins(0, 0, 0, 0)
         copy.setSpacing(4)
-        name = str(row.get("display_name", "Plant") or "Plant")
+        name = plant_stage_title(row.get("species", ""), stage)
         growth = format_growth_units(int(row.get("growth_delta_units", 0) or 0), signed=True)
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
-        stage_event_text = str(row.get("stage_event_text", "") or "").strip()
+        stage_changed = bool(row.get("stage_event_id")) or bool(
+            row.get("stage_before") and row.get("stage_after") != row.get("stage_before")
+        )
         primary_text = (
-            stage_event_text
-            if full_bloom and "full bloom" in stage_event_text.casefold()
-            else f"{name} reached Full Bloom"
-            if full_bloom
-            else name
+            plant_stage_event(species, "rare" if full_bloom else stage)
+            if full_bloom or stage_changed else name
         )
         primary = QLabel(primary_text, frame)
         primary.setProperty("syncPrimary", True)
@@ -1074,23 +1072,6 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             stage_before and stage_after and stage_before != stage_after
         )
         if not fully_grown:
-            if stage_changed:
-                secondary_text = stage_event_text
-                name_prefix = f"{name} "
-                if secondary_text.casefold().startswith(name_prefix.casefold()):
-                    secondary_text = secondary_text[len(name_prefix):]
-                secondary_text = (
-                    secondary_text[:1].upper() + secondary_text[1:]
-                    if secondary_text else
-                    f"Reached {stage_name}"
-                )
-            else:
-                secondary_text = stage_name
-            secondary = QLabel(secondary_text, frame)
-            secondary.setProperty("syncSecondary", True)
-            secondary.setWordWrap(True)
-            secondary.setTextFormat(Qt.TextFormat.PlainText)
-            copy.addWidget(secondary)
             progress_text = _plant_progress_copy(row)
             if progress_text:
                 progress_copy = QLabel(
@@ -1141,7 +1122,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     height=28,
                 ))
                 checkpoint_text = QLabel(
-                    _checkpoint_display_text(checkpoint),
+                    _checkpoint_display_text(checkpoint, str(row.get("species", "") or "")),
                     checkpoint_row,
                 )
                 checkpoint_text.setProperty("syncSecondary", True)

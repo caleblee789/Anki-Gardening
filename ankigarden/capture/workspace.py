@@ -1,5 +1,6 @@
 """Native capture routes for the consolidated Garden window."""
 
+from ..feature_availability import landmarks_enabled
 from copy import deepcopy
 import hashlib
 import json
@@ -39,6 +40,39 @@ def _settle():
     app.processEvents()
     app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
+
+
+def plant_naming_audit(runner, widget):
+    """Check real visible/accessibility copy against retired stored names."""
+    import re
+    from aqt.qt import QWidget
+    from ..presentation import PlantIdentity
+
+    state = runner.app.storage.state
+    retired_names = {
+        str(plant.name).strip() for plant in state.plants
+        if str(plant.name).strip()
+        and str(plant.name).strip() not in {
+            PlantIdentity.from_plant(plant).display_name,
+            PlantIdentity.from_plant(plant).species_name,
+        }
+    }
+    visible = [child for child in (widget, *widget.findChildren(QWidget))
+               if child.isVisibleTo(widget)]
+    copy = []
+    for child in visible:
+        for accessor in ("text", "accessibleName", "accessibleDescription", "toolTip"):
+            read = getattr(child, accessor, None)
+            if callable(read):
+                value = read()
+                if isinstance(value, str):
+                    copy.append(value)
+    text = " ".join(copy)
+    leaked = sorted(name for name in retired_names
+                    if re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text))
+    rename_visible = "Rename plant" in text
+    return {"custom_names_visible": leaked, "rename_visible": rename_visible,
+            "passed": not leaked and not rename_visible}
 
 
 def workspace_postcondition(runner, widget, route):
@@ -89,7 +123,11 @@ def workspace_postcondition(runner, widget, route):
         issues.append("workspace-route")
     if not visible:
         issues.append("visible-content")
-    return {"workspace_route": actual, "visible_content": bool(visible), "issues": issues}
+    naming = plant_naming_audit(runner, widget)
+    if not naming["passed"]:
+        issues.append("plant-naming")
+    return {"workspace_route": actual, "visible_content": bool(visible),
+            "plant_naming": naming, "issues": issues}
 
 
 def capture_plant_menu_layouts(runner):
@@ -154,7 +192,6 @@ def capture_plant_menu_layouts(runner):
 
 def capture_garden_setup_supplement(runner):
     """Review the new setup states in the same isolated, exact-package session."""
-    from datetime import date, timedelta
     from ..models.state import CardEffectBatch, DailyEconomySnapshot, GardenProjectState
     from ..presentation import project_garden_setup
     from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
@@ -190,9 +227,8 @@ def capture_garden_setup_supplement(runner):
             snapshot_source="local_review", snapshot_id="garden-setup-capture",
             active_garden_bonus_id="watering_station", active_scenery_effect_id="default",
         )
-        state.daily_loadout.pending_garden_feature_id = "wind_chime"
-        state.daily_loadout.queued_for_day = (date.fromisoformat(state.daily_stats.day) + timedelta(days=1)).isoformat()
-        state.daily_loadout.queued_scenery_id = "spring"
+        state.loadout.display_decoration_id = "watering_station"
+        state.loadout.visibility = {"garden_feature": False, "scenery": False}
         original_project = deepcopy(state.garden_project)
         state.garden_project = GardenProjectState(
             landmark_highest_claimed_tier=1,
@@ -207,30 +243,49 @@ def capture_garden_setup_supplement(runner):
         dashboard.refresh_all()
         dashboard.open_section("collection", "scenery")
         before = deepcopy(storage.state.to_dict())
+        committed = project_garden_setup(engine, storage)
+        checks["legacy_hidden_equipment_displays"] = all(item.visible for item in committed.items if item.kind != "landmark")
+        checks["visibility_switches_removed"] = not hasattr(panel, "show_weather") and not hasattr(panel, "show_scenery")
+        checks["bonuses_paired_with_equipment"] = all(
+            panel.setup_rows[item.kind][1].text() == item.appearance_name
+            and panel.setup_rows[item.kind][3].text() == ("No study bonus" if item.effect == "No bonus" else item.effect)
+            for item in committed.items if item.kind != "landmark"
+        )
         panel._select_option("scenery", "spring")
         checks["preview_does_not_save"] = before == storage.state.to_dict()
+        checks["preview_preserves_equipped_cards"] = all(
+            panel.setup_rows[item.kind][1].text() == item.appearance_name
+            for item in committed.items if item.kind != "landmark"
+        )
+        checks["collection_and_equipped_descriptions_match"] = all(
+            any(label.text() == panel.setup_rows[item.kind][3].text()
+                for label in panel._tiles[(item.kind, item.appearance_id)].findChildren(QLabel)
+                if label.property("environmentEffect"))
+            for item in committed.items if (item.kind, item.appearance_id) in panel._tiles
+        )
         save("01-unsaved-scenery-preview")
         panel.discard_preview()
         checks["reset_does_not_save"] = before == storage.state.to_dict()
         dashboard.open_section("collection", "decorations")
-        save("02-independent-appearance-bonuses-and-schedule")
-        panel.scheduled_bonuses.button.click()
-        _settle()
-        panel.setup_scroll.ensureWidgetVisible(panel.scheduled_host, 0, 0)
-        save("09-scheduled-bonus-details")
-        panel.scheduled_bonuses.button.click()
-        panel.setup_scroll.verticalScrollBar().setValue(0)
+        save("02-equipped-items-and-effects")
         panel.other_bonuses.button.click()
         _settle()
         panel.setup_scroll.ensureWidgetVisible(panel.other_bonuses, 0, 0)
         save("03-other-active-bonuses")
         panel.other_bonuses.button.click()
-        dashboard.open_section("collection", "garden-landmarks")
-        panel.preview_landmark("birdbath_terrace")
-        checks["unbuilt_landmark_cannot_apply"] = not panel.appearance_apply.isEnabled()
-        checks["landmark_preview_does_not_save"] = before == storage.state.to_dict()
-        save("04-unbuilt-landmark-preview")
-        panel.discard_preview()
+        if landmarks_enabled():
+            dashboard.open_section("collection", "garden-landmarks")
+            panel.preview_landmark("birdbath_terrace")
+            checks["unbuilt_landmark_cannot_apply"] = not panel.appearance_apply.isEnabled()
+            checks["landmark_preview_does_not_save"] = before == storage.state.to_dict()
+            save("04-unbuilt-landmark-preview")
+            panel.discard_preview()
+        else:
+            checks["landmark_setup_absent"] = "landmark" not in panel.setup_rows
+            checks["landmark_tab_absent"] = all(
+                tab.value != "garden-landmarks"
+                for tab in dashboard.collection_section.subtabs.buttons
+            )
         dashboard.open_section("collection", "scenery")
         displayed_project = deepcopy(storage.state.garden_project)
         storage.state.garden_project = deepcopy(original_project)
@@ -238,9 +293,9 @@ def capture_garden_setup_supplement(runner):
         panel._apply_selected_appearance()
         after = project_garden_setup(engine, storage)
         records.append({"appearance_result": {"displayed": after.items[0].appearance_id, "bonus": after.items[0].bonus_id, "feedback": panel.appearance_feedback.text()}})
-        checks["appearance_preserves_bonus"] = after.items[0].appearance_id == "spring" and after.items[0].bonus_id == "default"
+        checks["equipment_artwork_matches_effect"] = after.items[0].appearance_id == after.items[0].bonus_id == "spring"
         panel._undo_appearance()
-        checks["undo_restores_appearance_only"] = storage.state.selected_background == before["loadout"]["display_scenery_id"]
+        checks["undo_restores_equipment"] = storage.state.selected_background == before["loadout"]["display_scenery_id"]
         panel._select_option("scenery", "summer")
         failed_before = deepcopy(storage.state.to_dict())
         engine.apply_garden_appearance = lambda *args, **kwargs: (False, "Couldn’t save changes. Try again.")
@@ -265,7 +320,7 @@ def capture_garden_setup_supplement(runner):
         checks["bright_scenery_saved"] = ok
         storage.state.garden_project = deepcopy(displayed_project)
         dashboard.refresh_all()
-        save("08-bright-scenery-and-displayed-landmark")
+        save("08-bright-scenery")
         storage.state.inventory["garden_features"] = list(GARDEN_FEATURE_CATALOG)
         storage.state.inventory["scenery"] = list(SCENERY_CATALOG)
         dashboard.resize(860, 580)
@@ -394,8 +449,9 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
                 capture_progress_narrow(runner)
             if section == "collection" and subsection == "scenery":
                 capture_garden_setup_supplement(runner)
-                from .landmark_audit import capture_landmark_audit
-                capture_landmark_audit(runner)
+                if landmarks_enabled():
+                    from .landmark_audit import capture_landmark_audit
+                    capture_landmark_audit(runner)
         elif route == "garden":
             dashboard.scene.dismiss_selection()
         elif route in {"inspector", "inspector-available", "move"}:
@@ -513,6 +569,7 @@ def compact_reward_audit(runner, card):
         "collapsed_content_fits": expanded or all(row["vertical"] == 0 for row in ranges),
         "nonmodal": not card.isWindow() and card.focusPolicy() == Qt.FocusPolicy.NoFocus,
     }
+    checks["plant_naming"] = plant_naming_audit(runner, card)["passed"]
     if is_hud:
         empty_effects = [chip for chip in getattr(card, "_effect_chips", ())
                          if visible(chip) and not any(label.text().strip() for label in chip.findChildren(QLabel))]

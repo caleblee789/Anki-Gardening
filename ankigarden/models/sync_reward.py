@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..presentation import plant_stage_title, plant_stage_event
+
 """Bounded presentation contract for rewards introduced by collection sync."""
 
 from dataclasses import dataclass, field, replace
@@ -263,8 +265,7 @@ class SyncPlantResult:
                 "full_bloom",
                 0,
                 self.stage_event_id or f"plant:{self.plant_id}:full_bloom",
-                self.stage_event_text
-                or f"{self.display_name or 'Plant'} reached Full Bloom",
+                plant_stage_event(self.species, "rare"),
             )
         if self.stage_changed:
             return SyncPlantMilestone(
@@ -273,8 +274,7 @@ class SyncPlantResult:
                 self.stage_event_id or (
                     f"plant:{self.plant_id}:stage:{_stage_id(self.stage_after)}"
                 ),
-                self.stage_event_text
-                or f"Reached {_stage_display_name(self.stage_after)}",
+                plant_stage_event(self.species, self.stage_after),
             )
         checkpoints = self.canonical_checkpoints
         if checkpoints:
@@ -283,7 +283,7 @@ class SyncPlantResult:
                 "checkpoint",
                 2,
                 checkpoint.event_id,
-                checkpoint.display_text,
+                plant_stage_event(self.species, checkpoint.stage_name, checkpoint_percent=checkpoint.percent),
                 checkpoint.percent,
             )
         return SyncPlantMilestone(
@@ -309,7 +309,7 @@ class SyncPlantResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "plant_id": _text(self.plant_id, limit=96),
-            "display_name": _text(self.display_name),
+            "display_name": plant_stage_title(self.species, self.stage_after),
             "species": _text(self.species, limit=96),
             "artwork_asset": _text(self.artwork_asset),
             "growth_delta_units": _nonnegative(self.growth_delta_units),

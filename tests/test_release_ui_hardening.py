@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ankigarden.presentation import plant_species_name, plant_stage_event
+
 import ast
 
 import pytest
@@ -233,45 +235,51 @@ def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -
         "_transition_copy",
         {
             "GrowthChargeDialogData": object,
+            "plant_species_name": plant_species_name,
+            "plant_stage_event": plant_stage_event,
             "format_status_label": lambda value: str(value).title(),
         },
     )
     stage_change = SimpleNamespace(
-        plant_name="Bonsai Plant",
+        plant_name="Bonsai Sprout",
+        plant_species="bonsai",
         stage_changed=True,
         after_stage_name="sprout",
         growth_amount=100,
     )
     same_stage = SimpleNamespace(
-        plant_name="Bonsai Plant",
+        plant_name="Bonsai Sprout",
+        plant_species="bonsai",
         stage_changed=False,
         after_stage_name="sprout",
         growth_amount=100,
     )
 
     stage_change.variant = "confirmation"
-    assert transition_copy(stage_change) == "Bonsai Plant will reach Sprout"
+    assert transition_copy(stage_change) == "Bonsai will reach sprout"
     stage_change.variant = "success"
-    assert transition_copy(stage_change) == "Bonsai Plant reached Sprout"
+    assert transition_copy(stage_change) == "Bonsai reached sprout"
     same_stage.variant = "confirmation"
-    assert transition_copy(same_stage) == "Bonsai Plant will gain 100 Growth"
+    assert transition_copy(same_stage) == "Bonsai Sprout will gain 100 Growth"
     same_stage.variant = "success"
-    assert transition_copy(same_stage) == "Bonsai Plant gained 100 Growth"
+    assert transition_copy(same_stage) == "Bonsai Sprout gained 100 Growth"
 
 
 def test_growth_charge_view_plant_returns_to_the_committed_target() -> None:
     source = _dashboard_source()
-    activate_source = ast.get_source_segment(
-        source,
-        _method_node("GrowthChargeConfirmationDialog", "_activate_primary"),
-    ) or ""
+    activate = _compiled_method("GrowthChargeConfirmationDialog", "_activate_primary")
     owner_source = ast.get_source_segment(
         source,
         _method_node("GardenDashboard", "_open_growth_charges_for_plant"),
     ) or ""
 
-    assert "self.view_plant_requested = True" in activate_source
-    assert "self.accept()" in activate_source
+    for destination, opens_plant in (("plant", True), ("garden", False)):
+        accepted = []
+        dialog = SimpleNamespace(_completed=True, quote=SimpleNamespace(destination_kind=destination),
+                                 setProperty=lambda *_: None, accept=lambda: accepted.append(True))
+        activate(dialog)
+        assert dialog.view_plant_requested is opens_plant
+        assert accepted == [True]
     assert "view_plant_requested = bool(dialog.view_plant_requested)" in owner_source
     assert "self.scene.keep_card_open(target_id)" in owner_source
     assert "self._refresh_selected_plant_card()" in owner_source

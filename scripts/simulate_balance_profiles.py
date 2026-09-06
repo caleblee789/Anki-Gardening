@@ -5,6 +5,7 @@ from __future__ import annotations
 
 The release lane uses 10,000 paired seeds. Tests call :func:`simulate_profiles`
 with a small explicit seed count; they never silently reduce the CLI default.
+Use --quick for the smaller progression audit and its standalone Markdown/CSV.
 """
 
 import argparse
@@ -107,6 +108,8 @@ def simulate_profiles(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--quick", action="store_true",
+                        help="Run the 525-outcome quick audit plus 50 established-user checks, using current onboarding.")
     parser.add_argument(
         "--seeds",
         type=int,
@@ -183,7 +186,44 @@ def _summary(report) -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(arguments)
+    if args.quick:
+        from scripts.balance_analysis.quick import (
+            markdown_report, quick_cases, run_quick_audit, write_quick_artifacts,
+        )
+        def explicit(option: str) -> bool:
+            return any(value == option or value.startswith(option + "=") for value in arguments)
+        cases = quick_cases(seeds=args.seeds if explicit("--seeds") else None,
+                            days=args.days if explicit("--days") else None)
+        if args.list_scenarios:
+            for case in cases:
+                print(f"{case.scenario.scenario_id}: {case.seeds} seeds, {case.days} days")
+            return 0
+        validate_runtime_catalog()
+        if args.validate_only:
+            print("balance catalog valid")
+            return 0
+        if args.output_dir is not None and any(
+            (args.output_dir / name).exists() for name in
+            ("quick-audit.md", "quick-audit.json", "quick-statistics.csv", "quick-items.csv")
+        ):
+            raise SystemExit("Audit output already exists; choose a fresh output directory.")
+        if args.workers < 0:
+            raise SystemExit("--workers must be zero or positive")
+        if args.parity_evidence or args.release_validation_evidence or explicit("--seed-root"):
+            raise SystemExit("Quick audits use their fixed paired seed root and separate validation; omit release-evidence/seed-root options.")
+        workers = args.workers or min(4, os.cpu_count() or 1)
+        report = run_quick_audit(cases=cases, workers=workers,
+                                 progress=lambda value: print(value, file=sys.stderr, flush=True))
+        if args.output_dir is not None:
+            for kind, path in write_quick_artifacts(report, args.output_dir).items():
+                print(f"{kind}: {path}")
+        elif args.json:
+            print(canonical_json_text(report), end="")
+        else:
+            print(markdown_report(report), end="")
+        return 0
     if args.list_scenarios:
         for scenario in approved_scenarios():
             print(scenario.scenario_id)

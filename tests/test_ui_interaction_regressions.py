@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from ankigarden.ui.formatters import format_plant_name
+from ankigarden.ui.copy import GARDEN_TITLE
+
 import ast
 import json
 import re
@@ -183,7 +186,7 @@ def _compiled_method(
     method_name: str,
     namespace: dict[str, Any] | None = None,
 ) -> Any:
-    scope: dict[str, Any] = {"Any": Any}
+    scope: dict[str, Any] = {"Any": Any, "format_plant_name": format_plant_name}
     scope.update(namespace or {})
     exec(textwrap.dedent(_method_source(path, class_name, method_name)), scope)
     return scope[method_name]
@@ -417,7 +420,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     placements = plant_layout(480, 320, 6)
     plants = [
         {"plant_id": "p0", "slot_index": 0, "name": "Briar"},
-        {"plant_id": "p1", "slot_index": 1, "name": "Juniper"},
+        {"plant_id": "p1", "slot_index": 1, "name": "Juniper", "species": "bonsai", "stage": "young"},
         {"plant_id": "p3", "slot_index": 3, "name": "Moss"},
     ]
     interaction = PlantInteractionState()
@@ -458,7 +461,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     scene._hovered_move_slot = 1
     hover_painter = _FakePainter()
     draw_slots(scene, hover_painter)
-    assert set(hover_painter.labels) == {"Current bed", "Swap with Juniper"}
+    assert set(hover_painter.labels) == {"Current bed", "Swap with Young Bonsai"}
     assert len(hover_painter.badges) == 2
 
     scene._hovered_move_slot = None
@@ -704,15 +707,15 @@ def test_focused_plant_accessibility_names_the_plant_and_available_actions() -> 
     )
 
     announce(scene)
-    assert scene.accessible_name == "Garden plant: Briar"
+    assert scene.accessible_name == "Garden plant: Young Japanese Maple"
     assert scene.accessible_description == (
-        "Focused plant: Briar, Japanese Maple, Young. "
+        "Focused plant: Young Japanese Maple. "
         "Press Enter to select it, or use the arrow keys to explore. "
         "Use the arrow keys to explore plants. Press Enter to open the selected item."
     )
 
     announce(scene, selected=True)
-    assert "Briar, Japanese Maple, Young, selected" in scene.accessible_description
+    assert "Young Japanese Maple, selected" in scene.accessible_description
     assert "Use Tab" in scene.accessible_description
     assert "Details" in scene.accessible_description
 
@@ -741,58 +744,6 @@ def test_story_memory_order_survives_state_round_trip_on_the_same_day() -> None:
     assert story_is_just_beginning([PlantMemory("planted", "planted", "2026-08-08")]) is True
 
 
-def test_story_escape_cancels_rename_and_restores_focus_to_edit_button() -> None:
-    class Timer:
-        @staticmethod
-        def singleShot(_delay: int, callback: Any) -> None:
-            callback()
-
-    set_editing = _compiled_method(
-        DASHBOARD_PATH, "PlantStoryDialog", "_set_editing", {"QTimer": Timer}
-    )
-    cancel = _compiled_method(
-        DASHBOARD_PATH, "PlantStoryDialog", "_cancel_rename"
-    )
-    calls: list[tuple[str, Any]] = []
-
-    class Widget:
-        def setVisible(self, value: bool) -> None:
-            calls.append(("visible", value))
-
-        def setFocus(self) -> None:
-            calls.append(("focus", True))
-
-        def selectAll(self) -> None:
-            calls.append(("select", True))
-
-        def setText(self, value: str) -> None:
-            calls.append(("text", value))
-
-        def setAccessibleDescription(self, value: str) -> None:
-            calls.append(("description", value))
-
-        def hide(self) -> None:
-            calls.append(("hide", True))
-
-    story = SimpleNamespace(
-        name_heading=Widget(),
-        rename_host=Widget(),
-        name_edit=Widget(),
-        save_name_btn=Widget(),
-        cancel_name_btn=Widget(),
-        edit_name_btn=Widget(),
-        feedback=Widget(),
-        set_dialog_dirty=lambda value: calls.append(("dirty", value)),
-    )
-    story._set_editing = lambda editing, restore_focus=False: set_editing(
-        story, editing, restore_focus=restore_focus
-    )
-
-    cancel(story)
-
-    assert ("description", "") in calls
-    assert calls[-1] == ("focus", True)
-
 
 def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slots() -> None:
     appearance_rows = (
@@ -809,6 +760,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
         "GardenDashboard",
         "_settings_scene_snapshot",
         {
+            "GARDEN_TITLE": GARDEN_TITLE,
             "growth_display": lambda _points: SimpleNamespace(progress=0.37),
             "plant_growth_points": plant_growth_points,
             "project_garden_appearance": lambda _state: SimpleNamespace(
@@ -2141,7 +2093,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     assert rearrange.visible is True
     assert rearrange.failed is True
     assert rearrange.retry.focused is True
-    assert rearrange.heading == "Move Aster"
+    assert rearrange.heading == "Move Bonsai"
     assert rearrange.instruction == (
         "Choose an empty bed, or another plant to swap."
     )
@@ -2250,6 +2202,7 @@ def test_missing_or_corrupt_surface_suppresses_all_landmark_hotspots() -> None:
         changes: list[str] = []
         pixmap_calls: list[Path] = []
         scene = SimpleNamespace(
+            _sync_feature_hotspot=lambda: None,
             _landmark_hotspots={"nursery": hotspot},
             _landmark_action_id="garden.nursery.open",
             _landmark_action_by_id={"nursery": "garden.nursery.open"},

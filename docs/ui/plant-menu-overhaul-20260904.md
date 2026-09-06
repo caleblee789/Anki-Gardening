@@ -10,7 +10,7 @@ The floating menu prefers 304 px width and sizes to its content. Its Close contr
 
 Hover highlights plants. Clicking selects or toggles their menu; View plant opens the nurtured plant and stays open on repeated activation. Background click, Close, Escape, and leaving Garden dismiss the menu. More and owned dialogs handle their own Escape first. Move hides the menu and restores the selected plant after completion or cancellation. Routine refreshes update existing selection without reopening a dismissed menu.
 
-With no nurtured plant, the bar says **No plant is being nurtured** and offers **Choose plant** through the existing selection flow. Starter selection and initial placement hide the bar. Committed nurture, item use, rename, Growth, and Undo continue through the existing refresh boundary; failed saves retain committed state.
+With no nurtured plant, the bar says **No plant is being nurtured** and offers **Choose plant** through the existing selection flow. Starter selection and initial placement hide the bar. Committed nurture, item use, Growth, and Undo continue through the existing refresh boundary; failed saves retain committed state.
 
 The existing placement resolver and connector are active again. Overlays can use the space surrounding a letterboxed scene image while plant and bed geometry remains unchanged. This resolves the constrained bed-4 placement without covering the selected artwork. Popup scrolling remains independent of the main Garden page.
 

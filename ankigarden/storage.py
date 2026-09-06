@@ -37,6 +37,7 @@ from .models.state import (
     CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
     CULTIVATION_MASTERY_RANKS,
     DailyEconomySnapshot,
+    DEFAULT_GARDEN_NAME,
     GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
     GARDEN_PROJECT_IDS,
     GARDEN_LEGACY_LEVEL_COST_UNITS,
@@ -82,7 +83,7 @@ logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
 MODERN_PREVIOUS_STATE_VERSIONS = frozenset({
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
 })
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 MAX_HISTORICAL_REVLOG_ENTRIES = 1_000_000
@@ -1659,7 +1660,7 @@ def _migrate_schema27_endgame_payload(
         payload.setdefault("garden_legacy_level", 0)
         payload.setdefault("garden_legacy_progress_units", 0)
     payload.setdefault("garden_cycle_remainder", 0)
-    payload.setdefault("garden_cycle_migration_version", STATE_VERSION)
+    payload.setdefault("garden_cycle_migration_version", 0)
     payload.setdefault("garden_cycle_history_complete", False)
 
     aggregates = payload.get("lifetime_economy_aggregates")
@@ -1732,9 +1733,9 @@ def migrate_previous_state(raw: Any) -> GardenState:
     }
     payload = {
         "version": STATE_VERSION,
-        "garden_name": "My Garden",
+        "garden_name": DEFAULT_GARDEN_NAME,
         # Migrated gardens must not be interrupted by the new first-run name
-        # prompt. Learners can still rename the garden from its header.
+        # prompt. Learners can still rename the garden in Settings.
         "garden_setup_version": 1,
         "streak_days": raw.get("streak_days"),
         "total_reviews": raw.get("total_reviews"),
@@ -1796,6 +1797,17 @@ def migrate_previous_state(raw: Any) -> GardenState:
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
+def _migrate_schema28_equipment_payload(payload: dict[str, Any]) -> None:
+    """Keep the displayed selections and retire independent effect scheduling."""
+    payload["version"] = STATE_VERSION
+    payload.pop("daily_loadout", None)
+    loadout = payload.get("loadout")
+    if isinstance(loadout, dict):
+        for key in ("active_garden_bonus_id", "active_scenery_effect_id",
+                    "active_bonus_garden_feature_id"):
+            loadout.pop(key, None)
+
+
 def migrate_modern_state(
     raw: Any,
     *,
@@ -1818,13 +1830,15 @@ def migrate_modern_state(
     def finish(*, materialize: bool = True) -> GardenState:
         if source_version < 26:
             _migrate_schema26_economy_payload(payload, migrated_at=migrated_at)
-        _migrate_schema27_endgame_payload(
-            payload, source_version=source_version
-        )
+        if source_version < 27:
+            _migrate_schema27_endgame_payload(
+                payload, source_version=source_version
+            )
+        _migrate_schema28_equipment_payload(payload)
         state = GardenState.from_dict(payload)
         return _materialize_unlocked_species(state) if materialize else state
 
-    if source_version == 26:
+    if source_version in {26, 27, 28, 29}:
         return finish()
     if source_version == 25:
         payload.setdefault("pending_sync_reward_summary", None)
@@ -1878,7 +1892,7 @@ def migrate_modern_state(
     payload.setdefault("daily_environment_claims", {})
     payload.setdefault("environment_completion_counts", {})
     payload.setdefault("environment_visibility", {"weather": True, "scenery": True})
-    payload.setdefault("garden_name", "My Garden")
+    payload.setdefault("garden_name", DEFAULT_GARDEN_NAME)
     payload.setdefault("completed_purchase_requests", [])
     _migrate_growth_accounting_payload(payload)
     if source_version < 16:
@@ -2127,9 +2141,10 @@ class GardenStorage:
                     state = migrate_modern_state(
                         dict(snapshot.payload), migrated_at=time.time()
                     )
-                    self._initialize_schema27_migration_metadata(ledger, state)
-                    self._stage_legacy_economy_idempotency(ledger, state)
-                    self._apply_pending_economy_migration_grants(ledger, state)
+                    if snapshot.schema_version < 27:
+                        self._initialize_schema27_migration_metadata(ledger, state)
+                        self._stage_legacy_economy_idempotency(ledger, state)
+                        self._apply_pending_economy_migration_grants(ledger, state)
                     committed = ledger.commit_state(
                         self._bounded_state_payload(state),
                         schema_version=STATE_VERSION,
@@ -2242,13 +2257,10 @@ class GardenStorage:
                 )
             state.garden_cycle_remainder = remainder
             state.garden_cycle_history_complete = history_complete
-            state.garden_cycle_migration_version = STATE_VERSION
+            state.garden_cycle_migration_version = 27
             return
-        if (
-            state.garden_cycle_migration_version >= STATE_VERSION
-            and state.garden_cycle_history_complete
-        ):
-            history_complete = True
+        if state.garden_cycle_migration_version >= 27:
+            history_complete = state.garden_cycle_history_complete
             state.garden_cycle_remainder = max(
                 0, min(4, int(state.garden_cycle_remainder))
             )
@@ -2277,7 +2289,7 @@ class GardenStorage:
             state.garden_cycle_remainder = (
                 len(completion_days) % 5 if history_complete else 0
             )
-        state.garden_cycle_migration_version = STATE_VERSION
+        state.garden_cycle_migration_version = 27
         state.garden_cycle_history_complete = history_complete
         landmark_funding = max(
             0,
@@ -2720,6 +2732,11 @@ class GardenStorage:
         if self._reward_ledger is None:
             return None
         return self._reward_ledger.economy_event(event_key)
+
+    def first_item_acquisition_at(self, item_id: str) -> str | None:
+        if self._reward_ledger is None:
+            return None
+        return self._reward_ledger.first_item_acquisition_at(item_id)
 
     def stage_economy_event(self, record: EconomyEventRecord) -> None:
         if self._reward_ledger is None:

@@ -98,7 +98,7 @@ def test_home_and_main_scene_project_the_same_fixed_landmark_anchor() -> None:
             < GARDEN_LANDMARK_ANCHORS["glasshouse_conservatory"].height)
 
 
-def test_home_landmark_remains_absent_after_landmarks_move_to_collection() -> None:
+def test_home_hides_valid_landmark_art_while_preserving_its_renderer(monkeypatch) -> None:
     empty_html = render_home_widget(
         HomeWidgetSnapshot(1, "success", _home_data())
     )
@@ -116,6 +116,10 @@ def test_home_landmark_remains_absent_after_landmarks_move_to_collection() -> No
             _home_data(
                 landmark_id="mossy_stone_path",
                 landmark_url="/_addons/garden/landmark.webp",
+                landmark_asset={
+                    "category": "landmarks", "asset_id": "landmark_mossy_stone_path",
+                    "metadata": {"slot": {"key": "mossy_stone_path"}},
+                },
             ),
         )
     )
@@ -123,6 +127,15 @@ def test_home_landmark_remains_absent_after_landmarks_move_to_collection() -> No
     assert 'data-testid="home-garden-landmark"' not in empty_html
     assert 'data-testid="home-garden-landmark"' not in missing_asset_html
     assert 'data-testid="home-garden-landmark"' not in displayed_html
+
+    from ankigarden import feature_availability
+    from ankigarden.ui.home_widget import _home_landmark_markup
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", True)
+    assert _home_landmark_markup(_home_data(
+        landmark_id="mossy_stone_path", landmark_url="/_addons/garden/landmark.webp",
+        landmark_asset={"category": "landmarks", "asset_id": "landmark_mossy_stone_path",
+                        "metadata": {"slot": {"key": "mossy_stone_path"}}},
+    ), phase="success")
 
 
 def test_completed_displayed_project_resolves_the_matching_landmark_asset_identity() -> None:

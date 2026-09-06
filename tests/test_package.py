@@ -175,12 +175,10 @@ def test_package_contains_runtime_and_excludes_mutable_data(
     # The current release ships all nine responsive scenery plates, the
     # complete six-stage plant library, the geometry-matched planter set, and
     # the canonical Rich Compost reward artwork.
-    # The seven standardized 1024-square Feature canvases, reusable pad, and
-    # Retina-ready reward/HUD assets keep the complete existing art library
-    # intact. The 18 approved lossless economy assets add 13.885 MiB to that
-    # fixed payload. Retain a strict 97 MiB ceiling for the current 95.683 MiB
-    # deterministic production archive instead of weakening the size guard.
-    assert production_output.stat().st_size < 97 * 1024 * 1024
+    # The reviewed 60-image lossless plant redesign brings the deterministic
+    # archive to 108.487 MiB. The approved 110 MiB budget preserves those exact
+    # pixels while retaining a strict limit on future package growth.
+    assert production_output.stat().st_size < 110 * 1024 * 1024
 
 
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
@@ -222,7 +220,7 @@ def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
     assert capabilities["BUILD_MODE"] == CAPTURE_BUILD
     assert capabilities["CAPTURE_HARNESS_ENABLED"] is True
     assert capabilities["DEVELOPMENT_MUTATION_ENABLED"] is True
-    assert capabilities["CAPTURE_CONTRACT_VERSION"] == 27
+    assert capabilities["CAPTURE_CONTRACT_VERSION"] == 29
     assert capabilities["CAPTURE_RUNTIME_PACKAGE"] == "capture"
     assert derivative == {
         "capture_archive": str(output.resolve()),

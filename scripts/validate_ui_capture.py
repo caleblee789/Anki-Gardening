@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CAPTURE_SOURCE = ROOT / "ankigarden" / "capture" / "runtime.py"
 CAPTURE_BOOTSTRAP_SOURCE = ROOT / "ankigarden" / "capture_ui_faces.py"
 DEFAULT_CAPTURE_CONTRACT = (
-    ROOT / "ankigarden" / "capture" / "capture-contract-v27.json"
+    ROOT / "ankigarden" / "capture" / "capture-contract-v29.json"
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CONTINUED_SUFFIX = " (continued)"
@@ -179,6 +179,7 @@ class CaptureContract:
     profile: str = "representative"
     scenario_schema_version: int = 1
     compiled_digest: str = ""
+    contact_sheets: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def labels(self) -> tuple[str, ...]:
@@ -229,10 +230,10 @@ def _load_current_contract_payload(
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise CaptureValidationError(
-            (f"could not read compiled v27 capture contract {path}: {error}",)
+            (f"could not read compiled v29 capture contract {path}: {error}",)
         ) from error
     if not isinstance(payload, dict):
-        raise CaptureValidationError(("compiled v27 capture contract must be an object",))
+        raise CaptureValidationError(("compiled v29 capture contract must be an object",))
     normalized = dict(payload)
     expected_digest = normalized.pop("contract_digest", None)
     actual_digest = hashlib.sha256(
@@ -248,8 +249,8 @@ def _load_current_contract_payload(
     issues: list[str] = []
     if payload.get("schema_version") != 2:
         issues.append("compiled capture contract schema is not v2")
-    if payload.get("contract_version") != 27:
-        issues.append("compiled capture contract is not v27")
+    if payload.get("contract_version") != 29:
+        issues.append("compiled capture contract is not v29")
     if payload.get("scenario_schema_version") != 3:
         issues.append("compiled capture scenario schema is not v3")
     if expected_digest != actual_digest:
@@ -267,10 +268,10 @@ def _load_current_contract_payload(
         ]
         active_ids = {str(row.get("id", "")) for row in active}
         retired_ids = set(payload.get("retired_ids", ()))
-        if len(active) != 36 or payload.get("surface_count") != 36:
-            issues.append("compiled v27 contract must contain 36 active surfaces")
+        if len(active) != 51 or payload.get("surface_count") != 51:
+            issues.append("compiled v29 contract must contain 51 active surfaces")
         if "nursery-weather-scenery" not in retired_ids:
-            issues.append("compiled v27 contract did not reserve the retired nursery ID")
+            issues.append("compiled v29 contract did not reserve the retired nursery ID")
         for index, row in enumerate(surfaces):
             if not isinstance(row, dict):
                 continue
@@ -284,8 +285,8 @@ def _load_current_contract_payload(
                 issues.append(f"compiled surface {index} has invalid scenario_step")
     if isinstance(profiles, dict):
         for profile, expected in {
-            "representative": (18, 2),
-            "full": (36, 5),
+            "representative": (22, 5),
+            "full": (51, 5),
         }.items():
             raw_profile = profiles.get(profile)
             if not isinstance(raw_profile, dict) or (
@@ -296,6 +297,15 @@ def _load_current_contract_payload(
                     f"compiled {profile} topology must remain {expected[0]} surfaces / "
                     f"{expected[1]} pages"
                 )
+    if isinstance(profiles, dict):
+        for name, profile in profiles.items():
+            acquisition = [label for group in profile.get("groups", []) for label in group.get("labels", [])]
+            pages = profile.get("contact_sheets", [])
+            assigned = [label for page in pages for label in page.get("labels", [])]
+            if len(pages) != 5 or [p.get("sheet") for p in pages] != list(range(1, 6)):
+                issues.append(f"compiled {name} requires five ordered sheet assignments")
+            if len(assigned) != len(set(assigned)) or set(assigned) != set(acquisition):
+                issues.append(f"compiled {name} sheets must cover acquisition surfaces exactly once")
     if issues:
         raise CaptureValidationError(issues)
     return payload
@@ -309,7 +319,7 @@ def _current_surface_map() -> dict[str, dict[str, Any]]:
         if isinstance(row, dict) and row.get("active") is True
     }
     if len(result) != int(payload.get("surface_count", -1)):
-        raise CaptureValidationError(("compiled v27 surface count is stale",))
+        raise CaptureValidationError(("compiled v29 surface count is stale",))
     return result
 
 
@@ -375,6 +385,7 @@ def load_capture_contract(
             profile,
             3,
             str(payload.get("contract_digest", "")),
+            tuple((page["name"], tuple(page["labels"])) for page in raw_profile.get("contact_sheets", [])),
         )
     assignment_name = {
         "representative": "CAPTURE_FACE_GROUPS",
@@ -2017,6 +2028,9 @@ def expected_contact_sheet_page_groups(
     contract: CaptureContract,
 ) -> tuple[tuple[tuple[str, tuple[str, ...]], ...], ...]:
     """Return source labels in the generator-owned page/group topology."""
+
+    if contract.contact_sheets:
+        return tuple((page,) for page in contract.contact_sheets)
 
     capacity = CONTACT_SHEET_COLUMNS * CONTACT_SHEET_MAX_ROWS
     pages: list[tuple[tuple[str, tuple[str, ...]], ...]] = []
@@ -4062,7 +4076,7 @@ def growth_charge_rendered_value_issue_codes(
             "component_variant": "confirmation",
             "data_source": "engine-preview",
             "dialog_title": "Use a Growth Charge?",
-            "transition_statement": "Bonsai",
+            "transition_statement": "Bonsai Seed",
             "primary_action": "Use 1 charge",
             "secondary_action": "Cancel",
         }
@@ -4078,8 +4092,8 @@ def growth_charge_rendered_value_issue_codes(
             "progress_label": "To Young",
             "transition_arrow_visible": False,
             "data_source": "engine-confirmed",
-            "dialog_title": "Reached Sprout",
-            "transition_statement": "Bonsai",
+            "dialog_title": "Bonsai reached sprout",
+            "transition_statement": "Bonsai Sprout",
             "primary_action": "View plant",
             "secondary_action": "Close",
             "resulting_growth": 450,
@@ -5006,7 +5020,7 @@ def reviewer_reward_dock_issue_codes(
         "active_reveal_count": 1,
         "hero_count": 1,
         "eyebrow": "MILESTONE REACHED",
-        "hero_title": "Full Bloom reached",
+        "hero_title": "Bonsai reached full bloom",
         "secondary_summary_count": 2,
         "details_action_copy": "Details ›",
         "details_action_heading_row": True,
@@ -5030,10 +5044,10 @@ def reviewer_reward_dock_issue_codes(
         and bool(str(bundle.get("hero_event_id", "")).strip())
         and str(bundle.get("hero_subtitle", "")).strip() == ""
         and bundle.get("active_plant_identity_suppressed") is True
-        and bool(str(bundle.get("projected_hero_subtitle", "")).strip())
+        and str(bundle.get("projected_hero_subtitle", "")).strip() == ""
         and bundle.get("visible_summary_labels") == [
             "1 Garden Find",
-            "2 Garden discoveries",
+            "2 Discoveries",
         ]
         and bundle.get("visible_summary_reward_types") == [
             "garden_find",
@@ -5552,7 +5566,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and isinstance(expected_row, dict)
                 and rendered_row.get("category")
                 == expected_row.get("category")
-                and bool(str(rendered_row.get("category_visible_text", "")).strip())
+                and bool(str(rendered_row.get("category_visible_text", "")).strip()) == bool(expected_row.get("category"))
                 and rendered_row.get("name") == expected_row.get("name")
                 and bool(str(rendered_row.get("name_visible_text", "")).strip())
                 and rendered_row.get("value") == expected_row.get("value")
@@ -6084,7 +6098,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("details_paused_archive") is True
             ),
             "session-history-named-growth": lambda row: (
-                "Full Bloom reached" in row.get("meaningful_names", [])
+                "Bonsai reached full bloom" in row.get("meaningful_names", [])
                 and "Morning Dew" in row.get("meaningful_names", [])
                 and "Firefly Lantern" in row.get("meaningful_names", [])
                 and "Verdant Twilight" in row.get("meaningful_names", [])
@@ -6157,11 +6171,9 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             collapsed = viewport.get("1280x800-collapsed")
             if not (
                 isinstance(collapsed, dict)
-                and collapsed.get("collapsed_today_visible") is True
-                and collapsed.get("collapsed_today_copy")
-                == collapsed.get("collapsed_today_expected_visible_copy")
-                and collapsed.get("collapsed_today_full_copy")
-                == collapsed.get("collapsed_today_expected_copy")
+                and collapsed.get("collapsed_today_visible") is False
+                and collapsed.get("collapsed_today_copy") == ""
+                and collapsed.get("collapsed_today_full_copy") == ""
                 and collapsed.get("collapsed_next_visible") is True
                 and collapsed.get("collapsed_next_full_copy")
                 == collapsed.get("collapsed_next_expected_copy")
@@ -6589,13 +6601,13 @@ def _visual_contract_record_issues(
                 )
             ):
                 reject("active Fertilizer must use the compact icon-led status card")
-    elif state_kind not in {"home", "reviewer", "reviewer_hud", "workspace-reward"}:
+    elif state_kind not in {"home", "reviewer", "reviewer_hud", "workspace-reward", "workspace-handoff"}:
         reject("visual contract was inapplicable for a Qt-owned surface")
 
     if audit is None:
         return problems
 
-    if state_kind == "workspace-reward":
+    if state_kind in {"workspace-reward", "workspace-handoff"}:
         return problems
 
     def audit_object(name: str) -> dict[str, Any]:
@@ -7455,7 +7467,7 @@ def _unpainted_client_record_issues(
             width, height = rgba.size
             scanned_rect = [0, 0, width, height]
             expected_exemptions: list[dict[str, Any]] = []
-            if label.startswith("reviewer-"):
+            if label.startswith(("reviewer-", "workspace-reviewer-")):
                 overlay = (
                     audit.get("reviewer_overlay_geometry")
                     if isinstance(audit, dict) else None
@@ -7582,9 +7594,9 @@ def _unpainted_client_record_issues(
             # this allowance. Reviewer overlays stay exact.
             threshold = (
                 64
-                if expected_exemptions and not label.startswith("reviewer-") else
+                if expected_exemptions and not label.startswith(("reviewer-", "workspace-reviewer-")) else
                 0
-                if label.startswith("reviewer-") else
+                if label.startswith(("reviewer-", "workspace-reviewer-")) else
                 4
             )
             expected_fields = {
@@ -7928,6 +7940,41 @@ def _native_layout_telemetry_record_issues(
     return list(dict.fromkeys(problems))
 
 
+def foreground_request_issue_codes(
+    requests: Any,
+    renderer_families: Mapping[str, str],
+) -> tuple[str, ...]:
+    """Bound focus fallback per Home/Reviewer surface in a shared process."""
+
+    if not isinstance(requests, list):
+        return ("foreground_requests must be a list",)
+    issues: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    reasons = {"pointer-neutralization", "app-owned-home-composite-not-ready"}
+    for request in requests:
+        if not isinstance(request, dict):
+            issues.append("foreground request must be an object")
+            continue
+        label = request.get("label")
+        reason = request.get("reason")
+        if not isinstance(label, str) or renderer_families.get(label) != "AnkiQt":
+            issues.append("foreground request must name a Home or Reviewer surface")
+            continue
+        if not isinstance(reason, str) or reason not in reasons:
+            issues.append(f"{label}: unexpected foreground request reason")
+            continue
+        key = (label, reason)
+        if key in seen:
+            issues.append(f"{label}: repeated foreground request for {reason}")
+        seen.add(key)
+        if type(request.get("confirmed")) is not bool:
+            issues.append(f"{label}: foreground confirmation must be boolean")
+        if any(type(request.get(field)) is not int or request[field] <= 0
+               for field in ("process_id", "window_id")):
+            issues.append(f"{label}: foreground process/window identity is invalid")
+    return tuple(dict.fromkeys(issues))
+
+
 def validate_capture_manifest(
     manifest_path: Path,
     *,
@@ -8087,8 +8134,7 @@ def validate_capture_manifest(
     if payload.get("foreground_policy") != "required-only":
         issues.append("foreground_policy must be 'required-only'")
     foreground_requests = payload.get("foreground_requests")
-    if not isinstance(foreground_requests, list) or len(foreground_requests) > 2:
-        issues.append("foreground_requests must be a list containing at most two requests")
+    issues.extend(foreground_request_issue_codes(foreground_requests, renderer_families))
     if payload.get("complete") is not True:
         issues.append("capture manifest is not marked complete")
     if payload.get("fixture_validations_complete") is not True:
@@ -8642,6 +8688,27 @@ def validate_capture_manifest(
                     f"capture {index:03d} {label}: {warning_field} is not empty"
                 )
 
+        native_issues = record.get("audit", {}).get("native_ui_issues", [])
+        if not isinstance(native_issues, list):
+            issues.append(f"capture {index:03d} {label}: native UI issues must be a list")
+        else:
+            declared_native_issues = state_contract.get("reviewable_native_ui_issues", [])
+            for native_issue in native_issues:
+                if not (
+                    isinstance(native_issue, dict)
+                    and native_issue in record.get("text_layout_warnings", [])
+                    and native_issue.get("product_issue_id") in declared_native_issues
+                    and native_issue.get("product_issue_id") == "reviewer-collapsed-status-width"
+                    and native_issue.get("native_text_role") == "reviewer.collapsed-status"
+                    and re.fullmatch(r"[0-9,]+ remaining", str(native_issue.get("text", "")))
+                    and native_issue.get("horizontal_clip") is True
+                    and native_issue.get("vertical_clip") is False
+                    and native_issue.get("ancestor_clip_horizontal") is False
+                    and native_issue.get("ancestor_clip_vertical") is False
+                    and not native_issue.get("empty_visible_region", False)
+                ):
+                    issues.append(f"capture {index:03d} {label}: undeclared or malformed native UI issue")
+
         scroll_audit = record.get("dialog_scroll_audit")
         if not isinstance(scroll_audit, dict):
             issues.append(
@@ -9114,7 +9181,7 @@ def validate_contact_sheet_set(
         {}
     )
     expected_count = len(contract.labels)
-    expected_group_names = [name for name, _labels in contract.groups]
+    expected_group_names = [name for name, _labels in (contract.contact_sheets or contract.groups)]
     expected_pages = expected_contact_sheet_pages(contract)
     expected_label_pages = expected_contact_sheet_page_groups(contract)
     payload = _load_json_object(contact_sheet_set_path, "contact-sheet set")

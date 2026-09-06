@@ -1,0 +1,229 @@
+[
+  {
+    "id": "garden_bench",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_garden_bench.webp",
+    "archived_path": "artwork_source/retired_cosmetics/cosmetic_garden_bench.webp",
+    "sha256": "59b526368ded732bda5c6e8c43d1f3d03b489f000b6b19fee7003bc34742ab6c",
+    "manifest_entry": {
+      "asset_id": "cosmetic_garden_bench",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_garden_bench"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_garden_bench.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  },
+  {
+    "id": "birdhouse",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_birdhouse.webp",
+    "archived_path": "artwork_source/retired_cosmetics/cosmetic_birdhouse.webp",
+    "sha256": "eace1315c2709b0e00f3c6359ce8b73eed313897bc8ee974299077475a4dabf0",
+    "manifest_entry": {
+      "asset_id": "cosmetic_birdhouse",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_birdhouse"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_birdhouse.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  },
+  {
+    "id": "butterfly_house",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_butterfly_house.webp",
+    "archived_path": "artwork_source/retired_cosmetics/cosmetic_butterfly_house.webp",
+    "sha256": "ec23f27b91757922f9ccb694e9fb7881f4d25aa49c23bccabce1c7006cc40743",
+    "manifest_entry": {
+      "asset_id": "cosmetic_butterfly_house",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_butterfly_house"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_butterfly_house.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  },
+  {
+    "id": "stone_lantern",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_stone_lantern.webp",
+    "archived_path": "artwork_source/retired_cosmetics/cosmetic_stone_lantern.webp",
+    "sha256": "6c3b6f954da28589cb49b461f236b7656f26a9da4da99fed0d1829530813f2d5",
+    "manifest_entry": {
+      "asset_id": "cosmetic_stone_lantern",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_stone_lantern"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_stone_lantern.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  },
+  {
+    "id": "sundial",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_sundial.webp",
+    "archived_path": "artwork_source/retired_cosmetics/cosmetic_sundial.webp",
+    "sha256": "cfa6e71495f010ce524816b1978fb4696e9255a3958719f9df3664c6f246b6fc",
+    "manifest_entry": {
+      "asset_id": "cosmetic_sundial",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_sundial"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_sundial.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  },
+  {
+    "id": "botanists_plaque",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_botanists_plaque.webp",
+    "archived_path": "artwork_source/achievement_trophies/originals/cosmetic_botanists_plaque.webp",
+    "sha256": "6e60b4a14aa98cb85ede08d263ebc9e4de6147659d7e7c956ee737128240d48e",
+    "manifest_entry": {
+      "asset_id": "cosmetic_botanists_plaque",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_botanists_plaque"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout",
+        "achievement"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_botanists_plaque.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  },
+  {
+    "id": "garden_journal",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_garden_journal.webp",
+    "archived_path": "artwork_source/achievement_trophies/originals/cosmetic_garden_journal.webp",
+    "sha256": "e490fdc27e6b100f4e38de7779658f0ebbeb91cfb49e5afd7513e6a937c1e9c6",
+    "manifest_entry": {
+      "asset_id": "cosmetic_garden_journal",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_garden_journal"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout",
+        "achievement"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_garden_journal.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  },
+  {
+    "id": "golden_trowel",
+    "source_path": "assets/v6_storybook_gouache/cosmetics/cosmetic_golden_trowel.webp",
+    "archived_path": "artwork_source/achievement_trophies/originals/cosmetic_golden_trowel.webp",
+    "sha256": "db70b4b02d019ae8004b1c8226d78bdb0614221ac47cefd0d548b8d518f97ccc",
+    "manifest_entry": {
+      "asset_id": "cosmetic_golden_trowel",
+      "category": "cosmetics",
+      "slot": {
+        "key": "cosmetic_golden_trowel"
+      },
+      "variants": [
+        "storybook_gouache",
+        "economy_22",
+        "transparent_cutout",
+        "achievement"
+      ],
+      "file": "assets/v6_storybook_gouache/cosmetics/cosmetic_golden_trowel.webp",
+      "width": 1024,
+      "height": 1024,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    }
+  }
+]

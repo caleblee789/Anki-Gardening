@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
+from .feature_availability import landmarks_enabled
 
 from .environment import (
     DEFAULT_GARDEN_FEATURE_ID,
@@ -34,10 +35,6 @@ class GardenSetupItem:
     bonus_id: str = ""
     bonus_name: str = ""
     effect: str = "No bonus"
-    timing: str = ""
-    scheduled_id: str = ""
-    scheduled_name: str = ""
-    scheduled_effect: str = ""
 
 
 @dataclass(frozen=True)
@@ -54,53 +51,42 @@ class GardenSupplyEffect:
 class GardenSetupProjection:
     items: tuple[GardenSetupItem, ...]
     effects: tuple[GardenSupplyEffect, ...]
-    next_day_start_ms: int
 
 
 def project_garden_setup(engine: Any, storage: Any) -> GardenSetupProjection:
     """Read committed appearance and engine-resolved effects without transactions.
 
     In particular, previewing this projection must never start a review session,
-    quote an item, roll the day, or lock the daily bonus.
+    quote an item, or roll the day.
     """
     from .balance_catalog import COSMETIC_BY_ID
     from .ui.copy import garden_bonus_effect_copy
     from .ui.economy_presenters import growth_points
 
     state = storage.state
-    schedule = state.daily_loadout
-    snapshot = _read(state, "daily_economy_snapshot")
-    today = state.daily_stats.day
-    snapshot_locked = snapshot is not None and snapshot.anki_day == today
     items = []
-    for kind, appearance_id, catalog, pending_id in (
-        ("scenery", str(state.selected_background), SCENERY_CATALOG,
-         str(schedule.queued_scenery_id or "")),
-        ("garden_feature", str(state.displayed_garden_feature), GARDEN_FEATURE_CATALOG,
-         str(schedule.pending_garden_feature_id or "")),
+    for kind, appearance_id, catalog in (
+        ("scenery", str(state.selected_background), SCENERY_CATALOG),
+        ("garden_feature", str(state.displayed_garden_feature), GARDEN_FEATURE_CATALOG),
     ):
-        active_id = str(engine.locked_environment_id(kind))
-        active = catalog.get(active_id)
-        pending = catalog.get(pending_id) if pending_id != active_id else None
-        def effect(item: Any) -> str:
-            return (garden_bonus_effect_copy(item.item_id, item.effect).strip()
-                    if item is not None and item.effects else "No bonus")
+        item = catalog.get(appearance_id)
+        name = (COSMETIC_BY_ID[appearance_id].display_name
+                if appearance_id in COSMETIC_BY_ID else _catalog_name(catalog, appearance_id))
+        effect = (garden_bonus_effect_copy(item.item_id, item.effect).strip()
+                  if item is not None and item.effects else "No bonus")
         items.append(GardenSetupItem(
-            kind, appearance_id, (COSMETIC_BY_ID[appearance_id].display_name
-                if appearance_id in COSMETIC_BY_ID else _catalog_name(catalog, appearance_id)),
-            bool(state.loadout.visibility.get(kind, True)),
-            active_id, _catalog_name(catalog, active_id), effect(active),
-            "Active today" if snapshot_locked else "Ready today",
-            pending_id if pending else "", pending.name if pending else "",
-            effect(pending) if pending else "",
+            kind, appearance_id, name,
+            True,
+            appearance_id, name, effect,
         ))
-    landmarks = engine.landmark_catalog_summary().get("items", ())
-    displayed = next((row for row in landmarks if row.get("displayed")), None)
-    items.append(GardenSetupItem(
-        "landmark", str(displayed["landmark_id"]) if displayed else "",
-        str(displayed["display_name"]) if displayed else "No landmark displayed",
-        bool(displayed), effect="Cosmetic · No bonus",
-    ))
+    if landmarks_enabled():
+        landmarks = engine.landmark_catalog_summary().get("items", ())
+        displayed = next((row for row in landmarks if row.get("displayed")), None)
+        items.append(GardenSetupItem(
+            "landmark", str(displayed["landmark_id"]) if displayed else "",
+            str(displayed["display_name"]) if displayed else "No landmark displayed",
+            bool(displayed), effect="Cosmetic · No bonus",
+        ))
     effects = []
     for plant in state.plants:
         identity = plant_identity(plant)
@@ -127,15 +113,51 @@ def project_garden_setup(engine: Any, storage: Any) -> GardenSetupProjection:
         # This compatibility accessor now returns Garden Rhythm, not a streak
         # multiplier. Keep the source name faithful to the current economy.
         effects.append(GardenSupplyEffect("Garden Rhythm", f"+{bonus}% Growth"))
-    cutoff = int(_read(_read(state, "daily_completion"), "cutoff_at_ms", 0) or 0)
-    if not cutoff:
-        resolver = getattr(storage, "current_day_end_ms", None)
-        cutoff = int(resolver() or 0) if callable(resolver) else 0
-    return GardenSetupProjection(tuple(items), tuple(effects), cutoff)
+    return GardenSetupProjection(tuple(items), tuple(effects))
 
 
 def _identifier_display_name(value: Any) -> str:
     return str(value or "").replace("_", " ").strip().title()
+
+
+def plant_species_name(plant: Any) -> str:
+    """Resolve a species independently of the retired custom plant name."""
+    from .balance_catalog import SPECIES_BY_ID
+
+    species = str(plant if isinstance(plant, str) else _read(plant, "species", "") or "")
+    definition = SPECIES_BY_ID.get(species)
+    if definition is not None:
+        return definition.display_name
+    return (
+        _identifier_display_name(species)
+        or str(_read(plant, "species_name", "") or _read(plant, "plant_class", "")).strip()
+        or "Plant"
+    )
+
+
+def plant_stage_title(species: Any, stage: Any) -> str:
+    """Put Seed/Sprout after the species and later stage modifiers before it."""
+    from .growth import stage_presentation
+
+    name = plant_species_name(species)
+    resolved = stage_presentation(stage)
+    if resolved is None:
+        return name
+    if resolved.stage_id in {"seed", "sprout"}:
+        return f"{name} {resolved.display_name}"
+    return f"{resolved.display_name} {name}"
+
+
+def plant_stage_event(species: Any, stage: Any, *, checkpoint_percent: int = 0) -> str:
+    """Describe the recorded milestone, never the plant's later live stage."""
+    from .growth import stage_presentation
+
+    name = plant_species_name(species)
+    resolved = stage_presentation(stage)
+    destination = resolved.display_name.lower() if resolved is not None else "a new stage"
+    if checkpoint_percent:
+        return f"{name} reached {checkpoint_percent}% toward {destination}"
+    return f"{name} reached {destination}"
 
 
 @dataclass(frozen=True)
@@ -149,19 +171,13 @@ class PlantIdentity:
     @classmethod
     def from_plant(cls, plant: Any) -> "PlantIdentity":
         plant_id = str(_read(plant, "plant_id", "") or "")
-        species_id = str(_read(plant, "species", "") or "")
-        species_name = str(
-            _read(plant, "species_name", "")
-            or _identifier_display_name(species_id)
-            or "Plant"
-        )
-        display_name = str(
-            _read(plant, "display_name", "")
-            or _read(plant, "name", "")
-            or f"{species_name} Plant"
-        )
-        if not bool(_read(plant, "name_customized", False)) and display_name == f"{species_name} Plant":
-            display_name = species_name
+        species_name = plant_species_name(plant)
+        stage = _read(plant, "growth_stage", "") or _read(plant, "stage", "") or _read(plant, "stage_after", "")
+        if not stage and _read(plant, "growth_points", None) is not None:
+            from .growth import stage_progress
+
+            stage = stage_progress(_read(plant, "growth_points")).stage
+        display_name = plant_stage_title(species_name, stage)
         return cls(plant_id, display_name, species_name)
 
 
@@ -289,61 +305,19 @@ def project_garden_appearance(
     *,
     visual_effects_enabled: bool | None = None,
 ) -> GardenAppearanceProjection:
-    """Resolve displayed, active, and day-locked appearance state separately."""
+    """Project equipped artwork and the effect belonging to that same item."""
 
     # Keep engine/catalog effect language stable while projecting the exact
     # learner-facing card cadence shared by every Garden surface.
     from .ui.copy import garden_bonus_effect_copy
 
     loadout = _read(state, "loadout")
-    schedule = _read(state, "daily_loadout")
-    daily_stats = _read(state, "daily_stats")
-    scheduler_day = str(_read(daily_stats, "day", "") or "")
-
-    scenery_id = str(
-        _read(loadout, "scenery_id", DEFAULT_SCENERY_ID)
-        or DEFAULT_SCENERY_ID
-    )
-    if (
-        schedule is not None
-        and str(_read(schedule, "scheduler_day", "") or "") == scheduler_day
-        and int(_read(schedule, "locked_at_ms", 0) or 0) > 0
-        and _read(schedule, "scenery_id", "")
-    ):
-        scenery_id = str(_read(schedule, "scenery_id"))
-
-    displayed_id = str(
-        _read(
-            loadout,
-            "displayed_garden_feature_id",
-            DEFAULT_GARDEN_FEATURE_ID,
-        )
-        or DEFAULT_GARDEN_FEATURE_ID
-    )
-    active_bonus_id = str(
-        _read(
-            loadout,
-            "active_bonus_garden_feature_id",
-            _read(loadout, "garden_feature_id", DEFAULT_GARDEN_FEATURE_ID),
-        )
-        or DEFAULT_GARDEN_FEATURE_ID
-    )
-    if (
-        schedule is not None
-        and str(_read(schedule, "garden_bonus_anki_day_id", "") or "")
-        == scheduler_day
-        and int(_read(schedule, "garden_bonus_locked_at_ms", 0) or 0) > 0
-        and _read(schedule, "garden_feature_id", "")
-    ):
-        active_bonus_id = str(_read(schedule, "garden_feature_id"))
-
-    visibility = _read(loadout, "visibility", {})
-    if visual_effects_enabled is None:
-        visual_effects_enabled = bool(
-            not isinstance(visibility, Mapping)
-            or visibility.get("garden_feature", visibility.get("weather", True))
-            or visibility.get("scenery", True)
-        )
+    scenery_id = str(_read(loadout, "display_scenery_id", _read(loadout, "scenery_id", DEFAULT_SCENERY_ID)) or DEFAULT_SCENERY_ID)
+    displayed_id = str(_read(loadout, "display_decoration_id", _read(loadout, "displayed_garden_feature_id", DEFAULT_GARDEN_FEATURE_ID)) or DEFAULT_GARDEN_FEATURE_ID)
+    active_bonus_id = displayed_id
+    # Retain the optional parameter for older renderers; equipped artwork
+    # always displays, independently of retired visibility preferences.
+    visual_effects_enabled = True
     return GardenAppearanceProjection(
         scenery_id=scenery_id,
         scenery_name=_catalog_name(SCENERY_CATALOG, scenery_id),
@@ -355,10 +329,10 @@ def project_garden_appearance(
         active_bonus_decoration_id=active_bonus_id,
         active_bonus_name=_catalog_name(GARDEN_FEATURE_CATALOG, active_bonus_id),
         visual_effects_enabled=bool(visual_effects_enabled),
-        active_bonus_effect=garden_bonus_effect_copy(
+        active_bonus_effect=(garden_bonus_effect_copy(
             active_bonus_id,
             _catalog_effect(GARDEN_FEATURE_CATALOG, active_bonus_id),
-        ),
+        ) if active_bonus_id in GARDEN_FEATURE_CATALOG else "No bonus"),
     )
 
 

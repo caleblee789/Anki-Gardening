@@ -7,6 +7,9 @@ while these immutable projections are replaced.
 """
 
 from __future__ import annotations
+from ..feature_availability import growth_target_enabled, landmarks_enabled
+
+from .formatters import format_plant_name
 
 import math
 import time
@@ -430,13 +433,13 @@ def _active_effect_rows(
     effect = FEATURE_EFFECT_KEYS.get(active_id, "none")
     progress_copy = {
         "growth_every_10_plus_1": (
-            f"{max(0, int(getattr(state, 'wind_chime_progress', 0) or 0))} / 10 cards to next +1 Growth"
+            f"{max(0, int(getattr(state, 'wind_chime_progress', 0) or 0))} / 5 cards to next +1 Growth"
         ),
         "growth_every_5_plus_1": (
-            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 5 cards to next +1 Growth"
+            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 2 cards to next +1 Growth"
         ),
         "growth_every_5_first_100_plus_1": (
-            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 5 cards to next +1 Growth"
+            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 2 cards to next +1 Growth"
         ),
         "growth_every_4_plus_3": (
             f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 4 cards to next +3 Growth"
@@ -473,10 +476,14 @@ def _active_effect_rows(
         if active_item is not None and progress_copy
         else None
     )
+    owner_resolver = getattr(engine, "_effect_owner", None)
+    fertilizer_owner = owner_resolver(plant, "fertilizer") if callable(owner_resolver) else plant
+    booster_owner = owner_resolver(plant, "booster") if callable(owner_resolver) else plant
     fertilizer_batches = tuple(
-        batch
-        for batch in tuple(getattr(plant, "fertilizer_card_batches", ()) or ())
-        if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
+        batch for batch in (
+            *tuple(getattr(fertilizer_owner, "fertilizer_card_batches", ()) or ()),
+            *tuple(getattr(fertilizer_owner, "fertilizer_card_queue", ()) or ()),
+        ) if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
     )
     if fertilizer_batches:
         fertilizer = fertilizer_batches[0]
@@ -493,7 +500,8 @@ def _active_effect_rows(
             f"fertilizer_{tier}" if tier in {"basic", "quality", "premium"} else "",
         ))
 
-    booster_batches = list(getattr(plant, "booster_card_batches", ()) or ())
+    booster_batches = [*list(getattr(booster_owner, "booster_card_batches", ()) or ()),
+                       *list(getattr(booster_owner, "booster_card_queue", ()) or ())]
     if booster_batches:
         booster_cards = sum(
             max(0, int(getattr(batch, "remaining_cards", 0) or 0))
@@ -510,6 +518,7 @@ def _active_effect_rows(
     for label, units in (
         ("Garden decoration", getattr(award, "weather_growth_units", 0)),
         ("Scenery", getattr(award, "scenery_growth_units", 0)),
+        ("Gardening Trophy", getattr(award, "trophy_growth_units", 0)),
     ):
         normalized_units = max(0, int(units or 0))
         if normalized_units:
@@ -642,6 +651,8 @@ def _growth_destination_projection(
         ),
     )
     target = getattr(snapshot, "active_target", None)
+    if target is not None and not growth_target_enabled(getattr(target, "target_type", "")):
+        target = None
     if target is not None:
         raw_type = getattr(target, "target_type", "")
         target_type = str(getattr(raw_type, "value", raw_type) or "")
@@ -658,6 +669,11 @@ def _growth_destination_projection(
                     track = None
         elif target_type == "legacy":
             track = getattr(snapshot, "legacy_track", None)
+            if not any(
+                choice.target == target and choice.available
+                for choice in getattr(snapshot, "target_choices", ())
+            ):
+                track = None
         if track is not None and getattr(track, "target", None) == target:
             heading = str(
                 getattr(track, "display_name", "") or "Growth project"
@@ -708,7 +724,7 @@ def _growth_destination_projection(
                 status=status,
             )
 
-    if bool(getattr(snapshot, "prompt_required", False)):
+    if landmarks_enabled() and bool(getattr(snapshot, "prompt_required", False)):
         return GrowthDestinationProjection(
             kind="choose_project",
             heading="Choose a Growth project",
@@ -771,7 +787,7 @@ def project_plant_choices(
             continue
         species_key = str(getattr(plant, "species", "") or "")
         species_name = species_key.replace("_", " ").title()
-        plant_name = str(getattr(plant, "name", "") or species_name or "Plant")
+        plant_name = format_plant_name(plant)
         stage_key = str(getattr(plant, "growth_stage", "") or "seed")
         stage_label = STAGE_NAMES.get(
             stage_key,
@@ -920,15 +936,8 @@ def project_nurture(
     plant_name = identity.display_name
     art_path, art_placement = _resolved_plant_art(engine, species_key, stage_key)
     effect_rows = _active_effect_rows(engine, target, award, now_ms=now_ms)
-    schedule = getattr(state, "daily_loadout", None)
-    weather_id = str(
-        getattr(schedule, "weather_id", "")
-        or getattr(state, "selected_weather", "")
-    )
-    scenery_id = str(
-        getattr(schedule, "scenery_id", "")
-        or getattr(state, "selected_background", "")
-    )
+    weather_id = str(getattr(state, "selected_weather", "") or "")
+    scenery_id = str(getattr(state, "selected_background", "") or "")
     next_answer_line = (
         f"Next card: {format_growth_units(total_units, signed=True)} Growth"
         if total_units

@@ -1,0 +1,686 @@
+[
+  {
+    "asset_id": "plant_wisteria_seed_twilight_v6",
+    "category": "plants",
+    "slot": {
+      "species": "wisteria",
+      "stage": "seed"
+    },
+    "variants": [
+      "storybook_gouache",
+      "direct_soil",
+      "continuity_v6",
+      "transparent_cutout",
+      "geometry_v2"
+    ],
+    "file": "assets/v6_storybook_gouache/plants/wisteria/seed/wisteria_seed_twilight_v6.webp",
+    "width": 1254,
+    "height": 1254,
+    "format": "webp",
+    "alpha": true,
+    "style_family": "storybook_gouache",
+    "release_preferred": true,
+    "quality_tier": "ultra",
+    "quality_score": 0.995,
+    "source": "ImageGen high-DPI identity-preserving edit of the Verdant Twilight V6 Wisteria seed",
+    "attribution": "Original AI-assisted artwork generated for Anki Garden",
+    "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_seed_retina_chroma.png",
+    "source_master_sha256": "f1a5ad730baa40e7d31c2d5819468e64edb6a45d2294d0efc00894b0d9a376e1",
+    "placement": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.913876,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.513158,
+        0.772728
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.39075,
+        0.628389,
+        0.242424,
+        0.289474
+      ],
+      "ground_anchor": [
+        0.5,
+        0.913876
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.913876,
+      "soil_contact": [
+        0.5,
+        0.913876
+      ],
+      "contact_shadow": [
+        0.42,
+        0.04
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.55,
+      "visual_scale_correction": 0.78,
+      "art_bounds": [
+        0.399522,
+        0.636364,
+        0.227273,
+        0.272727
+      ],
+      "base_bounds": [
+        0.48,
+        0.891876,
+        0.04,
+        0.022
+      ],
+      "support_bounds": [
+        0.48,
+        0.891876,
+        0.04,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.39075,
+        0.628389,
+        0.242424,
+        0.289474
+      ],
+      "plant_above_rim_bounds": [
+        0.39075,
+        0.628389,
+        0.242424,
+        0.289474
+      ],
+      "interaction_bounds": [
+        0.399522,
+        0.636364,
+        0.227273,
+        0.272727
+      ],
+      "layout_family": "compact",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true
+    },
+    "_prior_entry_sha256": "6193494d322a5b3e5ee35ef7fc09aa8e0e6cdd3f225496cd73d11b01e69c06e2",
+    "_prior_runtime_sha256": "2520e6bc8bb05cbeab13dee2904ca6ea8873ccdcb2231dfb1768caa7c4d92696"
+  },
+  {
+    "asset_id": "plant_wisteria_sprout_twilight_v6",
+    "category": "plants",
+    "slot": {
+      "species": "wisteria",
+      "stage": "sprout"
+    },
+    "variants": [
+      "storybook_gouache",
+      "direct_soil",
+      "continuity_v6",
+      "transparent_cutout",
+      "geometry_v2"
+    ],
+    "file": "assets/v6_storybook_gouache/plants/wisteria/sprout/wisteria_sprout_twilight_v6.webp",
+    "width": 1254,
+    "height": 1254,
+    "format": "webp",
+    "alpha": true,
+    "style_family": "storybook_gouache",
+    "release_preferred": true,
+    "quality_tier": "ultra",
+    "quality_score": 0.995,
+    "source": "ImageGen line authored against the Verdant Twilight V6 background",
+    "attribution": "Original AI-assisted artwork generated for Anki Garden",
+    "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_sprout_chroma.png",
+    "source_master_sha256": "87fec42f5b94a96717ba15d000d40d78d3ed36c86d83f557c511f1cb4dae8f3f",
+    "placement": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.8819776714513556,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.486044,
+        0.711722
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.464912,
+        0.586124,
+        0.074163,
+        0.296651
+      ],
+      "ground_anchor": [
+        0.5,
+        0.881978
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.881978,
+      "soil_contact": [
+        0.5,
+        0.881978
+      ],
+      "contact_shadow": [
+        0.42,
+        0.04
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.58,
+      "visual_scale_correction": 0.78,
+      "art_bounds": [
+        0.392344,
+        0.547049,
+        0.1874,
+        0.329346
+      ],
+      "base_bounds": [
+        0.4775,
+        0.859978,
+        0.045,
+        0.022
+      ],
+      "support_bounds": [
+        0.4775,
+        0.859978,
+        0.045,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.464912,
+        0.586124,
+        0.074163,
+        0.296651
+      ],
+      "plant_above_rim_bounds": [
+        0.464912,
+        0.586124,
+        0.074163,
+        0.296651
+      ],
+      "interaction_bounds": [
+        0.392344,
+        0.547049,
+        0.1874,
+        0.329346
+      ],
+      "layout_family": "compact",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true
+    },
+    "_prior_entry_sha256": "1000ce3f8fc3022d1eb5a6a567316b4ed77898be1c69666d23159f4c8ce4e095",
+    "_prior_runtime_sha256": "5c824384f8e65ba07f46c9f1d1bae3740523e2d8ce3e07faad84c3b791d0213f"
+  },
+  {
+    "asset_id": "plant_wisteria_young_twilight_v6",
+    "category": "plants",
+    "slot": {
+      "species": "wisteria",
+      "stage": "young"
+    },
+    "variants": [
+      "storybook_gouache",
+      "direct_soil",
+      "continuity_v6",
+      "transparent_cutout",
+      "geometry_v2"
+    ],
+    "file": "assets/v6_storybook_gouache/plants/wisteria/young/wisteria_young_twilight_v6.webp",
+    "width": 1254,
+    "height": 1254,
+    "format": "webp",
+    "alpha": true,
+    "style_family": "storybook_gouache",
+    "release_preferred": true,
+    "quality_tier": "ultra",
+    "quality_score": 0.995,
+    "source": "ImageGen line authored against the Verdant Twilight V6 background",
+    "attribution": "Original AI-assisted artwork generated for Anki Garden",
+    "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_young_chroma.png",
+    "source_master_sha256": "d81d4c227a5162e738463b9a79bfd020f0bce0832eccdfccbb5f0da73e27ade5",
+    "placement": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9019138755980861,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.496412,
+        0.544258
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.253589,
+        0.1874,
+        0.484848,
+        0.715311
+      ],
+      "ground_anchor": [
+        0.5,
+        0.901914
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.901914,
+      "soil_contact": [
+        0.5,
+        0.901914
+      ],
+      "contact_shadow": [
+        0.42,
+        0.04
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.7,
+      "visual_scale_correction": 0.76,
+      "art_bounds": [
+        0.261563,
+        0.195375,
+        0.469697,
+        0.697767
+      ],
+      "base_bounds": [
+        0.4725,
+        0.879914,
+        0.055,
+        0.022
+      ],
+      "support_bounds": [
+        0.4725,
+        0.879914,
+        0.055,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.253589,
+        0.1874,
+        0.484848,
+        0.715311
+      ],
+      "plant_above_rim_bounds": [
+        0.253589,
+        0.1874,
+        0.484848,
+        0.715311
+      ],
+      "interaction_bounds": [
+        0.261563,
+        0.195375,
+        0.469697,
+        0.697767
+      ],
+      "layout_family": "standard",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true
+    },
+    "_prior_entry_sha256": "1cfb350cc05f2e0ab8197e4273e84ae3880ed997e25a799bd9af058057d2010b",
+    "_prior_runtime_sha256": "ec4f97d73b65c8608df9d7a4e44b806b95a99314a224b39990036b0b374dcc40"
+  },
+  {
+    "asset_id": "plant_wisteria_mature_twilight_v6",
+    "category": "plants",
+    "slot": {
+      "species": "wisteria",
+      "stage": "mature"
+    },
+    "variants": [
+      "storybook_gouache",
+      "direct_soil",
+      "continuity_v6",
+      "transparent_cutout",
+      "geometry_v2"
+    ],
+    "file": "assets/v6_storybook_gouache/plants/wisteria/mature/wisteria_mature_twilight_v6.webp",
+    "width": 1254,
+    "height": 1254,
+    "format": "webp",
+    "alpha": true,
+    "style_family": "storybook_gouache",
+    "release_preferred": true,
+    "quality_tier": "ultra",
+    "quality_score": 0.995,
+    "source": "ImageGen line authored against the Verdant Twilight V6 background",
+    "attribution": "Original AI-assisted artwork generated for Anki Garden",
+    "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_mature_chroma.png",
+    "source_master_sha256": "3a9ef179f58d9aab837a157a62ac9bcec512dba10f298a833e76e4f109b5bfb2",
+    "placement": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9330143540669856,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.501994,
+        0.502791
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.043062,
+        0.074163,
+        0.917863,
+        0.859649
+      ],
+      "ground_anchor": [
+        0.5,
+        0.933014
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.933014,
+      "soil_contact": [
+        0.5,
+        0.933014
+      ],
+      "contact_shadow": [
+        0.42,
+        0.04
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.8,
+      "visual_scale_correction": 1.15,
+      "art_bounds": [
+        0.051037,
+        0.080542,
+        0.901914,
+        0.844498
+      ],
+      "base_bounds": [
+        0.4675,
+        0.911014,
+        0.065,
+        0.022
+      ],
+      "support_bounds": [
+        0.4675,
+        0.911014,
+        0.065,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.043062,
+        0.074163,
+        0.917863,
+        0.859649
+      ],
+      "plant_above_rim_bounds": [
+        0.043062,
+        0.074163,
+        0.917863,
+        0.859649
+      ],
+      "interaction_bounds": [
+        0.051037,
+        0.080542,
+        0.901914,
+        0.844498
+      ],
+      "layout_family": "standard",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true
+    },
+    "_prior_entry_sha256": "d3765397031ccb79d33678f6ed2c577db1461fd826cd308da69faff94ed454c1",
+    "_prior_runtime_sha256": "6a6a3308dab3b5616381ec55354698aa0e5f9775f6001a14b316d2a0b90c4bed"
+  },
+  {
+    "asset_id": "plant_wisteria_flowering_twilight_v6",
+    "category": "plants",
+    "slot": {
+      "species": "wisteria",
+      "stage": "flowering"
+    },
+    "variants": [
+      "storybook_gouache",
+      "direct_soil",
+      "continuity_v6",
+      "transparent_cutout",
+      "geometry_v2"
+    ],
+    "file": "assets/v6_storybook_gouache/plants/wisteria/flowering/wisteria_flowering_twilight_v6.webp",
+    "width": 1254,
+    "height": 1254,
+    "format": "webp",
+    "alpha": true,
+    "style_family": "storybook_gouache",
+    "release_preferred": true,
+    "quality_tier": "ultra",
+    "quality_score": 0.995,
+    "source": "ImageGen line authored against the Verdant Twilight V6 background",
+    "attribution": "Original AI-assisted artwork generated for Anki Garden",
+    "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_flowering_chroma.png",
+    "source_master_sha256": "d8c8eb63757bf2e616c8c15f466daf1a7305c98250088192a6e9789477a3d1cd",
+    "placement": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.9210526315789473,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.51236,
+        0.498405
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.058214,
+        0.074163,
+        0.910686,
+        0.847687
+      ],
+      "ground_anchor": [
+        0.5,
+        0.921053
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.921053,
+      "soil_contact": [
+        0.5,
+        0.921053
+      ],
+      "contact_shadow": [
+        0.42,
+        0.04
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.98,
+      "visual_scale_correction": 1.07,
+      "art_bounds": [
+        0.064593,
+        0.08134,
+        0.895534,
+        0.834131
+      ],
+      "base_bounds": [
+        0.4625,
+        0.899053,
+        0.075,
+        0.022
+      ],
+      "support_bounds": [
+        0.4625,
+        0.899053,
+        0.075,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.058214,
+        0.074163,
+        0.910686,
+        0.847687
+      ],
+      "plant_above_rim_bounds": [
+        0.058214,
+        0.074163,
+        0.910686,
+        0.847687
+      ],
+      "interaction_bounds": [
+        0.064593,
+        0.08134,
+        0.895534,
+        0.834131
+      ],
+      "layout_family": "expanded",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true
+    },
+    "_prior_entry_sha256": "4da32ccd6c97bc3eae12d66f581f803d5999badc50b52e07416232b3cde51d1a",
+    "_prior_runtime_sha256": "1dab34d23e3f9f2f24dbf09cec8bba52020b46e89caccb171b80703605fcf2a5"
+  },
+  {
+    "asset_id": "plant_wisteria_rare_twilight_v6",
+    "category": "plants",
+    "slot": {
+      "species": "wisteria",
+      "stage": "rare"
+    },
+    "variants": [
+      "storybook_gouache",
+      "direct_soil",
+      "continuity_v6",
+      "transparent_cutout",
+      "geometry_v2"
+    ],
+    "file": "assets/v6_storybook_gouache/plants/wisteria/rare/wisteria_rare_twilight_v6.webp",
+    "width": 1254,
+    "height": 1254,
+    "format": "webp",
+    "alpha": true,
+    "style_family": "storybook_gouache",
+    "release_preferred": true,
+    "quality_tier": "ultra",
+    "quality_score": 0.995,
+    "source": "ImageGen line authored against the Verdant Twilight V6 background",
+    "attribution": "Original AI-assisted artwork generated for Anki Garden",
+    "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_rare_chroma.png",
+    "source_master_sha256": "4351ab297f6566d2302c2bb0e9c2fc9220c007a7a76429f78c93671298d048cb",
+    "placement": {
+      "anchor_x": 0.5,
+      "baseline_y": 0.8118022328548644,
+      "scale": 1.0,
+      "display_scale": 1.0,
+      "visual_center": [
+        0.510766,
+        0.483254
+      ],
+      "shadow_offset": [
+        0.0,
+        0.0
+      ],
+      "minimum_bed_clearance": 0.04,
+      "visible_bounds": [
+        0.160287,
+        0.152313,
+        0.703349,
+        0.660287
+      ],
+      "ground_anchor": [
+        0.5,
+        0.811802
+      ],
+      "ground_anchor_x": 0.5,
+      "ground_anchor_y": 0.811802,
+      "soil_contact": [
+        0.5,
+        0.811802
+      ],
+      "contact_shadow": [
+        0.42,
+        0.04
+      ],
+      "base_type": "direct_soil",
+      "crop": "contain",
+      "layer": "plants",
+      "geometry_version": 2,
+      "review_provenance": "verdant-twilight-line-contact-sheet-v6",
+      "vessel_class": "soil_only",
+      "vessel_class_multiplier": 1.0,
+      "scene_scale_correction": 0.98,
+      "visual_scale_correction": 1.07,
+      "art_bounds": [
+        0.165072,
+        0.161085,
+        0.691388,
+        0.644338
+      ],
+      "base_bounds": [
+        0.4575,
+        0.789802,
+        0.085,
+        0.022
+      ],
+      "support_bounds": [
+        0.4575,
+        0.789802,
+        0.085,
+        0.022
+      ],
+      "foliage_bounds": [
+        0.160287,
+        0.152313,
+        0.703349,
+        0.660287
+      ],
+      "plant_above_rim_bounds": [
+        0.160287,
+        0.152313,
+        0.703349,
+        0.660287
+      ],
+      "interaction_bounds": [
+        0.165072,
+        0.161085,
+        0.691388,
+        0.644338
+      ],
+      "layout_family": "expanded",
+      "lateral_spacing_multiplier": 1.0,
+      "slot_envelope_scale": 1.0,
+      "release_layout_candidate": true
+    },
+    "_prior_entry_sha256": "861baba6223f9de8465c9679c9f6c1d65d6102466cdd581e3cff7c91a572f39e",
+    "_prior_runtime_sha256": "9f2ecbe48b25f51e40f9a38f249629d1cf1b6fccd6ef4d655f1516c1026511b8"
+  }
+]

@@ -1,7 +1,7 @@
 # Progression state and presentation contract
 
-The authoritative persisted boundary is the schema-27 reward database under
-`user_files/`. Supported schema-10–26 state migrates fail-closed; schema-21 JSON
+The authoritative persisted boundary is the schema-30 reward database under
+`user_files/`. Supported schema-10–27 state migrates fail-closed; schema-21 JSON
 and SQLite authorities are backed up at their historical migration boundary.
 Mutable state and caches never enter the distributable archive.
 
@@ -22,9 +22,9 @@ Mutable state and caches never enter the distributable archive.
   `plant_shared_growth_units`, and `plant_instant_growth_units` maps.
 - `DailyCompletionState` is the technical Today’s Cards projection. Its
   obligation-oriented field names are internal and must never be rendered.
-- The persisted loadout keeps the displayed Garden Decoration separate from the
-  selected Garden Bonus. `DailyLoadoutSchedule` stores today’s independently
-  locked Garden Bonus and Scenery plus their next-Anki-day queues.
+- The persisted loadout has one equipped decoration and one equipped scenery.
+  Their display IDs determine both artwork and catalog effects. Independent
+  effect selections and `DailyLoadoutSchedule` are no longer serialized.
 - `environment_pity_misses` stores independent Rare, Very Rare, and Ultra
   discovery counters.
 - `pending_sync_reward_summary` stores at most one committed, presentation-ready
@@ -40,7 +40,12 @@ UI surfaces consume shared presentation contracts rather than deriving labels
 or counts locally:
 
 - `PlantIdentity(plant_id, display_name, species_name)` preserves the durable
-  instance and default display names such as **Bonsai Plant**.
+  instance ID and derives `display_name` through `plant_stage_title`: Seed and
+  Sprout follow the species (`Rose Seed`, `Rose Sprout`); Young, Mature,
+  Flowering, and Full Bloom precede it (`Young Rose`, `Mature Rose`,
+  `Flowering Rose`, `Full Bloom Rose`). Titles, purchase copy,
+  previews, tooltips, and accessible names use this same rule. The bare
+  `species_name` remains available for milestone sentences. Plant names are not editable.
 - The canonical stage projection contains Seed, Sprout, Young, Mature,
   Flowering, and Full Bloom. Persisted `rare` remains the internal final-stage
   key; compact copy is `Sprout · 2 of 6 stages`.
@@ -58,7 +63,7 @@ or counts locally:
 One eligible completed card creates one engine-owned transaction:
 
 1. Calculate full Answer Growth in hundredth units: 10 base Growth, streak,
-   Fertilizer, Booster, the Anki-day-locked Garden Bonus, and locked Scenery.
+   Fertilizer, Booster, the equipped decoration, and equipped scenery.
 2. Snapshot every other planted plant as a Shared Growth share source and every
    planted unfinished plant as a possible recipient.
 3. Route the complete primary lane through the nurtured plant and then through
@@ -147,52 +152,52 @@ Never add explanatory commentary to the waiting or complete state. The activity
 count is informational and has no denominator, threshold, progress bar,
 checkmark, or reward.
 
-## Timed Fertilizer and card-counted Booster
+## Card-counted Fertilizer and Booster
 
-Fertilizer stores an ordered set of wall-clock periods with tier, Growth per
-card, start, end, and source identity:
+`CardEffectBatch` stores effect identity, Growth per card, total/remaining cards,
+activation timestamp, and source event key. Basic, Quality, and Magical Fertilizer
+provide +1/+2/+3 Growth for 100/200/400 eligible answers; Potions provide +5 Growth
+for 100 cards. Owning Hourglass and Full Moon adds 25 cards each to a newly
+activated Potion. Their 30- and 6-completion gifts still require equipping.
+Existing doses keep their recorded duration.
 
-- Basic: +1 Growth per eligible card for 1 hour.
-- Quality: +2 Growth per eligible card for 2 hours.
-- Magical: +3 Growth per eligible card for 4 hours.
-- Reusing the active tier extends its end time.
-- A different tier starts when the preceding queued period ends, preserving
-  both durations.
-- Elapsed time continues outside the reviewer.
+One contributing batch per family spends one card per committed eligible answer.
+A different Fertilizer tier waits its turn; same-tier doses add coverage. Time away
+from Anki consumes nothing. Five live doses per destination/family may be accepted.
 
-Selection, quote, confirmation, and the committed active or queued period carry
-the same immutable source `plant_id`. UI disposition labels are **Apply** or
-**Queue** for owned inventory and **Buy and apply** or **Buy and queue** for a
-purchase. **Extend** is reserved for the existing active same-tier extension.
+At Full Bloom, remaining batches transfer to the next eligible plant. Once all
+current catalog species bloom, remaining batches move once into persisted
+`garden_card_effects`, including species outside the displayed garden. Inherited
+queues above five doses are preserved and must drain below five before new use.
+Fertilizer and Booster then enhance Answer Growth and its existing Shared Growth.
 
-`CardEffectBatch` is the Booster authority. It stores `effect_id`, derived
-`growth_per_card_units`, activated and remaining card counts, activation
-timestamp, and source event key.
+Engine consumable projections and purchase/Charge quotes expose an explicit
+garden destination. Charges route their fixed 100/500/2,000 Growth through the
+selected eligible Mastery project and Stored Growth without modifiers or Shared
+Growth. Receipts display committed allocations. Invalid explicit plant targets
+remain invalid. Completed gardens need no growing-plant selection.
 
-- Booster Potion: +5 Growth for 100 applicable cards.
-- Herbalist’s Hourglass extends a new Booster to 125 cards; Full Moon Garden
-  also provides 125; together they provide 150.
-- Another Potion extends the remaining card count.
-- Only a Booster that contributes decrements.
+Schema 30 carries all schema-29 value and onboarding history forward. Decoration
+cadence credit settles once on the next qualifying equipped answer; daily credit
+remains keyed by Anki day for delayed sync. Failed transactions restore queues,
+Coins, Growth, inventory, and request identities together.
 
-At Full Bloom, Fertilizer’s remaining duration and Booster’s remaining cards
-transfer to the automatic next plant. If no eligible plant exists, the value is
-retained for the next Nurture choice. Five doses per plant and effect family may
-be active or queued; a rejected dose remains in inventory.
+## Equipment
 
-## Daily loadout
+Apply, Equip, and legacy display/loadout entry points commit artwork and effects
+atomically. Previews remain read-only; Undo equips the prior selection without
+reversing rewards. No review, Growth Charge, or consumable activation locks
+these choices. Only the seven functional garden decorations can be equipped. Their artwork
+always displays in Garden and Garden Setup; the Home preview omits decorations. Legacy visibility fields remain readable but no longer hide items.
+Ownership and purchases remain separate from equipment. Gardening Trophies
+activate independently of equipment and have no outdoor display action.
 
-The first eligible answer locks the selected Garden Bonus for the scheduler
-day. Scenery locks independently on the first progression action, including a
-review, Growth Charge, or consumable activation. A later Garden Bonus or
-Scenery selection writes only the next-Anki-day queue. The displayed Garden
-Decoration remains an independent cosmetic choice that may change or hide
-immediately. Completion effects, milestone modifiers, Booster extensions, and
-card effects read the locked mechanics. Visibility changes rendering, not
-mechanics.
-
-The normalized effects are defined in the progression reference. Purchases do
-not auto-equip, and unlock ownership remains separate from selection.
+Reward calculations read current equipment, including milestone, completion,
+and Booster activation effects. Daily snapshots retain Garden Rhythm and legacy
+metadata only. Sync captures one equipment pair for the batch and applies it to
+unseen eligible reviews from any supported day, using their original day and
+card ordinal for daily limits. Unknown historical Rhythm stays zero. Completed
+reward events are never replayed when equipment changes.
 
 ## Post-sync reward reconciliation
 
@@ -282,8 +287,28 @@ Clear Recall, Perfect Canopy, and No-Again Day do not exist. No reward depends
 on avoiding Again. Current achievements use streak, study volume, or Today’s
 Cards completion.
 
-Historical badges are consolidated into one Legacy Harvest. Historical economy
-is capped at 500 Coins and grants no consumables.
+Past Anki review history grants each eligible study achievement once, using its
+full catalog reward (Coins, Growth Charges, and the Golden Trowel). There is no
+500-Coin cap. Plant progress, recurring daily/weekly rewards, random Finds,
+Today's Cards completions, and Garden-only milestones are not replayed.
+
+First-time setup collects those committed grants in a versioned
+`welcome_receipt`. After selecting, planting, and nurturing the starter, the
+engine atomically completes setup and applies `welcome:first-garden:v1`: 100
+Instant Growth and 50 Coins. A new seed also earns its normal first checkpoint
+Coin, so the welcome receipt displays **+100 Growth and +51 Coins**. The durable
+reward ledger owns idempotency; neither the animation nor its acknowledgement
+can grant rewards. Receipt status progresses from collecting to ready, started,
+then acknowledged. Interrupted presentations reopen settled; completed gardens
+without a receipt do not receive the new first-time gift retroactively.
+
+The native Garden shows one finite, silent welcome animation and the approved
+short greeting. **View rewards** reveals Welcome gift and Past Anki study. The
+past-study count measures eligible review events, including repeated answers to
+the same card. Numbers, items, and the achievement count come from the frozen
+receipt, not a fresh calculation of theoretical eligibility. See
+[first-garden-welcome.md](first-garden-welcome.md) for the complete reward table
+and startup/display contract.
 
 The 30-Day Anki Streak presentation always projects **100 Garden Coins + 1
 Small Growth Charge**. Achievement cards, reward receipts, and summaries use
@@ -333,11 +358,17 @@ Schema 22 upgrades both legacy JSON and authoritative SQLite schema-21 state:
 Schemas 23–25 then replace persisted Weather identities with Garden
 Decorations, split displayed artwork from the active Garden Bonus, add
 independent Anki-day Bonus locking, and add the durable pending sync receipt.
-All supported schema-10–26 JSON/SQLite paths converge on schema 27. The
+All supported schema-10–29 JSON/SQLite paths converge on schema 30. The
 schema-26 migration preserves every plant, wallet balance, Stored Growth unit,
 and prior claim while adding the current cumulative economy authorities without
 retroactive rewards. Unsupported or unreadable state is preserved before
 recovery.
+
+Schema 28 keeps each displayed item, derives its effect, and discards old
+pending selections. It preserves rewards, progress, visibility, and banked
+Growth. The schema-27-to-28 upgrade does not repeat earlier economy migrations.
+Watering Station cadence is retained by Anki day so delayed sync cannot change
+another day's progress. Existing SQLite snapshot rows remain historical records.
 
 ## v26 evidence boundary
 
@@ -357,3 +388,20 @@ Automated evidence retains
 `quality_status: review-required` and `release_ready: false`; manual macOS,
 Windows/Linux, mixed-DPI, forced-colors, screen-reader, broader-keyboard, and
 human approval remain open.
+
+## Gardening Trophies (schema 29)
+
+`trophy_activation_ms` maps the three stable trophy IDs to their first activation
+time. New unlocks persist this value with the achievement transaction; upgrade
+initializes already unlocked trophies once. Rewards at or before that boundary
+receive no bonus. `ReviewAward` records trophy Growth and the Shared Growth
+ratio used for that event. `DailyStats.trophy_growth` reports the added primary
+Growth. Garden Journal uses a separate durable per-day reward event and receipt,
+so retries and sync cannot duplicate its five Coins. Existing one-off achievement
+reward IDs and grants stay unchanged.
+
+Trophy acquisition dates project `AchievementState.unlocked_at`; historical
+backfills retain their recorded calendar date. Decoration dates use the first
+permanent purchase or environment-discovery event, then saved display history.
+The menu does not alter ownership, rewards, or acquisition dates. Missing legacy
+records remain unknown. These are read-only projections, not new reward fields.

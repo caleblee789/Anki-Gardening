@@ -71,6 +71,53 @@ class FakeStorage:
         return None
 
 
+@pytest.mark.parametrize("species", ("bonsai", "rose", "sunflower", "lavender"))
+def test_first_garden_gift_is_atomic_once_and_survives_interrupted_presentation(species):
+    from ankigarden.models.welcome import WELCOME_EVENT_KEY
+    from ankigarden.welcome_presentation import present_welcome
+
+    storage = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert not engine.finish_onboarding()[0]
+    ok, _, plant = engine.choose_starter(species)
+    assert ok and storage.state.currency_balance == 0
+    assert engine.set_active_plant(plant.plant_id)[0]
+    before = storage.state.to_dict()
+    storage.fail_save = True
+    assert not engine.finish_onboarding()[0]
+    assert storage.state.to_dict() == before
+    storage.fail_save = False
+    assert engine.finish_onboarding()[0]
+    receipt = storage.state.welcome_receipt
+    assert receipt.pending and receipt.status == "ready"
+    assert [row.text for row in present_welcome(receipt).gift] == ["+100 Growth", "+51 Coins"]
+    assert storage.state.currency_balance == 51
+    assert storage.state.plants[0].growth_points == 100
+    assert storage.state.plants[0].growth_stage == "seed"
+    assert all(event.correlation_id != WELCOME_EVENT_KEY for event in engine.peek_feedback())
+    assert engine.mark_welcome_presented(WELCOME_EVENT_KEY)
+
+    # Ordinary feedback can be pruned while this one durable receipt remains.
+    storage.state.recent_reward_receipts.clear()
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), storage)
+    assert storage.state.welcome_receipt.status == "started"
+    assert engine.finish_onboarding()[0]
+    assert engine.mark_welcome_presented(WELCOME_EVENT_KEY, acknowledged=True)
+    assert storage.state.welcome_receipt.status == "acknowledged"
+    assert storage.state.currency_balance == 51
+    assert storage.state.plants[0].growth_points == 100
+
+    # Presentation data is not the grant authority, even if an older build
+    # loses the receipt and a setup checkpoint is restored.
+    storage.state.welcome_receipt = None
+    storage.state.onboarding = GardenState.from_dict(before).onboarding
+    storage.state.garden_setup_version = 0
+    assert engine.finish_onboarding()[0]
+    assert storage.state.currency_balance == 51
+    assert storage.state.plants[0].growth_points == 100
+
+
 def release_row(species: str, stage: str, *, base_type: str = "direct_soil") -> dict:
     return {
         "asset_id": f"plant_{species}_{stage}_twilight_v6",
@@ -340,9 +387,9 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
         "breeze", "spring", {"weather": False, "scenery": True}
     )
 
-    assert ok and message == "Garden appearance saved."
+    assert ok and message == "Garden updated."
     assert storage.state.displayed_garden_feature == "wind_chime"
-    assert storage.state.selected_garden_feature == "seedling_sign"
+    assert storage.state.selected_garden_feature == "wind_chime"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
         "garden_feature": False,
@@ -357,7 +404,7 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
 
     assert not ok and message == "Couldn’t save changes. Your garden is unchanged."
     assert storage.state.displayed_garden_feature == "wind_chime"
-    assert storage.state.selected_garden_feature == "seedling_sign"
+    assert storage.state.selected_garden_feature == "wind_chime"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
         "garden_feature": False,

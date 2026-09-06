@@ -1118,6 +1118,7 @@ def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
 
     application = QApplication.instance() or QApplication([])
     config, storage, engine = _live_engine_fixture()
+    storage.state.garden_name = "Moss and Moon"
     owner = QWidget()
     owner.resize(1280, 900)
     owner.show()
@@ -1136,11 +1137,17 @@ def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
     )
     scene_bottom = int(origin.y()) + int(dashboard.scene.height())
 
+    assert dashboard.title_label.text() == "Anki Garden"
+    assert dashboard.title_label.accessibleName() == "Anki Garden"
+    assert dashboard.title_label.toolTip() == "Anki Garden"
+    assert dashboard.windowTitle() == "Anki Garden"
+    assert storage.state.garden_name == "Moss and Moon"
     assert dashboard.active_vertical_scroll_regions() == ()
     assert not hasattr(dashboard, "dashboard_scroll")
     assert int(origin.y()) >= 0
     assert scene_bottom <= int(viewport.height())
-    assert int(dashboard.scene.maximumHeight()) == 16777215
+    assert int(origin.x()) >= 0
+    assert int(origin.x()) + dashboard.scene.width() <= viewport.width()
     assert int(dashboard.scene.property("viewportHeightLimit")) >= int(
         dashboard.scene.minimumHeight()
     )

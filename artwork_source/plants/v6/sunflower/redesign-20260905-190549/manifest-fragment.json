@@ -1,0 +1,785 @@
+{
+  "schema_version": 1,
+  "species": "sunflower",
+  "prior_entry_sha256": {
+    "plant_sunflower_seed_twilight_v6": "e3ad798e12b7469da8df524e4115063bd149287b511268c8df08a19721f7e37e",
+    "plant_sunflower_sprout_twilight_v6": "5d7c696a120de89c4d0f8713733a40a191227486f35714ac876bb2a31d97df2a",
+    "plant_sunflower_young_twilight_v6": "0a52613bd7f0969af812ae74a7e940738c11d8d5c64d21261f3facc16b69707b",
+    "plant_sunflower_mature_twilight_v6": "eb4002f20b2069891b6d05c94354ff09a123ccec15e1d17740d1678e164fe662",
+    "plant_sunflower_flowering_twilight_v6": "8b52d4c36777915dd163929ff795c23e408687e2673e18039c6651a9f4633a0e",
+    "plant_sunflower_rare_twilight_v6": "8e5a46974b0dd03c3818821d2c0bb83e4da6d477f5ce22af85d33366fcba4703"
+  },
+  "hash_algorithm": "sha256(json.dumps(entry, sort_keys=True, separators=(comma,colon), ensure_ascii=False).encode(utf-8))",
+  "replacements": {
+    "plant_sunflower_seed_twilight_v6": {
+      "asset_id": "plant_sunflower_seed_twilight_v6",
+      "category": "plants",
+      "slot": {
+        "species": "sunflower",
+        "stage": "seed"
+      },
+      "variants": [
+        "storybook_gouache",
+        "direct_soil",
+        "continuity_v6",
+        "transparent_cutout",
+        "geometry_v2"
+      ],
+      "file": "assets/v6_storybook_gouache/plants/sunflower/seed/sunflower_seed_twilight_v6.webp",
+      "width": 1254,
+      "height": 1254,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "release_preferred": true,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "attribution": "Original AI-assisted artwork generated for Anki Garden",
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_seed_buried_alpha.png",
+      "source_master_sha256": "f231e6bd7d9f3988698d0aa7f3e4c539a8cf705b0c962a8331254bb11a416ba2",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.50598,
+          0.79067
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.296651,
+          0.632376,
+          0.41866,
+          0.317384
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.55,
+        "visual_scale_correction": 0.53464699,
+        "art_bounds": [
+          0.304625,
+          0.641148,
+          0.402711,
+          0.299043
+        ],
+        "base_bounds": [
+          0.305024,
+          0.917394,
+          0.389952,
+          0.022
+        ],
+        "support_bounds": [
+          0.305024,
+          0.917394,
+          0.389952,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.296651,
+          0.632376,
+          0.41866,
+          0.317384
+        ],
+        "plant_above_rim_bounds": [
+          0.296651,
+          0.632376,
+          0.41866,
+          0.317384
+        ],
+        "interaction_bounds": [
+          0.304625,
+          0.641148,
+          0.402711,
+          0.299043
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.304625,
+          0.641148,
+          0.402711,
+          0.299043
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_sprout_twilight_v6": {
+      "asset_id": "plant_sunflower_sprout_twilight_v6",
+      "category": "plants",
+      "slot": {
+        "species": "sunflower",
+        "stage": "sprout"
+      },
+      "variants": [
+        "storybook_gouache",
+        "direct_soil",
+        "continuity_v6",
+        "transparent_cutout",
+        "geometry_v2"
+      ],
+      "file": "assets/v6_storybook_gouache/plants/sunflower/sprout/sunflower_sprout_twilight_v6.webp",
+      "width": 1254,
+      "height": 1254,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "release_preferred": true,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "attribution": "Original AI-assisted artwork generated for Anki Garden",
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_sprout_alpha.png",
+      "source_master_sha256": "34a0f1d3ba40bc8d0fb5a282e39f3b446e7b907830442ee327b689088b0e9514",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.483254,
+          0.671451
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.167464,
+          0.394737,
+          0.633174,
+          0.555024
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.58,
+        "visual_scale_correction": 0.89837612,
+        "art_bounds": [
+          0.175439,
+          0.402711,
+          0.61563,
+          0.53748
+        ],
+        "base_bounds": [
+          0.471292,
+          0.917394,
+          0.057416,
+          0.022
+        ],
+        "support_bounds": [
+          0.471292,
+          0.917394,
+          0.057416,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.167464,
+          0.394737,
+          0.633174,
+          0.555024
+        ],
+        "plant_above_rim_bounds": [
+          0.167464,
+          0.394737,
+          0.633174,
+          0.555024
+        ],
+        "interaction_bounds": [
+          0.175439,
+          0.402711,
+          0.61563,
+          0.53748
+        ],
+        "layout_family": "compact",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.175439,
+          0.402711,
+          0.61563,
+          0.53748
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_young_twilight_v6": {
+      "asset_id": "plant_sunflower_young_twilight_v6",
+      "category": "plants",
+      "slot": {
+        "species": "sunflower",
+        "stage": "young"
+      },
+      "variants": [
+        "storybook_gouache",
+        "direct_soil",
+        "continuity_v6",
+        "transparent_cutout",
+        "geometry_v2"
+      ],
+      "file": "assets/v6_storybook_gouache/plants/sunflower/young/sunflower_young_twilight_v6.webp",
+      "width": 1254,
+      "height": 1254,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "release_preferred": true,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "attribution": "Original AI-assisted artwork generated for Anki Garden",
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_young_alpha.png",
+      "source_master_sha256": "cfd8b708709552b01b9d03fdb9bc0b8b0a3318c61abd2e8596dc5c10b08ccc2f",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.496811,
+          0.50598
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.1874,
+          0.066188,
+          0.617225,
+          0.883573
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.7,
+        "visual_scale_correction": 0.91548414,
+        "art_bounds": [
+          0.19697,
+          0.07177,
+          0.599681,
+          0.868421
+        ],
+        "base_bounds": [
+          0.473285,
+          0.917394,
+          0.053429,
+          0.022
+        ],
+        "support_bounds": [
+          0.473285,
+          0.917394,
+          0.053429,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.1874,
+          0.066188,
+          0.617225,
+          0.883573
+        ],
+        "plant_above_rim_bounds": [
+          0.1874,
+          0.066188,
+          0.617225,
+          0.883573
+        ],
+        "interaction_bounds": [
+          0.19697,
+          0.07177,
+          0.599681,
+          0.868421
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.19697,
+          0.07177,
+          0.599681,
+          0.868421
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_mature_twilight_v6": {
+      "asset_id": "plant_sunflower_mature_twilight_v6",
+      "category": "plants",
+      "slot": {
+        "species": "sunflower",
+        "stage": "mature"
+      },
+      "variants": [
+        "storybook_gouache",
+        "direct_soil",
+        "continuity_v6",
+        "transparent_cutout",
+        "geometry_v2"
+      ],
+      "file": "assets/v6_storybook_gouache/plants/sunflower/mature/sunflower_mature_twilight_v6.webp",
+      "width": 1254,
+      "height": 1254,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "release_preferred": true,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "attribution": "Original AI-assisted artwork generated for Anki Garden",
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_mature_alpha.png",
+      "source_master_sha256": "175d87285c8aad757bde31211331661c12cb25f9d454bdc271d22a034ab175a7",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.499202,
+          0.495215
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.245614,
+          0.043062,
+          0.504785,
+          0.902711
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.8,
+        "visual_scale_correction": 0.94024958,
+        "art_bounds": [
+          0.254386,
+          0.051037,
+          0.489633,
+          0.888357
+        ],
+        "base_bounds": [
+          0.476475,
+          0.917394,
+          0.047049,
+          0.022
+        ],
+        "support_bounds": [
+          0.476475,
+          0.917394,
+          0.047049,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.245614,
+          0.043062,
+          0.504785,
+          0.902711
+        ],
+        "plant_above_rim_bounds": [
+          0.245614,
+          0.043062,
+          0.504785,
+          0.902711
+        ],
+        "interaction_bounds": [
+          0.254386,
+          0.051037,
+          0.489633,
+          0.888357
+        ],
+        "layout_family": "standard",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.254386,
+          0.051037,
+          0.489633,
+          0.888357
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_flowering_twilight_v6": {
+      "asset_id": "plant_sunflower_flowering_twilight_v6",
+      "category": "plants",
+      "slot": {
+        "species": "sunflower",
+        "stage": "flowering"
+      },
+      "variants": [
+        "storybook_gouache",
+        "direct_soil",
+        "continuity_v6",
+        "transparent_cutout",
+        "geometry_v2"
+      ],
+      "file": "assets/v6_storybook_gouache/plants/sunflower/flowering/sunflower_flowering_twilight_v6.webp",
+      "width": 1254,
+      "height": 1254,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "release_preferred": true,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "attribution": "Original AI-assisted artwork generated for Anki Garden",
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_flowering_alpha.png",
+      "source_master_sha256": "3807687382d90e07a9a440fa9ed120979f852a583fd18f3a343d60d422ba14a6",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.513158,
+          0.496012
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.273525,
+          0.043062,
+          0.476874,
+          0.906699
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 0.81747165,
+        "art_bounds": [
+          0.283094,
+          0.051834,
+          0.460128,
+          0.888357
+        ],
+        "base_bounds": [
+          0.481659,
+          0.917394,
+          0.036683,
+          0.022
+        ],
+        "support_bounds": [
+          0.481659,
+          0.917394,
+          0.036683,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.273525,
+          0.043062,
+          0.476874,
+          0.906699
+        ],
+        "plant_above_rim_bounds": [
+          0.273525,
+          0.043062,
+          0.476874,
+          0.906699
+        ],
+        "interaction_bounds": [
+          0.283094,
+          0.051834,
+          0.460128,
+          0.888357
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.283094,
+          0.051834,
+          0.460128,
+          0.888357
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    },
+    "plant_sunflower_rare_twilight_v6": {
+      "asset_id": "plant_sunflower_rare_twilight_v6",
+      "category": "plants",
+      "slot": {
+        "species": "sunflower",
+        "stage": "rare"
+      },
+      "variants": [
+        "storybook_gouache",
+        "direct_soil",
+        "continuity_v6",
+        "transparent_cutout",
+        "geometry_v2"
+      ],
+      "file": "assets/v6_storybook_gouache/plants/sunflower/rare/sunflower_rare_twilight_v6.webp",
+      "width": 1254,
+      "height": 1254,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "release_preferred": true,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "ImageGen Sunflower redesign with authorized alpha cleanup and geometry-only square-canvas normalization",
+      "attribution": "Original AI-assisted artwork generated for Anki Garden",
+      "source_master_file": "artwork_source/plants/v6/sunflower/redesign-20260905-190549/sunflower_rare_alpha.png",
+      "source_master_sha256": "fea46b3f92c4b84d52d4042ed6433573cc4f8ec9174812e0c88bd1f9b22727a5",
+      "placement": {
+        "anchor_x": 0.5,
+        "baseline_y": 0.9393939393939394,
+        "scale": 1.0,
+        "display_scale": 1.0,
+        "visual_center": [
+          0.49362,
+          0.495614
+        ],
+        "shadow_offset": [
+          0.0,
+          0.0
+        ],
+        "minimum_bed_clearance": 0.04,
+        "visible_bounds": [
+          0.171451,
+          0.043062,
+          0.645136,
+          0.902711
+        ],
+        "ground_anchor": [
+          0.5,
+          0.939394
+        ],
+        "ground_anchor_x": 0.5,
+        "ground_anchor_y": 0.939394,
+        "soil_contact": [
+          0.5,
+          0.939394
+        ],
+        "contact_shadow": [
+          0.9,
+          0.07
+        ],
+        "base_type": "direct_soil",
+        "crop": "contain",
+        "layer": "plants",
+        "geometry_version": 2,
+        "review_provenance": "sunflower-redesign-20260905-190549",
+        "vessel_class": "soil_only",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 0.98,
+        "visual_scale_correction": 1.2583794,
+        "art_bounds": [
+          0.177033,
+          0.051834,
+          0.633174,
+          0.88756
+        ],
+        "base_bounds": [
+          0.480463,
+          0.917394,
+          0.039075,
+          0.022
+        ],
+        "support_bounds": [
+          0.480463,
+          0.917394,
+          0.039075,
+          0.022
+        ],
+        "foliage_bounds": [
+          0.171451,
+          0.043062,
+          0.645136,
+          0.902711
+        ],
+        "plant_above_rim_bounds": [
+          0.171451,
+          0.043062,
+          0.645136,
+          0.902711
+        ],
+        "interaction_bounds": [
+          0.177033,
+          0.051834,
+          0.633174,
+          0.88756
+        ],
+        "layout_family": "expanded",
+        "lateral_spacing_multiplier": 1.0,
+        "slot_envelope_scale": 1.0,
+        "release_layout_candidate": true,
+        "thumbnail_bounds": [
+          0.177033,
+          0.051834,
+          0.633174,
+          0.88756
+        ],
+        "thumbnail_optical_center": [
+          0.5,
+          0.5
+        ],
+        "thumbnail_safe_padding": 0.1
+      }
+    }
+  },
+  "runtime_files": {
+    "plant_sunflower_seed_twilight_v6": {
+      "candidate": "/Users/test/Documents/Anki Gardening.nosync/build/sunflower-redesign/20260905-190549/candidate-assets/seed/sunflower_seed_twilight_v6.webp",
+      "destination": "ankigarden/assets/v6_storybook_gouache/plants/sunflower/seed/sunflower_seed_twilight_v6.webp",
+      "sha256": "da50e4e6bdf283fb6c1d484b9a748bc174a225821119c205052c4ae5b05c5e6b"
+    },
+    "plant_sunflower_sprout_twilight_v6": {
+      "candidate": "/Users/test/Documents/Anki Gardening.nosync/build/sunflower-redesign/20260905-190549/candidate-assets/sprout/sunflower_sprout_twilight_v6.webp",
+      "destination": "ankigarden/assets/v6_storybook_gouache/plants/sunflower/sprout/sunflower_sprout_twilight_v6.webp",
+      "sha256": "088541827b3affd0662bf7d6fbc606ba2f220cdd9b3a1ae99eac13573fb3c49a"
+    },
+    "plant_sunflower_young_twilight_v6": {
+      "candidate": "/Users/test/Documents/Anki Gardening.nosync/build/sunflower-redesign/20260905-190549/candidate-assets/young/sunflower_young_twilight_v6.webp",
+      "destination": "ankigarden/assets/v6_storybook_gouache/plants/sunflower/young/sunflower_young_twilight_v6.webp",
+      "sha256": "0b2332277f68cd371ece2caa03823e36cc0a077cf0f1ab4eaa37292a20350733"
+    },
+    "plant_sunflower_mature_twilight_v6": {
+      "candidate": "/Users/test/Documents/Anki Gardening.nosync/build/sunflower-redesign/20260905-190549/candidate-assets/mature/sunflower_mature_twilight_v6.webp",
+      "destination": "ankigarden/assets/v6_storybook_gouache/plants/sunflower/mature/sunflower_mature_twilight_v6.webp",
+      "sha256": "f4d6f2eb7b936a829255093aa9e47bbc82fa3d2474fc5d5980c1fd8eb443cf7f"
+    },
+    "plant_sunflower_flowering_twilight_v6": {
+      "candidate": "/Users/test/Documents/Anki Gardening.nosync/build/sunflower-redesign/20260905-190549/candidate-assets/flowering/sunflower_flowering_twilight_v6.webp",
+      "destination": "ankigarden/assets/v6_storybook_gouache/plants/sunflower/flowering/sunflower_flowering_twilight_v6.webp",
+      "sha256": "c2ea4f6cb11e52b044568b4e13ff5504200a79c1c2fa26d4e41b413b15d2d0bc"
+    },
+    "plant_sunflower_rare_twilight_v6": {
+      "candidate": "/Users/test/Documents/Anki Gardening.nosync/build/sunflower-redesign/20260905-190549/candidate-assets/rare/sunflower_rare_twilight_v6.webp",
+      "destination": "ankigarden/assets/v6_storybook_gouache/plants/sunflower/rare/sunflower_rare_twilight_v6.webp",
+      "sha256": "b2ded96fefbbed8814ee53dfd2128f77223fb1fbe53934721010142a2c8c271f"
+    }
+  }
+}
