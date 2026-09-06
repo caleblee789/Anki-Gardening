@@ -31,7 +31,7 @@ def test_production_asset_catalog_passes_retina_density_gate() -> None:
         "backgrounds": 9,
         "garden_features": 7,
         "plants": 60,
-        "ui": 19,
+        "ui": 20,
     }
     assert RETINA_RASTER_MAX_CSS_SIZE == {
         "plants": (300, 300),

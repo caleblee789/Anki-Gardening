@@ -1,0 +1,20 @@
+{
+  "original_generation_provenance": {
+    "tool": "built-in imagegen",
+    "generated_source": "/Users/test/.codex/generated_images/01a074b1-90a2-7272-8c27-1b9c50731f6f/exec-bb575a52-7dff-4b5c-8ef2-bffd21cc5c0c.png",
+    "installed_asset": "/Users/test/Documents/Anki Gardening.nosync/ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.png",
+    "prompt": "Remove only the two painted horizontal lawn bands; preserve twilight composition, buildings, sky, path and edge foliage. Native Garden only.",
+    "home_changed": false
+  },
+  "source_master": "artwork_source/backgrounds/verdant_twilight/verdant_twilight_garden_continuous.png",
+  "source_sha256": "5201550987cff1a57e7ed52c3d17e8aba3ae14507ba28a16484a8ae9b448dffd",
+  "runtime_file": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp",
+  "lossless_conversion": {
+    "qt_decode_pixel_identical": true,
+    "width": 1448,
+    "height": 1086,
+    "rgba_sha256": "5739148968d3d0a1bcdc53598f4d45258ef8621f230ebac4e4d0dd88665ca451",
+    "png_bytes": 2129074,
+    "webp_bytes": 1540752
+  }
+}

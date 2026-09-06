@@ -35,7 +35,7 @@ def test_compiled_v29_contract_reports_current_surface_requirement(
         _load_current_contract_payload(stale_path)
 
     assert (
-        "compiled v29 contract must contain 51 active surfaces"
+        "compiled v29 contract must contain 50 active surfaces"
         in error.value.issues
     )
     assert all("35 active surfaces" not in issue for issue in error.value.issues)

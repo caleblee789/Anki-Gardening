@@ -1,6 +1,6 @@
 # Anki Garden progression, rewards, and effects
 
-> Current working-tree reference for Anki Garden 2.2.0 and state schema 27.
+> Current working-tree reference for Anki Garden 2.2.0 and state schema 30.
 > Runtime, storage, presentation, capture, and simulation consume the immutable
 > catalog in `ankigarden/balance_catalog.py`. Runtime source and committed
 > engine results remain authoritative when prose and implementation disagree.
@@ -63,7 +63,7 @@ primary Answer Growth.
 - One through six planted beds therefore produce 100%, 110%, 120%, 130%,
   140%, or 150% total output while a valid unfinished target exists.
 
-Garden Finds, Growth Charges, Prism Trellis release, Firefly Lantern, and other
+Garden Finds, Growth Charges, Prism Trellis completion rewards, Firefly Lantern, and other
 fixed awards grant **Instant Growth**. Instant Growth receives no Rhythm,
 Fertilizer, Booster, Garden Bonus, Scenery, or Shared Growth fan-out.
 
@@ -257,7 +257,7 @@ metadata, not reward authorities. Sync reconciliation captures the equipped
 items once per batch and uses them for unseen eligible reviews, including
 past-day reviews. First-N limits use each review's original Anki day and card
 position. Today’s Cards completion still requires the current-day live transition.
-Swapping preserves cadence counters, daily limits, banked Growth, and the duration
+Swapping preserves cadence counters, applicable equipment daily limits, and the duration
 already granted to activated consumables. Equipping itself grants no rewards.
 
 ## Garden Bonuses
@@ -271,13 +271,13 @@ The equipped decoration supplies at most one Garden Bonus.
 | Harvest Bell | 175 Garden Coins | +5 Garden Coins when Today’s Cards is complete |
 | Watering Station | 250 Garden Coins | Every second eligible answer among the first 200 of the Anki day, +1 Answer Growth |
 | Herbalist’s Hourglass | 350 Garden Coins | Every 30 equipped completion days, gain 1 Booster Potion; owning it adds 25 cards to new Potions |
-| Firefly Lantern | Rare discovery | Every fifth eligible answer, +3 Instant Growth to the unfinished planted plant closest to its next checkpoint |
-| Prism Trellis | Very Rare discovery | Bank 1 Growth for each of the first 100 eligible cards per day, up to 300; release the bank on Today’s Cards completion while active |
+| Firefly Lantern | Rare discovery | Every fifth eligible answer, +3 Instant Growth to the nurtured plant with normal overflow |
+| Prism Trellis | Very Rare discovery | +100 direct Growth on each valid Today’s Cards completion while equipped, with normal overflow and no Shared Growth |
 
 Wind Chime and Hourglass progress persists while unequipped, but advances only
 when the bonus is active. Watering Station’s first-200 allowance resets at the
-Anki-day boundary. Firefly ties resolve by remaining Growth, bed, then species.
-Prism value persists through incomplete days and is never confiscated.
+Anki-day boundary. Firefly follows the nurtured plant and normal overflow.
+Prism awards its fixed Growth only on valid completion; legacy bank fields remain inert.
 
 ## Scenery Effects
 
@@ -312,17 +312,11 @@ independently from environment discovery. The drought schedule is:
 | 61–74 | 1 in 20 |
 | 75 | Guaranteed, at least Uncommon |
 
-The daily cap rises with committed eligible answers:
-
-| Eligible answers today | Standard Find cap |
-|---:|---:|
-| 0–199 | 3 |
-| 200–399 | 4 |
-| 400+ | 5 |
-
-While capped, the Standard roll and drought counter pause. If the cap rises
-later that day, the preserved drought state resumes. Environment discoveries
-are never blocked by this cap.
+Standard Finds have no daily limit. Every new eligible answer advances the
+existing chance and 75-answer guarantee sequence; successful Finds reset it.
+Saved drought counters resume unchanged. Counts retain actual totals, and
+historical outcomes are never rerolled or compensated. Environment discoveries
+remain independent.
 
 | Find | Tier | Reward | Nominal share |
 |---|---|---|---:|
@@ -360,7 +354,7 @@ unowned item in that tier is guaranteed by whichever threshold arrives first:
   tiers stop rolling and duplicates cannot be awarded.
 - Simultaneous natural successes award only the rarest natural result.
   Simultaneously forced pity tiers award every forced result.
-- Standard Find caps never suppress environment discovery.
+- Standard Finds and environment discoveries use independent rules.
 
 ## Achievements
 
@@ -447,7 +441,7 @@ cosmetic, and non-compounding:
 ## Cultivation Mastery
 
 After a current species reaches Full Bloom, its cosmetic Mastery track may be
-funded continuously and its ranks claimed in order:
+grown continuously through normal overflow and its appearances unlocked in order. Choose a species in its Collection details; optional Add Stored Growth spending remains available. The explicit Unlock appearance button pays the existing Coin cost:
 
 | Rank | Incremental Growth | Cumulative Growth | Claim cost | Cosmetic reward |
 |---|---:|---:|---:|---|

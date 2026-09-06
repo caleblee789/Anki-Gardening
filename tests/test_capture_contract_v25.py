@@ -351,16 +351,18 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         for stable_id in REGISTRY.profile_labels("full")
     )
     assert len(REGISTRY.profile_labels("representative")) == 22
-    assert len(REGISTRY.profile_labels("full")) == 51
+    assert len(REGISTRY.profile_labels("full")) == 50
     assert not REGISTRY["nursery-weather-scenery"].active
     assert "nursery-weather-scenery" in compiled["retired_ids"]
+    assert "workspace-additional-bonuses-expanded" in compiled["retired_ids"]
+    assert REGISTRY["workspace-additional-bonuses-expanded"].placements == ()
     assert REGISTRY.profile_page_count("representative") == 5
     assert REGISTRY.profile_page_count("full") == 5
     from scripts.capture_support import paginate_contact_sheet_groups
     pages = compiled["profiles"]["full"]["contact_sheets"]
     assigned = [label for page in pages for label in page["labels"]]
-    assert [len(page["labels"]) for page in pages] == [12, 10, 12, 10, 7]
-    assert len(assigned) == len(set(assigned)) == 51
+    assert [len(page["labels"]) for page in pages] == [12, 9, 12, 10, 7]
+    assert len(assigned) == len(set(assigned)) == 50
     assert set(assigned) == set(REGISTRY.profile_labels("full"))
     assert assigned != list(REGISTRY.profile_labels("full"))
     rendered = paginate_contact_sheet_groups(
@@ -368,7 +370,7 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         explicit_pages=pages,
     )
     assert len(rendered) == 5
-    assert [len(page[0][1]) for page in rendered] == [12, 10, 12, 10, 7]
+    assert [len(page[0][1]) for page in rendered] == [12, 9, 12, 10, 7]
     assert "starter-selection-confirmation" in compiled["retired_ids"]
     assert REGISTRY["starter-selection-confirmation"].placements == ()
     runtime_source = (

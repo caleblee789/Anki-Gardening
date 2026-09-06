@@ -1144,7 +1144,7 @@ class RewardLedger:
         *,
         pool_id: str = "standard",
     ) -> FindDayCounts:
-        """Return hit totals used by the daily cap and per-reward limits."""
+        """Return authoritative hit totals and per-reward counts."""
 
         self._ensure_open()
         day_value = _iso_day(scheduler_day, "scheduler_day")

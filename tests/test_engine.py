@@ -589,10 +589,7 @@ def test_first_garden_receipt_preserves_all_paid_history_without_replaying_study
     view = present_welcome(receipt)
     assert receipt.history_review_count == 100_000
     assert view.achievement_count == 10
-    assert view.history_intro == (
-        "You’ve completed 100,000 card reviews in Anki. "
-        "Your past study has earned you these rewards:"
-    )
+    assert "100,000" in view.history_intro
     assert {row.item_id or row.label: row.amount for row in view.history} == {
         "Coins": 1785, "growth_charge_small": 1, "growth_charge_standard": 2,
         "growth_charge_grand": 1, "golden_trowel": 1,
@@ -2673,6 +2670,19 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
     )
     assert feedback.correlation_id == first.correlation_id
     assert feedback.amount == 0
+
+    for index in range(2, 8):
+        storage.state.garden_find_drought_count = 74
+        revlog_id = first_id + index * 1_000
+        award = answer(engine, storage, revlog_id=revlog_id)
+        assert award.garden_find_ids == ("find_morning_dew",)
+        assert answer(engine, storage, revlog_id=revlog_id).total_growth == 0
+    assert engine.garden_find_status().finds_today == 7
+    assert storage.state.plants[0].growth_points == 350
+    assert storage.state.plants[1].growth_points == 7
+    restored = GardenState.from_dict(storage.state.to_dict())
+    assert restored.garden_find_daily_counts[storage.day] == 7
+    assert restored.garden_find_drought_count == 0
 
 
 def test_guaranteed_growth_find_keeps_v2_weights_and_stores_without_a_target():

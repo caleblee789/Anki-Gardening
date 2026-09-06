@@ -27,7 +27,8 @@ from .accessibility import read_system_reduced_motion
 from .environment_art import environment_preview_pixmap
 from .formatters import format_garden_coins, format_quantity
 from .icons import garden_icon
-from .reward_receipt import build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style
+from .reward_rarity import apply_reward_treatment, reward_treatment
+from .reward_receipt import build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height, reward_discovery_count
 from .plant_art import normalized_plant_pixmap
 from .session_summary import (
     EnvironmentDiscovery,
@@ -50,7 +51,7 @@ SESSION_SUMMARY_EDGE_MARGIN = 20
 SESSION_SUMMARY_VIEWPORT_VERTICAL_MARGIN = 32
 SESSION_SUMMARY_PREFERRED_TOP_MARGIN = 48
 SESSION_SUMMARY_MIN_VERTICAL_MARGIN = 16
-# Rewards use a compact body with optional detail and a bounded scroll area.
+# All reward details remain visible in one bounded, content-fitted scroll area.
 SESSION_SUMMARY_MAX_HEIGHT: int | None = 520
 SESSION_SUMMARY_HEADER_HEIGHT = 44
 SESSION_SUMMARY_FOOTER_HEIGHT = 48
@@ -490,7 +491,6 @@ try:  # Keep the geometry helper importable in non-Anki test processes.
         QLabel,
         QPainter,
         QPixmap,
-        QPoint,
         QProgressBar,
         QPropertyAnimation,
         QPushButton,
@@ -500,7 +500,6 @@ try:  # Keep the geometry helper importable in non-Anki test processes.
         QSizePolicy,
         QToolButton,
         QTimer,
-        QVariantAnimation,
         QVBoxLayout,
         Qt,
     )
@@ -519,7 +518,6 @@ except Exception as exc:  # pragma: no cover - exercised only outside Anki/Qt.
     QLabel = object  # type: ignore[assignment,misc]
     QPainter = object  # type: ignore[assignment,misc]
     QPixmap = object  # type: ignore[assignment,misc]
-    QPoint = object  # type: ignore[assignment,misc]
     QProgressBar = object  # type: ignore[assignment,misc]
     QPropertyAnimation = object  # type: ignore[assignment,misc]
     QPushButton = object  # type: ignore[assignment,misc]
@@ -529,7 +527,6 @@ except Exception as exc:  # pragma: no cover - exercised only outside Anki/Qt.
     QSizePolicy = object  # type: ignore[assignment,misc]
     QToolButton = object  # type: ignore[assignment,misc]
     QTimer = object  # type: ignore[assignment,misc]
-    QVariantAnimation = object  # type: ignore[assignment,misc]
     QVBoxLayout = object  # type: ignore[assignment,misc]
     Qt = object  # type: ignore[assignment,misc]
     _QT_AVAILABLE = False
@@ -700,8 +697,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._animations: list[Any] = []
         self._dismissed = False
         self._page_index = 0
-        self._details_expanded = False
-        self._show_all_growth = False
+        self._details_expanded = True
+        self._show_all_growth = True
         self._exclusion_top: int | None = None
         self._exclusion_source = "none"
         self._reserved_top: int | None = None
@@ -963,7 +960,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._header.setFixedHeight(SESSION_SUMMARY_HEADER_HEIGHT)
         self._header.layout().setContentsMargins(16, 7, 16, 7)
         self._footer.setFixedHeight(SESSION_SUMMARY_FOOTER_HEIGHT)
-        self._footer_layout.setContentsMargins(12, 10, 12, 10)
+        self._footer_layout.setContentsMargins(16, 8, 16, 8)
 
     def _divider(self, parent: Any | None = None) -> Any:
         divider = QFrame(parent or self)
@@ -987,8 +984,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         return self._payload.segments[self._page_index]
 
     def _reset_page_expansions(self) -> None:
-        self._details_expanded = False
-        self._show_all_growth = False
+        self._details_expanded = True
+        self._show_all_growth = True
 
     def _rebuild_page(self) -> None:
         summary = self._current_summary()
@@ -1016,8 +1013,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if self._payload.page_count > 1:
             self._add_pager(body_layout)
 
-        self._add_hero(body_layout, projection)
-
         self._active_boosts_section = None
         metrics = self._reward_metrics(summary, projection)
         inventory_rewards = self._inventory_rewards(summary)
@@ -1044,26 +1039,27 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             len(tuple(getattr(summary, "project_allocations", ()) or ())),
         )
         self.setProperty("summaryProjectProgressPlacement", "breakdown")
-        if metrics or inventory_rewards or self._has_breakdown(summary, projection):
+        self._add_reward_strip(body_layout, metrics)
+        self._add_hero(body_layout, projection)
+        if self._has_highlights(summary, projection):
+            self._add_highlights(body_layout, summary, projection)
+        if inventory_rewards or self._find_items(summary):
             self._add_rewards_earned(
                 body_layout,
                 summary,
                 projection,
-                metrics,
+                (),
                 inventory_rewards,
             )
 
-        if self._has_highlights(summary, projection):
-            self._add_highlights(body_layout, summary, projection)
-        self._add_today_cards(body_layout, projection)
         active_effects = self._active_effects_for_payload(projection)
-        if (self._has_breakdown(summary, projection) or active_effects
-                or self._has_highlights(summary, projection)
-                or inventory_rewards or self._find_items(summary)):
+        if self._has_breakdown(summary, projection):
             self._add_breakdown(body_layout, summary, projection)
-        if self._details_expanded and active_effects:
+        if active_effects:
             self._add_active_boosts(body_layout, active_effects)
 
+        self.setProperty("summaryDetailsAlwaysVisible", True)
+        self.setProperty("summaryDailyCardsRemoved", True)
         self._body = body
         self._scroll.setWidget(body)
         try:
@@ -1140,189 +1136,13 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _add_hero(self, layout: Any, projection: Any) -> None:
         count = self._current_summary().cards_completed
-        hero = QLabel(f"{format_quantity(count, 'card')} studied")
+        hero = QLabel(f"{format_quantity(count, 'card')} studied this session")
+        hero.setWordWrap(True)
         hero.setObjectName("ankiGardenSessionHeroValue")
         hero.setProperty("receiptEventTitle", True)
         hero.setToolTip("Study answers in this session; a card may be studied more than once.")
         apply_tabular_numerals(hero)
         layout.addWidget(hero)
-
-    @staticmethod
-    def _status_copy(projection: Any) -> tuple[str, tuple[str, ...]]:
-        lines = tuple(projection.today_cards.lines)
-        if not lines:
-            return projection.today_cards.heading, ()
-        first = lines[0]
-        standalone_status = {
-            "TODAY’S CARDS COMPLETE",
-            "NO COMPLETION REWARD TODAY",
-            "CARD STATUS UNAVAILABLE",
-        }
-        if first in standalone_status:
-            return first, lines[1:]
-        return projection.today_cards.heading, lines
-
-    def _add_today_cards(self, layout: Any, projection: Any) -> None:
-        today = projection.today_cards
-        summary = self._current_summary()
-        end = summary.today_cards_end
-        start = summary.today_cards_start
-        semantic_progress = hasattr(today, "progress_max")
-        completed = int(getattr(today, "completed_cards", 0) or 0)
-        start_completed = int(
-            getattr(
-                today,
-                "start_completed_cards",
-                getattr(start, "cards_completed", 0),
-            )
-            or 0
-        )
-        total = int(getattr(today, "total_cards", 0) or 0)
-        progress_max = int(getattr(today, "progress_max", total) or 0)
-        progress_value = int(getattr(today, "progress_value", completed) or completed)
-        start_progress_value = int(
-            getattr(today, "start_progress_value", start_completed) or start_completed
-        )
-        animate_progress = bool(getattr(today, "animate_progress", True))
-        remaining = getattr(today, "remaining_cards", end.cards_remaining)
-        if not semantic_progress and total <= 0 and remaining is not None:
-            total = max(
-                int(start.cards_remaining or 0),
-                int(summary.cards_completed) + int(remaining),
-            )
-        if (
-            not semantic_progress
-            and completed <= 0
-            and total > 0
-            and remaining is not None
-        ):
-            completed = max(0, total - int(remaining))
-        if not semantic_progress and end.status == "complete":
-            completed = max(completed, total, int(summary.cards_completed))
-            total = max(total, completed)
-        progress_max = max(0, progress_max, total)
-        progress_value = (
-            max(0, min(progress_max, progress_value or completed))
-            if progress_max > 0 else 0
-        )
-
-        band = QFrame()
-        band.setObjectName("ankiGardenSessionToday")
-        band.setProperty("summaryStatus", True)
-        status_layout = QVBoxLayout(band)
-        status_layout.setContentsMargins(
-            12,
-            5 if self._compact_density else 12,
-            12,
-            5 if self._compact_density else 12,
-        )
-        status_layout.setSpacing(4 if self._compact_density else 7)
-
-        heading_row = QHBoxLayout()
-        heading_row.setSpacing(8)
-        kind = str(getattr(today, "kind", "reviewable") or "reviewable")
-        band.setProperty("todayCardsKind", kind)
-        band.setProperty("todayCardsScope", str(getattr(today, "scope", "") or ""))
-        heading = QLabel("Daily Target" if kind == "daily_target" else "Today’s progress")
-        heading.setProperty("summaryStatusTitle", True)
-        heading_row.addWidget(heading, 1)
-        is_complete = bool(getattr(today, "is_complete", end.status == "complete"))
-        band.setProperty("summaryComplete", is_complete)
-        status_text = str(getattr(today, "status_text", "") or "")
-        if not status_text:
-            if is_complete:
-                status_text = "Complete"
-            elif remaining is not None:
-                if kind == "daily_target":
-                    status_text = f"{remaining:,} to goal"
-                else:
-                    status_text = (
-                        f"{format_quantity(remaining, 'card')} left"
-                    )
-            else:
-                status_text = _title_case(end.status)
-        status = QLabel(status_text)
-        status.setObjectName("ankiGardenSessionTodayStatus")
-        status.setProperty("summaryValue", True)
-        apply_tabular_numerals(status)
-        heading_row.addWidget(status)
-        status_layout.addLayout(heading_row)
-
-        show_progress = bool(
-            progress_max > 0
-            and end.status not in {"not_eligible", "unavailable"}
-        )
-        self._today_progress = None
-        self._today_progress_start = 0
-        self._today_progress_target = 0
-        if show_progress:
-            progress = QProgressBar(band)
-            progress.setObjectName("ankiGardenSessionTodayProgress")
-            progress.setProperty(
-                "semanticId",
-                "reviewer.session-summary.today-progress",
-            )
-            progress.setTextVisible(False)
-            progress.setRange(0, progress_max)
-            progress.setValue(
-                max(0, min(progress_max, start_progress_value))
-                if self._animations_enabled
-                and animate_progress
-                and not self._animation_started
-                else progress_value
-            )
-            fraction = float(
-                getattr(today, "progress_fraction", 0.0) or 0.0
-            )
-            if fraction <= 0.0:
-                fraction = progress_value / progress_max
-            progress.setProperty("progressFraction", max(0.0, min(1.0, fraction)))
-            progress.setProperty(
-                "startProgressFraction",
-                max(
-                    0.0,
-                    min(
-                        1.0,
-                        float(
-                            getattr(today, "start_progress_fraction", 0.0)
-                            or (start_progress_value / progress_max)
-                        ),
-                    ),
-                ),
-            )
-            progress.setAccessibleName(
-                f"{'Daily Target' if kind == 'daily_target' else 'Today’s cards'}: "
-                f"{progress_value:,} of "
-                f"{format_quantity(progress_max, 'card')} completed"
-            )
-            status_layout.addWidget(progress)
-            self._today_progress = progress
-            self._today_progress_start = max(
-                0,
-                min(
-                    progress_max,
-                    start_progress_value if animate_progress else progress_value,
-                ),
-            )
-            self._today_progress_target = progress_value
-
-        supporting_text = str(getattr(today, "supporting_text", "") or "")
-        if not supporting_text:
-            if total > 0:
-                supporting_text = (
-                    f"{completed:,} / {total:,} completed"
-                )
-            else:
-                _heading, lines = self._status_copy(projection)
-                supporting_text = " · ".join(lines)
-        if supporting_text:
-            supporting = QLabel(supporting_text)
-            supporting.setObjectName("ankiGardenSessionTodaySupporting")
-            supporting.setWordWrap(True)
-            supporting.setProperty("summarySupporting", True)
-            apply_tabular_numerals(supporting)
-            status_layout.addWidget(supporting)
-        layout.addWidget(band)
 
     def _section_heading(self, text: str) -> Any:
         heading = QLabel(str(text or ""))
@@ -1461,12 +1281,11 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             unlock_eyebrow, unlock_supporting = unlock_category_copy(
                 str(getattr(source, "unlock_category", "") or "environment")
             )
-            eyebrow = eyebrow or unlock_eyebrow
-            discovery_name = str(source.environment_name or "Garden discovery")
-            title = f"{discovery_name} discovered"
-            supporting = supporting or unlock_supporting
+            eyebrow = "New discovery"
+            title = str(source.environment_name or "Garden discovery")
+            supporting = ""
         elif isinstance(source, StandardFind):
-            eyebrow = eyebrow or "STANDARD FIND"
+            eyebrow = "Garden Find"
             title = title or source.find_name or "Garden Find"
             supporting = supporting or source.reward_label
         return eyebrow, title, supporting, reward
@@ -1493,6 +1312,15 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         else:
             featured, overflow = self._fallback_highlights(summary)
             candidates = (*featured, *overflow)
+        represented_find_ids = {row[0] for row in self._find_items(summary)}
+        represented_find_ids.update(find_id for item in self._inventory_rewards(summary) for find_id in item.source_find_ids)
+        candidates = tuple(item for item in candidates
+                           if not isinstance(self._highlight_source(summary, item), StandardFind)
+                           or self._highlight_source(summary, item).find_id not in represented_find_ids)
+        featured = candidates[:2]
+        if not candidates:
+            container.deleteLater()
+            return
         if not self._details_expanded:
             for highlight in candidates[:1]:
                 self._add_compact_highlight_row(container_layout, summary, highlight)
@@ -1505,7 +1333,10 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 )
         else:
             for highlight in featured:
-                self._add_highlight_card(container_layout, summary, highlight)
+                if isinstance(self._highlight_source(summary, highlight), (EnvironmentDiscovery, StandardFind)):
+                    self._add_compact_highlight_row(container_layout, summary, highlight)
+                else:
+                    self._add_highlight_card(container_layout, summary, highlight)
             for highlight in candidates[2:]:
                 self._add_compact_highlight_row(
                     container_layout,
@@ -1517,17 +1348,19 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     def _add_compact_highlight_row(self, layout: Any, summary: SessionDaySummary, highlight: Any) -> None:
         source = self._highlight_source(summary, highlight)
         kind = self._highlight_kind(highlight)
-        _, title, supporting, reward = self._highlight_copy(highlight, source, displayed_coin_total=summary.garden_coins_total)
+        eyebrow, title, supporting, reward = self._highlight_copy(highlight, source, displayed_coin_total=summary.garden_coins_total)
         if isinstance(source, PlantMilestone):
             art = self._plant_art_label(source, 36)
         elif isinstance(source, EnvironmentDiscovery):
-            art = self._environment_art_label(source, 36, 36)
+            art = self._environment_art_label(source, 44, 44)
         else:
-            art = self._reward_art_label(source, 36)
+            art = self._reward_art_label(source, 44)
         detail = supporting
         if reward and self._details_expanded:
             detail = " · ".join(filter(None, (supporting, reward.replace("Garden Coins bonus included", "Coins included"))))
-        event = receipt_event_row(self, art, title, detail=detail, milestone=kind == "full_bloom")
+        event = receipt_event_row(self, art, title, detail=detail, milestone=kind == "full_bloom", reward=source,
+                                  eyebrow=eyebrow if isinstance(source, (EnvironmentDiscovery, StandardFind)) else "",
+                                  rarity_badge=isinstance(source, (EnvironmentDiscovery, StandardFind)))
         event.widget.setProperty("summaryHighlight", True)
         event.widget.setProperty("summaryHighlightKind", kind)
         event.widget.setProperty("summaryHighlightCompact", True)
@@ -1591,10 +1424,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             art = self._plant_art_label(source, 60 if kind == "full_bloom" else 52)
         else:
             art = self._reward_art_label(source, 48)
-        if kind == "full_bloom":
-            self._apply_art_glow(art, self._summary_theme["milestone_accent"], 18)
-        elif garden_item:
-            self._apply_art_glow(art, self._summary_theme["find_accent"], 16)
+        # Rarity stays on the title and indicator; keep the item art clear.
         media_rail = QFrame(card)
         media_rail.setProperty("summaryMediaRail", True)
         media_rail.setFixedWidth(88)
@@ -1612,7 +1442,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             eyebrow.setStyleSheet(f"color:{self._summary_theme['milestone_accent']};")
         title = self._name_label(title_text)
         title.setProperty("summaryMilestone", True)
-        title.setMaximumHeight(44)
 
         def reward_chip() -> Any:
             chip = QFrame()
@@ -1649,6 +1478,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if reward_text and not compact_reward_chip:
             copy.addWidget(reward_chip(), 0, Qt.AlignmentFlag.AlignLeft)
         row.addLayout(copy, 1)
+        treatment = apply_reward_treatment(card, source, title=title, artwork=art, full_bloom=kind == "full_bloom")
+        if treatment.notable:
+            eyebrow.setStyleSheet(f"color:{treatment.color};")
         layout.addWidget(card)
 
     @staticmethod
@@ -1663,37 +1495,11 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             )
             or 0
         )
-        metrics: list[tuple[str, str, str, str]] = []
-        if applied:
-            metrics.append((
-                "growth_applied",
-                "Growth",
-                format_growth_units(applied, signed=True),
-                "growth",
-            ))
-        if summary.garden_coins_total:
-            metrics.append((
-                "garden_coins",
-                "Coins",
-                f"+{summary.garden_coins_total:,}",
-                "coin",
-            ))
-        total_finds = int(
-            getattr(
-                summary,
-                "total_finds",
-                len(tuple(getattr(summary, "standard_finds", ()) or ())),
-            )
-            or 0
+        return (
+            ("garden_coins", "Coins", f"+{summary.garden_coins_total:,}" if summary.garden_coins_total else "0", "coin"),
+            ("growth_applied", "Growth", format_growth_units(applied, signed=bool(applied)), "growth"),
+            ("discoveries", "Discoveries", str(reward_discovery_count(summary)), "environment-discovery"),
         )
-        if total_finds:
-            metrics.append((
-                "standard_finds",
-                "Garden Finds",
-                f"+{total_finds:,}",
-                "find",
-            ))
-        return tuple(metrics)
 
     @staticmethod
     def _inventory_rewards(
@@ -1822,42 +1628,25 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         container.setObjectName("ankiGardenSessionItemRewards")
         container.setProperty("summaryItemRewards", True)
         container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(12, 8, 12, 8)
-        container_layout.setSpacing(7)
-        if self._details_expanded:
-            container_layout.addWidget(self._section_heading("Earned items"))
+        container_layout.setContentsMargins(0, 6, 0, 2)
+        container_layout.setSpacing(6)
+        container_layout.addWidget(self._section_heading("Earned items"))
         for index, item in enumerate(rewards):
-            row_widget = QFrame(container)
-            row_widget.setProperty(
-                "summaryItemRewardKey", f"{item.item_id}:{index}"
-            )
+            artwork = self._reward_art_label(item.art_reference, 32)
+            find_source = next((find for find in self._current_summary().standard_finds
+                                if find.find_id in item.source_find_ids), None) if len(item.source_find_ids) == 1 else None
+            title = find_source.find_name if find_source is not None else item.name or "Earned item"
+            detail = item.name if find_source is not None and item.name.casefold() != title.casefold() else ""
+            event = receipt_event_row(container, artwork, title, detail=detail, reward=item,
+                                      eyebrow="Garden Find" if item.source_find_ids else "Item earned", rarity_badge=True)
+            row_widget = event.widget
+            row_widget.setProperty("summaryItemRewardKey", f"{item.item_id}:{index}")
             row_widget.setProperty("summaryItemRewardEventIds", item.event_ids)
             row_widget.setProperty("summaryItemRewardSources", item.source_labels)
-            row = QHBoxLayout(row_widget)
-            row.setContentsMargins(0, 1, 0, 1)
-            row.setSpacing(8)
-            row.addWidget(self._reward_art_label(item.art_reference, 30))
-            copy = QVBoxLayout()
-            copy.setContentsMargins(0, 0, 0, 0)
-            copy.setSpacing(3)
-            name = self._name_label(item.name or "Earned item")
-            copy.addWidget(name)
-            if self._details_expanded and item.source_labels:
-                badges = QHBoxLayout()
-                badges.setContentsMargins(0, 0, 0, 0)
-                badges.setSpacing(4)
-                for source_label in item.source_labels:
-                    source = QLabel(source_label, row_widget)
-                    source.setProperty("summarySourceBadge", True)
-                    source.setAccessibleName(f"Reward source: {source_label}")
-                    badges.addWidget(source)
-                badges.addStretch(1)
-                copy.addLayout(badges)
-            row.addLayout(copy, 1)
             quantity = QLabel(f"+{item.quantity:,}", row_widget)
             quantity.setProperty("summaryValue", True)
             apply_tabular_numerals(quantity)
-            row.addWidget(quantity)
+            event.layout.addWidget(quantity, 0, Qt.AlignmentFlag.AlignVCenter)
             container_layout.addWidget(row_widget)
         layout.addWidget(container)
 
@@ -1867,12 +1656,14 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         container.setProperty("summaryCanonicalMetricCount", len(metrics))
         row = QHBoxLayout(container)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
+        row.setSpacing(6)
         for key, label, value, icon in metrics:
             metric = receipt_metric(container, label, value, icon, self._summary_theme)
             metric.widget.setProperty("summaryMetric", True)
             metric.widget.setProperty("summaryMetricKey", key)
             metric.value.setProperty("summaryGrowth" if key == "growth_applied" else "summaryCoin" if key == "garden_coins" else "summaryFind", True)
+            if key == "discoveries":
+                metric.widget.setToolTip("Garden Finds and new Garden unlocks")
             row.addWidget(metric.widget, 1)
         layout.addWidget(container)
 
@@ -1898,7 +1689,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             identity, name, art, quantity = item
             rows.addWidget(self._find_row_widget(
                 identity,
-                f"Garden Find · {name}",
+                name,
                 art,
                 quantity,
                 compact=True,
@@ -1914,24 +1705,18 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         *,
         compact: bool,
     ) -> Any:
-        row_widget = QFrame()
+        artwork = self._reward_art_label(art, 32)
+        event = receipt_event_row(self, artwork, name, reward=identity, eyebrow="Garden Find", rarity_badge=True)
+        row_widget = event.widget
         row_widget.setProperty("summaryFindRow", True)
         row_widget.setProperty("summaryFindRowCompact", bool(compact))
         row_widget.setProperty("summaryFindId", identity)
         row_widget.setAccessibleName(f"{name} ×{max(1, int(quantity)):,}")
-        if compact:
-            row_widget.setFixedHeight(36)
-        row = QHBoxLayout(row_widget)
-        row.setContentsMargins(0, 2, 0, 2)
-        row.setSpacing(6 if compact else 8)
-        row.addWidget(self._reward_art_label(art, 26))
-        label = self._name_label(name)
-        label.setProperty("summaryFindName", True)
-        row.addWidget(label, 1)
+        event.title.setProperty("summaryFindName", True)
         value = QLabel(f"×{max(1, int(quantity)):,}")
         value.setProperty("summaryFindQuantity", True)
         apply_tabular_numerals(value)
-        row.addWidget(value)
+        event.layout.addWidget(value, 0, Qt.AlignmentFlag.AlignVCenter)
         return row_widget
 
     def _project_growth_rows(self, summary: SessionDaySummary) -> tuple[Any, ...]:
@@ -1973,36 +1758,18 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         )
 
     def _add_breakdown(self, layout: Any, summary: SessionDaySummary, projection: Any) -> None:
-        toggle = QToolButton()
-        toggle.setObjectName("ankiGardenSessionBreakdownToggle")
-        toggle.setText("Reward details")
-        toggle.setIcon(garden_icon(
-            "chevron-down" if self._details_expanded else "chevron-right",
-            color=self._summary_theme["text_secondary"],
-        ))
-        toggle.setIconSize(QSize(16, 16))
-        toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        toggle.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        toggle.setFixedHeight(32)
-        toggle.setStyleSheet("text-align:left;padding-left:12px;padding-right:12px;")
-        toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        toggle.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle.setAccessibleName(
-            "Hide session details"
-            if self._details_expanded else "Show session details"
-        )
-        toggle.clicked.connect(self._toggle_details)
-        layout.addWidget(toggle)
-        if self._details_expanded:
-            panel = QFrame()
-            panel.setObjectName("ankiGardenSessionBreakdown")
-            panel.setProperty("summaryBreakdownPanel", True)
-            panel_layout = QVBoxLayout(panel)
-            panel_layout.setContentsMargins(12, 4, 12, 12)
-            panel_layout.setSpacing(8)
-            self._add_breakdown_details(panel_layout, summary, projection)
+        panel = QFrame()
+        panel.setObjectName("ankiGardenSessionBreakdown")
+        panel.setProperty("summaryBreakdownPanel", True)
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(8, 8, 8, 6)
+        panel_layout.setSpacing(6)
+        self._add_breakdown_details(panel_layout, summary, projection)
+        if panel_layout.count():
+            layout.addWidget(self._divider())
             layout.addWidget(panel)
+        else:
+            panel.deleteLater()
 
     def _breakdown_total_row(
         self,
@@ -2034,7 +1801,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             row.addWidget(art, 0, Qt.AlignmentFlag.AlignTop)
         copy = QVBoxLayout()
         copy.setSpacing(1)
-        label = QLabel(label_text)
+        label = self._name_label(label_text)
         copy.addWidget(label)
         if supporting_text:
             supporting = QLabel(supporting_text)
@@ -2079,41 +1846,30 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             or summary.stored_growth.used_units
             or project_rows
         ):
-            layout.addWidget(self._section_heading("Growth"))
+            layout.addWidget(self._section_heading("Growth distribution"))
         if direct:
             self._breakdown_total_row(
                 layout,
                 "direct_growth",
-                "Direct plant growth",
+                "Plant growth",
                 format_growth_units(direct, signed=True),
             )
         if summary.shared_growth_total_units:
             self._breakdown_total_row(
                 layout,
                 "shared_growth",
-                "Shared Growth distributed",
+                "Shared Growth",
                 format_growth_units(summary.shared_growth_total_units, signed=True),
             )
         if summary.stored_growth.added_units:
             self._breakdown_total_row(
                 layout,
                 "stored_growth",
-                "Stored Growth added",
+                "Added to storage",
                 format_growth_units(
                     summary.stored_growth.added_units,
                     signed=True,
                 ),
-                supporting_text=(
-                    "Stored Growth remains available for a future plant or "
-                    "long-term Garden project."
-                ),
-            )
-        if applied:
-            self._breakdown_total_row(
-                layout,
-                "growth_applied",
-                "Total applied",
-                format_growth_units(applied, signed=True),
             )
         if summary.stored_growth.used_units or project_rows:
             layout.addWidget(self._divider())
@@ -2126,16 +1882,13 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     -summary.stored_growth.used_units,
                     signed=True,
                 ),
-                supporting_text=(
-                    "Previously stored Growth is already represented where it "
-                    "was applied, so it is not counted twice in the total."
-                ),
+                supporting_text="Already included in the Growth total.",
             )
         for project in project_rows:
             self._breakdown_total_row(
                 layout,
                 f"project:{project.target_type}:{project.target_id}",
-                f"Stored Growth added to {project.display_name}",
+                project.display_name,
                 format_growth_units(project.units, signed=True),
                 supporting_text=" · ".join(
                     value
@@ -2158,27 +1911,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     int(item.growth_units) + (previous[1] if previous else 0),
                 )
             values = tuple(totals.values())
-            if len(values) > 3:
-                disclosure = QToolButton()
-                disclosure.setObjectName("ankiGardenSessionPlantsAffectedToggle")
-                disclosure.setText("Plants affected")
-                disclosure.setIcon(garden_icon(
-                    "chevron-up" if self._show_all_growth else "chevron-down",
-                    color=self._summary_theme["text_secondary"],
-                ))
-                disclosure.setIconSize(QSize(15, 15))
-                disclosure.setToolButtonStyle(
-                    Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-                )
-                disclosure.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-                disclosure.setMinimumHeight(36)
-                disclosure.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                disclosure.setCursor(Qt.CursorShape.PointingHandCursor)
-                disclosure.clicked.connect(self._toggle_growth_details)
-                layout.addWidget(disclosure)
-                values = values if self._show_all_growth else ()
-            else:
-                layout.addWidget(self._section_heading("Plants affected"))
+            layout.addWidget(self._section_heading("Plants affected"))
             for item, units in values:
                 row_widget = QFrame()
                 row_widget.setProperty("summaryBreakdownRowKey", f"plant:{item.plant_id}")
@@ -2235,23 +1968,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                         else award.source_label or "Review rewards"
                     ),
                     f"+{award.amount:,}",
-                    supporting_text=(
-                        "Included in the session total."
-                        if bool(getattr(award, "included_in_total", True))
-                        else (
-                            "Additional to the session subtotal; included in "
-                            "Total earned."
-                        )
-                    ),
                     coin=True,
                 )
-            self._breakdown_total_row(
-                layout,
-                "garden_coins_total",
-                "Total earned",
-                f"+{summary.garden_coins_total:,}",
-                coin=True,
-            )
+
     def _active_effects_for_payload(self, projection: Any) -> tuple[Any, ...]:
         terminal = getattr(self._payload, "terminal_effects", None)
         if terminal is not None:
@@ -2399,7 +2118,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self.reposition()
 
     def _toggle_details(self) -> None:
-        self._details_expanded = not self._details_expanded
+        self._details_expanded = True
         self._rebuild_page()
 
     def _expand_find_breakdown(self) -> None:
@@ -2409,7 +2128,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._rebuild_page()
 
     def _toggle_growth_details(self) -> None:
-        self._show_all_growth = not self._show_all_growth
+        self._show_all_growth = True
         self._rebuild_page()
 
     def _name_label(self, text: str) -> Any:
@@ -2462,21 +2181,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         label.setPixmap(pixmap)
         return label
 
-    @staticmethod
-    def _apply_art_glow(label: Any, color: str, blur_radius: int) -> None:
-        """Apply one restrained, non-animated glow to earned artwork."""
-
-        try:
-            glow_color = QColor(str(color))
-            glow_color.setAlpha(42)
-            glow = QGraphicsDropShadowEffect(label)
-            glow.setBlurRadius(max(1, int(blur_radius)))
-            glow.setOffset(0, 2)
-            glow.setColor(glow_color)
-            label.setGraphicsEffect(glow)
-        except Exception:
-            pass
-
     def _engine_plant(self, plant_id: str) -> Any | None:
         state = getattr(self._engine, "state", None)
         for plant in tuple(getattr(state, "plants", ()) or ()):
@@ -2496,7 +2200,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             getattr(record, "new_stage", "")
             or getattr(plant, "growth_stage", "")
             or ("rare" if getattr(record, "milestone_type", "") == "full_bloom" else "")
-            or "seed"
         )
         source_path = str(
             getattr(record, "plant_art_asset", "")
@@ -2505,9 +2208,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         )
         placement = None
         resolver = getattr(self._engine, "resolve_plant_asset", None)
-        if callable(resolver) and species:
+        if callable(resolver) and species and (stage or not source_path):
             try:
-                resolved = resolver(species, stage)
+                resolved = resolver(species, stage or "seed")
                 resolved_path = str(getattr(resolved, "path", "") or "")
                 if resolved_path:
                     source_path = resolved_path
@@ -2758,8 +2461,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _natural_height(self) -> int:
         try:
-            self._body.adjustSize()
-            body_height = max(1, int(self._body.sizeHint().height()))
+            body_height = receipt_body_height(self._body, self._body.width())
         except Exception:
             body_height = 1
         return (
@@ -2912,19 +2614,13 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._start_entry_animation()
 
     def _start_entry_animation(self) -> None:
-        """Run one restrained native entrance without delaying interaction."""
+        """Fade in once without moving layout-managed receipt content."""
 
         if self._animation_started:
             return
         self._animation_started = True
-        progress = getattr(self, "_today_progress", None)
-        progress_start = int(getattr(self, "_today_progress_start", 0) or 0)
-        progress_target = int(getattr(self, "_today_progress_target", 0) or 0)
         if not self._animations_enabled:
-            if progress is not None:
-                progress.setValue(progress_target)
             return
-        self._animations = []
         try:
             opacity = QGraphicsOpacityEffect(self._body)
             opacity.setOpacity(0.0)
@@ -2934,139 +2630,21 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             fade.setStartValue(0.0)
             fade.setEndValue(1.0)
             fade.setEasingCurve(QEasingCurve.Type.OutCubic)
-            fade.start()
+
+            def finish_fade() -> None:
+                try:
+                    self._body.setGraphicsEffect(None)
+                except RuntimeError:
+                    pass
+                if fade in self._animations:
+                    self._animations.remove(fade)
+                fade.deleteLater()
+
+            fade.finished.connect(finish_fade)
             self._animations.append(fade)
+            fade.start()
         except Exception:
-            pass
-        try:
-            destination = self.pos()
-            self.move(destination + QPoint(6, 0))
-            slide = QPropertyAnimation(self, b"pos", self)
-            slide.setDuration(200)
-            slide.setStartValue(self.pos())
-            slide.setEndValue(destination)
-            slide.setEasingCurve(QEasingCurve.Type.OutCubic)
-            slide.start()
-            self._animations.append(slide)
-        except Exception:
-            pass
-        if progress is not None:
-            try:
-                progress_fill = QPropertyAnimation(progress, b"value", self)
-                progress_fill.setDuration(320)
-                progress_fill.setStartValue(progress_start)
-                progress_fill.setEndValue(progress_target)
-                progress_fill.setEasingCurve(QEasingCurve.Type.OutCubic)
-                progress_fill.start()
-                self._animations.append(progress_fill)
-            except Exception:
-                progress.setValue(progress_target)
-        self._start_highlight_animation()
-
-    def _start_highlight_animation(self) -> None:
-        """Reveal earned progression in priority order without blocking actions."""
-
-        try:
-            highlights = tuple(
-                widget
-                for widget in self._body.findChildren(QFrame)
-                if bool(widget.property("summaryHighlight"))
-                and not bool(widget.property("summaryHighlightCompact"))
-            )
-            rewards = tuple(
-                widget
-                for widget in self._body.findChildren(QFrame)
-                if bool(widget.property("summaryRevealAfterHighlights"))
-            )
-            reveal_widgets = (*highlights[:2], *rewards[:1])
-        except Exception:
-            return
-        for index, widget in enumerate(reveal_widgets):
-            try:
-                opacity = QGraphicsOpacityEffect(widget)
-                opacity.setOpacity(0.0)
-                widget.setGraphicsEffect(opacity)
-                destination = widget.pos()
-                widget.move(destination + QPoint(0, 4))
-                fade = QPropertyAnimation(opacity, b"opacity", self)
-                duration = (
-                    420
-                    if str(widget.property("summaryHighlightKind") or "") == "full_bloom"
-                    else 200
-                )
-                fade.setDuration(duration)
-                fade.setStartValue(0.0)
-                fade.setEndValue(1.0)
-                fade.setEasingCurve(QEasingCurve.Type.OutCubic)
-                slide = QPropertyAnimation(widget, b"pos", self)
-                slide.setDuration(duration)
-                slide.setStartValue(widget.pos())
-                slide.setEndValue(destination)
-                slide.setEasingCurve(QEasingCurve.Type.OutCubic)
-                self._animations.extend((fade, slide))
-
-                bloom_animations: list[Any] = []
-                if str(widget.property("summaryHighlightKind") or "") == "full_bloom":
-                    art = next((
-                        candidate
-                        for candidate in widget.findChildren(QLabel)
-                        if str(candidate.property("summaryArtKind") or "") == "plant"
-                    ), None)
-                    if art is not None and art.pixmap() is not None:
-                        original = QPixmap(art.pixmap())
-                        scale = QVariantAnimation(self)
-                        scale.setDuration(420)
-                        scale.setStartValue(0.96)
-                        scale.setEndValue(1.0)
-                        scale.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-                        def apply_scale(
-                            value: Any,
-                            label: Any = art,
-                            source: Any = original,
-                        ) -> None:
-                            factor = max(0.96, min(1.0, float(value)))
-                            label.setPixmap(source.scaled(
-                                max(1, round(source.width() * factor)),
-                                max(1, round(source.height() * factor)),
-                                Qt.AspectRatioMode.KeepAspectRatio,
-                                Qt.TransformationMode.SmoothTransformation,
-                            ))
-
-                        scale.valueChanged.connect(apply_scale)
-                        scale.finished.connect(
-                            lambda label=art, source=original: label.setPixmap(source)
-                        )
-                        bloom_animations.append(scale)
-                    glow = art.graphicsEffect() if art is not None else None
-                    if isinstance(glow, QGraphicsDropShadowEffect):
-                        glow_animation = QPropertyAnimation(
-                            glow,
-                            b"blurRadius",
-                            self,
-                        )
-                        glow_animation.setDuration(420)
-                        glow_animation.setStartValue(24.0)
-                        glow_animation.setEndValue(18.0)
-                        glow_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-                        bloom_animations.append(glow_animation)
-                    self._animations.extend(bloom_animations)
-
-                def start_pair(
-                    first: Any = fade,
-                    second: Any = slide,
-                    bloom: tuple[Any, ...] = tuple(bloom_animations),
-                ) -> None:
-                    if self._dismissed:
-                        return
-                    first.start()
-                    second.start()
-                    for animation in bloom:
-                        animation.start()
-
-                QTimer.singleShot(index * 60, start_pair)
-            except Exception:
-                continue
+            self._body.setGraphicsEffect(None)
 
     def close(self) -> bool:
         """Dismiss this card exactly once and notify its owner."""

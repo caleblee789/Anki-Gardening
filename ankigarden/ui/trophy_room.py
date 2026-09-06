@@ -12,6 +12,10 @@ from aqt.qt import (
 from ..trophies import TrophyPresentation, trophy_presentations
 from .copy import inline_detail_copy, learner_card_copy
 from .formatters import GardenDateService
+from .theme import (
+    GARDEN_THEME, TextRole, apply_text_role, apply_control_variant,
+    BUTTON_VARIANT_SECONDARY, ButtonSize, apply_button_size,
+)
 
 
 class TrophyCase(QWidget):
@@ -25,8 +29,8 @@ class TrophyCase(QWidget):
         self._art: dict[str, tuple[QPixmap, tuple[float, ...]]] = {}
         self.setAccessibleName("Gardening Trophies display case")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setMinimumWidth(300)
-        self.setFixedHeight(190 if compact else 300)
+        self.setMinimumWidth(0)
+        self.setFixedHeight(190 if compact else 250)
 
     def refresh(self, trophies: tuple[TrophyPresentation, ...]) -> None:
         self.trophies = trophies
@@ -45,12 +49,13 @@ class TrophyCase(QWidget):
         self.update()
 
     def resizeEvent(self, event) -> None:
-        self.setFixedHeight(round(min(210 if self.compact else 340,
-                                     max(145, self.width() * .34))))
+        single = len(self.trophies) == 1
+        self.setFixedHeight(round(min(190 if self.compact else 220 if single else 250,
+                                     max(180 if single else 145, self.width() * (.55 if single else .30)))))
         super().resizeEvent(event)
 
     def sizeHint(self) -> QSize:
-        return QSize(780, 190 if self.compact else 300)
+        return QSize(780, 190 if self.compact else 250)
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
@@ -66,7 +71,7 @@ class TrophyCase(QWidget):
         inner = box.adjusted(13, 13, -13, -22)
         p.fillRect(inner, QColor("#10281f"))
         # Three evenly framed recesses share a continuous, grounded shelf.
-        bay_width = inner.width() / 3
+        bay_width = inner.width() / max(1, len(self.trophies))
         for i, trophy in enumerate(self.trophies):
             bay = QRectF(inner.left() + i * bay_width, inner.top(), bay_width, inner.height())
             light = QRadialGradient(bay.center().x(), bay.top() + 12, bay.height() * 1.25)
@@ -75,7 +80,7 @@ class TrophyCase(QWidget):
             p.fillRect(bay, light)
             p.setPen(QPen(QColor(189, 151, 96, 90), 1))
             p.drawLine(bay.topLeft(), bay.topRight())
-            shelf_y = bay.bottom() - 4
+            shelf_y = bay.bottom() - 1
             art = self._art.get(trophy.asset_id)
             if art is not None and not art[0].isNull():
                 pixmap, bounds = art
@@ -97,7 +102,7 @@ class TrophyCase(QWidget):
                 p.setBrush(shadow)
                 p.drawEllipse(QRectF(-1, -1, 2, 2))
                 p.restore()
-                p.setOpacity(1 if trophy.unlocked else .28)
+                p.setOpacity(1 if trophy.unlocked else .60)
                 p.drawPixmap(target, pixmap, source)
                 p.setOpacity(1)
             if i:
@@ -122,59 +127,103 @@ class TrophyShowcase(QFrame):
         self.engine = engine
         self.compact = compact
         self.setObjectName("achievementTrophyShowcase")
-        self.setStyleSheet("""
-            QFrame#achievementTrophyShowcase { background:#10291f; border:1px solid #395446; border-radius:14px; }
-            QFrame#achievementTrophyShowcase QLabel { background:transparent; border:none; color:#e2e9d9; }
+        self.setStyleSheet(f"""
+            QFrame#achievementTrophyShowcase {{ background:{GARDEN_THEME['raised_surface']}; border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:12px; }}
+            QFrame#achievementTrophyShowcase QLabel {{ background:transparent; border:none; color:{GARDEN_THEME['text_primary']}; }}
         """)
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(16, 14, 16, 16)
-        outer.setSpacing(10)
+        outer.setContentsMargins(12, 10, 12, 12)
+        outer.setSpacing(8)
         row = QHBoxLayout()
         row.addStretch()
         self.count = QLabel()
-        self.count.setStyleSheet("color:#b2c6b4;font-size:12px;")
+        apply_text_role(self.count, TextRole.SECONDARY)
+        self.count.setStyleSheet(f"color:{GARDEN_THEME['text_secondary']};")
         row.addWidget(self.count)
         outer.addLayout(row)
         self.case = TrophyCase(engine, compact, self)
-        outer.addWidget(self.case)
         self.details = QGridLayout()
-        self.details.setHorizontalSpacing(22)
-        self.details.setVerticalSpacing(7)
+        self.details.setHorizontalSpacing(16)
+        self.details.setVerticalSpacing(12)
+        self.details.setAlignment(Qt.AlignmentFlag.AlignTop)
         outer.addLayout(self.details)
         self._labels: list[tuple[QLabel, ...]] = []
+        self._panels: list[QWidget] = []
+        self._single_cases: list[TrophyCase] = []
+        self._stacked: bool | None = None
         for column in range(3):
+            panel = QWidget(self)
+            panel.setMinimumWidth(0)
+            panel_layout = QVBoxLayout(panel)
+            panel_layout.setContentsMargins(6, 0, 6, 0)
+            panel_layout.setSpacing(4)
+            panel_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
             labels = []
-            for row_index in range(4):
+            for row_index in range(5):
                 label = QLabel()
                 label.setWordWrap(True)
-                label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+                label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
                 label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                label.setMinimumWidth(0)
                 if row_index == 0:
-                    label.setStyleSheet("font-size:14px;font-weight:600;color:#e9d6a7;")
+                    apply_text_role(label, TextRole.CARD_TITLE)
+                    label.setStyleSheet(f"color:{GARDEN_THEME['coin_accent']};")
                 else:
-                    label.setTextFormat(Qt.TextFormat.RichText)
-                    label.setStyleSheet("font-size:12px;color:#b6c4b5;padding-top:4px;")
-                self.details.addWidget(label, row_index, column)
+                    apply_text_role(label, TextRole.METADATA if row_index == 4 else TextRole.SECONDARY)
+                    label.setStyleSheet(f"color:{GARDEN_THEME['text_muted' if row_index == 4 else 'text_secondary']};")
+                label.setTextFormat(Qt.TextFormat.RichText if row_index == 3 else Qt.TextFormat.PlainText)
+                panel_layout.addWidget(label)
                 labels.append(label)
-            self.details.setColumnStretch(column, 1)
+            self._panels.append(panel)
+            self._single_cases.append(TrophyCase(engine, compact, self))
             self._labels.append(tuple(labels))
+        self._reflow()
         self.refresh()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._reflow()
+
+    def _reflow(self) -> None:
+        stacked = self.width() < 720
+        if stacked == self._stacked:
+            return
+        self._stacked = stacked
+        while self.details.count():
+            self.details.takeAt(0)
+        for column in range(3):
+            self.details.setColumnStretch(column, 1 if not stacked or column == 0 else 0)
+        self.case.setVisible(not stacked)
+        if not stacked:
+            self.details.addWidget(self.case, 0, 0, 1, 3)
+        for column, (case, panel) in enumerate(zip(self._single_cases, self._panels)):
+            case.setVisible(stacked)
+            if stacked:
+                self.details.addWidget(case, column * 2, 0)
+                self.details.addWidget(panel, column * 2 + 1, 0)
+            else:
+                self.details.addWidget(panel, 1, column)
+        self.updateGeometry()
 
     def refresh(self) -> None:
         trophies = trophy_presentations(self.engine.state)
-        self.count.setText(f"{sum(t.unlocked for t in trophies)} / 3 unlocked")
+        self.count.setText(f"{sum(t.unlocked for t in trophies)} of {len(trophies)} unlocked")
         self.case.refresh(trophies)
-        for trophy, labels in zip(trophies, self._labels):
-            name, requirement, buff, obtained = labels
+        for trophy, labels, case in zip(trophies, self._labels, self._single_cases):
+            case.refresh((trophy,))
+            name, status, requirement, buff, obtained = labels
             name.setText(trophy.name)
-            requirement.setText(inline_detail_copy("Unlock Requirement", trophy.requirement + (
-                "" if trophy.unlocked else f"\nLocked · {trophy.progress_text}"
-            )))
-            buff.setText(inline_detail_copy("Permanent Bonus", learner_card_copy(trophy.buff)))
-            buff.setAccessibleDescription(("Permanent bonus. " if trophy.unlocked else "Bonus after unlocking. ") + trophy.buff)
+            active = trophy.unlocked and bool(getattr(self.engine.state, "trophy_activation_ms", {}).get(trophy.trophy_id))
+            status.setText("Active" if active else "Unlocked" if trophy.unlocked else f"Locked · {trophy.progress_text}")
+            status.setStyleSheet(f"color:{GARDEN_THEME['action_accent' if active else 'text_secondary']};")
+            requirement.setText(trophy.requirement.replace("eligible answers", "study answers"))
+            bonus_label = "Permanent bonus" if trophy.unlocked else "Bonus when unlocked"
+            buff.setText(inline_detail_copy(bonus_label, learner_card_copy(trophy.buff)))
+            buff.setAccessibleDescription(bonus_label + ". " + trophy.buff)
             date = (GardenDateService().format_date(trophy.obtained_at, scheduler_day=trophy.obtained_at if len(trophy.obtained_at) == 10 else "") if trophy.obtained_at
-                    else "Not recorded" if trophy.unlocked else "Not yet obtained")
-            obtained.setText(inline_detail_copy("Date obtained", date))
+                    else "")
+            obtained.setText(f"Unlocked {date}" if date else "Unlock date unavailable" if trophy.unlocked else "")
+            obtained.setVisible(trophy.unlocked)
         self.setAccessibleName("Gardening Trophies")
 
 
@@ -188,25 +237,28 @@ class TrophyRoomPage(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         host = QWidget(self)
         host.setObjectName("trophyRoomInterior")
-        host.setStyleSheet("QWidget#trophyRoomInterior {background:#0b2019;}")
+        host.setStyleSheet(f"QWidget#trophyRoomInterior {{background:{GARDEN_THEME['garden_background']};}}")
         self.setWidget(host)
         outer = QVBoxLayout(host)
-        outer.setContentsMargins(24, 20, 24, 24)
-        outer.setSpacing(16)
+        outer.setContentsMargins(24, 12, 24, 20)
+        outer.setSpacing(12)
         header = QHBoxLayout()
         title = QLabel("Gardening Trophies")
-        title.setStyleSheet("color:#ecdfbf;font-size:24px;font-weight:600;")
+        title.setWordWrap(True)
+        apply_text_role(title, TextRole.SCREEN_TITLE)
         header.addWidget(title)
         header.addStretch()
         self.back_button = QPushButton("Back to Garden")
         self.back_button.setAccessibleName("Back to Garden")
         self.back_button.clicked.connect(back)
-        self.back_button.setStyleSheet("QPushButton {color:#e2e9d9;background:#244a39;border:1px solid #59735b;border-radius:8px;padding:9px 14px;}")
+        apply_control_variant(self.back_button, BUTTON_VARIANT_SECONDARY)
+        apply_button_size(self.back_button, ButtonSize.SECONDARY)
         header.addWidget(self.back_button)
         outer.addLayout(header)
-        intro = QLabel("Each trophy unlocks a permanent bonus; all three work together.")
+        intro = QLabel("Unlocked trophies grant permanent bonuses that work together.")
         intro.setWordWrap(True)
-        intro.setStyleSheet("color:#b7c8b8;font-size:14px;")
+        apply_text_role(intro, TextRole.SECONDARY)
+        intro.setStyleSheet(f"color:{GARDEN_THEME['text_secondary']};")
         outer.addWidget(intro)
         self.showcase = TrophyShowcase(engine, parent=host)
         outer.addWidget(self.showcase)

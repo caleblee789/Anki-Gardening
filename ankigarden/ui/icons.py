@@ -17,6 +17,7 @@ GARDEN_ICON_ASSETS: dict[str, str] = {
     "coin": "garden_coin",
     "currency": "garden_coin",
     "growth": "growth_resource",
+    "environment-discovery": "garden_discovery",
     "fertilizer": "fertilizer_basic",
     "booster": "booster_potion",
     "reviews": "sync_review_cards",

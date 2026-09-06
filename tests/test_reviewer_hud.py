@@ -390,6 +390,7 @@ def test_plant_choices_are_engine_confirmed_planted_unfinished_alternatives() ->
     }
     placement = object()
     engine = SimpleNamespace(
+        state=state,
         plant_story=lambda plant_id: by_id.get(plant_id),
         resolve_plant_asset=lambda species, stage: SimpleNamespace(
             path=f"/art/{species}-{stage}.webp",
@@ -405,6 +406,12 @@ def test_plant_choices_are_engine_confirmed_planted_unfinished_alternatives() ->
     assert choices[0].stage_label == "Sprout"
     assert choices[0].art_path == "/art/rose-sprout.webp"
     assert choices[0].art_placement is placement
+    # A caller holding an older snapshot still gets engine-confirmed choices.
+    snapshot = SimpleNamespace(active_plant_id=state.active_plant_id, plants=[
+        SimpleNamespace(**{**vars(plant), "planted": False, "slot_index": None})
+        for plant in state.plants
+    ])
+    assert project_plant_choices(engine, snapshot) == choices
 
 
 def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
@@ -534,6 +541,9 @@ def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
     assert reviewer_hud_safe_bottom(1_000, 850) == 850
     collapsed = reviewer_hud_geometry(1_200, 800, collapsed=True, dock="left")
     assert collapsed == (16, 44, HUD_COLLAPSED_WIDTH, HUD_COLLAPSED_HEIGHT)
+    assert reviewer_hud_geometry(
+        1_200, 800, collapsed=True, dock="left", content_height=88,
+    ) == (16, 44, HUD_COLLAPSED_WIDTH, 88)
     assert DEFAULT_CONFIG["show_reviewer_hud"] is True
     assert DEFAULT_CONFIG["reviewer_hud_dock"] == "right"
     assert "content_height = 46 + body_height + reward_height" in WIDGET_SOURCE
@@ -752,6 +762,11 @@ def test_widget_consumes_the_canonical_reward_bundle_shape() -> None:
     assert _hero_kind(bundle) == "garden_find"
     assert _hero_amounts(bundle) == (4_000, 4)
     assert _bundle_growth_units(bundle) == 4_000
+    assert ReviewGardenHud._collapsed_coin_delta(bundle) == 4
+    additional = RewardItemProjection(event_id="coin-2", kind=RewardHero.COIN_OR_BOOSTER,
+                                      title="Checkpoint reward", category_label="Coins", garden_coins=3)
+    mixed = RewardBundleProjection("answer-mixed", bundle.occurred_at, (hero, additional))
+    assert ReviewGardenHud._collapsed_coin_delta(mixed) == 7
 
     signature = inspect.signature(ReviewGardenHud.present_reward)
     assert "reveal" in signature.parameters
@@ -948,6 +963,7 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
         displayed_coin_delta=23,
     )
     assert _hero_amounts(reconciled) == (0, 23)
+    assert ReviewGardenHud._collapsed_coin_delta(reconciled) == 23
     reconciled_zero = RewardBundleProjection(
         "answer-full-bloom-zero-coins",
         "2026-08-28T12:00:00Z",
@@ -955,6 +971,7 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
         displayed_coin_delta=0,
     )
     assert _hero_amounts(reconciled_zero) == (0, 0)
+    assert ReviewGardenHud._collapsed_coin_delta(reconciled_zero) == 0
 
 
 def test_committed_entrypoint_respects_an_explicit_zero_applied_growth() -> None:
@@ -1067,7 +1084,8 @@ def test_routine_answers_remain_reconciled_with_an_early_major_reward() -> None:
     )
 
 
-def test_committed_major_reward_is_idempotent_and_queues_while_collapsed() -> None:
+def test_committed_major_reward_is_idempotent_and_presented_while_collapsed() -> None:
+    presented = []
     bundle = RewardBundleProjection(
         "answer-major-collapsed",
         "2026-08-28T12:00:00Z",
@@ -1088,6 +1106,7 @@ def test_committed_major_reward_is_idempotent_and_queues_while_collapsed() -> No
         _reward_minimum_hold_elapsed=False,
         _reward_details_expanded=False,
         _reward_queue=deque(),
+        _enqueue_reward_reveal=presented.append,
         setProperty=lambda *_args: None,
         _sync_history_rows=lambda: None,
         _sync_unseen_badge=lambda: None,
@@ -1097,7 +1116,8 @@ def test_committed_major_reward_is_idempotent_and_queues_while_collapsed() -> No
     assert ReviewGardenHud.present_committed_result(fake, bundle)
     assert ReviewGardenHud.present_committed_result(fake, bundle)
     assert tuple(fake._reward_history) == (bundle,)
-    assert tuple(fake._reward_queue) == (bundle,)
+    assert not fake._reward_queue
+    assert presented == [bundle]
     assert fake._unseen_major == 1
 
 
@@ -1108,6 +1128,8 @@ def test_reward_archives_only_after_minimum_hold_and_next_distinct_commit() -> N
     current = object()
     readable = SimpleNamespace(
         _current_reward=current,
+        _collapsed=True,
+        _collapsed_feedback=SimpleNamespace(major_pending=True),
         _reward_minimum_hold_elapsed=False,
         _reward_next_commit_seen=False,
         _reward_details_expanded=False,
@@ -1131,6 +1153,8 @@ def test_reward_archives_only_after_minimum_hold_and_next_distinct_commit() -> N
     assert archives == []
 
     readable._reward_next_commit_seen = True
+    assert ReviewGardenHud._maybe_archive_current_reward(readable) is False
+    readable._collapsed_feedback.major_pending = False
     assert ReviewGardenHud._maybe_archive_current_reward(readable) is True
     assert archives == ["archived"]
 
@@ -1140,6 +1164,7 @@ def test_zero_reward_commit_advances_reveal_once_by_stable_event_id() -> None:
     properties: dict[str, object] = {}
     fake = SimpleNamespace(
         _seen_commit_ids=set(),
+        _collapsed=False,
         _current_reward=object(),
         _reward_minimum_hold_elapsed=True,
         _reward_next_commit_seen=False,
@@ -1276,7 +1301,10 @@ def test_reward_remount_restores_the_readable_event_without_representing_it() ->
             category_label="Checkpoint",
         ),),
     )
+    inline_state = {"major_id": current.bundle_id, "current": {"caption": "Stored"}, "remaining_ms": 450}
+    restored_inline = []
     exported = SimpleNamespace(
+        _collapsed_feedback=SimpleNamespace(export_state=lambda: inline_state),
         _history_reward_inspection=None,
         _current_reward=current,
         _reward_minimum_hold_elapsed=True,
@@ -1304,6 +1332,7 @@ def test_reward_remount_restores_the_readable_event_without_representing_it() ->
 
     presentations: list[tuple[object, dict[str, object]]] = []
     restored = SimpleNamespace(
+        _collapsed_feedback=SimpleNamespace(restore_state=restored_inline.append, resume=lambda: None),
         _seen_bundle_ids=set(),
         _reward_history=deque(),
         _reward_history_page=0,
@@ -1324,6 +1353,8 @@ def test_reward_remount_restores_the_readable_event_without_representing_it() ->
 
     ReviewGardenHud.restore_reward_state(restored, snapshot)
 
+    assert snapshot["collapsed_feedback"] == inline_state
+    assert restored_inline == [inline_state]
     assert presentations == [(
         current,
         {
@@ -1527,12 +1558,11 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
     assert 'setObjectName("reviewerHudRewardMore")' not in WIDGET_SOURCE
     assert "reviewerHudRewardDisclosureChevron" not in WIDGET_SOURCE
     assert (_COMPACT_REWARD_MIN_HEIGHT, _COMPACT_REWARD_MAX_HEIGHT) == (130, 150)
-    assert "if self._reward_details_expanded\n            else _COMPACT_REWARD_MAX_HEIGHT" in WIDGET_SOURCE
     assert "self._reward_summary_chips: list[_ElidedLabel]" in WIDGET_SOURCE
     assert "visible_summaries[:2]" in WIDGET_SOURCE
     assert "self._reward_details_toggle.setMinimumWidth(" in WIDGET_SOURCE
     assert "self._reward_details_toggle.setMinimumHeight(28)" in WIDGET_SOURCE
-    assert 'self._reward_details_toggle.setText("Details ›")' in WIDGET_SOURCE
+    assert 'self._reward_details_toggle.setText("Reward details ›")' in WIDGET_SOURCE
     assert 'details_text = "Hide details"' in WIDGET_SOURCE
     assert 'self._reward_reveal.setProperty("rewardDetailEventIds", detail_event_ids)' in WIDGET_SOURCE
     assert "self._reward_timer.timeout.connect(self._mark_reward_hold_elapsed)" in WIDGET_SOURCE
@@ -1573,9 +1603,9 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
         "def _build_reward_dock",
         1,
     )[0]
-    assert plant_builder.index(
-        "layout.addWidget(self._checkpoint_reward_row)"
-    ) < plant_builder.index("layout.addWidget(self._next_answer)")
+    assert "layout.addWidget(self._checkpoint_reward_row)" in plant_builder
+    assert "layout.addWidget(self._next_answer)" not in plant_builder
+    assert "self._next_answer.hide()" in plant_builder
     assert "metadata.addWidget(self._bed)" not in plant_builder
 
 
@@ -1595,11 +1625,12 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
         "self._effect_details",
         "self._reward_growth",
         "self._reward_coins",
-        "self._session_growth",
-        "self._session_coins",
-        "self._session_finds",
     ):
         assert f"apply_tabular_numerals({widget_name})" in WIDGET_SOURCE
+
+    receipt_source = Path(__file__).parents[1].joinpath("ankigarden/ui/reward_receipt.py").read_text()
+    assert "apply_tabular_numerals(amount)" in receipt_source
+    assert "surface.insertWidget(0, self._session_footer)" in WIDGET_SOURCE
 
     effect_overflow = WIDGET_SOURCE.split(
         "def _effect_overflow_label",
@@ -1692,7 +1723,7 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
     )[1].split("def _clear_session_highlight", 1)[0]
     assert "QVariantAnimation(self)" in session_feedback
     assert "self._set_session_metric_values(displayed)" in session_feedback
-    assert "widget.setMinimumWidth" in session_feedback
+    assert "widget.setMinimumWidth" not in session_feedback
     assert "changed = changed_metrics[index]" in session_feedback
     assert "changed_metrics=changed_metrics" in WIDGET_SOURCE
-    assert "self._session_footer.setFixedHeight(54)" in WIDGET_SOURCE
+    assert "receipt_metric(self._session_footer" in WIDGET_SOURCE

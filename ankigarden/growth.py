@@ -95,6 +95,9 @@ class StageProgress:
     completed_stages: tuple[str, ...]
     will_transition: bool
     rare_stage_unlocked: bool
+    next_checkpoint_growth: int | None = None
+    next_checkpoint_growth_remaining: int | float | None = None
+    next_checkpoint_base_coins: int | None = None
 
     @property
     def current_stage(self) -> str:
@@ -164,6 +167,15 @@ def stage_progress(
         GROWTH_STAGES[index]
         for index in range(stage_index + 1, projected_index + 1)
     )
+    checkpoint = None
+    checkpoint_coins = None
+    if not fully_grown:
+        for index, percent in enumerate((25, 50, 75, 100)):
+            boundary = stage_start + (stage_goal * percent + 99) // 100
+            if boundary > total:
+                checkpoint = boundary
+                checkpoint_coins = BALANCE_STAGES[stage_index + 1].checkpoint_coin_rewards[index]
+                break
     return StageProgress(
         stage=stage,
         stage_index=stage_index,
@@ -181,6 +193,9 @@ def stage_progress(
         completed_stages=completed_stages,
         will_transition=projected_index > stage_index,
         rare_stage_unlocked="rare" in completed_stages,
+        next_checkpoint_growth=checkpoint,
+        next_checkpoint_growth_remaining=None if checkpoint is None else checkpoint - total,
+        next_checkpoint_base_coins=checkpoint_coins,
     )
 
 

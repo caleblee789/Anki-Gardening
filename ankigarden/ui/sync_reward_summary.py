@@ -25,7 +25,8 @@ from .formatters import (
 from .garden_asset_thumbnail import GardenAssetThumbnail
 from .icons import garden_icon, garden_icon_pixmap
 from .session_summary import format_growth_units
-from .reward_receipt import build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style
+from .reward_rarity import apply_reward_treatment, reward_treatment
+from .reward_receipt import build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height
 from .session_summary_card import session_summary_palette
 from .theme import apply_tabular_numerals
 
@@ -84,13 +85,7 @@ def _quantity(row: Mapping[str, Any]) -> int:
 
 
 def _rarity_rank(value: Any) -> int:
-    normalized = str(value or "").replace("_", " ").strip().casefold()
-    return {
-        "ultra rare": 4,
-        "very rare": 3,
-        "rare": 2,
-        "uncommon": 1,
-    }.get(normalized, 0)
+    return reward_treatment(value).rank
 
 
 def _find_rank(row: Mapping[str, Any]) -> tuple[int, int, str]:
@@ -190,28 +185,12 @@ def sync_reward_metric_plan(
             "sync_review_cards",
         ),
     ]
-    if summary.growth_total_units > 0:
-        metrics.append((
-            format_growth_units(summary.growth_total_units, signed=True),
-            "Growth",
-            "growth_resource",
-        ))
-    if summary.garden_coin_delta > 0:
-        metrics.append((f"+{summary.garden_coin_delta:,}", "Coins", "garden_coin"))
-    standard_finds = sum(_quantity(row) for row in summary.finds)
-    if standard_finds > 0:
-        metrics.append((
-            f"+{standard_finds:,}",
-            "Garden Find" if standard_finds == 1 else "Garden Finds",
-            "standard_find",
-        ))
-    garden_discoveries = len(summary.environment_discoveries)
-    if garden_discoveries > 0:
-        metrics.append((
-            f"+{garden_discoveries:,}",
-            "Discoveries",
-            "garden_discovery",
-        ))
+    discoveries = sum(_quantity(row) for row in summary.finds) + len(summary.environment_discoveries)
+    metrics.extend((
+        (f"+{summary.garden_coin_delta:,}" if summary.garden_coin_delta else "0", "Coins", "garden_coin"),
+        (format_growth_units(summary.growth_total_units, signed=bool(summary.growth_total_units)), "Growth", "growth_resource"),
+        (f"{discoveries:,}", "Discoveries", "garden_discovery"),
+    ))
     return tuple(metrics)
 
 
@@ -219,8 +198,8 @@ def sync_reward_subtitle(summary: SyncRewardSummary) -> str:
     """Describe the committed sync quantity in the same unit shown elsewhere."""
 
     count = max(0, int(summary.eligible_answer_count or 0))
-    noun = "card" if count == 1 else "cards"
-    return "Rewards added during this sync"
+    noun = "review" if count == 1 else "reviews"
+    return f"From {count:,} synced {noun}"
 
 
 @dataclass(frozen=True)
@@ -1090,6 +1069,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             copy.addWidget(source_copy)
         if full_bloom:
             outer.addLayout(copy, 1)
+            apply_reward_treatment(frame, row, title=primary, full_bloom=True)
             return frame
 
         progress = QProgressBar(frame)
@@ -1239,52 +1219,33 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     def _environment_row(self, row: Mapping[str, Any], parent: Any) -> QFrame:
         identity = str(row.get("environment_id", "") or "")
         art = self._art_label(parent, kind="environment", identity=identity,
-            explicit=str(row.get("preview_asset", "") or ""), width=36, height=36)
-        rarity = str(row.get("rarity", "") or "").replace("_", " ").title()
-        detail = f"{rarity} · Garden decoration" if rarity else "Garden decoration"
-        event = receipt_event_row(parent, art, str(row.get("display_name", "Garden decoration") or "Garden decoration"), detail=detail)
+            explicit=str(row.get("preview_asset", "") or ""), width=44, height=44)
+        event = receipt_event_row(parent, art,
+            str(row.get("display_name", "Garden discovery") or "Garden discovery"),
+            reward=row, eyebrow="New discovery", rarity_badge=True)
+        event.widget.setProperty("syncRow", True)
         event.widget.setProperty("syncRewardKind", "garden_discovery")
         event.widget.setProperty("syncRewardIdentity", identity)
         event.widget.setProperty("syncRewardEventId", str(row.get("event_id", "") or ""))
         return event.widget
 
     def _find_card(self, row: Mapping[str, Any], parent: Any) -> QFrame:
-        frame = QFrame(parent)
+        from ..garden_finds import standard_find_artwork_ref
+
+        reward_id = str(row.get("reward_id", "") or "")
+        art_reference = standard_find_artwork_ref(reward_id, str(row.get("image_asset", "") or ""))
+        artwork = self._art_label(
+            parent, kind="find", identity=art_reference or reward_id,
+            explicit=art_reference, width=44, height=44,
+        )
+        title = str(row.get("display_name", reward_id) or reward_id or "Garden Find")
+        event = receipt_event_row(parent, artwork, title,
+            reward=row, eyebrow="Garden Find", rarity_badge=True)
+        frame = event.widget
         frame.setProperty("syncRow", True)
         frame.setProperty("syncRewardKind", "standard_find")
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(9, 8, 9, 8)
-        layout.setSpacing(8)
-        reward_id = str(row.get("reward_id", "") or "")
         frame.setProperty("syncRewardIdentity", reward_id)
-        frame.setProperty(
-            "syncRewardEventId",
-            str(row.get("event_id", "") or ""),
-        )
-        layout.addWidget(self._art_label(
-            frame,
-            kind="find",
-            identity=reward_id,
-            explicit=str(row.get("image_asset", "") or ""),
-            width=44,
-            height=44,
-        ))
-        copy = QVBoxLayout()
-        copy.setContentsMargins(0, 0, 0, 0)
-        copy.setSpacing(1)
-        title = str(row.get("display_name", reward_id) or reward_id or "Garden Find")
-        label = QLabel(title, frame)
-        label.setProperty("syncPrimary", True)
-        label.setWordWrap(True)
-        label.setTextFormat(Qt.TextFormat.PlainText)
-        copy.addWidget(label)
-        rarity = str(row.get("rarity", "") or "").replace("_", " ").title()
-        if rarity:
-            detail = QLabel(rarity, frame)
-            detail.setProperty("syncSecondary", True)
-            detail.setTextFormat(Qt.TextFormat.PlainText)
-            copy.addWidget(detail)
-        layout.addLayout(copy, 1)
+        frame.setProperty("syncRewardEventId", str(row.get("event_id", "") or ""))
         quantity = _quantity(row)
         if quantity > 1:
             badge = QLabel(f"×{quantity:,}", frame)
@@ -1292,7 +1253,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             badge.setProperty("syncPrimary", True)
             badge.setTextFormat(Qt.TextFormat.PlainText)
             apply_tabular_numerals(badge)
-            layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
+            event.layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
         return frame
 
     def _project_growth_rows(self) -> tuple[Any, ...]:
@@ -1527,7 +1488,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
         if self._additional_line_visible and self._summary.additional_answer_count > 0:
             count = self._summary.additional_answer_count
-            noun = "card was" if count == 1 else "cards were"
+            noun = "review was" if count == 1 else "reviews were"
             additional = QLabel(
                 f"{count:,} additional {noun} added",
                 self._body_widget,
@@ -1546,15 +1507,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         all_metrics = sync_reward_metric_plan(self._summary)
         metrics = tuple(metric for metric in all_metrics if metric[2] != "sync_review_cards")
         count = max(0, int(self._summary.eligible_answer_count))
-        headline = QLabel(f"{count:,} {'card' if count == 1 else 'cards'} studied", self._body_widget)
+        headline = QLabel(sync_reward_subtitle(self._summary), self._body_widget)
+        headline.setWordWrap(True)
         headline.setProperty("syncPrimary", True)
         apply_tabular_numerals(headline)
         headline.setToolTip("Study answers rewarded by this sync; a card may be studied more than once.")
-        layout.addWidget(headline)
-        scope = QLabel(sync_reward_subtitle(self._summary), self._body_widget)
-        scope.setProperty("syncSecondary", True)
-        scope.setWordWrap(True)
-        layout.addWidget(scope)
         self.setProperty(
             "syncRewardMetricOrder", [str(metric[1]) for metric in metrics]
         )
@@ -1566,10 +1523,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         )
         for column in range(12):
             metrics_layout.setColumnStretch(column, 1)
-        # Four nonzero canonical totals fit in one compact first-fold row.
-        # A fifth metric wraps to its own balanced row without squeezing its
-        # label, while the common four-metric receipt preserves room for the
-        # committed reward and project-allocation sections below.
+        # Match the review and session summaries: Coins, Growth, Discoveries.
         for row_index, offset in enumerate(range(0, len(metrics), 3)):
             row_metrics = metrics[offset:offset + 3]
             column_span = 12 // len(row_metrics)
@@ -1588,6 +1542,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     column_span,
                 )
         layout.addWidget(metrics_frame)
+        layout.addWidget(headline)
 
         if plan.environment_discoveries or plan.finds:
             layout.addWidget(self._rewards_section(
@@ -1688,10 +1643,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _natural_height(self) -> int:
         try:
-            layout = self._body_widget.layout()
-            layout.invalidate()
-            layout.activate()
-            return self._header.height() + self._footer.height() + layout.sizeHint().height() + 4
+            return self._header.height() + self._footer.height() + receipt_body_height(self._body_widget, self._body_widget.width()) + 4
         except (AttributeError, RuntimeError):
             return SYNC_REWARD_MIN_HEIGHT
 
@@ -1724,6 +1676,9 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             return (0, 0, max(1, int(self.width())), max(1, int(self.height())))
         width = max(1, int(parent.width())) if viewport_width is None else int(viewport_width)
         height = max(1, int(parent.height())) if viewport_height is None else int(viewport_height)
+        provisional = sync_reward_summary_geometry(width, height, 1)
+        self.setFixedWidth(provisional[2])
+        self._body_widget.setFixedWidth(max(1, provisional[2] - 8))
         geometry = sync_reward_summary_geometry(
             width,
             height,

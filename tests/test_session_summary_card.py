@@ -134,20 +134,20 @@ def test_card_keeps_header_footer_fixed_and_only_body_scrollable():
 
 
 
-def test_today_progress_is_native_semantic_and_animation_ready():
-    source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
-    method = _method_source("_add_today_cards", "_section_heading")
-    assert 'setObjectName("ankiGardenSessionToday")' in method
-    assert "QProgressBar" in method
-    assert 'setObjectName("ankiGardenSessionTodayProgress")' in method
-    assert 'setProperty("progressFraction"' in method
-    assert "Study answers in this session" in source
-    assert 'QPropertyAnimation(progress, b"value"' in source
-    assert "setDuration(320)" in source
-    assert "setStartValue(progress_start)" in source
-    assert 'getattr(today, "start_progress_value"' in method
-    assert 'end.status not in {"not_eligible", "unavailable"}' in method
-    assert "if show_progress:" in method
+def test_session_receipt_shows_all_details_without_a_daily_card_or_disclosure():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    page = _method_source("_rebuild_page", "_add_pager")
+    assert "_add_today_cards" not in source
+    assert "ankiGardenSessionBreakdownToggle" not in source
+    assert "ankiGardenSessionPlantsAffectedToggle" not in source
+    assert 'self._details_expanded = False' not in source
+    assert page.index("self._add_reward_strip") < page.index("self._add_highlights")
+    assert '"summaryDetailsAlwaysVisible", True' in page
+    summary = SimpleNamespace(garden_coins_total=14, plant_growth_total_units=4000,
+                              shared_growth_total_units=0, stored_growth=SimpleNamespace(added_units=0),
+                              total_finds=2, environment_discoveries=(object(),))
+    metrics = SessionSummaryCard._reward_metrics(summary, SimpleNamespace(growth_applied_total_units=4000))
+    assert [(row[1], row[2]) for row in metrics] == [("Coins", "+14"), ("Growth", "+40"), ("Discoveries", "3")]
 
 
 def test_highlight_cards_are_static_prioritized_and_two_line_safe():
@@ -292,7 +292,7 @@ def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
     assert '"growth": "growth_resource"' in reward_art
     assert 'bundled_ui_asset_path(item_key)' in reward_art
     assert 'getattr(self._engine, "resolve_item_asset", None)' in reward_art
-    assert "self._reward_art_label(art, 26)" in source
+    assert "self._reward_art_label(art, 32)" in source
 
 
 def test_canonical_garden_feature_art_uses_the_dedicated_asset_catalog():
@@ -480,18 +480,10 @@ def test_motion_is_one_shot_and_honors_the_resolved_reduced_motion_policy():
     assert "if self._animation_started" in method
     assert "if not self._animations_enabled" in method
     assert "QGraphicsOpacityEffect" in method
-    assert 'QPropertyAnimation(self, b"pos"' in method
-    assert "QPoint(6, 0)" in method
     assert "setDuration(200)" in method
-    highlight_motion = _method_source("_start_highlight_animation", "close")
-    assert "QPoint(0, 4)" in highlight_motion
-    assert "summaryRevealAfterHighlights" in SOURCE_PATH.read_text(encoding="utf-8")
-    assert "index * 60" in highlight_motion
-    assert "420" in highlight_motion
-    assert "else 200" in highlight_motion
-    assert "QVariantAnimation" in highlight_motion
-    assert "setStartValue(0.96)" in highlight_motion
-    assert 'b"blurRadius"' in highlight_motion
+    assert 'b"pos"' not in method
+    assert "self._body.setGraphicsEffect(None)" in method
+    assert "fade.finished.connect(finish_fade)" in method
 
 
 def test_effect_remaining_copy_is_live_concise_and_pluralized():

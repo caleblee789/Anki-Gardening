@@ -94,7 +94,7 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
 
         try:
             dashboard.open_section("garden")
-            dashboard.resize(1120 if route == "additional-bonuses" else 1040, 720)
+            dashboard.resize(1040, 720)
             dashboard.toast_region.clear()
             _settle()
             if route in {"starter-nurture", "welcome", "welcome-rewards"}:
@@ -163,10 +163,9 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
             if route in {"collection-menu", "storage-confirmation"}:
                 dashboard.open_section("collection", "plants")
                 plant = next(p for p in state.plants if p.planted and p.plant_id != state.active_plant_id)
-                overview = dashboard._build_species_overview_dialog(plant.species)
-                overview.show()
+                dashboard.collection_plants_workspace.show_species(plant.species)
+                overview = dashboard.collection_plants_workspace.species_page
                 _settle()
-                cleanups.append(lambda: runner._close_widget(overview))
                 # Both routes invoke the production menu/confirmation handler.
                 def open_capture():
                     if closed:
@@ -177,8 +176,7 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
                             popup = next(w for w in QApplication.topLevelWidgets() if w.isVisible() and w is not dashboard and w is not overview and (isinstance(w, QMenu) if route == "collection-menu" else hasattr(w, "reject")))
                         cleanups.append(lambda: popup.close())
                         checks["source_plant_matches"] = plant.plant_id != state.active_plant_id
-                        # Include the native species overview beneath the popup.
-                        cleanups.append(_popup_composite(dashboard, overview))
+                        # Species details are already rendered inside the dashboard.
                         capture(popup)
                     except Exception as error:
                         fail(error)
@@ -197,45 +195,23 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
                     dashboard._collection_plant_action("remove", plant.plant_id, overview)
                 return
 
-            if route in {"scenery-preview", "scenery-applied", "additional-bonuses"}:
+            if route in {"scenery-preview", "scenery-applied"}:
                 cleanups.append(runner._prepare_appearance_capture_fixture(label, dashboard))
-                if route == "additional-bonuses":
-                    target = engine.active_plant()
-                    if target is None:
-                        raise RuntimeError("Additional bonuses fixture needs a nurtured plant")
-                    storage.state.consumables["fertilizer_basic"] = 1
-                    ok, message = engine.use_fertilizer_item(target.plant_id, tier="basic")
-                    if not ok:
-                        raise RuntimeError(message)
-                    checks["supply_bonus_committed"] = bool(target.fertilizer_card_batches)
-                dashboard.open_section("collection", "decorations" if route == "additional-bonuses" else "scenery")
+                dashboard.open_section("collection", "scenery")
                 panel = dashboard.collection_section.appearance
-                if route == "additional-bonuses":
-                    if not panel.other_bonuses.button.isChecked():
-                        panel.other_bonuses.button.click()
+                before = state.loadout.display_scenery_id
+                panel._select_option("scenery", "spring")
+                _settle()
+                checks["preview_selected"] = panel._draft_scenery == "spring"
+                checks["preview_equip_visible"] = panel.appearance_apply.isVisible() and panel.appearance_apply.text() == "Equip"
+                checks["duplicate_scenery_summary_hidden"] = not panel.selected_title.isVisible() and not panel.bonus_effect.isVisible()
+                if route == "scenery-applied":
+                    panel.appearance_apply.click()
                     _settle()
-                    panel.setup_scroll.ensureWidgetVisible(panel.other_bonuses, 0, 12)
-                    checks["bonuses_expanded"] = panel.other_bonuses.button.isChecked()
-                    checks["bonuses_visible"] = panel.other_bonuses.isVisible()
+                    checks["appearance_committed"] = storage.state.loadout.display_scenery_id == "spring"
+                    checks["undo_visible"] = panel.appearance_undo_button.isVisible()
                 else:
-                    before = state.loadout.display_scenery_id
-                    panel._select_option("scenery", "spring")
-                    _settle()
-                    checks["preview_selected"] = panel._draft_scenery == "spring"
-                    checks["obsolete_apply_hidden"] = not panel.appearance_apply.isVisible()
-                    checks["duplicate_scenery_summary_hidden"] = not panel.selected_title.isVisible() and not panel.bonus_effect.isVisible()
-                    if route == "scenery-applied":
-                        tile = panel._tiles[("scenery", "spring")]
-                        panel.setup_scroll.ensureWidgetVisible(tile, 0, 12)
-                        _settle()
-                        equip = next(button for button in tile.findChildren(QPushButton)
-                                     if button.property("collectionDisplayAction") is True and button.isVisible())
-                        equip.click()
-                        _settle()
-                        checks["appearance_committed"] = storage.state.loadout.display_scenery_id == "spring"
-                        checks["undo_visible"] = panel.appearance_undo_button.isVisible()
-                    else:
-                        checks["preview_does_not_commit"] = storage.state.loadout.display_scenery_id == before
+                    checks["preview_does_not_commit"] = storage.state.loadout.display_scenery_id == before
                 capture()
                 return
 
@@ -361,39 +337,50 @@ def _capture_reviewer(runner, label, route, capture_and_advance):
                       "disposable_card_painted": runner._active_reviewer_dom_audit.get("ready") is True,
                       "hud_contained": hud_bounds.get("contained") is True}
             if route == "reviewer-rewards-list":
-                # The bounded history contains native feedback events from the
-                # same committed engine fixture used by the regular HUD.
+                from ..reward_presentation import project_committed_reward_bundle
+                from ..ui.session_summary import CommittedSessionEvent, CoinAward, PlantGrowthDelta
                 engine = runner.app.engine
                 plant = engine.plant_story(plant_id)
-                runner.app.storage.state.pending_feedback.clear()
-                handler._dismiss_reward_toast_stack()
-                for number, (coins, growth) in enumerate(((7, 40), (3, 20), (2, 10)), 1):
-                    engine._grant_reward_bundle(
-                        f"capture:{label}:{number}", source="review", source_id=f"capture-answer-{number}",
-                        reason="Card studied", title="Study reward", coins=coins, growth=growth, plant=plant)
-                    engine._queue_feedback(f"capture-reward-list-{number}", "reward",
-                                           f"+{growth} Growth · +{coins} Coins", plant_id, title="Study reward")
+                for number, (coins, growth, title) in enumerate(((0, 17, "Growth earned"), (7, 40, "Checkpoint reward"), (3, 20, "Garden reward")), 1):
+                    identity = f"capture:{label}:{number}"
+                    receipts = engine._grant_reward_bundle(
+                        identity, source="review", source_id=f"capture-answer-{number}",
+                        correlation_id=identity, reason=title, title=title, coins=coins, growth=growth, plant=plant)
+                    if not receipts:
+                        raise RuntimeError("Committed history fixture produced no receipts")
+                    event = CommittedSessionEvent(
+                        event_id=identity, anki_day_id=receipts[0].scheduler_day,
+                        occurred_at=receipts[0].occurred_at, reward_receipts=receipts,
+                        plant_growth=(PlantGrowthDelta(plant_id, "Bonsai", sum(receipt.amount for receipt in receipts if receipt.reward_type == "growth") * 100),),
+                        coin_awards=(CoinAward(identity + ":coins", "review", title, coins, correlation_id=identity),) if coins else ())
+                    bundle = project_committed_reward_bundle(event)
+                    if bundle is not None:
+                        accumulator = handler._session_summary_accumulator
+                        if accumulator is not None:
+                            accumulator.accept_committed(event)
+                        hud.present_reward(bundle)
+                        handler._update_reviewer_hud_session_totals()
+                        from PyQt6.QtTest import QTest
+                        QTest.qWait(220)
+                        supplemental = runner.session_dir / "reviewer-feedback"
+                        supplemental.mkdir(exist_ok=True)
+                        if hud._collapsed_feedback.property("feedbackCopy"):
+                            if not hud.grab().save(str(supplemental / f"{number:02d}-collapsed-feedback.png")):
+                                raise RuntimeError("Could not save collapsed reward evidence")
                 runner.app.storage.save()
-                events = list(runner.app.storage.state.pending_feedback)
-                if not events:
-                    raise RuntimeError("Committed reward fixture has no feedback events")
-                for event in events:
-                    if not handler._show_reward_toast(event):
-                        raise RuntimeError("Committed event did not create a native reward notification")
-                summary = next(toast for toast in handler._reward_toasts if toast.property("rewardSummary"))
-                from aqt.qt import Qt
-                from PyQt6.QtTest import QTest
-                QTest.mouseClick(summary, Qt.MouseButton.LeftButton)
+                hud.open_reward_history()
                 _settle()
-                panel = getattr(handler, "_reward_list_panel", None)
-                checks["reward_list_visible"] = panel is not None and panel.isVisible()
-                bounds = runner._external_widget_bounds_evidence(panel, mw)
+                panel = hud._reward_history_panel
+                checks.pop("hud_collapsed", None)
+                checks["hud_expanded"] = not hud._collapsed
+                checks["reward_list_visible"] = panel.isVisible()
+                bounds = runner._external_widget_bounds_evidence(hud, mw)
                 annotation["reviewer_overlay_geometry"] = {
                     "capture_bounds": list(bounds["bounds"]),
-                    "source": "native reward list bounds", "visible": panel.isVisible(),
+                    "source": "integrated HUD history bounds", "visible": hud.isVisible(),
                 }
                 checks["reward_list_contained"] = bounds.get("contained") is True
-                checks["opened_from_native_reward_summary"] = bool(summary.property("rewardSummary"))
+                checks["opened_from_native_reward_summary"] = bool(hud._session_footer.property("historyExpanded"))
             annotation["handoff"] = checks
             if not all(checks.values()):
                 raise RuntimeError(f"Reviewer postconditions failed: {checks}")

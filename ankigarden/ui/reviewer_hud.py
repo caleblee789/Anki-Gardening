@@ -29,8 +29,8 @@ from .formatters import format_approximate_cards, format_garden_coins, format_qu
 HUD_EXPANDED_WIDTH = 296
 HUD_MIN_WIDTH = 296
 HUD_MAX_WIDTH = 296
-HUD_COLLAPSED_WIDTH = 56
-HUD_COLLAPSED_HEIGHT = 112
+HUD_COLLAPSED_WIDTH = 80
+HUD_COLLAPSED_HEIGHT = 48
 HUD_DEFAULT_CONTENT_HEIGHT = 416
 HUD_TOP_MARGIN = 44
 HUD_EDGE_MARGIN = 16
@@ -444,7 +444,7 @@ def _active_effect_rows(
         "growth_every_4_plus_3": (
             f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 4 cards to next +3 Growth"
         ),
-        "instant_growth_every_5_plus_3_closest_checkpoint": (
+        "instant_growth_every_5_plus_3_nurtured": (
             f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 5 cards to next +3 Growth"
         ),
         "completion_coins_plus_5": (
@@ -456,18 +456,9 @@ def _active_effect_rows(
         ),
         "none": "No bonus",
     }.get(effect, "")
-    if effect in {"prism_bank_per_answer_1_5", "prism_bank_per_answer_1"}:
-        day = str(getattr(getattr(state, "daily_stats", None), "day", "") or "")
-        released = str(getattr(state, "prism_released_anki_day_id", "") or "") == day
-        progress_copy = (
-            (
-                "+1.5 direct Growth per card · Today’s Prism Harvest released"
-                if effect == "prism_bank_per_answer_1_5"
-                else "+1 Growth banked per card · Today’s Prism bank released"
-            )
-            if released else
-            f"{format_growth_units(getattr(state, 'prism_pending_growth_units', 0))} Growth banked"
-        )
+    if effect == "prism_completion_growth_100":
+        progress_copy = "+100 Growth when Today’s Cards is complete"
+
     feature_row = (
         (
             f"{active_item.name} · {progress_copy}",
@@ -764,7 +755,15 @@ def project_plant_choices(
     active_id = str(getattr(state, "active_plant_id", "") or "")
     story = getattr(engine, "plant_story", None)
     choices: list[tuple[tuple[Any, ...], PlantChoiceProjection]] = []
-    for candidate in tuple(getattr(state, "plants", ()) or ()):
+    # The live engine's own state already identifies the planted candidates.
+    # Avoid a linear story lookup for every stored plant on every answer, while
+    # still confirming eligible choices and preserving stale-snapshot handling.
+    candidates = (
+        _planted_plants(state)
+        if getattr(engine, "state", None) is state
+        else tuple(getattr(state, "plants", ()) or ())
+    )
+    for candidate in candidates:
         plant_id = str(getattr(candidate, "plant_id", "") or "")
         if not plant_id or plant_id == active_id:
             continue
@@ -1101,7 +1100,8 @@ def reviewer_hud_geometry(
     )
     available_height = max(1, safe_bottom - HUD_TOP_MARGIN)
     if collapsed:
-        height = min(HUD_COLLAPSED_HEIGHT, available_height)
+        desired = max(HUD_COLLAPSED_HEIGHT, int(content_height or HUD_COLLAPSED_HEIGHT))
+        height = min(desired, available_height)
     else:
         desired = max(1, int(
             HUD_DEFAULT_CONTENT_HEIGHT if content_height is None else content_height

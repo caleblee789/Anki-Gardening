@@ -175,9 +175,8 @@ def test_package_contains_runtime_and_excludes_mutable_data(
     # The current release ships all nine responsive scenery plates, the
     # complete six-stage plant library, the geometry-matched planter set, and
     # the canonical Rich Compost reward artwork.
-    # The reviewed 60-image lossless plant redesign brings the deterministic
-    # archive to 108.487 MiB. The approved 110 MiB budget preserves those exact
-    # pixels while retaining a strict limit on future package growth.
+    # Keep the reviewed plant catalog, continuous lawn, and discovery icon
+    # within the existing 110 MiB budget using lossless artwork encodings.
     assert production_output.stat().st_size < 110 * 1024 * 1024
 
 

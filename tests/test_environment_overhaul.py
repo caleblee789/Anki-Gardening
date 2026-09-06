@@ -620,10 +620,11 @@ def test_todays_cards_environment_rewards_use_locked_mechanics_and_normal_accoun
         record_completed_delta=True,
     )
     assert ok
-    assert rainbow_storage.state.plants[0].growth_units == before_units + 100
-    assert rainbow.last_completion_result.prism_growth_released_units == 100
-    assert rainbow_storage.state.daily_stats.instant_growth_units == 100
-    assert rainbow_storage.state.currency_balance == 17
+    assert rainbow_storage.state.plants[0].growth_units == before_units + 10_000
+    assert rainbow.last_completion_result.prism_growth_released_units == 10_000
+    assert rainbow_storage.state.daily_stats.instant_growth_units == 10_000
+    # Prism also crosses the next one-Coin Growth checkpoint.
+    assert rainbow_storage.state.currency_balance == 18
     assert rainbow.last_completion_result.prism_growth_destination == "plant_growth"
     assert_concise_player_copy(message)
 
@@ -689,7 +690,7 @@ def test_owned_decoration_and_scenery_extend_booster_card_count_additively():
     assert batch.total_cards == batch.remaining_cards == 150
 
 
-def test_todays_cards_scenery_gift_is_independent_of_capped_find_pools():
+def test_todays_cards_scenery_gift_is_independent_of_answer_find_pools():
     engine, storage = make_engine()
     engine.initialize_reward_state()
     own_and_equip(engine, scenery="snowy")
@@ -704,12 +705,12 @@ def test_todays_cards_scenery_gift_is_independent_of_capped_find_pools():
 
     assert storage.state.daily_environment_claims == {}
     assert storage.state.consumables["growth_charge_small"] == 0
-    assert storage.state.garden_find_drought_count == 40
+    drought_after_answer = storage.state.garden_find_drought_count
     first_outcomes = list(storage.state.garden_find_outcomes.values())
     assert len(first_outcomes) == 2
     assert next(
         outcome for outcome in first_outcomes if outcome.pool_id == "standard"
-    ).status == "paused"
+    ).status != "paused"
     assert any(outcome.pool_id == "environment" for outcome in first_outcomes)
 
     ok, message = engine.evaluate_today_cards(
@@ -721,8 +722,8 @@ def test_todays_cards_scenery_gift_is_independent_of_capped_find_pools():
     assert_concise_player_copy(message)
     assert storage.state.daily_environment_claims == {"snowy": storage.day}
     assert storage.state.consumables["growth_charge_small"] == 1
-    assert storage.state.garden_find_drought_count == 40
-    assert len(storage.state.garden_find_outcomes) == 2
+    assert storage.state.garden_find_drought_count == drought_after_answer
+    assert list(storage.state.garden_find_outcomes.values()) == first_outcomes
 
 
 def test_environment_purchase_and_growth_charge_use_restore_state_on_save_failure():

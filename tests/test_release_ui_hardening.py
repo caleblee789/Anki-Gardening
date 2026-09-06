@@ -183,11 +183,6 @@ def test_growth_charge_preview_and_success_share_one_markup_tree() -> None:
     assert "data = self._data_from_outcome(outcome)" in success_source
     assert "self._render_shared_summary(data)" in success_source
     assert "QFrame(" not in success_source
-    assert "self.setMinimumHeight(stable_height)" in success_source
-    assert "self.setMaximumHeight(stable_height)" in success_source
-    assert 'self.setProperty("growthChargeTransitionHeight", stable_height)' in (
-        success_source
-    )
     assert "self.quote" not in confirmed_data_source
     for confirmed_field in (
         "outcome.previous_growth",

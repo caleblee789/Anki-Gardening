@@ -13,8 +13,8 @@ and permanent trophy bonuses still apply while using Home.
 | Harvest Bell | Shop | 175 Coins | +5 Coins per Today’s Cards completion |
 | Watering Station | Shop | 250 Coins | +1 Growth every 2 cards, first 200 each day |
 | Herbalist’s Hourglass | Shop | 350 Coins | 1 Booster Potion every 30 completed days; Potions last 25 extra cards |
-| Firefly Lantern | Garden Find | — | +3 Growth every 5 cards to the unfinished plant closest to a checkpoint |
-| Prism Trellis | Garden Find | — | Banks 1 Growth per card for release on completion |
+| Firefly Lantern | Garden Find | — | +3 Growth every 5 cards to the nurtured plant, with normal overflow |
+| Prism Trellis | Garden Find | — | +100 Growth when Today’s Cards is complete while equipped |
 
 The catalog and committed engine results remain authoritative. Scenery and
 decoration artwork match the equipped items; previews do not change equipment.

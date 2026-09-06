@@ -1,6 +1,6 @@
 # Documentation index
 
-These documents describe the current state-schema-27 Anki Garden 2.2.0
+These documents describe the current state-schema-30 Anki Garden 2.2.0
 working-tree candidate.
 Runtime source and persisted-state behavior remain authoritative when prose and
 implementation disagree.
@@ -31,7 +31,7 @@ implementation disagree.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current UI architecture, routing,
   transaction, responsive, accessibility, and capture contract.
-- `ui-surface-inventory.md`: historical v26 inventory; the current v27 topology is recorded in the UI release-quality review.
+- `ui-surface-inventory.md`: historical v26 inventory; the current v29 inventory contains 50 surfaces in five sheets and is recorded in `ui/combined-integration-20260906.md`.
 - `garden-features.md`: the active registry, fixed layout, migration boundary,
   and static Home/native rendering contract.
 - `references/garden-decorations-reference.docx`: illustrated current Garden

@@ -19,7 +19,6 @@ from typing import Any, Dict, Iterable, Mapping
 from .balance_catalog import (
     LANDMARKS,
     MASTERY_RANKS,
-    STANDARD_FIND_MAXIMUM_DAILY_CAP,
 )
 from .environment import (
     DEFAULT_GARDEN_FEATURE_ID,
@@ -3415,18 +3414,13 @@ class GardenStorage:
                         outcome.scheduler_day, 0
                     )
                 ))
-                self.state.garden_find_daily_counts[outcome.scheduler_day] = min(
-                    STANDARD_FIND_MAXIMUM_DAILY_CAP, finds_today + 1
-                )
+                self.state.garden_find_daily_counts[outcome.scheduler_day] = finds_today + 1
                 reward_counts = (
                     self.state.garden_find_reward_daily_counts.setdefault(
                         outcome.scheduler_day, {}
                     )
                 )
-                reward_counts[outcome.reward_id] = min(
-                    STANDARD_FIND_MAXIMUM_DAILY_CAP,
-                    max(0, int(reward_counts.get(outcome.reward_id, 0))) + 1,
-                )
+                reward_counts[outcome.reward_id] = max(0, int(reward_counts.get(outcome.reward_id, 0))) + 1
             return
         if self._reward_ledger.find_outcome(
             outcome.answer_key, outcome.pool_id

@@ -61,8 +61,8 @@ STUDIO_TEXT = {
     "asset_quality_label": "Artwork detail",
     "home_widget_label": "Show garden on Anki home",
     "reviewer_hud_label": "Show garden while studying",
-    "progress_notifications_label": "Show reward notifications",
-    "sync_rewards_label": "Show rewards after syncing",
+    "progress_notifications_label": "Reward notifications",
+    "sync_rewards_label": "Rewards after syncing",
 }
 
 SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 190
@@ -593,7 +593,7 @@ class GardenStudioWidget(QWidget):
         self.show_reviewer_hud.setAccessibleName(STUDIO_TEXT["reviewer_hud_label"])
         _describe_control(
             self.show_reviewer_hud,
-            "Show today’s cards and plant progress while you study.",
+            "Show plant progress and rewards while you study.",
         )
         self.show_rewards_after_syncing = GardenToggleSwitch()
         self.show_rewards_after_syncing.setAccessibleName(
@@ -605,7 +605,7 @@ class GardenStudioWidget(QWidget):
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
-            "Show garden progress on the deck list and deck overview.",
+            "On the deck list and deck overview.",
             self.show_home_widget,
         )
         controls_layout.insertWidget(0, self.home_preview_row)
@@ -647,17 +647,17 @@ class GardenStudioWidget(QWidget):
         self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.notifications_row = ToggleSettingRow(
             STUDIO_TEXT["progress_notifications_label"],
-            "Show new rewards while you study.",
+            "Show new rewards while studying.",
             self.show_progress_notifications,
         )
         self.reviewer_hud_row = ToggleSettingRow(
             STUDIO_TEXT["reviewer_hud_label"],
-            "Show today’s cards and plant progress while you study.",
+            "Show plant progress and rewards.",
             self.show_reviewer_hud,
         )
         self.sync_rewards_row = ToggleSettingRow(
             STUDIO_TEXT["sync_rewards_label"],
-            "Show rewards earned on your other devices.",
+            "Show rewards earned on other devices.",
             self.show_rewards_after_syncing,
         )
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)

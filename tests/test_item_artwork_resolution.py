@@ -85,7 +85,7 @@ def test_every_bundled_ui_catalog_item_resolves_through_production_resolver() ->
         )(),
     )
     ui_rows = [row for row in rows if row.get("category") == "ui"]
-    assert len(ui_rows) == 19
+    assert len(ui_rows) == 20
     assert {
         row["slot"]["ui_id"] for row in ui_rows
     } >= {
@@ -94,6 +94,7 @@ def test_every_bundled_ui_catalog_item_resolves_through_production_resolver() ->
         "sync_review_cards",
         "growth_resource",
         "garden_coin",
+        "garden_discovery",
         "shared_growth",
         "stored_growth",
         "checkpoint_badge",
@@ -126,6 +127,7 @@ def test_sync_receipt_concept_art_is_retina_sized_and_not_duplicate_item_art() -
         "sync_review_cards",
         "growth_resource",
         "garden_coin",
+        "garden_discovery",
         "shared_growth",
         "stored_growth",
         "checkpoint_badge",

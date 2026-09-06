@@ -54,7 +54,7 @@ def test_starter_previews_cycle_independently_without_choosing_a_plant(
         audit, _warnings = auditor._visual_contract_audit(dialog, "starter-preview-regression")
         assert "icon-control-size" in audit["issues"]
         ordinary_icon.setIconSize(QSize(18, 18))
-        assert [card.stage_label.text() for card in cards] == ["Full Bloom", "Full Bloom"]
+        assert [card.stage_label.text() for card in cards] == ["Preview: Full Bloom", "Preview: Full Bloom"]
         assert "undiscovered" not in cards[0].artwork.accessibleName().lower()
         for stage, title in (
             ("Seed", "Rose Seed"), ("Sprout", "Rose Sprout"),
@@ -62,14 +62,14 @@ def test_starter_previews_cycle_independently_without_choosing_a_plant(
             ("Flowering", "Flowering Rose"), ("Full Bloom", "Full Bloom Rose"),
         ):
             QTest.mouseClick(cards[0].next_button, Qt.MouseButton.LeftButton)
-            assert cards[0].stage_label.text() == stage
+            assert cards[0].stage_label.text() == f"Preview: {stage}"
             assert cards[0].stage_label.accessibleName() == title
             assert cards[0].artwork.accessibleName() == f"{title} stage preview"
-            assert cards[1].stage_label.text() == "Full Bloom"
+            assert cards[1].stage_label.text() == "Preview: Full Bloom"
         QTest.keyClick(cards[0].next_button, Qt.Key.Key_Return)
-        assert cards[0].stage_label.text() == "Seed"
+        assert cards[0].stage_label.text() == "Preview: Seed"
         QTest.keyClick(cards[0].previous, Qt.Key.Key_Space)
-        assert cards[0].stage_label.text() == "Full Bloom"
+        assert cards[0].stage_label.text() == "Preview: Full Bloom"
         assert choices == []
         assert engine.state == {"plants": []}
 
@@ -106,8 +106,12 @@ def test_progress_grid_preserves_full_single_and_empty_heights_when_qt_is_availa
     grid.resize(900, 420)
     grid.show()
 
+    grid._defer_reflow = True
     for _index in range(38):
-        grid.add_card(QFrame())
+        card = QFrame()
+        grid.add_card(card)
+        assert card.parentWidget() is grid.container
+        assert not card.isWindow()
     grid.finish()
     application.processEvents()
     assert int(grid.container.property("contentRowCount")) == 10
@@ -200,7 +204,7 @@ def test_collection_hides_dormant_landmarks_and_retains_enabled_layout(
 
     dormant = CollectionSection(engine, PlantCollectionPane(), None)
     assert tuple(dormant.subtabs.buttons) == (
-        CollectionTab.PLANTS, CollectionTab.SCENERY, CollectionTab.DECORATIONS,
+        CollectionTab.PLANTS, CollectionTab.APPEARANCE,
     )
     dormant.set_current(CollectionTab.GARDEN_LANDMARKS, focus_tier_id="lily_pond")
     assert dormant.current_tab is CollectionTab.PLANTS

@@ -126,12 +126,14 @@ class GardenSceneWidget(QWidget):
     landmarkActivated = pyqtSignal(str)
     decorationActivated = pyqtSignal(str)
     landmarksChanged = pyqtSignal()
-    HOVER_FADE_STEP = 0.30
+    HOVER_FADE_SECONDS = 0.100
 
     def __init__(self, parent: QWidget | None = None, *, interactive: bool = True) -> None:
         super().__init__(parent)
         self.setMinimumHeight(250)
         self.phase = 0.0
+        self._ambient_updated_at = time.monotonic()
+        self._hover_updated_at = self._ambient_updated_at
         self.scene: dict[str, Any] = {
             "plants": [],
             "garden_feature": "seedling_sign",
@@ -143,6 +145,10 @@ class GardenSceneWidget(QWidget):
         )
         self._raster_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
             BoundedLruCache(RASTER_CACHE_LIMIT, max_bytes=128 * 1024 * 1024, size_of=pixmap_bytes)
+        )
+        self._hit_image_cache: BoundedLruCache[tuple[Any, ...], QImage] = (
+            BoundedLruCache(RASTER_CACHE_LIMIT, max_bytes=32 * 1024 * 1024,
+                            size_of=lambda image: int(image.sizeInBytes()))
         )
         self._graded_raster_cache: BoundedLruCache[tuple[Any, ...], QPixmap] = (
             BoundedLruCache(GRADED_RASTER_CACHE_LIMIT, max_bytes=96 * 1024 * 1024, size_of=pixmap_bytes)
@@ -275,7 +281,7 @@ class GardenSceneWidget(QWidget):
         )
         self._hover_close_timer = QTimer(self)
         self._hover_close_timer.setSingleShot(True)
-        self._hover_close_timer.setInterval(180)
+        self._hover_close_timer.setInterval(80)
         self._hover_close_timer.timeout.connect(self._clear_hover)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -332,7 +338,7 @@ class GardenSceneWidget(QWidget):
             1.0,
         )
         return bool(
-            intensity > 0.0
+            (intensity > 0.0 and getattr(self, "_ambient_motion_visible", True))
             or self._transition_started_at is not None
             or self._nurture_pulse_started_at is not None
             or self._move_transition is not None
@@ -350,7 +356,7 @@ class GardenSceneWidget(QWidget):
         if should_run:
             desired_interval = (
                 MOVE_ANIMATION_INTERVAL_MS
-                if self._move_transition is not None
+                if self._move_transition is not None or self._hover_fade_active()
                 else ANIMATION_INTERVAL_MS
             )
             current_interval = (
@@ -358,6 +364,9 @@ class GardenSceneWidget(QWidget):
                 if hasattr(self.timer, "interval") else -1
             )
             if not self.timer.isActive() or current_interval != desired_interval:
+                if not self.timer.isActive():
+                    self._ambient_updated_at = time.monotonic()
+                    self._hover_updated_at = self._ambient_updated_at
                 self.timer.start(desired_interval)
         elif self.timer.isActive():
             self.timer.stop()
@@ -650,6 +659,7 @@ class GardenSceneWidget(QWidget):
         for name in (
             "_svg_cache",
             "_raster_cache",
+            "_hit_image_cache",
             "_graded_raster_cache",
             "_highlight_pixmap_cache",
             "_landmark_lighting_cache",
@@ -896,25 +906,59 @@ class GardenSceneWidget(QWidget):
         )
         return safe_scene
 
-    def _tick(self) -> None:
-        performance_started = RUNTIME_PERFORMANCE.begin()
-        intensity = self._clamp(self._coerce_float(self.scene.get("animation_intensity", 0.7), 0.7), 0.0, 1.0)
-        self.phase += 0.0 if intensity <= 0 else 0.02 + (0.06 * intensity)
+    def _advance_hover(self, now: float) -> set[str]:
+        """Advance from the current opacity so interrupted fades stay continuous."""
+        elapsed = max(0.0, now - self._hover_updated_at)
+        self._hover_updated_at = now
+        step = elapsed / self.HOVER_FADE_SECONDS
         target = self._interaction.hovered_id or (
             self._interaction.focused_id(self._plant_ids()) if self.hasFocus() else None
         )
+        changed: set[str] = set()
         for plant_id in set(self._hover_opacity) | ({target} if target else set()):
-            current = self._hover_opacity.get(plant_id, 0.0)
+            previous = self._hover_opacity.get(plant_id, 0.0)
             desired = 1.0 if plant_id == target else 0.0
-            if current < desired:
-                current = min(desired, current + self.HOVER_FADE_STEP)
-            elif current > desired:
-                current = max(desired, current - self.HOVER_FADE_STEP)
+            current = min(desired, previous + step) if previous < desired else max(desired, previous - step)
+            if current != previous:
+                changed.add(plant_id)
             if current <= 0.0:
                 self._hover_opacity.pop(plant_id, None)
             else:
                 self._hover_opacity[plant_id] = current
-        self.update()
+        return changed
+
+    def _update_hover_region(self, plant_ids: set[str]) -> None:
+        region = QRegion()
+        for plant_id in plant_ids:
+            plant = self._plant_for_id(plant_id)
+            layout = self._slot_placements.get(int(plant.get("slot_index", -1))) if plant else None
+            if layout is None:
+                self.update()
+                return
+            # Include the padded artwork contour, with room for scaled outlines.
+            box = self._plant_draw_box(layout, plant)
+            margin = max(12.0, box.width() * 0.03, box.height() * 0.03)
+            region |= QRegion(box.adjusted(-margin, -margin, margin, margin).toAlignedRect())
+        if not region.isEmpty():
+            self.update(region)
+
+    def _tick(self) -> None:
+        performance_started = RUNTIME_PERFORMANCE.begin()
+        now = time.monotonic()
+        intensity = self._clamp(self._coerce_float(self.scene.get("animation_intensity", 0.7), 0.7), 0.0, 1.0)
+        elapsed = max(0.0, now - self._ambient_updated_at)
+        ambient_due = (
+            intensity > 0.0 and getattr(self, "_ambient_motion_visible", True)
+            and elapsed >= ANIMATION_INTERVAL_MS / 1000.0
+        )
+        if ambient_due:
+            self.phase += (0.02 + 0.06 * intensity) * elapsed / (ANIMATION_INTERVAL_MS / 1000.0)
+            self._ambient_updated_at = now
+        changed = self._advance_hover(now)
+        if ambient_due or self._transition_started_at is not None or self._nurture_pulse_started_at is not None or self._move_transition is not None:
+            self.update()
+        else:
+            self._update_hover_region(changed)
         self._sync_animation_timer()
         RUNTIME_PERFORMANCE.finish("scene.tick", performance_started)
 
@@ -1601,6 +1645,9 @@ class GardenSceneWidget(QWidget):
 
     def paintEvent(self, _event: Any) -> None:
         performance_started = RUNTIME_PERFORMANCE.begin()
+        # Phase only animates the fallback sun and fallback flower petals.
+        # Static raster scenery must not keep repainting an unchanged canvas.
+        self._ambient_motion_visible = False
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         viewport = self.rect()
@@ -1630,6 +1677,7 @@ class GardenSceneWidget(QWidget):
             growth = self._clamp(self._coerce_float(self.scene.get("growth", 0.0), 0.0), 0.0, 1.0)
 
             if not background_drawn:
+                self._ambient_motion_visible = True
                 sun_x = r.x() + r.width() * (0.75 + 0.02 * math.sin(self.phase / 4))
                 sun_y = r.y() + r.height() * 0.2
                 painter.setPen(Qt.PenStyle.NoPen)
@@ -1903,6 +1951,7 @@ class GardenSceneWidget(QWidget):
             self._draw_fallback_scene(painter, r)
         finally:
             painter.restore()
+        self._sync_animation_timer()
         RUNTIME_PERFORMANCE.finish("scene.paint", performance_started)
 
     def _draw_landmark_affordances(self, painter: QPainter) -> None:
@@ -2120,19 +2169,23 @@ class GardenSceneWidget(QWidget):
         placement = asset.get("placement", {}) if isinstance(asset, dict) else {}
         return placement if isinstance(placement, dict) else {}
 
-    def _highlight_pixmap_for(self, path: str, color: str, radius: int) -> QPixmap | None:
+    def _highlight_pixmap_for(self, path: str, color: str, radius: int, *, render_width: int = 0) -> QPixmap | None:
         """Return a cached dilated-alpha-minus-source outer contour."""
         radius = max(1, min(12, int(radius)))
         identity = self._file_identity_for(path)
         if identity is None:
             return None
-        key = (path, identity, color, radius)
+        key = (path, identity, color, radius, render_width)
         cached = self._highlight_pixmap_cache.get(key)
         if cached is not None and not cached.isNull():
             return cached
         source = self._pixmap_for(path)
         if source is None:
             return None
+        if render_width and render_width < source.width():
+            # Only the contour mask is rasterized at its physical display size;
+            # the original artwork continues through the full-quality path.
+            source = source.scaledToWidth(render_width, Qt.TransformationMode.SmoothTransformation)
         solid = QPixmap(source.size())
         solid.fill(Qt.GlobalColor.transparent)
         solid_painter = QPainter(solid)
@@ -2189,8 +2242,10 @@ class GardenSceneWidget(QWidget):
             source_h * scale,
         )
         desired_width = 2.0 if emphasized else PLANT_HOVER_OUTLINE_WIDTH
+        render_width = max(1, min(source_w, math.ceil(target.width() * self.devicePixelRatioF())))
+        scale = target.width() / render_width
         source_radius = max(1, min(12, round(desired_width / max(0.01, scale))))
-        edge = self._highlight_pixmap_for(path, color, source_radius)
+        edge = self._highlight_pixmap_for(path, color, source_radius, render_width=render_width)
         if edge is None:
             return False
         padding = source_radius + 1
@@ -2651,19 +2706,28 @@ class GardenSceneWidget(QWidget):
                 painter.restore()
                 continue
             if current:
-                pen_color, fill_color = QColor(126, 190, 201, 205), QColor(49, 93, 101, 70)
+                pen_color, fill_color = QColor(126, 190, 201, 170), QColor(49, 93, 101, 45)
             elif swap_target:
                 pen_color = QColor(
                     GARDEN_THEME["action_hover"]
                     if active else GARDEN_THEME["action_accent"]
                 )
-                pen_color.setAlpha(245 if active else 118)
+                pen_color.setAlpha(220 if active else 85)
                 fill_color = QColor(54, 161, 104, 96 if active else 20)
             else:
                 pen_color = QColor(GARDEN_THEME["action_hover"] if active else GARDEN_THEME["action_accent"])
-                pen_color.setAlpha(245 if active else 112)
+                pen_color.setAlpha(220 if active else 85)
                 fill_color = QColor(54, 161, 104, 100 if active else 18)
-            outline_width = 2.0 if active else 1.25
+            outline_width = 1.5 if active else 0.8
+            # Bed accents belong behind the plants. The final interaction
+            # layer must not draw a luminous line through foreground leaves.
+            painter.save()
+            if callable(draw_asset_outline):
+                ring_region = QRegion(self.rect())
+                for _slot, artwork in obstacle_rows:
+                    ring_region -= QRegion(QRectF(artwork.x, artwork.y, artwork.width,
+                                                  artwork.height).toAlignedRect())
+                painter.setClipRegion(ring_region, Qt.ClipOperation.IntersectClip)
             outline_drawn = bool(
                 callable(draw_asset_outline)
                 and (current or target_state == "valid")
@@ -2700,6 +2764,7 @@ class GardenSceneWidget(QWidget):
                         vertical_padding,
                     )
                 painter.drawEllipse(move_footprint)
+            painter.restore()
             # Only current and actionable destinations receive move treatment.
             if target_state == "valid":
                 preview = getattr(self, "_draw_move_preview", None)
@@ -2799,6 +2864,13 @@ class GardenSceneWidget(QWidget):
         return event.position() if hasattr(event, "position") else event.pos()
 
     def _plant_at(self, position: Any) -> str | None:
+        started = RUNTIME_PERFORMANCE.begin()
+        try:
+            return self._hit_test_plant(position)
+        finally:
+            RUNTIME_PERFORMANCE.finish("scene.hit_test", started)
+
+    def _hit_test_plant(self, position: Any) -> str | None:
         candidates: list[tuple[float, str]] = []
         for plant_id, hit_rect in self._plant_hit_rects.items():
             if not hit_rect.contains(position):
@@ -2832,7 +2904,12 @@ class GardenSceneWidget(QWidget):
             source_y = int(
                 max(0, min(pixmap.height() - 1, (position.y() - box.y()) / max(1.0, box.height()) * pixmap.height()))
             )
-            if pixmap.toImage().pixelColor(source_x, source_y).alpha() >= 24:
+            key = (str(path), self._file_identity_for(path))
+            image = self._hit_image_cache.get(key)
+            if image is None:
+                image = pixmap.toImage()
+                self._hit_image_cache[key] = image
+            if image.pixelColor(source_x, source_y).alpha() >= 24:
                 return plant_id
         return None
 
@@ -3093,17 +3170,30 @@ class GardenSceneWidget(QWidget):
             )
         return started
 
+    def _set_hover_target(self, plant_id: str | None) -> None:
+        if plant_id == self._interaction.hovered_id:
+            return
+        changed = self._advance_hover(time.monotonic())
+        previous = self._interaction.hovered_id
+        self._interaction.hover(plant_id)
+        self._sync_animation_timer()
+        self._update_hover_region(changed | {value for value in (previous, plant_id) if value})
+
+    def _schedule_hover_clear(self) -> None:
+        if self._interaction.hovered_id is not None and not self._hover_close_timer.isActive():
+            self._hover_close_timer.start()
+
     def _clear_hover(self) -> None:
-        self._interaction.hover(None)
-        sync_animation = getattr(self, "_sync_animation_timer", None)
-        if callable(sync_animation):
-            sync_animation()
-        elif not self.timer.isActive():
-            self._hover_opacity.clear()
-        self.unsetCursor()
-        self.update()
+        self._set_hover_target(None)
 
     def mouseMoveEvent(self, event: Any) -> None:
+        started = RUNTIME_PERFORMANCE.begin()
+        try:
+            self._handle_pointer_move(event)
+        finally:
+            RUNTIME_PERFORMANCE.finish("scene.pointer_move", started)
+
+    def _handle_pointer_move(self, event: Any) -> None:
         if not self.interactive:
             super().mouseMoveEvent(event)
             return
@@ -3194,17 +3284,13 @@ class GardenSceneWidget(QWidget):
             return
         if plant_id:
             self._hover_close_timer.stop()
-            self._interaction.hover(plant_id)
-            sync_animation = getattr(self, "_sync_animation_timer", None)
-            if callable(sync_animation):
-                sync_animation()
-            elif not self.timer.isActive():
-                self._hover_opacity = {plant_id: 1.0}
-            self.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.update()
+            self._set_hover_target(plant_id)
+            if self.cursor().shape() != Qt.CursorShape.PointingHandCursor:
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
         else:
-            self._hover_close_timer.start()
-            self.unsetCursor()
+            self._schedule_hover_clear()
+            if self.cursor().shape() != Qt.CursorShape.ArrowCursor:
+                self.unsetCursor()
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event: Any) -> None:
@@ -3213,7 +3299,7 @@ class GardenSceneWidget(QWidget):
             QToolTip.hideText()
             self.unsetCursor()
             self.update()
-        self._hover_close_timer.start()
+        self._schedule_hover_clear()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: Any) -> None:
@@ -3613,6 +3699,10 @@ class GardenSceneWidget(QWidget):
         variant_name, variant = scene_surface_variant(
             placement, width, height, surface_context
         )
+        variant = dict(variant)
+        metadata = background.get("metadata", {})
+        if surface_context == "dashboard" and isinstance(metadata, dict):
+            variant["garden_file"] = metadata.get("native_garden_file", "")
         root = Path(str(background.get("asset_root", ""))).expanduser()
         root_valid = root.is_dir()
         root_resolved = root.resolve() if root_valid else root
@@ -3633,7 +3723,7 @@ class GardenSceneWidget(QWidget):
                 return None
             return str(candidate)
 
-        result = (resolve("file"), resolve("occlusion_file"), variant, variant_name)
+        result = (resolve("garden_file") or resolve("file"), resolve("occlusion_file"), variant, variant_name)
         if cache is not None:
             cache[cache_key] = result
         return result
@@ -4058,12 +4148,12 @@ class GardenSceneWidget(QWidget):
         emphasized = self._feature_selected or button.hasFocus()
         if source is not None and self.interactive and (emphasized or button.underMouse()):
             scale = feature_box.width() / source.width()
-            radius = max(1, min(12, round((2.0 if emphasized else 1.65) / scale)))
+            radius = max(1, min(12, round((1.2 if emphasized else 1.0) / scale)))
             edge = self._highlight_pixmap_for(feature_path,
                 GARDEN_THEME["focus_ring"] if emphasized else "#d7edcf", radius)
             if edge is not None:
                 padding = (radius + 1) * scale
-                painter.setOpacity(.62 if emphasized else PLANT_HOVER_OUTLINE_OPACITY)
+                painter.setOpacity(.45 if emphasized else PLANT_HOVER_OUTLINE_OPACITY)
                 painter.drawPixmap(feature_box.adjusted(-padding, -padding, padding, padding), edge, QRectF(edge.rect()))
                 painter.setOpacity(1)
         lit = self._feature_lit_pixmap(feature_path)
@@ -4343,6 +4433,7 @@ class GardenSceneWidget(QWidget):
                 (layout.ground_anchor[1] - canvas.y())
                 / max(1.0, canvas.height()),
             )
+        profile["contrast"] = max(float(profile.get("contrast", 1.0)), 1.06 if depth_band == "rear" else 1.025)
         source = self._pixmap_for(str(path))
         if source is None:
             return self._draw_asset_contain(painter, str(path), box, opacity=1.0)
@@ -4400,6 +4491,16 @@ class GardenSceneWidget(QWidget):
                 base_gradient.setColorAt(1.0, QColor(10, 18, 16, round(base_ao * 255)))
                 grade_painter.fillRect(graded.rect(), base_gradient)
             grade_painter.end()
+            # Preserve source pixels and alpha; apply the cached native lighting
+            # contract's contrast rather than silently dropping that field.
+            contrast = max(0.88, min(1.08, float(profile.get("contrast", 1.0))))
+            if abs(contrast - 1.0) > .001:
+                pixels = graded.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+                data = bytearray(pixels.constBits().asstring(pixels.sizeInBytes()))
+                curve = bytes(max(0, min(255, round((value - 128) * contrast + 128))) for value in range(256))
+                for channel in range(3):
+                    data[channel::4] = data[channel::4].translate(curve)
+                graded = QPixmap.fromImage(QImage(bytes(data), pixels.width(), pixels.height(), pixels.bytesPerLine(), QImage.Format.Format_RGBA8888).copy())
             graded = graded.scaled(
                 *raster_size,
                 Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -4498,6 +4599,7 @@ class GardenSceneWidget(QWidget):
             painter.setBrush(canopy_color)
             painter.drawEllipse(QRectF(x - 18 * scale, y - stem_h - 26 * scale, 36 * scale, 34 * scale))
         if stage in ("flowering", "rare"):
+            self._ambient_motion_visible = True
             painter.setBrush(QColor(246, 126 + (idx * 20) % 85, 180, 220))
             for a in range(6):
                 angle = (math.pi * 2 * a / 6.0) + self.phase / 5

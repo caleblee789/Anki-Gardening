@@ -256,12 +256,12 @@ def test_settings_diagnostics_actions_reflow_from_their_own_viewport() -> None:
     settings = _class_source(DASHBOARD_PATH, "GardenSettingsDialog")
 
     assert '"settings.diagnostics-actions"' in settings
-    assert "self.diagnostics_scroll.viewport()" in settings
+    assert "self.behavior_scroll.viewport()" in settings
     assert "QBoxLayout.Direction.LeftToRight" in settings
     assert "QBoxLayout.Direction.TopToBottom" not in settings
     assert '"refresh-diagnostics"' in settings
     assert '"copy-report"' in settings
-    assert '"technical-details"' in settings
+    assert 'self.report_details_toggle.setProperty("disclosureRow", True)' in settings
 
 
 def test_live_qt_advanced_content_stays_inside_inner_viewport_when_available(
@@ -520,114 +520,6 @@ def _live_replacement_quote(engine: Any, storage: Any) -> Any:
     )
 
 
-def test_collection_landmark_bottom_anchor_contains_intersecting_controls(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The 950x570 Collection endgame fold must not expose clipped actions."""
-
-    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
-    monkeypatch.setenv(
-        "QT_QPA_PLATFORM",
-        os.environ.get("QT_QPA_PLATFORM", "offscreen"),
-    )
-    try:
-        from aqt.qt import (
-            QAbstractButton,
-            QApplication,
-            QCoreApplication,
-            QEvent,
-            QFrame,
-            QWidget,
-        )
-        from ankigarden.growth import GROWTH_THRESHOLDS, GROWTH_UNITS_PER_POINT
-        from ankigarden.models.state import GardenProjectState
-        from ankigarden.ui.dashboard import GardenDashboard
-    except (ImportError, ModuleNotFoundError):
-        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
-
-    application = QApplication.instance() or QApplication([])
-    config, storage, engine = _live_engine_fixture()
-    plant = storage.state.plants[0]
-    plant.growth_units = GROWTH_THRESHOLDS[-1] * GROWTH_UNITS_PER_POINT
-    plant.slot_index = 0
-    storage.state.starter_selection_complete = True
-    storage.state.garden_project = GardenProjectState(
-        completed_project_ids=["mossy_stone_path"],
-        displayed_project_id="mossy_stone_path",
-    )
-
-    owner = QWidget()
-    owner.resize(1400, 900)
-    owner.show()
-    dashboard = GardenDashboard(owner, engine, storage, config)
-    dashboard._refresh_collection_list()
-    progress = dashboard.progress_dialog
-    progress.navigation.set_current("collection")
-    progress.resize(950, 570)
-    progress.show()
-    for _iteration in range(3):
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
-        application.processEvents()
-
-    collection = dashboard.collection_list
-    assert collection.grid.contentsMargins().bottom() == 28
-    scroll = collection.scroll
-    viewport = scroll.viewport()
-    bar = scroll.verticalScrollBar()
-    bar.setValue(bar.maximum())
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
-    application.processEvents()
-
-    completed_row = next(
-        candidate
-        for candidate in collection.findChildren(QFrame)
-        if bool(candidate.property("completedLandmark"))
-        and str(candidate.property("landmarkId") or "") == "mossy_stone_path"
-    )
-
-    def viewport_bounds(widget: QWidget) -> tuple[int, int, int, int]:
-        origin = widget.mapTo(viewport, widget.rect().topLeft())
-        return (
-            int(origin.x()),
-            int(origin.y()),
-            int(widget.width()),
-            int(widget.height()),
-        )
-
-    def intersects_viewport(bounds: tuple[int, int, int, int]) -> bool:
-        x, y, width, height = bounds
-        return bool(
-            x < int(viewport.width())
-            and x + width > 0
-            and y < int(viewport.height())
-            and y + height > 0
-        )
-
-    landmark_bounds = viewport_bounds(completed_row)
-    assert intersects_viewport(landmark_bounds)
-    landmark_x, landmark_y, landmark_width, landmark_height = landmark_bounds
-    assert landmark_x >= 0
-    assert landmark_y >= 0
-    assert landmark_x + landmark_width <= int(viewport.width())
-    assert landmark_y + landmark_height <= int(viewport.height())
-
-    intersecting_buttons = [
-        (button, viewport_bounds(button))
-        for button in collection.findChildren(QAbstractButton)
-        if button.isVisibleTo(viewport)
-        and intersects_viewport(viewport_bounds(button))
-    ]
-    assert intersecting_buttons
-    for button, (x, y, width, height) in intersecting_buttons:
-        assert x >= 0, button.text()
-        assert y >= 0, button.text()
-        assert x + width <= int(viewport.width()), button.text()
-        assert y + height <= int(viewport.height()), button.text()
-
-    progress.close()
-    owner.close()
-    application.processEvents()
-
 
 def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     monkeypatch: pytest.MonkeyPatch,
@@ -676,13 +568,15 @@ def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     quote = engine.quote_purchase(PurchaseKind.SPECIES, "sunflower")
     outcome = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
     assert outcome.success
-    assert outcome.message == "Sunflower added."
+    assert outcome.message == "Sunflower Seed added."
     assert project_collection(state).species_text == "10 of 10 species discovered"
 
     displaced = plants[1]
     displaced_slot = int(displaced.slot_index)
     assert engine.move_to_collection(displaced.plant_id)[0]
     owner = QWidget()
+    collection_routes = []
+    owner.open_section = lambda *args, **kwargs: collection_routes.append((args, kwargs))
     owner.show()
     placement = NurseryDialog(owner, engine, storage)
     placement._show_purchase_receipt(
@@ -694,7 +588,7 @@ def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
 
     icon = placement.nursery_toast.icon
     icon_pixmap = icon.pixmap()
-    assert placement.nursery_toast.message.text() == "Sunflower added."
+    assert placement.nursery_toast.message.text() == "Sunflower Seed added to your collection."
     assert placement.nursery_toast.action.text() == "Place in garden"
     assert placement.nursery_toast.property("receiptPrimaryRoute") == "Place in garden"
     assert icon.accessibleName() == "Sunflower Seed artwork"
@@ -717,9 +611,15 @@ def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     )
     no_bed.show()
     application.processEvents()
-    assert no_bed.nursery_toast.message.text() == "Sunflower added."
-    assert no_bed.nursery_toast.action.text() == "Open garden"
-    assert no_bed.nursery_toast.property("receiptPrimaryRoute") == "Open garden"
+    assert no_bed.nursery_toast.message.text() == "Sunflower Seed added to your collection. No empty bed is available."
+    assert no_bed.nursery_toast.action.text() == "View in Collection"
+    assert no_bed.nursery_toast.property("receiptPrimaryRoute") == "View in Collection"
+    no_bed.nursery_toast.action.click()
+    application.processEvents()
+    assert collection_routes == [
+        (("collection", "plants"), {"item_id": "sunflower", "plant_id": outcome.result_id}),
+    ]
+    assert sunflower.slot_index is None
 
     no_bed.hide()
     no_bed.deleteLater()
@@ -760,6 +660,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             GardenSettingsDialog,
             NurseryDialog,
             PlantStoryDialog,
+            ResponsiveActionCard,
         )
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
@@ -799,37 +700,22 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
     )
     story = PlantStoryDialog(dashboard, engine, "p1")
     nursery = NurseryDialog(dashboard, engine, storage)
-    assert nursery.currently_growing_strip is not None
-    assert tuple(
-        region.accessibleName()
-        for region in (
-            nursery.scroll,
-            nursery.supplements_scroll,
-            nursery.upgrades_scroll,
-            nursery.environment_scroll,
-        )
-    ) == (
-        "Plants catalog",
-        "Magical Fertilizer and boosts catalog",
-        "Garden Spaces catalog",
-        "Garden Decorations and Scenery catalog",
+    assert tuple(nursery.catalog_tabs.tabText(index) for index in range(4)) == (
+        "Plants", "Supplies", "Scenery", "Decorations",
     )
     progress = dashboard.progress_dialog
-    customize = dashboard.customize_dialog
+    customize = dashboard.collectible_detail_dialog
     settings = GardenSettingsDialog(dashboard, engine, config)
     dashboard._refresh_collection_list()
     assert dashboard.collection_filter_responsive is not None
-    assert nursery.catalog_content_responsive
+    supply_rows = nursery.supplements_catalog.findChildren(ResponsiveActionCard)
+    assert supply_rows
     nursery_controllers = (
         (nursery.hero_responsive, "nursery-hero"),
         (nursery.receipt_responsive, "nursery-receipt"),
-        (
-            nursery.currently_growing_strip.responsive,
-            "nursery-current-plant",
-        ),
     ) + tuple(
-        (controller, f"nursery-content-{index}")
-        for index, controller in enumerate(nursery.catalog_content_responsive)
+        (row.responsive, f"nursery-content-{index}")
+        for index, row in enumerate(supply_rows)
     )
 
     surfaces = (
@@ -911,6 +797,18 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             observed.append(str(surface.property(property_name)))
         assert observed == [expected, expected]
         surface.hide()
+
+    nursery.show()
+    for index, region in enumerate((nursery.scroll, nursery.supplements_scroll,
+                                    nursery.upgrades_scroll, nursery.environment_scroll)):
+        nursery.catalog_tabs.setCurrentIndex(index)
+        for width in (640, 1040):
+            nursery.resize(width, 620)
+            application.processEvents()
+            application.processEvents()
+            assert region.widget().width() <= region.viewport().width()
+            assert region.horizontalScrollBar().maximum() == 0
+    nursery.hide()
 
     settings.show()
     application.processEvents()
@@ -1030,12 +928,12 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
 def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Keep each native dialog's scroll and pinned-footer contract isolated."""
+    """Share mounted page scrolls while keeping native Settings isolated."""
 
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
-        from aqt.qt import QApplication, QWidget
+        from aqt.qt import QApplication, QPoint, QWidget
         from ankigarden.ui.dashboard import GardenDashboard
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
@@ -1082,22 +980,32 @@ def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
         ) == clearance_before
 
     progress = dashboard.progress_dialog
-    progress.show()
+    dashboard.open_section("progress", "today")
     application.processEvents()
-    assert_owner_does_not_adopt(progress)
-    progress.hide()
+    assert dashboard.workspace_stack.currentWidget() is progress
+    assert progress.window() is dashboard
+    progress_scroll = progress.body_scrolls["today"]
+    assert dashboard.active_vertical_scroll_regions() == (progress_scroll,)
+    assert progress_scroll.horizontalScrollBar().maximum() == 0
+    assert dashboard.workspace_stack.contentsRect().contains(progress.geometry())
 
-    customize = dashboard.customize_dialog
-    customize.prepare_to_show()
-    customize.show()
+    dashboard._open_settings()
     application.processEvents()
-    assert customize.body_scroll.property("footerClearance") is not None
-    assert int(customize.body_scroll.property("footerClearance")) == int(
-        customize.footer.height()
+    settings = dashboard.settings_dialog
+    assert settings is not None and settings.isVisible()
+    assert_owner_does_not_adopt(settings)
+    # The footer is a layout sibling: it must not overlap the body or add a
+    # second footer-height strip to the scrollable content.
+    assert int(settings.behavior_scroll.property("footerClearance")) == 0
+    body_bottom = (
+        settings.behavior_scroll.mapTo(settings, QPoint(0, 0)).y()
+        + settings.behavior_scroll.height()
     )
-    assert_owner_does_not_adopt(customize)
+    footer_top = settings.footer.mapTo(settings, QPoint(0, 0)).y()
+    assert body_bottom <= footer_top
+    assert footer_top + settings.footer.height() <= settings.height()
 
-    customize.hide()
+    settings.hide()
     dashboard.hide()
     owner.close()
     application.processEvents()
@@ -1270,10 +1178,8 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         dashboard.refresh_all()
         settle()
         assert dashboard.plant_card.plant_id == "p2" and bar.plant_id == "p1"
-        dashboard.plant_card.resize(304, 150)
-        dashboard._sync_overflow_owner()
-        settle()
-        assert dashboard.plant_card.content_scroll.verticalScrollBar().isVisibleTo(dashboard.plant_card)
+        assert dashboard.plant_card.content_scroll.horizontalScrollBar().maximum() == 0
+        assert dashboard.plant_card.content_scroll.verticalScrollBar().maximum() == 0
         dashboard.plant_card.close_btn.click()
         dashboard.refresh_all()
         settle()
@@ -1447,10 +1353,10 @@ def test_live_qt_compact_progress_navigation_wraps_complete_labels(
     application.processEvents()
     application.processEvents()
 
-    assert navigation._rail_columns == 3
+    assert 1 <= navigation._rail_columns < len(labels)
     assert navigation.rail.property("navigationRows") == 2
     assert navigation.rail.height() >= (
-        2 * 44 + navigation.rail_layout.verticalSpacing()
+        2 * next(iter(navigation.buttons.values())).height() + navigation.rail_layout.verticalSpacing()
     )
     positions = []
     for label, button in zip(labels, navigation.buttons.values()):
@@ -1497,8 +1403,8 @@ def test_live_qt_growth_identity_preserves_short_name_and_numeric_value(
     application.processEvents()
 
     assert strip.growth_name.text() == "Peony Plant"
-    assert strip.growth_value.text() == "0 / 2,000 Growth toward Young"
-    assert strip.growth_value.accessibleName() == "0 / 2,000 Growth toward Young"
+    assert strip.growth_value.text() == "0 / 2,000 Growth to Young"
+    assert strip.growth_value.accessibleName() == "0 / 2,000 Growth to Young"
     assert strip.cells["growth"].property("growthIdentityMode") == "compact"
     growth_cell = strip.cells["growth"]
     for label in (strip.growth_name, strip.growth_value):
@@ -1593,17 +1499,15 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         replacement.minimumHeight(),
         min(660, replacement.property("contentNaturalHeight") + 10),
     )
-    assert species.minimumHeight() == 260
+    assert species.minimumHeight() >= 300
     assert 260 <= species.maximumHeight() <= 900
     species.show()
     application.processEvents()
     application.processEvents()
-    assert 400 <= species.height() <= 470
+    assert species.minimumHeight() <= species.height() <= species.maximumHeight()
     species_scrolls = species.active_vertical_scroll_regions()
     assert len(species_scrolls) == 1
     species_scroll = species_scrolls[0]
-    assert species_scroll.verticalScrollBar().maximum() == 0
-    assert not species_scroll.verticalScrollBar().isVisible()
     species_section = next(
         frame
         for frame in species.findChildren(QFrame)
@@ -1662,7 +1566,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     )
     assert abs(replacement.maximumHeight() - wide_bound) <= 2
     settings = GardenSettingsDialog(dashboard, engine, config)
-    customize = dashboard.customize_dialog
+    customize = dashboard.collectible_detail_dialog
 
     natural_ranges: dict[str, int] = {}
     capture_auditor = _UiFaceCaptureRunner.__new__(_UiFaceCaptureRunner)

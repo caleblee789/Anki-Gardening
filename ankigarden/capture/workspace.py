@@ -89,8 +89,13 @@ def workspace_postcondition(runner, widget, route):
         if section == "collection":
             current = dashboard.collection_section.current_tab
             current = str(getattr(current, "value", current))
-            if current != subsection:
+            expected = "appearance" if subsection in {"scenery", "decorations"} else subsection
+            if current != expected:
                 issues.append("collection-tab")
+            if subsection in {"scenery", "decorations"}:
+                category = "scenery" if subsection == "scenery" else "garden_feature"
+                if dashboard.collectible_detail_dialog._appearance_kind != category:
+                    issues.append("appearance-category")
         elif section == "shop":
             index = {"plants": 0, "supplies": 1, "scenery": 2, "decorations": 3}[subsection]
             if dashboard._shop.catalog_tabs.currentIndex() != index:
@@ -114,9 +119,13 @@ def workspace_postcondition(runner, widget, route):
         if route.startswith("inspector") and dashboard.plant_card.plant_id != dashboard.scene.selected_plant_id():
             issues.append("selected-plant-menu-target")
     if route in {"fertilizer", "charges"}:
-        tabs = widget.findChild(QTabWidget)
-        if tabs is None or tabs.currentIndex() != (1 if route == "charges" else 0):
-            issues.append("use-item-tab")
+        headings = {label.text() for label in widget.findChildren(QLabel)
+                    if label.isVisibleTo(widget)}
+        if (widget.property("suppliesLayout") != "unified"
+                or widget.property("suppliesSection") != route
+                or widget.findChild(QTabWidget) is not None
+                or not {"Fertilizer", "Growth Charges"} <= headings):
+            issues.append("use-item-panel")
     if route == "diagnostics" and not widget.diagnostics_content.isVisibleTo(widget):
         issues.append("diagnostics-expanded")
     if actual != route:
@@ -130,8 +139,8 @@ def workspace_postcondition(runner, widget, route):
             "plant_naming": naming, "issues": issues}
 
 
-def capture_plant_menu_layouts(runner):
-    """Inspect the current and edge bed at the two supported release sizes."""
+def capture_plant_menu_layouts(runner, *, sizes=((1040, 720),)):
+    """Inspect current and edge beds at the normal Garden window size."""
     dashboard = runner.app.dashboard
     selected = dashboard.scene.selected_plant_id()
     size = dashboard.size()
@@ -141,7 +150,7 @@ def capture_plant_menu_layouts(runner):
     records = []
     dashboard._plant_popover_motion_enabled = lambda: False
     try:
-        for width, height in ((1040, 720), (860, 580)):
+        for width, height in sizes:
             dashboard.resize(width, height)
             _settle()
             planted = [plant for plant in runner.app.storage.state.plants if plant.planted]
@@ -248,7 +257,7 @@ def capture_garden_setup_supplement(runner):
         checks["visibility_switches_removed"] = not hasattr(panel, "show_weather") and not hasattr(panel, "show_scenery")
         checks["bonuses_paired_with_equipment"] = all(
             panel.setup_rows[item.kind][1].text() == item.appearance_name
-            and panel.setup_rows[item.kind][3].text() == ("No study bonus" if item.effect == "No bonus" else item.effect)
+            and panel.setup_rows[item.kind][3].text() == ("Appearance only" if item.effect == "No bonus" else item.effect)
             for item in committed.items if item.kind != "landmark"
         )
         panel._select_option("scenery", "spring")
@@ -268,11 +277,7 @@ def capture_garden_setup_supplement(runner):
         checks["reset_does_not_save"] = before == storage.state.to_dict()
         dashboard.open_section("collection", "decorations")
         save("02-equipped-items-and-effects")
-        panel.other_bonuses.button.click()
-        _settle()
-        panel.setup_scroll.ensureWidgetVisible(panel.other_bonuses, 0, 0)
-        save("03-other-active-bonuses")
-        panel.other_bonuses.button.click()
+        checks["other_bonuses_section_removed"] = not hasattr(panel, "other_bonuses")
         if landmarks_enabled():
             dashboard.open_section("collection", "garden-landmarks")
             panel.preview_landmark("birdbath_terrace")
@@ -305,14 +310,6 @@ def capture_garden_setup_supplement(runner):
         engine.apply_garden_appearance = original_apply
         panel.discard_preview()
         storage.state.garden_project = deepcopy(displayed_project)
-        dashboard.resize(860, 580)
-        dashboard.open_section("collection", "decorations")
-        save("06-compact-garden-setup")
-        panel.other_bonuses.button.click()
-        _settle()
-        panel.setup_scroll.ensureWidgetVisible(panel.other_bonuses, 0, 0)
-        save("07-compact-additional-bonuses")
-        panel.other_bonuses.button.click()
         dashboard.resize(1040, 720)
         dashboard.open_section("garden")
         storage.state.garden_project = deepcopy(original_project)
@@ -323,7 +320,7 @@ def capture_garden_setup_supplement(runner):
         save("08-bright-scenery")
         storage.state.inventory["garden_features"] = list(GARDEN_FEATURE_CATALOG)
         storage.state.inventory["scenery"] = list(SCENERY_CATALOG)
-        dashboard.resize(860, 580)
+        dashboard.resize(1040, 720)
         dashboard.refresh_all()
         for index, (category, kind) in enumerate((
             ("scenery", "scenery"), ("decorations", "garden_feature"),
@@ -425,12 +422,9 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             if route in {"starter-selected", "starter-placement"}:
                 choices[0].click()
                 _settle()
-            if route == "starter-selected":
-                # The former confirmation screen is now the retained tile
-                # selection after returning from placement without planting.
-                dashboard._cancel_move()
-                _settle()
             if route == "starter-placement":
+                dashboard._starter_continue.click()
+                _settle()
                 dashboard.scene._interaction.destination_slot = 0
                 dashboard._on_placement_destination_changed(0)
         elif "/" in route:
@@ -477,16 +471,23 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
 
             def capture_picker():
                 dialog = dashboard.fertilizer_dialog
-                dialog.findChild(QTabWidget).setCurrentIndex(1 if route == "charges" else 0)
+                dialog.focus_supply_group("charges" if route == "charges" else "fertilizer")
                 capture(dialog, lambda: runner._close_widget(dialog))
 
             QTimer.singleShot(80, capture_picker)
-            dashboard._open_fertilizer_menu(plant.plant_id)
+            dashboard._open_fertilizer_menu(plant.plant_id, supply_group=route)
             return
-        elif route == "plant":
-            widget = PlantStoryDialog(dashboard, engine, plant.plant_id)
-        elif route == "species":
-            widget = dashboard._build_species_overview_dialog(plant.species)
+        elif route in {"plant", "species"}:
+            dashboard.open_section("collection", "plants")
+            workspace = dashboard.collection_plants_workspace
+            # These historical IDs now cover the same unified panel:
+            # a planted species versus a plant kept in storage.
+            if route == "plant":
+                plant = next((candidate for candidate in runner.app.storage.state.plants if not candidate.planted), plant)
+                workspace.show_plant(plant.plant_id)
+            else:
+                workspace.show_species(plant.species)
+            widget = dashboard
         elif route in {"settings", "diagnostics"}:
             widget = GardenSettingsDialog(dashboard, engine, runner.app.config)
             widget.prepare_to_show()

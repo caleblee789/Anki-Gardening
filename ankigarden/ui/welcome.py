@@ -38,7 +38,7 @@ class WelcomeCard(QFrame):
         """)
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 16, 20, 16)
-        root.setSpacing(12)
+        root.setSpacing(10)
         heading = QHBoxLayout()
         self._heading_layout = heading
         heading.setSpacing(10)
@@ -100,11 +100,8 @@ class WelcomeCard(QFrame):
         layout.setContentsMargins(0, 2, 10, 6)
         layout.setSpacing(8)
         layout.addWidget(self._label("Welcome gift", 14, bold=True))
-        gift = QHBoxLayout()
-        gift.setSpacing(12)
         for reward in presentation.gift:
-            gift.addWidget(self._reward_row(reward), 1)
-        layout.addLayout(gift)
+            layout.addWidget(self._reward_row(reward))
         if presentation.show_history:
             layout.addSpacing(10)
             layout.addWidget(self._label("Past Anki study", 14, bold=True))
@@ -118,7 +115,7 @@ class WelcomeCard(QFrame):
                 layout.addWidget(self._label(
                     f"{count} {'achievement' if count == 1 else 'achievements'} earned", 13, bold=True,
                 ))
-        layout.addStretch(1)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.details.setWidget(content)
         self.expanded = False
         self.body.show()

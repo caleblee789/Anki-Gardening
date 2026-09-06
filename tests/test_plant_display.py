@@ -72,6 +72,8 @@ def test_growth_display_reports_next_stage(points, stage, next_stage, remaining)
     assert display.next_stage == next_stage
     assert display.points_remaining == remaining
     assert 0.0 <= display.progress <= 1.0
+    assert 0 < display.next_checkpoint_growth_remaining <= remaining
+    assert display.next_checkpoint_base_coins > 0
 
 
 def test_growth_display_handles_fully_grown_without_parallel_rare_override():
@@ -79,6 +81,8 @@ def test_growth_display_handles_fully_grown_without_parallel_rare_override():
     assert grown.fully_grown is True
     assert grown.next_stage is None
     assert grown.progress == 1.0
+    assert grown.next_checkpoint_growth_remaining is None
+    assert grown.next_checkpoint_base_coins is None
 
 
 @pytest.mark.skip(reason="native background now uses a fixed 3:2 cover transform")

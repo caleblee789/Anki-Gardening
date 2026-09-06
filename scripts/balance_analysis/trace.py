@@ -67,7 +67,7 @@ REQUIRED_PARITY_BEHAVIORS: Tuple[str, ...] = (
     "seventh_streak_day_reward",
     "standard_find_natural",
     "standard_find_forced",
-    "daily_find_cap_3_4_5",
+    "daily_find_uncapped",
     "rare_environment_natural",
     "very_rare_environment_natural",
     "ultra_rare_environment_natural",
@@ -665,7 +665,7 @@ def _covered_behaviors_from_manifest(
             elif find_mode == "forced":
                 covered.add("standard_find_forced")
             if values.get("verify_find_caps"):
-                covered.add("daily_find_cap_3_4_5")
+                covered.add("daily_find_uncapped")
             environment_mode = str(
                 values.get("environment_mode", "") or ""
             )
@@ -871,9 +871,9 @@ class GardenGameEngineReplayAdapter:
         if values.get("verify_find_caps"):
             reviewed_before = int(engine.state.daily_stats.reviewed)
             try:
-                for reviewed, expected_cap in ((10, 3), (200, 4), (400, 5)):
+                for reviewed, expected_cap in ((10, None), (199, None), (200, None), (399, None), (400, None), (1000, None)):
                     engine.state.daily_stats.reviewed = reviewed
-                    observed_cap = int(engine.garden_find_status().daily_cap)
+                    observed_cap = engine.garden_find_status().daily_cap
                     if observed_cap != expected_cap:
                         raise AssertionError(
                             "production Find cap differs at "
@@ -1243,7 +1243,7 @@ def project_production_release_state(engine: Any) -> Mapping[str, object]:
         "garden_cycle_remainder": max(0, int(state.garden_cycle_remainder)),
         "find_drought_counter": max(0, int(state.garden_find_drought_count)),
         "daily_find_cap_and_count": {
-            "cap": max(0, int(find_status.daily_cap)),
+            "cap": find_status.daily_cap,
             "count": max(0, int(find_status.finds_today)),
         },
         "environment_pity_counters": {

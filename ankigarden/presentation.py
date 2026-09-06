@@ -443,7 +443,7 @@ def project_diagnostics(
         accent_role = "error"
     elif missing:
         result_state = DiagnosticsUiState.WARNING
-        title = "Some artwork couldn’t be found"
+        title = "Some artwork is missing"
         summary = "Some plants, decorations, or scenery may not appear. Check again or copy the support report."
         icon_name = "warning"
         accent_role = "warning"

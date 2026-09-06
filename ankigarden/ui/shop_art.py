@@ -17,7 +17,7 @@ class ShopProductArtwork(QLabel):
         self._item_id = str(item_id)
         self._source = QPixmap()
         self.setMinimumWidth(0)
-        self.setFixedHeight(132 if landscape else 100)
+        self.setFixedHeight(156 if landscape else 120)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setProperty("shopProductArtwork", True)
         self.setProperty("catalogArtworkLocked", locked)
@@ -56,6 +56,7 @@ class ShopProductArtwork(QLabel):
         ratio = min(available.width() / self._source.width(), height / self._source.height(),
                     1.0 / max(1.0, self.devicePixelRatioF()))
         width, height = self._source.width() * ratio, self._source.height() * ratio
-        rect = QRectF((self.width() - width) / 2, (self.height() - height) / 2, width, height)
+        top = (self.height() - height) / 2 if self._landscape else self.height() - inset - height
+        rect = QRectF((self.width() - width) / 2, top, width, height)
         painter.drawPixmap(rect, self._source, QRectF(self._source.rect()))
         painter.end()

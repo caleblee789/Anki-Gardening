@@ -89,7 +89,12 @@ class WelcomeReceipt:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"version": 1, **asdict(self)}
+        return {
+            "version": 1, **asdict(self),
+            "history_rewards": [asdict(row) for row in self.history_rewards],
+            "achievement_ids": list(self.achievement_ids),
+            "gift_rewards": [asdict(row) for row in self.gift_rewards],
+        }
 
     @classmethod
     def from_dict(cls, value: Any) -> WelcomeReceipt | None:

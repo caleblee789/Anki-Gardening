@@ -52,7 +52,7 @@ EXPECTED_COUNTS = {
     "mastery": 4,
     "backgrounds": 9,
     "plants": 60,
-    "ui": 19,
+    "ui": 20,
     "garden_features": 7,
 }
 RUNTIME_ROOTS = (
@@ -594,6 +594,7 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
         "ui_sync_review_cards": "assets/v6_storybook_gouache/ui/sync_review_cards.webp",
         "ui_growth_resource": "assets/v6_storybook_gouache/ui/growth_resource.webp",
         "ui_garden_coin": "assets/v6_storybook_gouache/ui/garden_coin.webp",
+        "ui_garden_discovery": "assets/v6_storybook_gouache/ui/garden_discovery.webp",
         "ui_shared_growth": "assets/v6_storybook_gouache/ui/shared_growth.webp",
         "ui_stored_growth": "assets/v6_storybook_gouache/ui/stored_growth.webp",
         "ui_checkpoint_badge": "assets/v6_storybook_gouache/ui/checkpoint_badge.webp",

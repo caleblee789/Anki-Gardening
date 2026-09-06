@@ -117,7 +117,7 @@ def test_adapter_is_a_hash_exact_projection_of_the_runtime_catalog():
         0, 400, 2_000, 6_000, 15_000, 35_000
     ]
     assert [facts.standard_daily_cap(value) for value in (10, 199, 200, 399, 400)] == [
-        3, 3, 4, 4, 5
+        None, None, None, None, None
     ]
     assert [
         (row.card_guarantee, row.completion_guarantee)
@@ -453,7 +453,7 @@ def test_repeated_seven_day_run_uses_recurring_streak_source_after_gap():
     assert result.checkpoints[15]["coins.source.seven_day_streak_cycle"] == 10
 
 
-def test_firefly_instant_growth_targets_the_closest_checkpoint_plant():
+def test_firefly_instant_growth_targets_the_nurtured_plant():
     facts = load_catalog_facts()
     scenario = next(
         row for row in approved_scenarios()
@@ -479,16 +479,15 @@ def test_firefly_instant_growth_targets_the_closest_checkpoint_plant():
         milestone_schedule=schedule,
     )
 
-    assert state.plant_growth_units == [907_400, 66_620, 25_740]
+    assert state.plant_growth_units == [908_000, 66_620, 25_140]
     assert state.environment_effect_growth_units == 600
 
     # Production resolves Firefly after each fifth answer, so a normal Growth
-    # crossing midway through the batch may change the closest plant.  The
-    # accelerated day path must preserve that ordering rather than applying
-    # both grants after aggregating all ten answers.
+    # crossing midway through the batch can change overflow destinations.
+    # The accelerated path must preserve exact Growth and Shared Growth.
     state.plant_growth_units = [1_004_600, 75_340, 39_260]
     state.effect_counters[
-        "instant_growth_every_5_plus_3_closest_checkpoint"
+        "instant_growth_every_5_plus_3_nurtured"
     ] = 0
     state.environment_effect_growth_units = 0
     _apply_firefly_review_day(
@@ -500,13 +499,13 @@ def test_firefly_instant_growth_targets_the_closest_checkpoint_plant():
         rhythm_percent=0,
     )
 
-    assert state.plant_growth_units == [1_014_600, 76_640, 40_560]
+    assert state.plant_growth_units == [1_015_200, 76_340, 40_260]
     assert state.environment_effect_growth_units == 600
 
     state.plant_growth_units = [1_988_300, 183_080, 128_100]
     state.active_scenery_id = "rainbow_horizon"
     state.effect_counters[
-        "instant_growth_every_5_plus_3_closest_checkpoint"
+        "instant_growth_every_5_plus_3_nurtured"
     ] = 0
     state.environment_effect_growth_units = 0
     _apply_firefly_review_day(
@@ -524,7 +523,7 @@ def test_firefly_instant_growth_targets_the_closest_checkpoint_plant():
         rhythm_percent=10,
     )
 
-    assert state.plant_growth_units == [2_010_300, 184_880, 129_300]
+    assert state.plant_growth_units == [2_010_900, 184_280, 129_300]
     assert state.environment_effect_growth_units == 1_600
 
 

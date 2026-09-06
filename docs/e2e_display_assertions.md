@@ -190,7 +190,7 @@ control the normal profile.
     hundredth-Growth units, Stored Growth, checkpoint/Full Bloom metadata,
     streak, Garden Coin
     transactions, reward events, stable card lineages, achievement finalization,
-    Garden Find outcomes/daily cap, per-tier environment guarantees, Today’s
+    Garden Find outcomes/uncapped daily totals, per-tier environment guarantees, Today’s
     Cards projection, environment entitlements/locked and queued loadout/
     visibility, Growth Charge inventory, timed Fertilizer periods/queues,
     Booster card batches, collection,

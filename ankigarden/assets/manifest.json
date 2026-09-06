@@ -13017,7 +13017,8 @@
             }
           }
         }
-      }
+      },
+      "native_garden_file": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_garden_continuous.webp"
     },
     {
       "asset_id": "bg_spring_any_soil_master_v6",
@@ -21137,6 +21138,29 @@
       "attribution": "Generated for Anki Garden",
       "source_master_file": "artwork_source/ui/sync_rewards/garden_coin.png",
       "source_master_sha256": "223f92e4d0152ab8edbb10485b2db26a94b64da56d0373f8550044be124f1246"
+    },
+    {
+      "asset_id": "ui_garden_discovery",
+      "category": "ui",
+      "slot": {
+        "ui_id": "garden_discovery"
+      },
+      "variants": [
+        "storybook_gouache",
+        "reward_summary",
+        "transparent_cutout"
+      ],
+      "file": "assets/v6_storybook_gouache/ui/garden_discovery.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "source": "OpenAI built-in image generation; transparent source scaled for UI use",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/rewards/garden_discovery.png",
+      "source_master_sha256": "9704e0632f53566fcb6613b743aa4c322854a33eb0aecf0d79d0fa87ca237042"
     },
     {
       "asset_id": "ui_shared_growth",

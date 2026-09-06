@@ -195,8 +195,8 @@ def test_today_projection_shows_equipped_items_without_scheduling() -> None:
     engine = SimpleNamespace(
         garden_find_status=lambda: SimpleNamespace(
             finds_today=3,
-            daily_cap=3,
-            daily_limit_reached=True,
+            daily_cap=None,
+            daily_limit_reached=False,
             next_card_guaranteed=False,
         ),
         locked_environment_id=lambda kind: "rain" if kind == "garden_feature" else "spring",
@@ -208,7 +208,7 @@ def test_today_projection_shows_equipped_items_without_scheduling() -> None:
     assert result.remaining_cards == 18
     assert result.cutoff_text == "cutoff:123000"
     assert result.status.finds_line == (
-        "3 / 3 earned today · Daily limit reached"
+        "3 Finds today"
     )
     assert result.status.finds_detail == ""
     assert result.status.heading == "Today’s cards"
@@ -237,7 +237,7 @@ def test_today_projection_uses_unavailable_copy_when_verification_fails() -> Non
     engine = SimpleNamespace(
         garden_find_status=lambda: SimpleNamespace(
             finds_today=2,
-            daily_cap=3,
+            daily_cap=None,
             daily_limit_reached=False,
             next_card_guaranteed=True,
         ),
@@ -252,7 +252,7 @@ def test_today_projection_uses_unavailable_copy_when_verification_fails() -> Non
         "Normal Garden Growth is unaffected."
     )
     assert result.status.finds_line == (
-        "2 / 3 earned today · Next card guaranteed"
+        "2 Finds today · Next card guaranteed"
     )
     assert result.starting_cards is None
     assert result.remaining_cards is None

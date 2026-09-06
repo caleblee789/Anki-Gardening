@@ -402,7 +402,7 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
     assert f'title="{name} · 30 / 500 Growth"' in html
     assert f'class="ag-home__plant-name">{name}</span>' in html
     assert 'class="ag-home__plant-stage"' not in html
-    assert '>To Full Bloom: 30 / 500 Growth</span>' in html
+    assert '>Next: Full Bloom · 30 / 500 Growth</span>' in html
     assert "white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 400px)" in html

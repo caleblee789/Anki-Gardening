@@ -79,11 +79,6 @@ def _item(asset: dict, slot: int) -> dict:
     }
 
 
-def _declared_scene_scale(asset: dict) -> float:
-    placement = asset["placement"]
-    return placement["scene_scale_correction"] * placement["visual_scale_correction"]
-
-
 def test_every_asset_declares_visible_bounds_ground_anchor_and_layout_family() -> None:
     plants = [row for row in _assets() if row.get("category") == "plants"]
     release_species = _release_species(plants)
@@ -132,10 +127,20 @@ def test_every_asset_declares_visible_bounds_ground_anchor_and_layout_family() -
 
 def test_v6_release_stage_progression_grows_through_flowering_then_uses_rare_detail() -> None:
     rows = _assets()
+    background = _release_background(rows)
     for species in _release_species(rows):
-        scales = [_declared_scene_scale(_release_asset(rows, species, stage)) for stage in STAGES]
-        assert scales[:5] == sorted(scales[:5]), (species, scales)
-        assert scales[4] * 0.90 <= scales[5] <= scales[4], (species, scales)
+        sizes = []
+        for stage in STAGES:
+            asset = _release_asset(rows, species, stage)
+            layout = plant_layout(
+                960, 540, [_item(asset, 4)], background["placement"],
+                composition_count=6, protected_status=False,
+            )[0]
+            sizes.append(max(layout.visible.width, layout.visible.height))
+        # Asset scale corrections normalize different canvas/alpha bounds; the
+        # rendered silhouette is the learner-visible progression contract.
+        assert sizes[:5] == sorted(sizes[:5]), (species, sizes)
+        assert sizes[4] * 0.90 <= sizes[5] <= sizes[4] * 1.25, (species, sizes)
 
 
 def test_twilight_uses_three_monotonic_perspective_scale_bands() -> None:
@@ -161,7 +166,7 @@ def test_twilight_uses_three_monotonic_perspective_scale_bands() -> None:
             assert far.depth < middle.depth < near.depth
 
 
-def test_every_v6_release_base_is_centered_and_contained_on_each_twilight_surface() -> None:
+def test_every_v6_release_ground_anchor_is_centered_and_base_is_contained() -> None:
     rows = _assets()
     background = _release_background(rows)
     for species in _release_species(rows):
@@ -178,10 +183,10 @@ def test_every_v6_release_base_is_centered_and_contained_on_each_twilight_surfac
                     protected_status=False,
                 )
                 for layout in layouts:
-                    base_center = layout.base_rect.x + layout.base_rect.width / 2
+                    ground_center = layout.ground_anchor[0]
                     support_line = layout.grounding.support_line
                     surface_center = (support_line[0][0] + support_line[-1][0]) / 2
-                    assert base_center == pytest.approx(
+                    assert ground_center == pytest.approx(
                         surface_center,
                         abs=max(0.5, layout.contact_plane.width * 0.01),
                     )

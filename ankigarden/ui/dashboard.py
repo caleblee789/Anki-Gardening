@@ -35,6 +35,7 @@ from aqt.qt import (
     QMenu,
     QMessageBox,
     QProgressBar,
+    QRect,
     QPixmap,
     QPushButton,
     QScrollArea,
@@ -668,7 +669,8 @@ def _reserve_button_text_fit(button: QPushButton) -> None:
         )
         # The extra two pixels reserve the visible one-pixel border on each
         # edge. Minimum width may only grow as native styling settles.
-        required_width = text_width + (2 * horizontal_padding) + 2
+        icon_width = 0 if button.icon().isNull() else button.iconSize().width() + 6
+        required_width = text_width + icon_width + (2 * horizontal_padding) + 2
         button.setMinimumWidth(max(int(button.minimumWidth()), required_width))
         button.setProperty("textFitMinimumWidth", required_width)
         button.updateGeometry()
@@ -1053,7 +1055,7 @@ def _fertilizer_action_projection(
                 "Buy and use next"
             ), "queue"
         if stored_disposition is FertilizerStoredItemDisposition.USE:
-            return "Use now", "apply"
+            return "Use", "apply"
 
     try:
         resolved = PurchaseDisposition(disposition)
@@ -1143,13 +1145,14 @@ def _nursery_collection_receipt_actions(
     collection_complete: bool,
     can_place: bool = True,
 ) -> tuple[str, ...]:
-    """Keep the final purchase action unique across banner and empty state."""
+    """Offer placement only when an eligible garden bed is available."""
 
-    primary = "Place in garden" if bool(can_place) else "Open garden"
+    if not can_place:
+        return ("View in Collection",)
     return (
-        (primary,)
+        ("Place in garden",)
         if bool(collection_complete) else
-        (primary, "View in collection")
+        ("Place in garden", "View in Collection")
     )
 
 
@@ -3100,8 +3103,48 @@ class _ShellBehavior:
         super().keyPressEvent(event)
 
 
+class _WorkspaceScrim(QFrame):
+    """Cover the complete inactive workspace while a native task is open."""
+
+    def __init__(self, workspace: QWidget) -> None:
+        super().__init__(workspace)
+        self.setObjectName("gardenWorkspaceScrim")
+        self.setStyleSheet("QFrame#gardenWorkspaceScrim {background:rgba(3, 14, 10, 125);border:0;}")
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        workspace.installEventFilter(self)
+        self.setGeometry(workspace.rect())
+
+    def eventFilter(self, watched: QObject, event: Any) -> bool:
+        if watched is self.parentWidget() and event.type() == QEvent.Type.Resize:
+            self.setGeometry(self.parentWidget().rect())
+        return super().eventFilter(watched, event)
+
+
 class DialogShell(_ShellBehavior, QDialog):
     """Native focused task window; shares styling with workspace pages."""
+
+    def showEvent(self, event: Any) -> None:
+        super().showEvent(event)
+        if not (self.isModal() or getattr(self, "_dialog_size_class", None) == DialogSizeClass.SETTINGS):
+            return
+        workspace = self.parentWidget()
+        while workspace is not None and not hasattr(workspace, "workspace_stack"):
+            workspace = workspace.parentWidget()
+        if workspace is None:
+            return
+        scrim = getattr(self, "_workspace_scrim", None)
+        if scrim is None:
+            scrim = self._workspace_scrim = _WorkspaceScrim(workspace)
+            self.destroyed.connect(scrim.deleteLater)
+        scrim.setGeometry(workspace.rect())
+        scrim.show()
+        scrim.raise_()
+
+    def hideEvent(self, event: Any) -> None:
+        scrim = getattr(self, "_workspace_scrim", None)
+        if scrim is not None:
+            scrim.hide()
+        super().hideEvent(event)
 
 
 class PageShell(_ShellBehavior, QWidget):
@@ -3689,9 +3732,15 @@ class ConfirmationDialog:
     """One confirmation contract for destructive or replacement actions."""
 
     @staticmethod
-    def confirm(parent: QWidget, title: str, message: str, *, confirm_label: str, cancel_label: str = "Cancel") -> bool:
+    def confirm(parent: QWidget, title: str, message: str, *, confirm_label: str, cancel_label: str = "Cancel", compact: bool = False) -> bool:
         dialog = GardenDialog(parent.window(), title)
         dialog.apply_size_policy(DialogSizeClass.TRANSACTION)
+        if compact:
+            dialog.apply_view_size_profile("simple")
+            dialog.setProperty("compactConfirmation", True)
+            dialog.setStyleSheet(dialog.styleSheet() + f"QWidget[compactConfirmation='true'] {{border:1px solid {GARDEN_THEME['strong_border']};background:{GARDEN_THEME['raised_surface']};}}")
+            dialog._shell_layout.setContentsMargins(20, 16, 20, 16)
+            dialog._shell_layout.setSpacing(12)
         body = QLabel(_learner_text(message), dialog)
         body.setWordWrap(True)
         dialog.body_layout.addWidget(body)
@@ -4244,7 +4293,11 @@ class PurchaseConfirmationDialog(DialogShell):
             )
 
     def _populate_target(self, quote: PurchaseQuote, presentation: PurchasePresentation) -> None:
-        self.target_name.setText(f"For {presentation.target_name}" if presentation.target_name else "")
+        self.target_name.setText(
+            (f"Nurtured plant: {presentation.target_name}" if quote.kind is PurchaseKind.FERTILIZER
+             and presentation.target_name != "Garden" else f"For {presentation.target_name}")
+            if presentation.target_name else ""
+        )
         self.target_chip.setVisible(bool(presentation.target_name))
         if not presentation.target_name:
             return
@@ -4485,8 +4538,11 @@ class PurchaseConfirmationDialog(DialogShell):
             if spec is not None:
                 self.outcome_label.setText(f"+{spec.growth_per_answer:,} Growth per card for {spec.card_count:,} cards.")
                 timing = (f"Adds {spec.card_count:,} more cards of {spec.name}." if self.quote.disposition is PurchaseDisposition.EXTENDED else
-                          f"Begins when {self.quote.current_item_name or 'the current Fertilizer'} runs out.")
+                          f"Starts after {max(0, self.quote.resulting_cards_remaining - spec.card_count):,} cards.")
                 self.timing_label.setText(timing)
+        if growth_charge_purchase and display_status in {PurchaseStatus.READY, PurchaseStatus.STALE_BALANCE}:
+            self.outcome_label.setText(f"Adds {GROWTH_CHARGES[self.quote.item_id].growth:,} Growth when used.")
+            self.timing_label.setText("Saved in Plant supplies.")
         self.timing_label.setVisible(bool(self.timing_label.text()))
         self.outcome_label.setVisible(bool(self.outcome_label.text()))
         self._populate_artwork(self.quote, presentation)
@@ -4527,7 +4583,7 @@ class PurchaseConfirmationDialog(DialogShell):
                 label.setText("")
                 value.setText("")
                 continue
-            label.setText(learner_card_copy(fact.label) + (":" if fact.label else ""))
+            label.setText(("Owned" if fact.key == "inventory" else learner_card_copy(fact.label)) + (":" if fact.label else ""))
             label.setVisible(bool(fact.label))
             value.setText(learner_card_copy(fact.value))
             value.setStyleSheet("font-weight:600;" if fact.emphasized else "")
@@ -4617,6 +4673,8 @@ class PurchaseConfirmationDialog(DialogShell):
             self.quote,
             presentation,
         )
+        if queued_fertilizer_preview and self.quote.disposition is PurchaseDisposition.EXTENDED:
+            primary_label = "Buy and extend"
         primary_accessible_name = (
             primary_label
             if show_cost else
@@ -5167,11 +5225,13 @@ class PurchaseConfirmationDialog(DialogShell):
             )
         margins = self.layout().contentsMargins()
         available = max(0, int(width) - margins.left() - margins.right())
-        balance_width = self.balance_label.fontMetrics().horizontalAdvance(self.balance_label.text().replace("\n", " "))
+        balance_copy = self.balance_label.text().replace("\nAfter purchase: ", " → ")
+        balance_width = self.balance_label.fontMetrics().horizontalAdvance(balance_copy) + 4
         cost_width = self.price_label.sizeHint().width() + balance_width + 78
-        self.cost_summary_layout.setDirection(QBoxLayout.Direction.TopToBottom if cost_width > available else QBoxLayout.Direction.LeftToRight)
-        if cost_width > available:
-            self.balance_label.setText(self.balance_label.text().replace(" → ", "\nAfter purchase: "))
+        cost_stacked = cost_width > available
+        self.cost_summary_layout.setDirection(QBoxLayout.Direction.TopToBottom if cost_stacked else QBoxLayout.Direction.LeftToRight)
+        self.balance_label.setMinimumWidth(0 if cost_stacked else balance_width)
+        self.balance_label.setText(balance_copy.replace(" → ", "\nAfter purchase: ") if cost_stacked else balance_copy)
         summary = self.summary_responsive.evaluate(available)
         comparison = (
             self.comparison_responsive.evaluate(available)
@@ -5425,6 +5485,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.content_layout = QVBoxLayout(self.content_host)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(12)
+        self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.alert = QLabel("", self.content_host)
         self.alert.setWordWrap(True)
@@ -5465,6 +5526,8 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.summary_layout = QVBoxLayout(self.summary_panel)
         self.summary_layout.setContentsMargins(12, 12, 12, 12)
         self.summary_layout.setSpacing(8)
+        self.summary_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.summary_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
         self.transition_row = QWidget(self.summary_panel)
         self.transition_row.setProperty("growthChargeTransitionRow", True)
@@ -6143,7 +6206,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
 
         transition_copy = self._transition_copy(data)
         self.transition_statement.setText(data.plant_name)
-        self.transition_statement.show()
+        self.transition_statement.setVisible(data.variant != "success" or not data.stage_changed)
         self.transition_statement.setAccessibleName(transition_copy)
         self.before_stage_label.setText(
             format_status_label(data.before_stage_name)
@@ -6182,7 +6245,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         )
         self.compact_growth_label.setText("Total Growth")
         self.compact_inventory_label.setText(
-            f"{data.charge_name} remaining" if committed else "Charges remaining"
+            "Owned"
         )
         self.compact_inventory_value.setText(
             f"{data.after_charge_count:,}" if committed else
@@ -6190,7 +6253,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         )
         destination = format_status_label(data.next_stage_name)
         self.compact_progress_label.setText(
-            (f"To {destination}" if committed else f"To {destination} after use")
+            f"Progress toward {destination}"
             if destination else ("Stage" if committed else "Stage after use")
         )
         self.compact_stage_progress.setText(
@@ -6221,7 +6284,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         )
         self.reward_label.setText(
             "Coins earned" if committed else
-            f"Reaching {format_status_label(data.after_stage_name)} earns"
+            f"Reach {format_status_label(data.after_stage_name)}"
         )
         self.reward_label.setWordWrap(True)
         self.reward_banner.setVisible(reward_visible)
@@ -6317,7 +6380,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
     def _resize_stage_artwork(self, *, compact: bool) -> None:
         data = getattr(self, "dialog_data", None)
         committed = data is not None and data.variant == "success"
-        tile_size = 116 if compact else 128
+        tile_size = 104 if compact else 116
         art_size = tile_size - 4
         for role, host, tile, artwork in (
             ("before", self.before_stage_host, self.before_stage_tile, self.before_stage_artwork),
@@ -6517,7 +6580,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             else:
                 data = self._data_from_quote(quote)
                 self._render_shared_summary(data)
-            self.set_dialog_title("Use a Growth Charge?")
+            self.set_dialog_title(f"Use {quote.charge_name}?")
             self.cancel_action.setText("Cancel")
             self.use_action.setText("Use 1 charge")
             self.use_action.setAccessibleName(f"Use {quote.charge_name}")
@@ -6782,7 +6845,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             return
         data = self._data_from_outcome(outcome)
         self.set_dialog_title(
-            plant_stage_event(data.plant_species, data.after_stage_name)
+            f"{plant_species_name(data.plant_species)} reached {format_status_label(data.after_stage_name)}"
             if data.stage_changed else "Growth added"
         )
         self._render_shared_summary(data)
@@ -6807,15 +6870,6 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             enabled_description="Close this result.",
         )
         self.apply_view_size_profile("success")
-        if self._state_transition_size is not None:
-            stable_height = max(1, int(self._state_transition_size.height()))
-            self.setMinimumHeight(stable_height)
-            self.setMaximumHeight(stable_height)
-            self.resize(
-                max(1, int(self._state_transition_size.width())),
-                stable_height,
-            )
-            self.setProperty("growthChargeTransitionHeight", stable_height)
         self.summary_panel.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         set_keyboard_focus_surface(self.summary_panel)
         self.summary_panel.setFocus()
@@ -6828,7 +6882,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.schedule_content_fit(
             "growth-charge-success-in-place",
             breathing_room=8,
-            preserve_transition=True,
+            preserve_transition=False,
         )
 
     @staticmethod
@@ -8406,8 +8460,7 @@ class _StarterPlantCard(QFrame):
         self.setProperty("starterPlantCard", True)
         self.setProperty("selected", False)
         self.setMinimumWidth(0)
-        self.setFixedHeight(240)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.setStyleSheet(
             "QFrame[starterPlantCard='true'] {"
             f"border:1px solid {GARDEN_THEME['subtle_border']};border-radius:8px;"
@@ -8415,7 +8468,7 @@ class _StarterPlantCard(QFrame):
             "QFrame[starterPlantCard='true'][selected='true'] {"
             f"border-color:{GARDEN_THEME['action_accent']};background:{GARDEN_THEME['selected_surface']};}}"
             "QPushButton[starterSelectionControl='tile'] {"
-            "min-width:0;min-height:0;max-height:164px;padding:0;"
+            "min-width:0;min-height:164px;max-height:164px;padding:0;"
             "border:1px solid transparent;border-radius:5px;background:transparent;}"
             "QPushButton[starterSelectionControl='tile']:hover {"
             f"background:{GARDEN_THEME['selected_surface']};}}"
@@ -8468,7 +8521,8 @@ class _StarterPlantCard(QFrame):
                 f"QPushButton:focus {{border-color:{GARDEN_THEME['focus_ring']};}}"
             )
         self.stage_label = QLabel(self)
-        self.stage_label.setFixedSize(80, 28)
+        self.stage_label.setMinimumHeight(28)
+        self.stage_label.setMinimumWidth(0)
         self.stage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.stage_label.setStyleSheet(f"font-size:12px;color:{GARDEN_THEME['text_secondary']};")
         navigation.addStretch(1)
@@ -8478,10 +8532,13 @@ class _StarterPlantCard(QFrame):
         navigation.addStretch(1)
         layout.addLayout(navigation)
         self.indicator = QLabel(self)
-        self.indicator.setFixedHeight(16)
+        self.indicator.setParent(self.selection)
+        self.indicator.setFixedSize(20, 20)
+        self.indicator.move(0, 0)
+        self.indicator.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.indicator.setStyleSheet(f"font-size:11px;color:{GARDEN_THEME['action_accent']};")
-        layout.addWidget(self.indicator)
+        self.indicator.hide()
         self.selection.clicked.connect(lambda _checked=False: self.chosen.emit(self.species))
         self.previous.clicked.connect(lambda _checked=False: self._change_stage(-1))
         self.next_button.clicked.connect(lambda _checked=False: self._change_stage(1))
@@ -8500,7 +8557,9 @@ class _StarterPlantCard(QFrame):
 
     def set_selected(self, selected: bool) -> None:
         self.selection.setChecked(selected)
-        self.indicator.setText("Selected" if selected else "")
+        self.indicator.setText("✓" if selected else "")
+        self.indicator.setVisible(selected)
+        self.indicator.raise_()
         if bool(self.property("selected")) != selected:
             self.setProperty("selected", selected)
             self.style().unpolish(self)
@@ -8528,7 +8587,7 @@ class _StarterPlantCard(QFrame):
         self.artwork.setProperty("gardenRole", role or "")
         self.artwork.show_pixmap(pixmap, animate=animate)
         stage_name = format_status_label(stage)
-        self.stage_label.setText(stage_name)
+        self.stage_label.setText(f"Preview: {stage_name}")
         self.stage_label.setAccessibleName(plant_stage_title(self.species, stage))
 
 
@@ -9856,6 +9915,9 @@ class ProgressCardGrid(QWidget):
         self.scroll.setProperty("progressCardsOnlyScroll", True)
 
     def add_card(self, card: QWidget) -> None:
+        # Batched cards must have an owner before filtering makes them visible.
+        if card.parentWidget() is None:
+            card.setParent(self.container)
         card.setMinimumHeight(
             max(self._minimum_card_height, int(card.minimumHeight()))
         )
@@ -9864,6 +9926,8 @@ class ProgressCardGrid(QWidget):
         self._reflow()
 
     def add_full_width(self, widget: QWidget) -> None:
+        if widget.parentWidget() is None:
+            widget.setParent(self.container)
         self._entries.append((widget, True))
         self._reflow()
 
@@ -9871,6 +9935,8 @@ class ProgressCardGrid(QWidget):
         self,
         heading: QWidget,
         cards: list[QWidget],
+        *,
+        span_singleton_row: bool = True,
     ) -> None:
         """Keep a category heading with its first complete catalogue row."""
 
@@ -9887,7 +9953,7 @@ class ProgressCardGrid(QWidget):
         first_row = ResponsiveTileGrid(
             minimum_tile_width=self._minimum_item_width,
             maximum_columns=self._wide_columns,
-            span_singleton_row=True,
+            span_singleton_row=span_singleton_row,
         )
         first_row.setProperty("completeCategoryFirstRow", True)
         for card in cards[:first_row_count]:
@@ -9917,6 +9983,8 @@ class ProgressCardGrid(QWidget):
             self.grid.setRowStretch(row_index, 0)
 
     def _reflow(self) -> None:
+        if getattr(self, "_defer_reflow", False):
+            return
         while self.grid.count():
             self.grid.takeAt(0)
         self._reset_row_metrics()
@@ -10109,12 +10177,21 @@ class ProgressCardGrid(QWidget):
         self.scroll.setProperty("completeRowContentOriginY", content_origin_y)
 
     def finish(self) -> None:
+        self._defer_reflow = False
         self._reflow()
         # Callers update the no-results visibility immediately after finish().
         # Re-measure once that state is applied so 0, 1, and full-result views
         # all retain their natural content height.
-        QTimer.singleShot(0, self._reflow)
-        QTimer.singleShot(0, self._sync_complete_row_viewport)
+        if not hasattr(self, "_settle_timer"):
+            self._settle_timer = QTimer(self)
+            self._settle_timer.setSingleShot(True)
+            self._settle_timer.timeout.connect(self._settle_grid)
+        if not self._settle_timer.isActive():
+            self._settle_timer.start(0)
+
+    def _settle_grid(self) -> None:
+        self._reflow()
+        self._sync_complete_row_viewport()
 
     def resizeEvent(self, event: Any) -> None:
         margins = self.grid.contentsMargins()
@@ -10920,6 +10997,7 @@ class CollectionTab(str, Enum):
     """Stable deep-link identities for Collection's persistent secondary views."""
 
     PLANTS = "plants"
+    APPEARANCE = "appearance"
     SCENERY = "scenery"
     DECORATIONS = "decorations"
     GARDEN_LANDMARKS = "garden-landmarks"
@@ -10940,9 +11018,9 @@ class PlantCollectionPane(ProgressCardGrid):
         super().__init__(
             "Plant collection",
             parent,
-            wide_columns=5,
-            minimum_item_width=170,
-            minimum_card_height=158,
+            wide_columns=2,
+            minimum_item_width=140,
+            minimum_card_height=148,
         )
         self.setProperty("collectionPane", CollectionTab.PLANTS.value)
 
@@ -10965,8 +11043,7 @@ class CollectionSubtabs(QWidget):
         self.buttons: dict[CollectionTab, QPushButton] = {}
         for tab, label_text in (
             (CollectionTab.PLANTS, "Plants"),
-            (CollectionTab.SCENERY, "Scenery"),
-            (CollectionTab.DECORATIONS, "Decorations"),
+            (CollectionTab.APPEARANCE, "Appearance"),
             (CollectionTab.GARDEN_LANDMARKS, "Landmarks"),
         ):
             if tab is CollectionTab.GARDEN_LANDMARKS and not landmarks_enabled():
@@ -11233,15 +11310,23 @@ class CollectionSection(QWidget):
         focus_tier_id: str = "",
         emit: bool = True,
     ) -> None:
-        normalized = CollectionTab.normalize(tab)
+        requested = CollectionTab.normalize(tab)
+        appearance_tabs = {CollectionTab.APPEARANCE, CollectionTab.SCENERY, CollectionTab.DECORATIONS}
+        normalized = CollectionTab.APPEARANCE if requested in appearance_tabs else requested
         if focus_tier_id and landmarks_enabled():
             normalized = CollectionTab.GARDEN_LANDMARKS
             self._pending_focus_tier_id = str(focus_tier_id)
         elif normalized is CollectionTab.PLANTS:
             self._pending_focus_tier_id = ""
         self.subtabs.set_current(normalized, emit=False)
-        if normalized in {CollectionTab.SCENERY, CollectionTab.DECORATIONS, CollectionTab.GARDEN_LANDMARKS} and self.appearance is not None:
-            self.appearance.show_category({CollectionTab.SCENERY: "scenery", CollectionTab.DECORATIONS: "garden_feature", CollectionTab.GARDEN_LANDMARKS: "landmark"}[normalized])
+        if normalized in {CollectionTab.APPEARANCE, CollectionTab.GARDEN_LANDMARKS} and self.appearance is not None:
+            kind = {CollectionTab.SCENERY: "scenery", CollectionTab.DECORATIONS: "garden_feature",
+                    CollectionTab.GARDEN_LANDMARKS: "landmark"}.get(requested)
+            if kind is None:
+                kind = self.appearance._appearance_kind
+                if kind == "landmark":
+                    kind = "scenery"
+            self.appearance.show_category(kind)
             self.stack.setCurrentWidget(self.appearance)
         else:
             if self.appearance is not None:
@@ -11986,7 +12071,7 @@ class GardenSettingsDialog(GardenDialog):
         )
         self.setStyleSheet(_garden_dialog_stylesheet() + f"""
             QLabel[saveStatus='true'] {{ padding:5px 8px; border-radius:8px; }}
-            QLabel[unsavedState='true'] {{ color:{GARDEN_THEME['action_accent']}; font-size:13px; font-weight:600; }}
+            QLabel[unsavedState='true'] {{ color:{GARDEN_THEME['text_secondary']}; font-size:13px; font-weight:400; }}
             QFrame[diagnosticsCard='true'] {{ background:transparent; border:0; }}
             QLineEdit[validationState='error'] {{ border:2px solid {GARDEN_THEME['error']}; padding:6px 9px; }}
             QLabel[fieldError='true'] {{ color:#ffb4ab; font-size:12px; font-weight:600; }}
@@ -11997,6 +12082,8 @@ class GardenSettingsDialog(GardenDialog):
             QLabel[diagnosticsCopyConfirmation='true'] {{ color:{GARDEN_THEME['success']}; font-size:13px; font-weight:600; padding:0 2px; }}
             QPushButton[restoreDisplayDefaults='true'] {{ min-height:36px; max-height:36px; padding:0 8px; background:transparent; border:0; color:{GARDEN_THEME['text_secondary']}; }}
             QPushButton[restoreDisplayDefaults='true']:enabled:hover {{ background:{GARDEN_THEME['raised_surface']}; color:{GARDEN_THEME['text_primary']}; }}
+            QPushButton[disclosureRow='true'] {{ border:0; text-align:left; }}
+            QPushButton[disclosureRow='true']:checked {{ background:transparent; border:0; }}
         """)
 
         self.tabs = GardenTabs("Anki Garden settings sections")
@@ -12305,9 +12392,9 @@ class GardenSettingsDialog(GardenDialog):
         self.debug_report_heading.hide()
         self.debug_report = QTextEdit()
         self.debug_report.setReadOnly(True)
-        self.debug_report.setPlaceholderText("Display telemetry report appears here.")
-        # Technical details stay bounded and selectable. Long reports scroll
-        # inside this deliberately self-contained diagnostic control.
+        self.debug_report.setPlaceholderText("Support details will appear here.")
+        # Let the settings body own scrolling. The selectable report grows
+        # to its wrapped text instead of creating a second scroll region.
         self.debug_report.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
@@ -12351,6 +12438,10 @@ class GardenSettingsDialog(GardenDialog):
         self.report_details_toggle.setIconSize(QSize(16, 16))
         self.report_details_toggle.setCheckable(True)
         _set_button_variant(self.report_details_toggle, BUTTON_VARIANT_TERTIARY)
+        self.report_details_toggle.setProperty("disclosureRow", True)
+        set_semantic_role(self.report_details_toggle, SemanticRole.DISCLOSURE)
+        set_button_size(self.report_details_toggle, ButtonSize.COMPACT_ROW)
+        _reserve_button_text_fit(self.report_details_toggle)
         self.report_details_toggle.toggled.connect(self._toggle_debug_report)
         self.report_actions.addStretch(1)
         a_layout.addWidget(self.report_actions_panel)
@@ -12416,7 +12507,7 @@ class GardenSettingsDialog(GardenDialog):
         preferences.setContentsMargins(0, 0, 0, 0)
         preferences.setVerticalSpacing(4)
         self.advanced_card.setMaximumHeight(16777215)
-        rewards_note = QLabel("These preferences change notifications. You still earn rewards.")
+        rewards_note = QLabel("Rewards are still earned when notifications are off.")
         rewards_note.setWordWrap(True)
         rewards_note.setProperty("dialogSubtitle", True)
         preferences.addWidget(rewards_note, 7, 0, 1, 2)
@@ -12717,13 +12808,7 @@ class GardenSettingsDialog(GardenDialog):
         self.set_dialog_dirty(dirty)
         self.cancel_settings.setText("Cancel")
         self.cancel_settings.setAccessibleName(self.cancel_settings.text())
-        self.unsaved_count.setText(
-            "1 unsaved change"
-            if modified_count == 1 else
-            f"{modified_count} unsaved changes"
-            if modified_count > 1 else
-            ""
-        )
+        self.unsaved_count.setText("Unsaved changes" if dirty else "")
         self.unsaved_count.setAccessibleDescription(self.unsaved_count.text())
         self.unsaved_count.setVisible(dirty)
         set_control_enabled(
@@ -13277,8 +13362,7 @@ class MemoryTimeline(QWidget):
         self.updateGeometry()
 
 
-class PlantStoryDialog(GardenDialog):
-    chooseAnother = pyqtSignal()
+class _PlantStoryContent:
 
     def __init__(self, parent: QWidget, engine: Any, plant_id: str) -> None:
         super().__init__(parent, "Plant details")
@@ -13436,8 +13520,8 @@ class PlantStoryDialog(GardenDialog):
         content.addWidget(hero)
 
         self.stage_path = PlantStageStrip(
-            breakpoint=536,
-            minimum_tile_width=80,
+            breakpoint=630,
+            minimum_tile_width=92,
         )
         self.stage_path.setProperty("storyStages", True)
         self.stage_path.setAccessibleName("Six plant growth stages")
@@ -13449,7 +13533,7 @@ class PlantStoryDialog(GardenDialog):
         for stage_key in GROWTH_STAGES:
             node = QFrame()
             node.setProperty("storyStage", True)
-            node.setFixedHeight(104)
+            node.setMinimumHeight(104)
             node.setMinimumWidth(0)
             node.setSizePolicy(
                 QSizePolicy.Policy.Ignored,
@@ -13472,7 +13556,7 @@ class PlantStoryDialog(GardenDialog):
             requirement = QLabel("")
             requirement.setProperty("storyStageRequirement", True)
             requirement.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            requirement.setWordWrap(False)
+            requirement.setWordWrap(True)
             requirement.hide()
             node_layout.addWidget(stage_preview, 0, Qt.AlignmentFlag.AlignHCenter)
             node_layout.addWidget(stage_name)
@@ -13483,7 +13567,12 @@ class PlantStoryDialog(GardenDialog):
                 node,
                 IndividualProgressionStageState.LOCKED,
             )
-        self._reflow_story_stages(540)
+        self.stage_path.allowed_columns = (3, 6)
+        self.stage_path.minimum_tile_width = 92
+        self._reflow_story_stages(600)
+        progress_heading = QLabel("This plant’s progress")
+        apply_text_role(progress_heading, TextRole.CARD_TITLE)
+        content.addWidget(progress_heading)
         content.addWidget(self.stage_path)
 
         self.story_panel = QFrame()
@@ -13505,7 +13594,7 @@ class PlantStoryDialog(GardenDialog):
         self.up_next = QFrame()
         self.up_next.setProperty("upNext", True)
         self.up_next.setMinimumHeight(0)
-        self.up_next.setMaximumHeight(140)
+        self.up_next.setMaximumHeight(16777215)
         up_next_layout = QVBoxLayout(self.up_next)
         up_next_layout.setContentsMargins(12, 10, 12, 10)
         up_next_layout.setSpacing(4)
@@ -13608,7 +13697,7 @@ class PlantStoryDialog(GardenDialog):
         # enough for six compact stage tiles. Reserve the multi-row layouts
         # for genuinely narrow windows instead of making the canonical dialog
         # scroll past its stage progress.
-        columns = 6 if width >= 536 else 3 if width >= 430 else 2
+        columns = 6 if width >= 630 else 3
         if int(self.stage_path.property("stageColumns") or 0) == columns:
             return
         self.stage_path.set_column_count(columns)
@@ -13665,13 +13754,13 @@ class PlantStoryDialog(GardenDialog):
         stage = format_status_label(plant.growth_stage)
         active = self.engine.state.active_plant_id == plant.plant_id
         slot = getattr(plant, "slot_index", None)
-        bed = f"Bed {int(slot) + 1}" if isinstance(slot, int) and slot >= 0 else "Collection"
+        bed = f"Bed {int(slot) + 1}" if isinstance(slot, int) and slot >= 0 else "In storage"
         summary_parts = [bed]
         if active:
             summary_parts.append("Nurtured")
         self.meta_values["summary"].setText(" · ".join(summary_parts))
         self.meta_values["planted"].setText(
-            f"Planted {self._local_date(plant.planted_on)}"
+            f"Added {self._local_date(plant.planted_on)}"
         )
         progress = growth_display(plant_growth_points(plant))
         self.stage_status_badge.hide()
@@ -13751,7 +13840,7 @@ class PlantStoryDialog(GardenDialog):
                 IndividualProgressionStageState.REACHED: "Reached",
                 IndividualProgressionStageState.CURRENT: "Current",
                 IndividualProgressionStageState.NEXT: "Next",
-                IndividualProgressionStageState.LOCKED: "Later",
+                IndividualProgressionStageState.LOCKED: "Not reached",
             }[stage_state]
             requirement = self.stage_requirements[stage_key]
             stage_locked = stage_state is IndividualProgressionStageState.LOCKED
@@ -13825,6 +13914,21 @@ class PlantStoryDialog(GardenDialog):
             value,
             scheduler_day=str(value)[:10],
         )
+
+
+class PlantStoryDialog(_PlantStoryContent, GardenDialog):
+    """Standalone history and progress opened from Garden."""
+    chooseAnother = pyqtSignal()
+
+
+class CollectionDetailPage(GardenPage):
+    """Embedded Collection detail; the workspace owns its close behavior."""
+
+    def accept(self) -> None:
+        self.finished.emit(int(QDialog.DialogCode.Accepted))
+
+    def reject(self) -> None:
+        self.finished.emit(int(QDialog.DialogCode.Rejected))
 
 
 class NurseryDialog(PageShell):
@@ -13961,7 +14065,32 @@ class NurseryDialog(PageShell):
         # A 38 px banner action plus the toast's 8 px vertical margins needs
         # 54 px; the previous 48 px cap clipped the action by 6–7 px.
         self.nursery_toast.setMinimumHeight(54)
-        self.nursery_toast.setMaximumHeight(60)
+        receipt_layout = self.nursery_toast.layout()
+        while receipt_layout.count():
+            receipt_layout.takeAt(0)
+        receipt_summary = QWidget(self.nursery_toast)
+        receipt_summary.setMinimumWidth(0)
+        receipt_copy = QHBoxLayout(receipt_summary)
+        receipt_copy.setContentsMargins(0, 0, 0, 0)
+        receipt_copy.setSpacing(8)
+        receipt_copy.addWidget(self.nursery_toast.icon)
+        receipt_copy.addWidget(self.nursery_toast.message, 1)
+        receipt_actions = QWidget(self.nursery_toast)
+        receipt_buttons = QHBoxLayout(receipt_actions)
+        receipt_buttons.setContentsMargins(0, 0, 0, 0)
+        receipt_buttons.setSpacing(8)
+        receipt_buttons.addStretch(1)
+        receipt_buttons.addWidget(self.nursery_toast.action)
+        receipt_buttons.addWidget(self.nursery_toast.dismiss)
+        receipt_layout.addWidget(receipt_summary, 1)
+        receipt_layout.addWidget(receipt_actions)
+        self.receipt_responsive = AdaptiveSplit.for_box_layout(
+            "shop.receipt", AdaptiveRegion.measured("receipt.copy", receipt_summary, floor=250),
+            AdaptiveRegion.measured("receipt.actions", receipt_actions, floor=265),
+            layout=receipt_layout, wide_direction=QBoxLayout.Direction.LeftToRight,
+            compact_direction=QBoxLayout.Direction.TopToBottom, spacing=8,
+            telemetry_target=self.nursery_toast,
+        )
         self.nursery_toast.shown.connect(self._show_nursery_toast)
 
         # One normal-flow feedback host moves with the selected page. It sits
@@ -14050,8 +14179,8 @@ class NurseryDialog(PageShell):
         self.supplements_catalog = QWidget()
         self.supplements_catalog.setProperty("nurseryCatalog", True)
         self.supplements_layout = QVBoxLayout(self.supplements_catalog)
-        self.supplements_layout.setContentsMargins(2, 4, 8, 16)
-        self.supplements_layout.setSpacing(8)
+        self.supplements_layout.setContentsMargins(2, 0, 8, 10)
+        self.supplements_layout.setSpacing(6)
         self.supplements_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.supplements_scroll.setWidget(self.supplements_catalog)
         _set_scroll_surface(
@@ -14059,10 +14188,13 @@ class NurseryDialog(PageShell):
             self.supplements_catalog,
             GARDEN_THEME["dialog_surface"],
         )
-        self.catalog_tabs.addTab(
-            catalog_page(self.supplements_scroll),
-            "Fertilizers and boosts",
-        )
+        supplies_page = catalog_page(self.supplements_scroll)
+        self.supply_context = QWidget(supplies_page)
+        self.supply_context_layout = QHBoxLayout(self.supply_context)
+        self.supply_context_layout.setContentsMargins(2, 8, 8, 8)
+        self.supply_context_layout.setSpacing(8)
+        self.catalog_page_layouts[1].insertWidget(0, self.supply_context)
+        self.catalog_tabs.addTab(supplies_page, "Supplies")
 
         self.upgrades_scroll = QScrollArea()
         self.upgrades_scroll.setWidgetResizable(True)
@@ -14260,6 +14392,8 @@ class NurseryDialog(PageShell):
             0,
             int(event.size().width()) - margins.left() - margins.right(),
         )
+        if hasattr(self, "receipt_responsive"):
+            self.receipt_responsive.evaluate(max(0, available - 16))
         if hasattr(self, "hero_responsive"):
             hero = self.hero_responsive.evaluate(available)
             hero_compact = hero.mode == COMPACT_MODE
@@ -14662,7 +14796,7 @@ class NurseryDialog(PageShell):
         _set_button_variant(details, BUTTON_VARIANT_TERTIARY)
         _set_compact_row_action(details)
         details.setProperty("shopDetailsAction", True)
-        details.setStyleSheet(f"QPushButton {{color:{GARDEN_THEME['action_accent']};padding-left:0;padding-right:0;text-align:left;}}")
+        details.setStyleSheet(f"QPushButton {{color:{GARDEN_THEME['text_secondary']};padding-left:0;padding-right:0;text-align:left;font-weight:400;}} QPushButton:hover {{color:{GARDEN_THEME['action_accent']};}}")
         details.clicked.connect(lambda: self._dialog_owner._open_species_overview(species))
         row.layout().addWidget(details, 2, 0, 1, 3, Qt.AlignmentFlag.AlignLeft)
         actions.addStretch(1)
@@ -14808,6 +14942,9 @@ class NurseryDialog(PageShell):
             f"{fertilizer_effect_copy(spec.growth_per_answer)} · "
             f"{fertilizer_duration_copy(spec.card_count)}"
         )
+        total_tip = f"{meta.text()}. +{spec.growth_per_answer * spec.card_count:,} total primary Growth; excludes Shared Growth."
+        meta.setToolTip(total_tip)
+        meta.setAccessibleDescription(total_tip)
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
         apply_tabular_numerals(meta)
@@ -14925,10 +15062,13 @@ class NurseryDialog(PageShell):
         projection = self.engine.consumable_use_projection("booster_potion")
         effect = f"+{self.engine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per card for {projection.cards_added:,} cards"
         card, actions = self._compact_item_row("booster_potion", "Booster Potion", effect, count, comparison=True)
+        total_tip = f"{effect}. +{self.engine.BOOSTER_GROWTH_PER_ANSWER * projection.cards_added:,} total primary Growth; excludes Shared Growth."
+        card.setToolTip(total_tip)
+        card.setAccessibleDescription(total_tip)
         earned = QLabel("Garden rewards and Finds")
         earned.setWordWrap(True)
         earned.setProperty("nurseryMeta", True)
-        card.shop_price_layout.addWidget(earned)
+        card.shop_copy_layout.addWidget(earned)
         active = self.engine.active_plant()
         live_doses = projection.doses
         valid_target = bool(projection.target_name)
@@ -15028,6 +15168,9 @@ class NurseryDialog(PageShell):
             f"{fertilizer_effect_copy(spec.growth_per_answer)} · "
             f"{fertilizer_duration_copy(dose_cards)}"
         )
+        total_tip = f"{meta.text()}. +{spec.growth_per_answer * dose_cards:,} total primary Growth; excludes Shared Growth."
+        meta.setToolTip(total_tip)
+        meta.setAccessibleDescription(total_tip)
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
         apply_tabular_numerals(meta)
@@ -15319,12 +15462,39 @@ class NurseryDialog(PageShell):
         mystery = item.drop_only and not owned
         name = f"Mystery {_environment_kind_label(item.kind)}" if mystery else item.name
         effect = "Discover while studying." if mystery else garden_bonus_effect_copy(item.item_id, item.effect).strip() or "Appearance only"
+        gift_chances = ""
+        if item.item_id == "halloween" and not mystery and "\n" in effect:
+            effect, gift_chances = effect.split("\n", 1)
         row, actions = self._compact_item_row(item.item_id, name, effect, None, environment=item)
+        if gift_chances:
+            disclosure = QWidget(row)
+            disclosure_layout = QVBoxLayout(disclosure)
+            disclosure_layout.setContentsMargins(0, 0, 0, 0)
+            disclosure_layout.setSpacing(4)
+            toggle = QPushButton("Gift chances", disclosure)
+            _set_button_variant(toggle, BUTTON_VARIANT_TERTIARY)
+            set_button_size(toggle, ButtonSize.COMPACT_ROW)
+            toggle.setCheckable(True)
+            chances = QLabel(gift_chances, disclosure)
+            chances.setProperty("nurseryMeta", True)
+            chances.setWordWrap(True)
+            chances.hide()
+            toggle.toggled.connect(chances.setVisible)
+            disclosure_layout.addWidget(toggle, 0, Qt.AlignmentFlag.AlignLeft)
+            disclosure_layout.addWidget(chances)
+            row.layout().addWidget(disclosure, 2, 0, 1, 3)
         if owned:
+            appearance = project_garden_appearance(self.storage.state)
             active_id = (self.engine.locked_environment_id("scenery") if item.kind == "scenery" else self.engine.active_garden_feature_id())
-            actions.addWidget(GardenBadge("In use" if active_id == item.item_id else "Owned", row))
+            display_id = appearance.scenery_id if item.kind == "scenery" else appearance.displayed_decoration_id
+            state_copy = "Equipped" if display_id == active_id == item.item_id else (
+                "Displayed" if display_id == item.item_id else "Bonus active" if active_id == item.item_id else "Owned")
+            ownership = QLabel(state_copy, row)
+            ownership.setWordWrap(True)
+            ownership.setProperty("nurseryMeta", True)
+            actions.addWidget(ownership, 1)
             actions.addStretch(1)
-            action = QPushButton("View in collection")
+            action = QPushButton("View in Collection")
             action.clicked.connect(lambda: self._dialog_owner.open_section("collection", "scenery" if item.kind == "scenery" else "decorations", item_id=item.item_id))
         elif item.purchasable:
             actions.addWidget(self._catalog_price(int(item.price or 0)))
@@ -15343,7 +15513,7 @@ class NurseryDialog(PageShell):
             detail.hide()
             row.layout().addWidget(detail, 2, 0, 1, 3)
             action.toggled.connect(detail.setVisible)
-        _set_button_variant(action, BUTTON_VARIANT_PRIMARY if not owned and item.purchasable else BUTTON_VARIANT_SECONDARY)
+        _set_button_variant(action, BUTTON_VARIANT_TERTIARY if owned else BUTTON_VARIANT_PRIMARY if item.purchasable else BUTTON_VARIANT_SECONDARY)
         set_button_size(action, ButtonSize.COMPACT_ROW)
         actions.addWidget(action)
         return row
@@ -15993,7 +16163,7 @@ class NurseryDialog(PageShell):
             " after the change was saved" if committed else "",
         )
         message = (
-            "Changes were saved, but the Nursery didn’t update. "
+            "Changes were saved, but the Shop didn’t update. "
             "Reopen the Shop."
             if committed else
             "Couldn’t finish that action. Nothing was changed. "
@@ -16057,7 +16227,7 @@ class NurseryDialog(PageShell):
                 )
             )
             if not can_place:
-                message += " No garden bed is available. Open Garden to make room."
+                message += " No empty bed is available."
             receipt_actions = _nursery_collection_receipt_actions(
                 collection_complete,
                 can_place,
@@ -16157,12 +16327,7 @@ class NurseryDialog(PageShell):
                         or getattr(resolved_artwork, "path", "")
                         or ""
                     )
-                preview = _asset_preview_label(
-                    self.engine,
-                    purchased_artwork_species,
-                    purchased_artwork_stage,
-                    size=36,
-                )
+                preview = self._plant_artwork(purchased_artwork_species, purchased_artwork_stage, 28)
                 purchased_artwork = preview.pixmap()
                 purchased_artwork_name = f"{item_name} artwork"
                 purchased_artwork_fallback = bool(
@@ -16220,6 +16385,9 @@ class NurseryDialog(PageShell):
         )
         receipt_icon = getattr(self.nursery_toast, "icon", None)
         if receipt_icon is not None:
+            receipt_icon.setScaledContents(False)
+            receipt_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            receipt_icon.setStyleSheet(f"background:{GARDEN_THEME['raised_surface']};border:0;border-radius:8px;padding:0;")
             receipt_icon.setProperty(
                 "receiptArtworkAssetId",
                 purchased_artwork_asset_id,
@@ -16320,6 +16488,15 @@ class NurseryDialog(PageShell):
             if callable(opener):
                 QTimer.singleShot(0, opener)
             return
+        if (
+            outcome.disposition is PurchaseDisposition.COLLECTION
+            and route == "View in Collection"
+        ):
+            parent.open_section(
+                "collection", "plants",
+                item_id=outcome.item_id, plant_id=outcome.result_id,
+            )
+            return
         if outcome.disposition is PurchaseDisposition.COLLECTION and outcome.result_id:
             self._set_placement(outcome.result_id, False)
             return
@@ -16418,6 +16595,8 @@ class NurseryDialog(PageShell):
         if not starter:
             target = self.engine.plant_story(self._target_plant_id) if self._target_plant_id else self.engine.active_plant()
             target_id = str(getattr(target, "plant_id", ""))
+            self._clear_section(self.supply_context_layout)
+            self.supply_context.setVisible(target is not None)
             if target is not None:
                 context = QWidget()
                 context_row = QHBoxLayout(context)
@@ -16430,12 +16609,12 @@ class NurseryDialog(PageShell):
                 target_heading = QLabel(f"{role}: {format_plant_name(target)}")
                 target_heading.setWordWrap(True)
                 context_copy.addWidget(target_heading)
-                note = QLabel("Fertilizer is used on the nurtured plant. Growth Charges are stored until used.")
+                note = QLabel("Fertilizer follows your nurtured plant.")
                 note.setProperty("nurseryMeta", True)
                 note.setWordWrap(True)
                 context_copy.addWidget(note)
                 context_row.addLayout(context_copy, 1)
-                self.supplements_layout.addWidget(context)
+                self.supply_context_layout.addWidget(context)
             section_heading = QLabel("Fertilizer")
             section_heading.setStyleSheet("font-size:14px;font-weight:600;padding:2px 0 0 0;")
             self.supplements_layout.addWidget(section_heading)
@@ -16735,17 +16914,71 @@ class NurseryDialog(PageShell):
 
     def _compact_item_row(self, item_id: str, name: str, effect: str, count: int | None, *, comparison: bool = False, environment: CatalogItem | None = None, plant_species: str = "") -> tuple[QFrame, QHBoxLayout]:
         visual = bool(environment or plant_species)
+        if not visual:
+            summary = QWidget()
+            summary.setMinimumWidth(0)
+            summary_layout = QHBoxLayout(summary)
+            summary_layout.setContentsMargins(0, 0, 0, 0)
+            summary_layout.setSpacing(10)
+            summary_layout.addWidget(self._item_artwork(item_id, name, 36))
+            copy_host = QWidget(summary)
+            copy_host.setMinimumWidth(0)
+            copy = QVBoxLayout(copy_host)
+            copy.setContentsMargins(0, 0, 0, 0)
+            copy.setSpacing(2)
+            title = QLabel(name)
+            title.setProperty("nurseryPlantName", True)
+            title.setWordWrap(True)
+            meta = QLabel(_learner_text(effect))
+            meta.setProperty("nurseryMeta", True)
+            meta.setWordWrap(True)
+            copy.addWidget(title)
+            copy.addWidget(meta)
+            summary_layout.addWidget(copy_host, 1)
+            trailing = QWidget()
+            trailing.setMinimumWidth(340 if comparison else 170)
+            trailing_layout = QHBoxLayout(trailing)
+            trailing_layout.setContentsMargins(0, 0, 0, 0)
+            trailing_layout.setSpacing(12)
+            if count is not None:
+                ownership = QLabel(f"Owned: {count:,}")
+                ownership.setProperty("nurseryMeta", True)
+                ownership.setMinimumWidth(max(70, ownership.sizeHint().width()))
+                apply_tabular_numerals(ownership)
+                trailing_layout.addWidget(ownership)
+            price_host = QWidget(trailing)
+            price_layout = QVBoxLayout(price_host)
+            price_layout.setContentsMargins(0, 0, 0, 0)
+            price_host.setMinimumWidth(94 if comparison else 0)
+            price_host.setVisible(comparison)
+            trailing_layout.addWidget(price_host)
+            trailing_layout.addStretch(1)
+            actions = QHBoxLayout()
+            actions.setContentsMargins(0, 0, 0, 0)
+            actions.setSpacing(6)
+            trailing_layout.addLayout(actions)
+            row = ResponsiveActionCard(summary, trailing, semantic_id=f"shop.{item_id}",
+                summary_floor=230, action_floor=310 if comparison else 170,
+                margins=(12, 8, 12, 8))
+            row.setProperty("nurseryCatalogCard", True)
+            row.setProperty("catalogItemId", item_id)
+            row.setMinimumHeight(64)
+            row.setStyleSheet(f"QFrame[nurseryCatalogCard='true'] {{background:{GARDEN_THEME['shop_surface_1']};border:1px solid {GARDEN_THEME['subtle_border']};border-radius:8px;}} QLabel {{background:transparent;border:0;color:{GARDEN_THEME['text_primary']};}} QLabel[nurseryMeta='true'] {{color:{GARDEN_THEME['text_secondary']};font-size:13px;}} QLabel[nurseryPlantName='true'] {{font-size:14px;font-weight:600;}}")
+            row.shop_description = meta
+            row.shop_price_layout = price_layout
+            row.shop_copy_layout = copy
+            return row, actions
         row = QFrame()
         row.setProperty("nurseryCatalogCard", True)
         row.setProperty("catalogItemId", item_id)
-        row.setStyleSheet(_release_palette_stylesheet("QFrame[nurseryCatalogCard='true'] {background:#0D3026;border:1px solid #315247;border-radius:8px;} QLabel {color:#F4F3DF;background:transparent;border:0;} QLabel[nurseryMeta='true'] {color:#B7C4BD;font-size:13px;} QLabel[nurseryPlantName='true'] {font-size:14px;font-weight:600;}"))
+        row.setStyleSheet(f"QFrame[nurseryCatalogCard='true'] {{background:{GARDEN_THEME['shop_surface_1']};border:1px solid {GARDEN_THEME['subtle_border']};border-radius:8px;}} QLabel {{color:{GARDEN_THEME['text_primary']};background:transparent;border:0;}} QLabel[nurseryMeta='true'] {{color:{GARDEN_THEME['text_secondary']};font-size:13px;}} QLabel[nurseryPlantName='true'] {{font-size:14px;font-weight:600;}}")
         row.setMinimumWidth(0)
         row.setMinimumHeight(64 if not visual else 0)
         row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         grid = QGridLayout(row)
-        grid.setContentsMargins(12, 12 if visual else 8, 12, 12 if visual else 8)
+        grid.setContentsMargins(12, 12, 12, 12)
         grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(8 if visual else 2)
+        grid.setVerticalSpacing(8)
         if environment:
             resolver = (self.engine.resolve_scenery_preview_asset if environment.kind == "scenery"
                         else self.engine.resolve_garden_feature_preview_asset)
@@ -16764,13 +16997,13 @@ class NurseryDialog(PageShell):
             if source.isNull():
                 art.set_source(_environment_placeholder_pixmap(280, 124))
         elif plant_species:
-            art = self._plant_artwork(plant_species, GROWTH_STAGES[0], 92)
+            art = self._plant_artwork(plant_species, GROWTH_STAGES[0], 120)
         else:
             art = self._item_artwork(item_id, name, 36)
         grid.addWidget(art, 0, 0, 1, 3 if visual else 1,
                        (Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter) if visual else Qt.AlignmentFlag.AlignVCenter)
         copy = QVBoxLayout()
-        copy.setSpacing(4 if visual else 2)
+        copy.setSpacing(4)
         title = QLabel(name)
         title.setProperty("nurseryPlantName", True)
         title.setWordWrap(True)
@@ -16796,27 +17029,7 @@ class NurseryDialog(PageShell):
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(6)
-        if count is not None:
-            ownership = QLabel(format_available(count))
-            ownership.setProperty("nurseryMeta", True)
-            ownership.setMinimumWidth(max(86, ownership.fontMetrics().horizontalAdvance(ownership.text())))
-            apply_tabular_numerals(ownership)
-            grid.addWidget(ownership, 0, 2)
-        if visual:
-            grid.addLayout(actions, 3, 0, 1, 3)
-        else:
-            price_host = QWidget(row)
-            price_layout = QVBoxLayout(price_host)
-            price_layout.setContentsMargins(0, 0, 0, 0)
-            price_host.setFixedWidth(110)
-            price_host.setVisible(comparison)
-            row.shop_price_layout = price_layout
-            grid.addWidget(price_host, 0, 3)
-            action_host = QWidget(row)
-            action_host.setLayout(actions)
-            action_host.setFixedWidth(144 if comparison else 100)
-            actions.addStretch(1)
-            grid.addWidget(action_host, 0, 4)
+        grid.addLayout(actions, 3, 0, 1, 3)
         return row, actions
 
     def _compact_fertilizer_row(self, tier: str, target_id: str, *, owned_only: bool = False) -> QFrame:
@@ -16826,21 +17039,21 @@ class NurseryDialog(PageShell):
         count = max(0, int(self.storage.state.consumables.get(f"fertilizer_{tier}", 0)))
         effect = f"+{spec.growth_per_answer:,} Growth per card for {spec.card_count:,} cards"
         row, actions = self._compact_item_row(f"fertilizer_{tier}", spec.name, effect, count, comparison=not owned_only)
+        total_tip = f"{effect}. +{spec.growth_per_answer * spec.card_count:,} total primary Growth; excludes Shared Growth."
+        row.setToolTip(total_tip)
+        row.setAccessibleDescription(total_tip)
         target = self.engine.plant_story(target_id) if target_id else None
         projection = self.engine.fertilizer_stored_item_projection(target_id, tier=tier)
         quote = self.engine.quote_purchase(PurchaseKind.FERTILIZER, tier, target_id=target_id or None)
         if owned_only and target is not None:
-            timing = (f"Adds {spec.card_count:,} more cards." if quote.disposition is PurchaseDisposition.EXTENDED else
-                      "Starts after your current Fertilizer." if quote.disposition is PurchaseDisposition.QUEUED else
-                      "Starts with your next card.")
+            timing = self._owned_fertilizer_timing(projection)
             row.shop_description.setText(effect + "\n" + timing)
         if count:
             label, disposition = _fertilizer_action_projection(PurchaseDisposition.APPLIED, owned=True, stored_item=projection)
             use = QPushButton(label)
             _set_button_variant(use, BUTTON_VARIANT_PRIMARY if owned_only else BUTTON_VARIANT_SECONDARY)
             set_button_size(use, ButtonSize.COMPACT_ROW)
-            if owned_only:
-                use.setFixedWidth(80)
+            use.setMinimumWidth(max(64, use.sizeHint().width()))
             valid = use_projection.can_use
             reason = use_projection.message
             set_control_enabled(use, valid, disabled_reason=reason)
@@ -16866,20 +17079,24 @@ class NurseryDialog(PageShell):
                 row.shop_description.setText(effect + "\n" + reason)
         return row
 
+    @staticmethod
+    def _owned_fertilizer_timing(projection: FertilizerStoredItemProjection | None) -> str:
+        if projection is None:
+            return ""
+        if projection.disposition is FertilizerStoredItemDisposition.QUEUE:
+            before = max(0, projection.remaining_cards - projection.card_queue_delta)
+            return f"Starts after {before:,} cards."
+        return "Starts with your next card."
+
     def _confirm_owned_fertilizer(self, tier: str, target_id: str) -> None:
         use_projection = self.engine.consumable_use_projection(f"fertilizer_{tier}", target_id)
         if not use_projection.can_use:
             self._show_result(False, use_projection.message)
             return
         spec = self.engine.FERTILIZERS[tier]
-        quote = self.engine.quote_purchase(PurchaseKind.FERTILIZER, tier, target_id=target_id)
         projection = self.engine.fertilizer_stored_item_projection(target_id, tier=tier)
         label, _ = _fertilizer_action_projection(PurchaseDisposition.APPLIED, owned=True, stored_item=projection)
-        timing = ""
-        if quote.disposition is PurchaseDisposition.EXTENDED:
-            timing = f"Adds {spec.card_count:,} more cards."
-        elif quote.disposition is PurchaseDisposition.QUEUED:
-            timing = "Starts after your current Fertilizer."
+        timing = self._owned_fertilizer_timing(projection)
         effect = f"+{spec.growth_per_answer:,} Growth per card for {spec.card_count:,} cards."
         if ConfirmationDialog.confirm(self.window(), f"{label} {spec.name}?", f"For {use_projection.target_name}. {effect} {timing}".strip(), confirm_label=label):
             self._use_owned_fertilizer(tier, target_id)
@@ -16897,8 +17114,7 @@ class NurseryDialog(PageShell):
             use = QPushButton("Use")
             _set_button_variant(use, BUTTON_VARIANT_PRIMARY if owned_only or spec.price is None else BUTTON_VARIANT_SECONDARY)
             set_button_size(use, ButtonSize.COMPACT_ROW)
-            if owned_only:
-                use.setFixedWidth(80)
+            use.setMinimumWidth(max(64, use.sizeHint().width()))
             valid = quote.ready
             reason = quote.message
             set_control_enabled(use, valid, disabled_reason=reason)
@@ -16920,7 +17136,7 @@ class NurseryDialog(PageShell):
             earned = QLabel("Earned from achievements")
             earned.setWordWrap(True)
             earned.setProperty("nurseryMeta", True)
-            row.shop_price_layout.addWidget(earned)
+            row.shop_copy_layout.addWidget(earned)
         return row
 
 
@@ -16934,36 +17150,47 @@ class NurturedPlantBar(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.plant_id = ""
+        self._starter_id = ""
         self.setProperty("nurturedPlantBar", True)
         self.setAccessibleName("Nurtured plant")
         self.setMinimumHeight(64)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(12, 8, 12, 8)
-        row.setSpacing(12)
+        self.setStyleSheet(
+            f"QFrame[nurturedPlantBar='true'] {{border:0;border-top:1px solid {GARDEN_THEME['subtle_border']};}}"
+            f"QPushButton:disabled {{background:transparent;border:1px solid transparent;color:{GARDEN_THEME['text_muted']};}}"
+        )
+        self.row = QGridLayout(self)
+        self.row.setContentsMargins(12, 8, 12, 8)
+        self.row.setHorizontalSpacing(12)
+        self.row.setVerticalSpacing(8)
+        self.row.setColumnStretch(1, 1)
         self.artwork = QLabel(self)
         self.artwork.setFixedSize(40, 40)
         self.artwork.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.artwork.setProperty("plantPopoverArtwork", True)
-        row.addWidget(self.artwork)
+        self.row.addWidget(self.artwork, 0, 0)
         self.summary = QWidget(self)
         self.summary.setMinimumWidth(0)
         details = QVBoxLayout(self.summary)
         details.setContentsMargins(0, 0, 0, 0)
         details.setSpacing(3)
+        self.heading = QLabel(self.summary)
+        self.heading.setMinimumWidth(0)
+        self.heading.setWordWrap(True)
+        self.heading.setTextFormat(Qt.TextFormat.PlainText)
+        self.heading.setProperty("plantCardHeading", True)
         identity = QHBoxLayout()
         identity.setSpacing(8)
-        self.heading = ElidingLabel(parent=self.summary, max_lines=1)
-        self.heading.setMinimumWidth(0)
-        self.heading.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        self.heading.setProperty("plantCardHeading", True)
-        self.status = GardenBadge("Nurtured", self.summary)
+        self.heading.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
         identity.addWidget(self.heading)
-        identity.addWidget(self.status)
+        self.status = GardenBadge("Nurtured", self.summary)
+        self.status.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        identity.addWidget(self.status, 0, Qt.AlignmentFlag.AlignVCenter)
         identity.addStretch(1)
         details.addLayout(identity)
-        self.growth_label = ElidingLabel(parent=self.summary)
+        self.growth_label = QLabel(self.summary)
         self.growth_label.setMinimumWidth(0)
+        self.growth_label.setWordWrap(True)
         self.growth_label.setProperty("plantProgressLabel", True)
         apply_tabular_numerals(self.growth_label)
         details.addWidget(self.growth_label)
@@ -16973,32 +17200,58 @@ class NurturedPlantBar(QFrame):
         self.progress.setTextVisible(False)
         self.progress.setFixedHeight(6)
         self.progress.setStyleSheet(
-            f"QProgressBar {{border:0;border-radius:3px;padding:0;min-height:0;"
-            f"background:{GARDEN_THEME['plant_popover_progress_track']};}} "
+            f"QProgressBar {{border:0;border-radius:3px;padding:0;min-height:0;background:{GARDEN_THEME['plant_popover_progress_track']};}} "
             f"QProgressBar::chunk {{background:{GARDEN_THEME['action_accent']};border-radius:3px;}}"
         )
         details.addWidget(self.progress)
-        self.summary.setMaximumWidth(520)
-        row.addWidget(self.summary, 1)
-        row.addStretch(0)
+        self.row.addWidget(self.summary, 0, 1)
+        self.actions = QWidget(self)
+        actions = QHBoxLayout(self.actions)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(12)
         self.view_plant = QPushButton("View plant", self)
         _set_button_variant(self.view_plant, BUTTON_VARIANT_SECONDARY)
         self.view_plant.setFixedHeight(32)
         self.view_plant.clicked.connect(self._activate)
-        row.addWidget(self.view_plant)
+        actions.addWidget(self.view_plant)
         self.setup = QPushButton("Garden setup", self)
         _set_button_variant(self.setup, BUTTON_VARIANT_TERTIARY)
         self.setup.setFixedHeight(32)
         self.setup.setToolTip("Choose scenery, decorations, and garden bonuses")
         self.setup.clicked.connect(self.setupRequested.emit)
-        row.addWidget(self.setup)
+        actions.addWidget(self.setup)
+        self.row.addWidget(self.actions, 0, 2)
+        self._compact = False
         self.set_plant(None)
 
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        # Keep the ordinary compact window on one row. Only wrap actions
+        # when the summary would have less than 220 px of usable width.
+        compact = self.width() < self.actions.sizeHint().width() + 308
+        if compact != self._compact:
+            self._compact = compact
+            self.row.removeWidget(self.actions)
+            self.row.addWidget(self.actions, 1 if compact else 0, 1 if compact else 2,
+                               1, 2 if compact else 1, Qt.AlignmentFlag.AlignRight)
+
     def _activate(self) -> None:
-        if self.plant_id:
-            self.inspectRequested.emit(self.plant_id)
+        target = self.plant_id or self._starter_id
+        if target:
+            self.inspectRequested.emit(target)
         else:
             self.chooseRequested.emit()
+
+    def set_onboarding(self, starter_id: str, *, popup_visible: bool) -> None:
+        self._starter_id = starter_id
+        self.heading.setWordWrap(not bool(starter_id))
+        self.setup.setVisible(not starter_id)
+        self.view_plant.setVisible(not starter_id or not popup_visible)
+        if starter_id:
+            self.heading.setText("Choose Nurture to start growing.")
+            self.view_plant.setText("View plant")
+            self.view_plant.setAccessibleName("View your first plant")
+            self.setAccessibleDescription(self.heading.text())
 
     def set_plant(self, plant: dict[str, Any] | None) -> None:
         self.plant_id = str(plant.get("plant_id", "")) if plant else ""
@@ -17007,20 +17260,18 @@ class NurturedPlantBar(QFrame):
             widget.setVisible(present)
         self.view_plant.setText("View plant" if present else "Choose plant")
         if not present:
-            self.heading.setFixedWidth(min(260, self.heading.fontMetrics().horizontalAdvance("No plant is being nurtured") + 4))
             self.heading.setText("No plant is being nurtured")
             self.view_plant.setAccessibleName("Choose plant")
             self.setAccessibleDescription("No plant is being nurtured. Choose a plant to nurture.")
             return
         name = format_plant_name(plant)
-        self.heading.setFixedWidth(min(280, self.heading.fontMetrics().horizontalAdvance(name) + 4))
         self.heading.setText(name)
         current = max(0, plant.get("stage_points", 0) or 0)
         goal = max(1, int(plant.get("stage_goal", 1) or 1))
         complete = bool(plant.get("fully_grown"))
-        progress = format_stage_progress(current, goal, format_status_label(plant.get("next_stage") or "the next stage"))
-        text = "" if complete else progress
+        text = "" if complete else format_stage_progress(current, goal, format_status_label(plant.get("next_stage") or "the next stage"))
         self.growth_label.setText(text)
+        self.growth_label.setVisible(not complete)
         self.progress.setRange(0, goal * 100)
         self.progress.setValue(round(min(current, goal) * 100))
         self.progress.setVisible(not complete)
@@ -17185,6 +17436,16 @@ class PlantInfoCard(QFrame):
         self.stage_progress.label.setProperty("plantProgressLabel", True)
         self.stage_progress.value_label.setProperty("plantGrowthValue", True)
         progress_layout.addWidget(self.stage_progress)
+        self.checkpoint_summary = QLabel("", self.progress_region)
+        self.checkpoint_summary.setProperty("plantProgressLabel", True)
+        self.checkpoint_summary.setWordWrap(True)
+        self.checkpoint_summary.setAccessibleName("Next checkpoint")
+        progress_layout.addWidget(self.checkpoint_summary)
+        self.mastery_destination = QLabel("", self.progress_region)
+        self.mastery_destination.setProperty("plantProgressLabel", True)
+        self.mastery_destination.setWordWrap(True)
+        self.mastery_destination.setAccessibleName("Overflow destination")
+        progress_layout.addWidget(self.mastery_destination)
 
         self.status_row = QFrame(self.progress_region)
         self.status_row.setProperty("plantStatus", True)
@@ -17466,7 +17727,18 @@ class PlantInfoCard(QFrame):
         fully_grown = bool(plant.get("fully_grown"))
         self.identity.hide()
         growth_points = max(0, int(plant.get("growth_points", 0) or 0))
-        self.progress_region.setVisible(not fully_grown)
+        self.progress_region.show()
+        self.stage_progress.setVisible(not fully_grown)
+        self.mastery_destination.setVisible(fully_grown)
+        self.mastery_destination.setText(str(plant.get("overflow_destination_summary") or ""))
+        remaining = plant.get("next_checkpoint_growth_remaining")
+        self.checkpoint_summary.setVisible(not fully_grown and remaining is not None)
+        if not fully_grown and remaining is not None:
+            self.checkpoint_summary.setText(f"{remaining:,.2f}".rstrip("0").rstrip(".") + " Growth to next checkpoint")
+            checkpoint_coins = plant.get("next_checkpoint_base_coins", 0)
+            checkpoint_tip = f"Base checkpoint reward: +{checkpoint_coins:,} {'Coin' if checkpoint_coins == 1 else 'Coins'}."
+            self.checkpoint_summary.setToolTip(checkpoint_tip)
+            self.checkpoint_summary.setAccessibleDescription(checkpoint_tip)
         if fully_grown:
             self.growth_summary.setAccessibleDescription(
                 f"Full Bloom with {growth_points:,} total Growth."
@@ -18598,7 +18870,8 @@ class GardenSideNavigation(QWidget):
             QTimer.singleShot(0, self._reflow_rail)
 
     def _compact_column_count(self) -> int:
-        available = max(1, int(self.rail.width() or self.width()))
+        margins = self.rail_layout.contentsMargins()
+        available = max(1, self.width() - margins.left() - margins.right())
         item_width = 112
         if self.buttons:
             item_width = max(
@@ -18611,7 +18884,7 @@ class GardenSideNavigation(QWidget):
         return responsive_column_count(
             available,
             minimum_item_width=item_width,
-            maximum_columns=3,
+            maximum_columns=max(1, len(self.buttons)),
             spacing=self.rail_layout.horizontalSpacing(),
         )
 
@@ -18622,21 +18895,25 @@ class GardenSideNavigation(QWidget):
         self.root_layout.setSpacing(8)
         self.rail.setMinimumWidth(0)
         self.rail.setMaximumWidth(16777215)
-        self.rail.setFixedHeight(34)
-        self._rail_columns = max(1, len(self.buttons))
+        self._rail_columns = self._compact_column_count()
+        rows = max(1, (len(self.buttons) + self._rail_columns - 1) // self._rail_columns)
+        self.rail.setProperty("navigationRows", rows)
+        self.rail.setFixedHeight(rows * 34 + (rows - 1) * self.rail_layout.verticalSpacing())
         for column in range(len(self.buttons) + 1):
             self.rail_layout.setColumnStretch(column, 0)
+            self.rail_layout.setRowMinimumHeight(column, 0)
+            self.rail_layout.setRowStretch(column, 0)
         for index, button in enumerate(self.buttons.values()):
             button.setFixedHeight(34)
+            button.setMinimumWidth(button.fontMetrics().horizontalAdvance(button.text()) + 36)
             button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-            self.rail_layout.addWidget(button, 0, index)
-        self.rail_layout.setColumnStretch(len(self.buttons), 1)
+            self.rail_layout.addWidget(button, index // self._rail_columns, index % self._rail_columns)
+        self.rail_layout.setColumnStretch(self._rail_columns, 1)
 
     def resizeEvent(self, event: Any) -> None:
-        if self._compact:
-            columns = self._compact_column_count()
-            if columns != self._rail_columns:
-                self._reflow_rail()
+        columns = self._compact_column_count()
+        if columns != self._rail_columns:
+            self._reflow_rail()
         super().resizeEvent(event)
 
 
@@ -18699,10 +18976,11 @@ class TodayCardsPageProjection:
     visual_effects_enabled: bool = True
     claim_state: str = "pending"
     finds_count: int = 0
-    finds_cap: int = 0
+    finds_cap: int | None = None
     next_find_guaranteed: bool = False
     scenery_effect: str = ""
     cutoff_at_ms: int = 0
+    displayed_scenery_name: str = ""
 
 
 def _catalog_display_name(catalog: dict[str, Any], item_id: str) -> str:
@@ -18837,7 +19115,7 @@ def _today_cards_page_projection(
         )
 
     finds_count = 0
-    finds_cap = 0
+    finds_cap = None
     next_find_guaranteed = False
     find_resolver = getattr(engine, "garden_find_status", None)
     if callable(find_resolver):
@@ -18847,18 +19125,15 @@ def _today_cards_page_projection(
             find_status = None
         if find_status is not None:
             count = max(0, int(getattr(find_status, "finds_today", 0) or 0))
-            cap = max(0, int(getattr(find_status, "daily_cap", 0) or 0))
+            cap = getattr(find_status, "daily_cap", None)
             finds_count = count
             finds_cap = cap
             next_find_guaranteed = bool(
                 getattr(find_status, "next_card_guaranteed", False)
             )
-            if bool(getattr(find_status, "daily_limit_reached", False)):
-                find_line = f"{count} / {cap} earned today · Daily limit reached"
-            elif next_find_guaranteed:
-                find_line = f"{count} / {cap} earned today · Next card guaranteed"
-            else:
-                find_line = f"{count} / {cap} earned today"
+            find_line = f"{count:,} Finds today"
+            if next_find_guaranteed:
+                find_line += " · Next card guaranteed"
             today = TodayCardsProjection(
                 today.status,
                 today.heading,
@@ -18937,6 +19212,7 @@ def _today_cards_page_projection(
         cutoff_text=_today_cutoff_text(cutoff_at_ms),
         weather_name=_catalog_display_name(GARDEN_FEATURE_CATALOG, weather_id),
         scenery_name=_catalog_display_name(SCENERY_CATALOG, scenery_id),
+        displayed_scenery_name=_catalog_display_name(SCENERY_CATALOG, appearance.scenery_id),
         displayed_decoration_name=_catalog_display_name(
             GARDEN_FEATURE_CATALOG,
             displayed_decoration_id,
@@ -19673,15 +19949,30 @@ class GardenDetailsDialog(GardenPage):
                 progress.setFixedHeight(8)
                 progress.setAccessibleName("Today’s workload completion")
                 body.addWidget(progress)
-            if status.status == "complete":
-                body.addWidget(self._label("You finished today’s workload.", "detailSupport"))
-            elif projection.remaining_cards is not None:
+            if status.status != "complete" and projection.remaining_cards is not None:
                 body.addWidget(self._label(
                     f"Cards left · {format_quantity(projection.remaining_cards, 'card')}",
                     "detailSupport",
                 ))
                 if status.status == "waiting_for_learning":
                     body.addWidget(self._label(status.primary, "detailSupport"))
+        summary_resolver = getattr(self.engine, "today_cards_reward_summary", None)
+        if callable(summary_resolver) and status.status not in {"unavailable", "not_eligible"}:
+            reward = summary_resolver()
+            reward_text = f"+{reward['coins']:,} Coins"
+            if reward["growth"]:
+                reward_text += f" · +{reward['growth']:,} Growth"
+            reward_label = self._label(
+                f"{'Today’s reward earned' if reward['earned'] else 'Today’s reward'} · {reward_text}",
+                "detailBody")
+            rhythm_tip = (f"Garden Rhythm automatically adds +{reward['rhythm_percent']}% review Growth. "
+                          "Based on Today’s Cards completions among the previous seven eligible days.")
+            reward_label.setToolTip(rhythm_tip)
+            reward_label.setAccessibleDescription(rhythm_tip)
+            body.addWidget(reward_label)
+            body.addWidget(self._label(
+                f"Five-completion bonus · {reward['cycle_progress']} / {reward['cycle_goal']} · "
+                f"+{reward['cycle_coins']:,} Coins", "detailSupport"))
         streak_host = QWidget()
         streak_layout = QVBoxLayout(streak_host)
         self._refresh_streak(streak_layout)
@@ -19695,26 +19986,46 @@ class GardenDetailsDialog(GardenPage):
         metrics = StatSummary([
             ("Cards studied", f"{state.daily_stats.reviewed:,}"),
             ("Growth earned", format_growth(state.daily_stats.growth_earned, include_unit=False), "growth"),
-            ("Garden Finds", f"{projection.finds_count} of {projection.finds_cap}" if projection.finds_cap else "Unavailable"),
+            ("Garden Finds", f"{projection.finds_count:,} Finds today"),
         ])
-        layout.addWidget(metrics)
+        metrics.layout().setContentsMargins(0, 4, 0, 0)
+        metrics.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        for metric_label in metrics.findChildren(QLabel):
+            if metric_label.text() == "Cards studied":
+                metric_label.setToolTip("Counts each answer, including repeat study of the same card.")
+        body.addWidget(metrics)
+        if projection.next_find_guaranteed:
+            body.addWidget(self._label("Next card guaranteed", "detailSupport"))
         bonuses = QFrame()
         bonuses.setProperty("todayEquippedBonuses", True)
         bonus_layout = QVBoxLayout(bonuses)
         bonus_layout.setContentsMargins(0, 0, 0, 0)
         bonus_layout.setSpacing(8)
+        appearance_header = QHBoxLayout()
+        appearance_header.addWidget(self._label("Garden appearance", "detailSection"), 1)
+        change = QPushButton("View decorations")
+        _set_button_variant(change, BUTTON_VARIANT_SECONDARY)
+        change.clicked.connect(lambda: self._dialog_owner.open_section("collection", "decorations"))
+        appearance_header.addWidget(change)
+        bonus_layout.addLayout(appearance_header)
+        scenery_name = projection.displayed_scenery_name or projection.scenery_name
+        decoration_name = projection.displayed_decoration_name or projection.active_bonus_name or projection.weather_name
+        active_name = projection.active_bonus_name or projection.weather_name
         for label, name, effect in (
-            ("Scenery bonus" if projection.scenery_effect else "Equipped scenery", projection.scenery_name, projection.scenery_effect),
-            ("Decoration bonus" if projection.active_bonus_effect else "Equipped decoration", projection.active_bonus_name or projection.weather_name, projection.active_bonus_effect),
+            ("Scenery", scenery_name, projection.scenery_effect if scenery_name == projection.scenery_name else ""),
+            ("Decoration", decoration_name, projection.active_bonus_effect if decoration_name == active_name else ""),
+            ("Active scenery bonus", projection.scenery_name if scenery_name != projection.scenery_name and projection.scenery_effect.strip().rstrip(".").casefold() not in {"", "no study bonus"} else "", projection.scenery_effect),
+            ("Active decoration bonus", active_name if decoration_name != active_name and projection.active_bonus_effect.strip().rstrip(".").casefold() not in {"", "no study bonus"} else "", projection.active_bonus_effect),
         ):
             if not name or name == "None":
                 continue
-            bonus_layout.addWidget(self._label(f"{label} · {name}", "detailSection"))
-            if effect:
+            bonus_layout.addWidget(self._label(f"{label} · {name}", "detailBody"))
+            if effect and effect.strip().rstrip(".").casefold() != "no study bonus":
                 bonus_layout.addWidget(self._label(effect, "detailSupport"))
         if bonus_layout.count():
             layout.addWidget(bonuses)
         disclosure = DisclosureRow("Today’s details", [], semantic_id="progress.today-details")
+        disclosure.setMaximumWidth(640)
         layout.addWidget(disclosure)
         details_layout = disclosure.panel.layout()
         details_layout.setContentsMargins(12, 8, 12, 8)
@@ -19730,7 +20041,7 @@ class GardenDetailsDialog(GardenPage):
         apply_tabular_numerals(total)
         total_row.addWidget(total)
         workload_layout.addLayout(total_row)
-        workload_layout.addWidget(self._label("Updates when your due cards change. Completed cards remain included.", "detailSupport"))
+        workload_layout.addWidget(self._label("Includes completed cards and updates when your due cards change.", "detailSupport"))
         details_layout.addWidget(workload)
         reset = QHBoxLayout()
         reset.addWidget(self._label("New study day begins", "detailBody"), 1)
@@ -19742,16 +20053,9 @@ class GardenDetailsDialog(GardenPage):
         reset_time.setAccessibleDescription(projection.cutoff_text)
         reset.addWidget(reset_time)
         details_layout.addLayout(reset)
-        if projection.next_find_guaranteed:
-            details_layout.addWidget(self._label("Your next eligible card is guaranteed to reveal a Garden Find.", "detailSupport"))
         next_bed = next((row for row in bed_unlock_rows(state) if not row.unlocked), None)
         if next_bed is not None:
             details_layout.addWidget(self._label(f"Next bed · {next_bed.requirement}", "detailSupport"))
-        change = QPushButton("View decorations")
-        _set_button_variant(change, BUTTON_VARIANT_SECONDARY)
-        change.clicked.connect(lambda: self._dialog_owner.open_section("collection", "decorations"))
-        details_layout.addWidget(change, 0, Qt.AlignmentFlag.AlignLeft)
-
     def _refresh_growth(self, layout: QVBoxLayout) -> None:
         layout.setContentsMargins(16, 8, 16, 16)
         layout.setSpacing(8)
@@ -20176,11 +20480,6 @@ class GardenDetailsDialog(GardenPage):
             day.setAccessibleName(description)
             week.addWidget(day, 1)
         hero_layout.addLayout(week)
-        bonus = self.engine.current_streak_bonus_percent()
-        if bonus > 0:
-            rhythm = self._label(f"Garden Rhythm · +{bonus}% Growth", "detailSupport")
-            rhythm.setToolTip("Based on days you completed today’s cards among the previous seven eligible days.")
-            hero_layout.addWidget(rhythm)
         hero.setAccessibleDescription(presentation.message)
         layout.addWidget(hero)
 
@@ -20225,7 +20524,9 @@ class GardenDetailsDialog(GardenPage):
         if currency_scroll is not None:
             currency_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         if not all_transactions:
-            empty = EmptyState("No activity recorded yet", "Future coin earnings and purchases will appear here.")
+            empty = EmptyState("No coin history yet", "New coin earnings and purchases will appear here.")
+            empty.layout().setContentsMargins(16, 12, 16, 12)
+            empty.setMinimumHeight(0)
             empty.setProperty("semanticId", "progress.coins-empty-guidance")
             empty.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
             layout.addWidget(empty)
@@ -20234,7 +20535,7 @@ class GardenDetailsDialog(GardenPage):
         visible = transactions if self._show_all_transactions else transactions[:8]
         if len(all_transactions) >= 500:
             layout.addWidget(self._label("Showing the most recent 500 transactions.", "detailSupport"))
-        if len(all_transactions) > 8:
+        if all_transactions:
             filters = QHBoxLayout()
             filters.setSpacing(8)
             for key, label in (("all", "All"), ("earned", "Earned"), ("spent", "Spent")):
@@ -20506,15 +20807,27 @@ class CollectionCatalogTile(QPushButton):
 
     def heightForWidth(self, width: int) -> int:
         layout = self.layout()
-        return max(186, layout.totalHeightForWidth(max(1, width)) if layout else 186)
+        floor = 88 if self.property("compactDecorationRow") else 186
+        return max(floor, layout.totalHeightForWidth(max(1, width)) if layout else floor)
 
     def sizeHint(self) -> QSize:
         return QSize(210, self.heightForWidth(max(210, self.width())))
 
     def minimumSizeHint(self) -> QSize:
-        return QSize(160, 186)
+        return QSize(156, 88 if self.property("compactDecorationRow") else 186)
 
     def resizeEvent(self, event: Any) -> None:
+        compact = bool(self.property("compactDecorationRow"))
+        copy_width = max(1, event.size().width() - 20 - (72 if compact else 0))
+        for label in self.findChildren(QLabel):
+            if not label.wordWrap():
+                continue
+            required_text = label.fontMetrics().boundingRect(
+                QRect(0, 0, copy_width, 10000),
+                int(Qt.TextFlag.TextWordWrap),
+                label.text(),
+            ).height()
+            label.setMinimumHeight(required_text + 2)
         required = self.heightForWidth(event.size().width())
         if self.minimumHeight() != required:
             self.setMinimumHeight(required)
@@ -20806,58 +21119,25 @@ class CollectibleDetailDialog(GardenPage):
         )
 
     def _sync_preview_scene_geometry(self) -> None:
-        scene = getattr(self._dialog_owner, "scene", None)
-        ratio = scene.height() / max(1, scene.width()) if scene is not None else 9 / 16
         host = getattr(self, "setup_scroll", None)
-        available_width = (
-            host.viewport().width() if host is not None
-            else self.preview_panel.contentsRect().width()
-        )
-        width = max(1, available_width)
-        if host is not None:
-            self.preview_panel.setFixedWidth(width)
-        self.preview_scene.setFixedSize(width, max(1, round(width * ratio)))
-        self._sync_equipped_cards_geometry(width)
+        if host is None:
+            return
+        available = max(1, host.viewport().width())
+        # All appearance backgrounds share the authored 3:2 scene canvas.
+        width = min(available, 540)
+        height = max(1, round(width * 2 / 3))
+        if self.preview_scene.size() != QSize(width, height):
+            self.preview_scene.setFixedSize(width, height)
+        self._sync_equipped_cards_geometry(available)
 
     def _sync_equipped_cards_geometry(self, width: int) -> None:
         if not hasattr(self, "equipped_grid"):
             return
-        columns = 2 if width >= 492 else 1
-        if columns != self._equipped_columns:
-            self._equipped_columns = columns
-            for card in self.equipped_cards.values():
-                self.equipped_grid.removeWidget(card)
-            for index, card in enumerate(self.equipped_cards.values()):
-                self.equipped_grid.addWidget(
-                    card, index // columns, index % columns,
-                    Qt.AlignmentFlag.AlignTop,
-                )
-            self.equipped_grid.setColumnStretch(0, 1)
-            self.equipped_grid.setColumnStretch(1, 1 if columns == 2 else 0)
-        card_width = max(1, (width - self.equipped_grid.spacing() * (columns - 1)) // columns)
-        for kind, card in self.equipped_cards.items():
-            margins = card.contentsMargins()
-            content_width = max(1, card_width - margins.left() - margins.right())
-            body = card.layout()
-            padding = body.contentsMargins()
-            text_width = max(1, content_width - padding.left() - padding.right())
-            art, name, category, detail, _action = self.setup_rows[kind]
-            identity = body.itemAt(0).layout()
-            identity_width = max(1, text_width - art.width() - identity.spacing())
-            # Qt can retain the wide label size hint after wrapping changes.
-            # Give each label its measured height before fitting the card.
-            for label, label_width in ((name, identity_width), (category, identity_width), (detail, text_width)):
-                label.ensurePolished()
-                metrics = label.fontMetrics()
-                required = max(metrics.lineSpacing(), metrics.boundingRect(
-                    0, 0, label_width, 16777215,
-                    Qt.TextFlag.TextWordWrap, label.text(),
-                ).height())
-                if label.minimumHeight() != required:
-                    label.setFixedHeight(required)
-            height = body.totalHeightForWidth(content_width) + margins.top() + margins.bottom()
-            if card.minimumHeight() != height:
-                card.setFixedHeight(height)
+        # Compact rows share one full text column and let Qt measure wrapping.
+        for card in self.equipped_cards.values():
+            card.setMinimumHeight(0)
+            card.setMaximumHeight(16777215)
+            card.updateGeometry()
         self.equipped_grid.invalidate()
 
     def _show_preview_feedback(
@@ -20917,21 +21197,14 @@ class CollectibleDetailDialog(GardenPage):
             )
 
     def _sync_option_page_geometry(self, current_index: int) -> None:
+        # The catalog owns its available pane height in every preview state.
         self.option_tabs.setMinimumHeight(0)
         self.option_tabs.setMaximumHeight(16777215)
+        self.option_tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         for scroll in self._catalog_scrolls:
             scroll.setMinimumHeight(0)
             scroll.setMaximumHeight(16777215)
             scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        if self._appearance_kind != "landmark" and self._preview_item_name:
-            page = self.option_tabs.currentWidget()
-            scroll = self._catalog_scroll_by_page.get(page)
-            if scroll is not None:
-                detail_height = self.selected_detail.sizeHint().height() if self.selected_detail.isVisible() else 0
-                available = max(160, self.height() - detail_height - 40)
-                count = sum(kind == self._appearance_kind for kind, _item_id in self._tiles)
-                natural_height = max(160, ((count + 1) // 2) * 154 + 8)
-                self.option_tabs.setMaximumHeight(min(available, natural_height))
         self.option_tabs.updateGeometry()
 
     def _option_page(self, accessible_name: str) -> tuple[QWidget, QGridLayout]:
@@ -20964,7 +21237,8 @@ class CollectibleDetailDialog(GardenPage):
 
     def _apply_detail_layout_mode(self, _mode: str) -> None:
         compact = self.width() < 860
-        host = getattr(self, "setup_scroll", self.preview_panel)
+        host = getattr(self, "preview_column", self.preview_panel)
+        self.main_grid.removeWidget(self.preview_panel)
         self.main_grid.removeWidget(self.library)
         self.main_grid.removeWidget(host)
         self.main_grid.addWidget(self.library, 0, 0)
@@ -20974,16 +21248,15 @@ class CollectibleDetailDialog(GardenPage):
         self.main_grid.setColumnStretch(1, 0 if compact else 3)
         self.main_grid.setRowStretch(0, 1)
         self.main_grid.setRowStretch(1, 1 if compact else 0)
-        self.library.setMaximumWidth(16777215 if compact else 520)
-        host.setMinimumWidth(0 if compact else 400)
+        self.library.setMinimumWidth(0 if compact else 352)
+        self.library.setMaximumWidth(16777215 if compact else 440)
+        host.setMinimumWidth(0 if compact else 440)
         host.setMaximumWidth(16777215)
         self.preview_panel.setMinimumWidth(0)
         self.preview_panel.setMaximumWidth(16777215)
         self._preview_compact = compact
 
     @staticmethod
-
-
     def _clear_grid(grid: QGridLayout) -> None:
         while grid.count():
             item = grid.takeAt(0)
@@ -21056,125 +21329,64 @@ class CollectibleDetailDialog(GardenPage):
 
     def _option_tile(self, item: CatalogItem) -> QPushButton:
         effect_copy = garden_bonus_effect_copy(item.item_id, item.effect).strip()
-        if effect_copy.casefold() == "no gameplay bonus.":
-            effect_copy = ""
         owned = self._owns_appearance(item)
-        equipped = (
-            self._persisted_weather == item.item_id
-            if item.kind == "garden_feature" else
-            self._persisted_scenery == item.item_id
-        )
-        selected = (
-            self._draft_weather == item.item_id
-            if item.kind == "garden_feature" else
-            self._draft_scenery == item.item_id
-        )
+        equipped = (self._persisted_weather if item.kind == "garden_feature" else self._persisted_scenery) == item.item_id
+        selected = (self._draft_weather if item.kind == "garden_feature" else self._draft_scenery) == item.item_id
         tile = CollectionCatalogTile()
         tile.setProperty("environmentTile", True)
-        tile.setProperty(
-            "environmentSelectionState",
-            "selected" if selected and not equipped else
-            "equipped" if equipped else
-            "available",
-        )
-        tile.setStyleSheet(f"""
-            QPushButton[environmentTile='true'] {{max-height:10000px;padding:0;border-width:1px;border-radius:9px;}}
-            QPushButton[environmentTile='true']:checked {{border-width:1px;padding:0;}}
-            QPushButton[environmentTile='true']:pressed {{background:{GARDEN_THEME['selected_surface']};}}
-            QPushButton[environmentTile='true']:focus {{border:2px solid {GARDEN_THEME['growth_accent']};}}
-            QLabel[environmentThumb='true'] {{background:transparent;border:0;}}
-        """)
-        tile.setMinimumHeight(190 if item.kind == "scenery" else 186)
-        tile.setMaximumHeight(16777215)
-        tile.setMaximumWidth(248)
-        tile.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-        tile.setMinimumWidth(136)
+        tile.setProperty("compactDecorationRow", item.kind == "garden_feature")
+        tile.setProperty("environmentSelectionState", "selected" if selected and not equipped else "equipped" if equipped else "available")
+        tile.setCheckable(owned)
+        tile.setChecked(selected)
+        tile.setMinimumWidth(156 if item.kind == "scenery" else 0)
+        tile.setMinimumHeight(0)
+        tile.setMaximumSize(16777215, 16777215)
         policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         policy.setHeightForWidth(True)
         tile.setSizePolicy(policy)
-        tile.setCheckable(owned)
-        tile.setChecked(selected)
-        tile.setCursor(
-            Qt.CursorShape.PointingHandCursor if owned else Qt.CursorShape.ArrowCursor
-        )
-        tile.setAccessibleName(
-            f"{item.name}, {_environment_kind_label(item.kind)}"
-        )
-        layout = QVBoxLayout(tile)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(4)
-        layout.addWidget(
-            self._thumbnail(
-                item,
-                width=112 if item.kind == "garden_feature" else 160,
-                height=80 if item.kind == "garden_feature" else 90,
-            ),
-            0,
-            Qt.AlignmentFlag.AlignHCenter,
-        )
-        name = QLabel(item.name)
+        tile.setStyleSheet(f"""
+            QPushButton[environmentTile='true'] {{padding:0;border-width:1px;border-radius:8px;max-height:10000px;}}
+            QPushButton[environmentTile='true']:checked {{padding:0;border-width:1px;}}
+            QPushButton[environmentTile='true']:focus {{border-color:{GARDEN_THEME['growth_accent']};}}
+            QLabel {{background:transparent;border:0;}}
+        """)
+        tile.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout = QVBoxLayout(tile) if item.kind == "scenery" else QHBoxLayout(tile)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        art = self._thumbnail(item, width=132 if item.kind == "scenery" else 64,
+                              height=88 if item.kind == "scenery" else 64)
+        layout.addWidget(art, 0, Qt.AlignmentFlag.AlignHCenter if item.kind == "scenery" else Qt.AlignmentFlag.AlignVCenter)
+        copy_host = QWidget(tile)
+        copy_layout = QVBoxLayout(copy_host)
+        copy_layout.setContentsMargins(0, 0, 0, 0)
+        copy_layout.setSpacing(4)
+        copy_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        name = QLabel(item.name, copy_host)
         name.setProperty("environmentName", True)
-        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name.setWordWrap(True)
         name.setMinimumWidth(0)
-        name.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        states = ["Equipped"] if equipped else []
-        if selected and not equipped:
-            states.append("Previewing")
-        state_text = " · ".join(states)
-        state = QLabel(state_text, tile)
-        state.setProperty("environmentState", True)
-        state.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        state.setWordWrap(True)
-        state.setMinimumHeight(18)
-        state.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        text_group = QWidget(tile)
-        text_group.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        text_layout = QVBoxLayout(text_group)
-        text_layout.setContentsMargins(4, 4, 4, 0)
-        text_layout.setSpacing(4)
-        text_layout.addWidget(name)
-        effect = QLabel(garden_bonus_summary(item.item_id, effect_copy) if item.effects else "No study bonus", tile)
+        copy_layout.addWidget(name)
+        effect = QLabel(garden_bonus_summary(item.item_id, effect_copy) if item.effects else "Appearance only", copy_host)
         effect.setProperty("environmentEffect", True)
         effect.setWordWrap(True)
-        effect.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-        effect.setToolTip(effect_copy or "No bonus")
-        effect.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        effect.setMinimumWidth(0)
+        effect.setToolTip(effect_copy if item.effects else "Appearance only")
         apply_tabular_numerals(effect)
-        text_layout.addWidget(effect)
-        layout.addWidget(text_group)
-        footer = QHBoxLayout()
-        footer.setContentsMargins(0, 4, 0, 0)
-        footer.setSpacing(6)
-        state.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        footer.addWidget(state, 1)
-        display = QPushButton("Equip", tile)
-        display.setProperty("collectionDisplayAction", True)
-        _set_button_variant(display, BUTTON_VARIANT_SECONDARY)
-        display.setFixedHeight(28)
-        display.setVisible(not equipped)
-        display.clicked.connect(lambda _checked=False, kind=item.kind, item_id=item.item_id: self._display_option(kind, item_id))
-        footer.addWidget(display)
-        layout.addLayout(footer)
-        tile.setAccessibleDescription(" ".join(
-            part for part in (
-                f"{item.name}.",
-                f"{state_text}." if state_text else "",
-                effect_copy if owned else item.how_to_earn,
-            )
-            if part
-        ))
-        set_control_enabled(
-            tile,
-            owned,
-            disabled_reason=f"{item.name} is locked. {item.how_to_earn}",
-            enabled_description=tile.accessibleDescription(),
-        )
+        copy_layout.addWidget(effect)
+        state = QLabel("Equipped" if equipped else "Preview" if selected else "", copy_host)
+        state.setProperty("environmentState", True)
+        state.setVisible(bool(state.text()))
+        copy_layout.addWidget(state)
+        layout.addWidget(copy_host, 1)
+        tile.setAccessibleName(f"{item.name}, {_environment_kind_label(item.kind)}")
+        tile.setAccessibleDescription(" ".join(value for value in (state.text(), effect.text()) if value))
+        set_control_enabled(tile, owned, disabled_reason=f"{item.name} is locked. {item.how_to_earn}",
+                            enabled_description=tile.accessibleDescription())
+        for child in tile.findChildren(QWidget):
+            child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         if owned:
-            tile.clicked.connect(
-                lambda _checked=False, kind=item.kind, item_id=item.item_id:
-                self._select_option(kind, item_id)
-            )
+            tile.clicked.connect(lambda _checked=False, kind=item.kind, item_id=item.item_id: self._select_option(kind, item_id))
         self._tiles[(item.kind, item.item_id)] = tile
         return tile
 
@@ -21208,21 +21420,22 @@ class CollectibleDetailDialog(GardenPage):
                 item for item in catalog.values()
                 if self._owns_appearance(item)
             ]
+            columns = 2 if kind == "scenery" else 1
             for index, item in enumerate(owned_items):
-                grid.addWidget(self._option_tile(item), index // 2, index % 2)
+                grid.addWidget(self._option_tile(item), index // columns, index % columns)
             if len(owned_items) <= 1:
                 grid.addWidget(
                     self._browse_nursery_empty_state(kind),
-                    (len(owned_items) + 1) // 2,
+                    (len(owned_items) + columns - 1) // columns,
                     0,
                     1,
-                    2,
+                    columns,
                 )
             grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
+            grid.setColumnStretch(1, 1 if columns == 2 else 0)
             for row in range(grid.rowCount()):
                 grid.setRowStretch(row, 0)
-            grid.setRowStretch((len(owned_items) + 1) // 2 + (1 if len(owned_items) <= 1 else 0), 1)
+            grid.setRowStretch((len(owned_items) + columns - 1) // columns + (1 if len(owned_items) <= 1 else 0), 1)
         self._sync_option_page_geometry(self.option_tabs.currentIndex())
 
     def prepare_to_show(self) -> None:
@@ -21255,6 +21468,10 @@ class CollectibleDetailDialog(GardenPage):
         )
 
     def _select_option(self, kind: str, item_id: str) -> None:
+        positions = [scroll.verticalScrollBar().value() for scroll in self._catalog_scrolls]
+        self.appearance_feedback.clear()
+        self.appearance_undo_button.hide()
+        self._appearance_undo = self._landmark_undo = None
         self.prepare_to_show()
         if kind == "garden_feature":
             self._draft_weather = str(item_id)
@@ -21263,11 +21480,12 @@ class CollectibleDetailDialog(GardenPage):
         self._draft_visibility[kind] = True
         catalog = SCENERY_CATALOG if kind == "scenery" else GARDEN_FEATURE_CATALOG
         item = catalog.get(item_id)
-        self._preview_item_name = item.name if item else format_status_label(item_id)
+        self._preview_item_name = (item.name if item else format_status_label(item_id)) if self._draft_key() != self._persisted_draft else ""
         self._rebuild_options()
         self._refresh_preview()
         self._refresh_bonus_controls()
-
+        for scroll, position in zip(self._catalog_scrolls, positions):
+            QTimer.singleShot(0, lambda viewport=scroll, value=position: viewport.verticalScrollBar().setValue(value))
 
     def _display_option(self, kind: str, item_id: str) -> None:
         self._select_option(kind, item_id)
@@ -21525,10 +21743,10 @@ class CollectibleDetailDialog(GardenPage):
     def _apply_draft(self) -> None:
         if self._loadout_save_pending:
             return
-        before = self._persisted_draft
-        after = self._draft_key()
+        before, after = self._persisted_draft, self._draft_key()
         if before == after:
             return
+        name = self._preview_item_name
         self._loadout_save_pending = True
         try:
             ok, message = self.engine.apply_garden_appearance(self._draft_weather, self._draft_scenery, self._draft_visibility)
@@ -21542,8 +21760,10 @@ class CollectibleDetailDialog(GardenPage):
             self._landmark_undo = None
             self._preview_item_name = ""
             self._dialog_owner._refresh_after_commit("garden appearance")
-        self.prepare_to_show()
-        self.appearance_feedback.setText("Garden updated." if ok else _learner_text(message))
+            self.prepare_to_show()
+        else:
+            self._loadout_failure = True
+        self.appearance_feedback.setText(f"{name} equipped." if ok else _learner_text(message))
         self.appearance_undo_button.setVisible(bool(ok))
         self._refresh_bonus_controls()
 
@@ -21559,16 +21779,8 @@ class CollectibleDetailDialog(GardenPage):
         self._dialog_owner._open_loadout_detail(category, item_id)
 
     def _confirm_discard_preview(self, _reason: DialogCloseReason) -> bool:
-        if self._draft_key() == self._persisted_draft:
-            return True
-        answer = QMessageBox.question(
-            self,
-            "Discard changes?",
-            "Your garden appearance was not applied.",
-            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        return answer == QMessageBox.StandardButton.Discard
+        self.discard_preview()
+        return True
 
     def _cancel_preview(self) -> None:
         if self._loadout_failure:
@@ -21616,110 +21828,87 @@ class CollectibleDetailDialog(GardenPage):
         self.header.hide()
         self.footer.hide()
         self._shell_layout.setContentsMargins(20, 12, 20, 16)
-        self.option_tabs.tabBar().hide()
+        self.configure_close_policy(protect_dirty=False, protect_in_flight=True)
+        self.option_tabs.setTabText(1, "Decorations")
+        self.option_tabs.setStyleSheet(f"""
+            QTabBar::tab {{background:transparent;color:{GARDEN_THEME['text_secondary']};border:0;border-bottom:2px solid transparent;padding:8px;font-size:13px;}}
+            QTabBar::tab:selected {{color:{GARDEN_THEME['growth_accent']};border-bottom-color:{GARDEN_THEME['growth_accent']};}}
+            QTabWidget::pane {{border:0;}}
+        """)
+        self.option_tabs.tabBar().show()
+        self.option_tabs.currentChanged.connect(self._appearance_category_changed)
         self.library.layout().setContentsMargins(0, 0, 0, 0)
-        self.library.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.library.layout().setAlignment(Qt.AlignmentFlag(0))
         self.preview_panel.setStyleSheet("QFrame[collectionPreview='true'] {background:transparent;border:0;}")
         self.appearance_summary.hide()
         self.preview_feedback.hide()
         self.preview_heading.hide()
         preview_layout = self.preview_panel.layout()
         preview_layout.setContentsMargins(0, 0, 0, 0)
-        preview_layout.setSpacing(12)
+        preview_layout.setSpacing(8)
         preview_layout.setStretchFactor(self.preview_scene, 0)
-        preview_layout.setAlignment(self.preview_scene, Qt.AlignmentFlag.AlignLeft)
-        self.setup_preview_title = QLabel("Garden preview")
-        self.setup_preview_title.setWordWrap(True)
-        self.setup_preview_title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setup_preview_title.setStyleSheet("font-size:13px;font-weight:600;")
-        preview_header = QHBoxLayout()
-        preview_header.setSpacing(8)
-        preview_header.addWidget(self.setup_preview_title, 1)
-        preview_layout.insertLayout(0, preview_header)
-        self.reset_preview_button = QPushButton("Reset preview")
-        _set_button_variant(self.reset_preview_button, BUTTON_VARIANT_TERTIARY)
-        self.reset_preview_button.clicked.connect(self.discard_preview)
-        self.reset_preview_button.setStyleSheet("QPushButton {background:transparent;border:0;padding:0;font-size:13px;min-width:0;}")
-        preview_header.addWidget(self.reset_preview_button)
-        self.reset_preview_button.hide()
-        heading = QLabel("Currently Equipped Items")
-        heading.setStyleSheet("font-size:18px;font-weight:600;")
-        heading.setWordWrap(True)
-        heading.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        preview_layout.setAlignment(self.preview_scene, Qt.AlignmentFlag.AlignHCenter)
+        heading = QLabel("Equipped", self.preview_panel)
+        apply_text_role(heading, TextRole.CARD_TITLE)
         preview_layout.addWidget(heading)
         self.setup_rows = {}
         self.equipped_cards = {}
-        self._equipped_columns = 0
+        self._equipped_columns = 1
         equipped_host = QWidget(self.preview_panel)
         equipped_host.setMinimumWidth(0)
         equipped_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.equipped_grid = QGridLayout(equipped_host)
         self.equipped_grid.setContentsMargins(0, 0, 0, 0)
-        self.equipped_grid.setSpacing(12)
-        self.equipped_grid.setAlignment(Qt.AlignmentFlag.AlignTop)
-        for kind, title in (("scenery", "Scenery"),
-                            ("garden_feature", "Decoration"),
-                            ("landmark", "Landmark")):
+        self.equipped_grid.setSpacing(6)
+        self.equipped_grid.setColumnStretch(0, 1)
+        for kind, title in (("scenery", "Scenery"), ("garden_feature", "Decoration"), ("landmark", "Landmark")):
             if kind == "landmark" and not landmarks_enabled():
                 continue
             card = QFrame(equipped_host)
             card.setProperty("gardenSetupRow", True)
             card.setAccessibleName(f"Equipped {title.lower()}")
-            card.setStyleSheet(
-                f"QFrame[gardenSetupRow='true'] {{background:{GARDEN_THEME['raised_surface']};"
-                f"border:1px solid {GARDEN_THEME['subtle_border']};border-radius:10px;}}"
-                "QLabel {background:transparent;border:0;}"
-            )
+            card.setStyleSheet(f"QFrame[gardenSetupRow='true'] {{background:{GARDEN_THEME['raised_surface']};border-radius:8px;}} QLabel {{background:transparent;border:0;}}")
             card.setMinimumWidth(0)
             card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-            body = QVBoxLayout(card)
-            body.setContentsMargins(12, 12, 12, 12)
-            body.setSpacing(8)
-            body.setAlignment(Qt.AlignmentFlag.AlignTop)
-            identity = QHBoxLayout()
-            identity.setSpacing(8)
+            row = QHBoxLayout(card)
+            row.setContentsMargins(10, 8, 10, 8)
+            row.setSpacing(10)
             art = QLabel(card)
-            art.setFixedSize(48, 48)
+            art.setFixedSize(40, 40)
             art.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            identity.addWidget(art, 0, Qt.AlignmentFlag.AlignTop)
-            labels = QVBoxLayout()
-            labels.setSpacing(2)
+            row.addWidget(art)
+            copy = QVBoxLayout()
+            copy.setSpacing(2)
             category = QLabel(title, card)
-            category.setStyleSheet(f"font-size:14px;color:{GARDEN_THEME['text_secondary']};")
-            category.setWordWrap(True)
+            apply_text_role(category, TextRole.METADATA)
+            category.hide()
             name = QLabel(card)
             name.setWordWrap(True)
             name.setMinimumWidth(0)
-            name.setStyleSheet("font-size:16px;font-weight:600;")
-            labels.addWidget(category)
-            labels.addWidget(name)
-            identity.addLayout(labels, 1)
-            body.addLayout(identity)
+            apply_text_role(name, TextRole.CARD_TITLE)
             detail = QLabel(card)
             detail.setWordWrap(True)
-            detail.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             detail.setMinimumWidth(0)
-            detail.setStyleSheet(f"font-size:14px;color:{GARDEN_THEME['text_secondary']};")
-            body.addWidget(detail)
+            apply_text_role(detail, TextRole.SECONDARY)
+            copy.addWidget(name)
+            copy.addWidget(detail)
+            row.addLayout(copy, 1)
             action = None
             if kind == "landmark":
                 self.hide_landmark = QPushButton("Hide", card)
                 _set_button_variant(self.hide_landmark, BUTTON_VARIANT_TERTIARY)
-                self.hide_landmark.setAccessibleName("Hide landmark")
                 self.hide_landmark.clicked.connect(self._hide_landmark)
-                body.addWidget(self.hide_landmark, 0, Qt.AlignmentFlag.AlignLeft)
+                row.addWidget(self.hide_landmark)
                 action = QPushButton("View landmarks", card)
                 _set_button_variant(action, BUTTON_VARIANT_TERTIARY)
                 action.clicked.connect(lambda _checked=False: self._setup_row_action("landmark"))
-                body.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
+                row.addWidget(action)
             self.equipped_cards[kind] = card
             self.setup_rows[kind] = (art, name, category, detail, action)
+            self.equipped_grid.addWidget(card, len(self.equipped_cards) - 1, 0)
         preview_layout.addWidget(equipped_host)
-        self._sync_equipped_cards_geometry(self.preview_panel.width())
-        self.other_bonuses = DisclosureRow("Other active bonuses", [], compact=True)
-        preview_layout.addWidget(self.other_bonuses)
         preview_layout.addStretch(1)
-        self.setup_scroll = QScrollArea()
+        self.setup_scroll = QScrollArea(self)
         self.setup_scroll.setWidgetResizable(True)
         self.setup_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.setup_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -21727,39 +21916,54 @@ class CollectibleDetailDialog(GardenPage):
         self.setup_scroll.viewport().installEventFilter(self)
         _set_scroll_surface(self.setup_scroll, self.preview_panel, GARDEN_THEME["dialog_surface"])
         self.register_scroll_region(self.setup_scroll)
-        self.selected_detail = QWidget(self.library)
-        self.selected_detail.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-        selected_layout = QVBoxLayout(self.selected_detail)
-        selected_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        selected_layout.setContentsMargins(0, 12, 8, 0)
-        selected_layout.setSpacing(8)
-        self.selected_title = QLabel()
-        self.selected_title.setWordWrap(True)
-        self.selected_title.setStyleSheet("font-size:13px;font-weight:600;")
-        self.bonus_effect = QLabel()
-        self.bonus_effect.setWordWrap(True)
-        self.appearance_apply = QPushButton("Apply")
+        self.preview_column = QWidget(self)
+        column = QVBoxLayout(self.preview_column)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(8)
+        self.setup_preview_title = QLabel("Garden preview", self.preview_column)
+        self.setup_preview_title.setWordWrap(True)
+        self.setup_preview_title.setMinimumWidth(0)
+        apply_text_role(self.setup_preview_title, TextRole.CARD_TITLE)
+        self.appearance_apply = QPushButton("Equip", self.preview_column)
         _set_button_variant(self.appearance_apply, BUTTON_VARIANT_PRIMARY)
+        set_button_size(self.appearance_apply, ButtonSize.COMPACT_ROW)
         self.appearance_apply.clicked.connect(self._apply_selected_appearance)
-        selected_layout.addWidget(self.selected_title)
-        selected_layout.addWidget(self.bonus_effect)
-        actions = QHBoxLayout()
-        actions.setSpacing(8)
-        actions.addWidget(self.appearance_apply)
-        actions.addStretch(1)
-        selected_layout.addLayout(actions)
-        self.appearance_feedback = QLabel()
+        self.reset_preview_button = QPushButton("Cancel preview", self.preview_column)
+        _set_button_variant(self.reset_preview_button, BUTTON_VARIANT_TERTIARY)
+        set_button_size(self.reset_preview_button, ButtonSize.COMPACT_ROW)
+        self.reset_preview_button.clicked.connect(self.discard_preview)
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        header.addWidget(self.setup_preview_title, 1)
+        header.addWidget(self.appearance_apply)
+        header.addWidget(self.reset_preview_button)
+        column.addLayout(header)
+        # Result feedback remains adjacent to the control that changed the scene.
+        self.selected_detail = QWidget(self.preview_column)
+        feedback = QHBoxLayout(self.selected_detail)
+        feedback.setContentsMargins(0, 0, 0, 0)
+        feedback.setSpacing(8)
+        self.appearance_feedback = QLabel(self.selected_detail)
         self.appearance_feedback.setWordWrap(True)
-        self.appearance_undo_button = QPushButton("Undo")
+        self.appearance_undo_button = QPushButton("Undo", self.selected_detail)
         _set_button_variant(self.appearance_undo_button, BUTTON_VARIANT_TERTIARY)
         self.appearance_undo_button.clicked.connect(self._undo_appearance)
-        self.appearance_undo_button.hide()
-        feedback = QHBoxLayout()
         feedback.addWidget(self.appearance_feedback, 1)
         feedback.addWidget(self.appearance_undo_button)
-        selected_layout.addLayout(feedback)
-        self.library.layout().addWidget(self.selected_detail)
+        self.appearance_undo_button.hide()
+        column.addWidget(self.selected_detail)
+        column.addWidget(self.setup_scroll, 1)
+        # These mirrors remain available to established landmark callers.
+        self.selected_title = QLabel(self.preview_column)
+        self.bonus_effect = QLabel(self.preview_column)
+        self.selected_title.hide()
+        self.bonus_effect.hide()
         self._apply_detail_layout_mode("wide")
+
+    def _appearance_category_changed(self, index: int) -> None:
+        if not hasattr(self, "setup_rows"):
+            return
+        self.show_category("scenery" if index == 0 else "garden_feature" if index == 1 else "landmark")
 
     def _hide_landmark(self) -> None:
         before = str(self.storage.state.garden_project.displayed_project_id or "")
@@ -21819,23 +22023,22 @@ class CollectibleDetailDialog(GardenPage):
         if kind == "landmark" and not landmarks_enabled():
             self._dialog_owner.open_section("collection", "plants")
             return
-        if kind != self._appearance_kind:
+        changed = kind != self._appearance_kind
+        if changed:
             self.appearance_feedback.clear()
             self.appearance_undo_button.hide()
-            self._preview_landmark = ""
-            self._preview_item_name = ""
+            self._appearance_undo = self._landmark_undo = None
             self.setup_scroll.verticalScrollBar().setValue(0)
         self._appearance_kind = kind
-        self.prepare_to_show()
-        page = {
-            "scenery": self.scenery_page,
-            "garden_feature": self.weather_page,
-            "landmark": getattr(self._dialog_owner, "garden_landmarks_pane", None),
-        }.get(kind)
+        page = {"scenery": self.scenery_page, "garden_feature": self.weather_page,
+                "landmark": getattr(self._dialog_owner, "garden_landmarks_pane", None)}.get(kind)
         if page is not None:
+            self.option_tabs.blockSignals(True)
             self.option_tabs.setCurrentWidget(page)
+            self.option_tabs.blockSignals(False)
+        self.option_tabs.tabBar().setVisible(kind != "landmark")
+        self.prepare_to_show()
         self._refresh_bonus_controls()
-
 
     def _undo_appearance(self) -> None:
         if self._landmark_undo is not None:
@@ -21877,12 +22080,12 @@ class CollectibleDetailDialog(GardenPage):
             art.clear()
             if item.kind == "landmark":
                 self.hide_landmark.setVisible(bool(item.appearance_id))
-                detail.setText("No study bonus")
+                detail.setText("Appearance only")
                 action.setVisible(not item.appearance_id and self._appearance_kind != "landmark")
                 if item.appearance_id:
                     asset = self.engine.resolve_landmark_asset()
                     pixmap = _preview_source_pixmap(getattr(asset, "path", ""))
-                    art.setPixmap(pixmap.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                    art.setPixmap(pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             else:
                 catalog = SCENERY_CATALOG if item.kind == "scenery" else GARDEN_FEATURE_CATALOG
                 displayed = catalog.get(item.appearance_id)
@@ -21892,49 +22095,20 @@ class CollectibleDetailDialog(GardenPage):
                         displayed = CatalogItem(item.appearance_id, cosmetic.display_name,
                             "garden_feature", "common", "drop", "No bonus", "Garden discovery")
                 if displayed:
-                    art.setPixmap(_environment_preview_pixmap(self.engine, displayed, 96, 96).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                detail.setText(item.effect if item.effect not in {"", "No bonus"} else "No study bonus")
+                    art.setPixmap(_environment_preview_pixmap(self.engine, displayed, 96, 96).scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                detail.setText(item.effect if item.effect not in {"", "No bonus"} else "Appearance only")
             self.equipped_cards[item.kind].setAccessibleDescription(
                 f"{item.appearance_name}. {detail.text()}"
             )
-        layout = self.other_bonuses.panel.layout()
-        while layout.count():
-            entry = layout.takeAt(0)
-            if entry.widget():
-                entry.widget().deleteLater()
-        for pending in (False, True):
-            effects = [e for e in projection.effects if e.pending == pending]
-            if pending and effects:
-                label = QLabel("Up next")
-                label.setStyleSheet("font-weight:600;")
-                layout.addWidget(label)
-            for effect in effects:
-                line = f"{effect.name} · {effect.effect}"
-                if effect.plant_name:
-                    line += f"\n{effect.plant_name} · {effect.remaining_cards:,} cards remaining"
-                label = QLabel(line)
-                label.setWordWrap(True)
-                layout.addWidget(label)
-                if effect.plant_id:
-                    supplies = QPushButton("Plant supplies")
-                    _set_button_variant(supplies, BUTTON_VARIANT_TERTIARY)
-                    supplies.clicked.connect(lambda _checked=False, plant_id=effect.plant_id: self._dialog_owner._open_fertilizer_menu(plant_id))
-                    layout.addWidget(supplies, 0, Qt.AlignmentFlag.AlignLeft)
-        self.other_bonuses.setVisible(bool(projection.effects))
-        if not projection.effects:
-            label = QLabel("No additional bonuses active")
-            label.setWordWrap(True)
-            layout.addWidget(label)
         previewing = bool(self._preview_item_name)
         kind = self._appearance_kind
-        # Scenery cards already equip the appearance and its bonus together.
-        # Keep only the resulting feedback/Undo here, not a duplicate Apply step.
-        selected_summary_visible = kind != "scenery"
-        self.selected_title.setVisible(selected_summary_visible)
-        self.bonus_effect.setVisible(selected_summary_visible)
-        self.appearance_apply.setVisible(selected_summary_visible)
-        self.selected_detail.setVisible((previewing and selected_summary_visible) or bool(self.appearance_feedback.text()))
-        self.setup_preview_title.setText(f"Previewing: {self._preview_item_name}" if previewing else "Garden preview")
+        self.selected_title.hide()
+        self.bonus_effect.hide()
+        self.appearance_apply.setVisible(previewing)
+        self.appearance_apply.setText("Display" if kind == "landmark" else "Equip")
+        self.selected_detail.setVisible(bool(self.appearance_feedback.text()))
+        self.setup_preview_title.setText(f"Preview: {self._preview_item_name}" if previewing else "Garden preview")
+        self.setup_preview_title.setVisible(previewing or not self.appearance_feedback.text())
         self.reset_preview_button.setVisible(previewing)
         if kind == "landmark":
             row = next((r for r in self.engine.landmark_catalog_summary()["items"] if r["landmark_id"] == self._preview_landmark), None)
@@ -21946,7 +22120,7 @@ class CollectibleDetailDialog(GardenPage):
         catalog = SCENERY_CATALOG if kind == "scenery" else GARDEN_FEATURE_CATALOG
         item = catalog.get(selected)
         self.selected_title.setText(item.name if item else self.appearance_values["displayed_decoration"].text())
-        self.bonus_effect.setText(garden_bonus_effect_copy(item.item_id, item.effect).strip() if item and item.effects else "No study bonus")
+        self.bonus_effect.setText(garden_bonus_effect_copy(item.item_id, item.effect).strip() if item and item.effects else "Appearance only")
         self.appearance_apply.setEnabled(self._draft_key() != self._persisted_draft)
         self._sync_equipped_cards_geometry(self.setup_scroll.viewport().width())
 
@@ -22596,7 +22770,7 @@ class GardenDashboard(DialogShell):
             "Achievement progress",
             minimum_item_width=340,
             minimum_card_height=78,
-            span_singleton_rows=True,
+            span_singleton_rows=False,
         )
         # Keep the next complete category heading/card pair in the canonical
         # first fold instead of leaving a nearly row-sized empty gutter.
@@ -22617,9 +22791,11 @@ class GardenDashboard(DialogShell):
         # only scroll region in that secondary tab.
         self.collection_list.fixed_header_layout.setContentsMargins(20, 0, 20, 0)
         self.garden_landmarks_pane = GardenLandmarksPane() if landmarks_enabled() else None
+        from .collection_workspace import CollectionPlantWorkspace
+        self.collection_plants_workspace = CollectionPlantWorkspace(self.collection_list, self)
         self.collection_section = CollectionSection(
             self.engine,
-            self.collection_list,
+            self.collection_plants_workspace,
             self.garden_landmarks_pane,
         )
         self.collectible_detail_dialog = CollectibleDetailDialog(
@@ -23174,7 +23350,7 @@ class GardenDashboard(DialogShell):
             self._achievement_filter_buttons[key] = button
             filter_row.addWidget(button)
         filter_row.addStretch(1)
-        count = QLabel(f"{sum(view.unlocked for view in achievement_views):,} of {len(achievement_views):,} completed")
+        count = QLabel(f"{sum(view.unlocked for view in achievement_views):,} of {len(achievement_views):,} completed overall")
         count.setProperty("rowCriteria", True)
         filter_row.addWidget(count)
         filter_layout.addLayout(filter_row)
@@ -23249,6 +23425,7 @@ class GardenDashboard(DialogShell):
                 card_layout = QVBoxLayout(card)
                 card_layout.setContentsMargins(12, 9, 12, 9)
                 card_layout.setSpacing(4)
+                card_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
                 # Completed cards need only two rows. Longer requirements can
                 # grow naturally without clipping their progress or rewards.
                 card.setMinimumHeight(78)
@@ -23257,7 +23434,8 @@ class GardenDashboard(DialogShell):
                 heading = QHBoxLayout()
                 icon = QLabel("")
                 icon.setProperty("catalogIcon", True)
-                icon.setFixedSize(28, 28)
+                icon.setFixedSize(20, 20)
+                icon.setStyleSheet("background:transparent;border:0;")
                 icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 icon.setPixmap(
                     garden_icon(
@@ -23325,6 +23503,11 @@ class GardenDashboard(DialogShell):
                     progress_conditions,
                 )
                 requirement_text = learner_card_copy(projection.criteria_text or (condition_lines[0] if condition_lines else ""))
+                requirement_text = requirement_text.replace("first unique plant species", "first species")
+                requirement_text = requirement_text.replace("unique plant species", "different species")
+                requirement_text = requirement_text.replace("current plant species", "species")
+                for written, number in (("three", "3"), ("six", "6"), ("ten", "10")):
+                    requirement_text = requirement_text.replace(f"{written} ", f"{number} ")
                 title_text = " ".join(projection.name.rstrip(".").casefold().split())
                 normalized_requirement = " ".join(requirement_text.rstrip(".").casefold().split())
                 repeats_title = normalized_requirement in {
@@ -23391,7 +23574,6 @@ class GardenDashboard(DialogShell):
                 )
                 reward_heading.hide()
                 reward_layout.addWidget(reward, 1)
-                card_layout.addStretch(1)
                 card_layout.addWidget(reward_row)
                 if projection.unlocked and unlock_text and unlock_text != "Completed":
                     card_layout.addWidget(completion_date)
@@ -23421,6 +23603,7 @@ class GardenDashboard(DialogShell):
             self.achievement_list.add_category_group(
                 group_heading,
                 category_cards,
+                span_singleton_row=False,
             )
 
         if not achievement_views:
@@ -23511,6 +23694,7 @@ class GardenDashboard(DialogShell):
         if plant is None:
             self._update_scene_height()
         self._position_plant_card()
+        self._sync_nurtured_bar_visibility()
 
     def _on_landmark_activated(self, action_id: str) -> None:
         action = str(action_id)
@@ -24129,6 +24313,12 @@ class GardenDashboard(DialogShell):
         if self.scene._interaction.placing:
             return
         active = self.engine.active_plant()
+        starter = self.storage.state.onboarding
+        if starter.step == OnboardingStep.NURTURE and str(starter.starter_plant_id) == str(plant_id):
+            self.scene.keep_card_open(plant_id)
+            self._refresh_selected_plant_card()
+            self._sync_nurtured_bar_visibility()
+            return
         if active is None or str(active.plant_id) != str(plant_id):
             self.refresh_all()
             return
@@ -24138,6 +24328,10 @@ class GardenDashboard(DialogShell):
 
     def _sync_nurtured_bar_visibility(self) -> None:
         step = self.storage.state.onboarding.step
+        self.nurtured_plant_bar.set_onboarding(
+            str(self.storage.state.onboarding.starter_plant_id or "") if step == OnboardingStep.NURTURE else "",
+            popup_visible=bool(self.scene.selected_plant_id()),
+        )
         self.nurtured_plant_bar.setVisible(step not in {
             OnboardingStep.INTRODUCTION, OnboardingStep.NURSERY,
             OnboardingStep.CONFIRMATION, OnboardingStep.PLACEMENT,
@@ -24471,6 +24665,11 @@ class GardenDashboard(DialogShell):
             "stage_progress": display.progress,
             "stage_points": display.stage_points,
             "stage_goal": display.stage_goal,
+            "next_checkpoint_growth_remaining": display.next_checkpoint_growth_remaining,
+            "next_checkpoint_base_coins": display.next_checkpoint_base_coins,
+            "overflow_destination_summary": (
+                self.engine.overflow_destination_summary() if display.fully_grown else ""
+            ),
             "fully_grown": display.fully_grown,
             "streak_bonus_percent": streak_bonus_percent,
             "fertilizer_growth": fertilizer_growth,
@@ -24770,13 +24969,17 @@ class GardenDashboard(DialogShell):
         if outcome is not None and outcome.success:
             self._refresh_after_commit("Growth Charge")
             picker = getattr(self, "fertilizer_dialog", None)
-            refresh_items = getattr(picker, "refresh_items", None)
-            if callable(refresh_items):
-                refresh_items()
             if view_plant_requested:
+                if picker is not None:
+                    picker.accept()
+                self.open_section("garden")
                 target_id = str(getattr(outcome, "target_id", plant_id) or plant_id)
                 self.scene.keep_card_open(target_id)
                 self._refresh_selected_plant_card()
+            else:
+                refresh_items = getattr(picker, "refresh_items", None)
+                if callable(refresh_items):
+                    refresh_items()
             if not tuple(getattr(outcome, "completed_stages", ()) or ()):
                 self.toast_region.show_message(
                     f"+{max(0, int(getattr(outcome, 'growth_granted', 0) or 0)):,} Growth applied"
@@ -24902,7 +25105,7 @@ class GardenDashboard(DialogShell):
                 self._restore_move_focus(plant_id)
             return
         self.rearrange_bar.instructions.setText(
-            "Choose an empty bed, or another plant to swap."
+            "Choose an empty bed or a plant to swap with."
         )
         self._remember_move_focus(plant_id)
         self._failed_move_destination = None
@@ -25141,7 +25344,7 @@ class GardenDashboard(DialogShell):
             self._starter_placement_active = False
             self._active_placement_token = None
             self._onboarding_save_error = ""
-            self.scene.finish_move("Starter planted. Continue to nurture selection.")
+            self.scene.finish_move("Starter planted.")
             self.rearrange_bar.hide()
             self.rearrange_bar.cancel.setText("Cancel")
             self._undo_starter_placement = change
@@ -25149,8 +25352,7 @@ class GardenDashboard(DialogShell):
             self._refresh_after_commit("starter placement")
             if change is not None:
                 self.toast_region.show_message(
-                    f"{PlantIdentity.from_plant(plant).display_name} added to "
-                    f"Bed {destination_slot + 1}",
+                    f"{PlantIdentity.from_plant(plant).species_name} planted.",
                     action_text="Undo",
                     callback=self._undo_starter_placement_change,
                 )
@@ -25224,7 +25426,7 @@ class GardenDashboard(DialogShell):
                 f"Move {PlantIdentity.from_plant(moving_plant).display_name if moving_plant is not None else moving_species}"
             )
             self.rearrange_bar.instructions.setText(
-                "Choose an empty bed, or another plant to swap."
+                "Choose an empty bed or a plant to swap with."
             )
             self.rearrange_bar.cancel.setText("Cancel")
             self.toast_region.clear()
@@ -25492,10 +25694,7 @@ class GardenDashboard(DialogShell):
     def _onboarding_completion_receipt(self) -> str:
         progress = self.storage.state.onboarding
         plant = self.engine.plant_story(str(progress.starter_plant_id or ""))
-        plant_name = format_plant_name(plant)
-        slot = getattr(plant, "slot_index", None)
-        bed = f"Bed {int(slot) + 1}" if isinstance(slot, int) and slot >= 0 else "Saved bed"
-        return f"{plant_name} is growing in {bed}."
+        return f"{PlantIdentity.from_plant(plant).species_name} planted."
 
     def _onboarding_failure_receipt(self, step: OnboardingStep) -> str:
         del step
@@ -25900,16 +26099,52 @@ class GardenDashboard(DialogShell):
 
     def _refresh_collection_list(self, *, refresh_landmarks: bool = True) -> None:
         started = RUNTIME_PERFORMANCE.begin()
+        updates_enabled = self.collection_list.updatesEnabled()
+        self.collection_list.setUpdatesEnabled(False)
         try:
-            self._refresh_collection_list_content(
-                refresh_landmarks=refresh_landmarks,
-            )
-            self._progress_page_dirty.discard("collection")
+            if not refresh_landmarks and "collection" not in self._progress_page_dirty and hasattr(self, "_collection_species_cards"):
+                self._apply_collection_view()
+                self.collection_plants_workspace.refresh_selection(force=False)
+            else:
+                self.collection_list._defer_reflow = True
+                self._refresh_collection_list_content(refresh_landmarks=refresh_landmarks)
+                self._progress_page_dirty.discard("collection")
+                self.collection_plants_workspace.refresh_selection()
         finally:
-            RUNTIME_PERFORMANCE.finish(
-                "dashboard.collection.refresh",
-                started,
+            self.collection_list._defer_reflow = False
+            self.collection_list.setUpdatesEnabled(updates_enabled)
+            RUNTIME_PERFORMANCE.finish("dashboard.collection.refresh", started)
+
+    def _apply_collection_view(self) -> None:
+        """Filter and reorder existing species cards without rebuilding artwork."""
+        query = self._collection_query.casefold()
+        cards = list(self._collection_species_cards)
+        if self._collection_sort == "name":
+            cards.sort(key=lambda card: format_status_label(str(card.property("collectionSpeciesId"))).casefold())
+        visible_count = 0
+        for card in cards:
+            name = format_status_label(str(card.property("collectionSpeciesId")))
+            owned = card.property("catalogState") == "owned"
+            visible = (
+                (not query or query in name.casefold())
+                and (self._collection_filter == "all" or owned == (self._collection_filter == "collected"))
             )
+            card.setProperty("excludedFromProgressGrid", not visible)
+            card.setVisible(visible)
+            visible_count += int(visible)
+        empty = visible_count == 0
+        self.collection_no_results.setProperty("excludedFromProgressGrid", not empty)
+        self.collection_no_results.setVisible(empty)
+        filtered = bool(query or self._collection_filter != "all")
+        for label in self.collection_no_results.findChildren(QLabel):
+            if label.property("emptyTitle"):
+                label.setText("No matching plants" if filtered else "No plants yet")
+            elif label.property("emptyBody"):
+                label.setText("Try another search or filter." if filtered else "Choose a plant in the Garden.")
+        self.collection_list._entries = [(self.collection_no_results, True), *((card, False) for card in cards)]
+        self.collection_list.setProperty("emptyResult", empty)
+        self.collection_section.set_plants_empty(empty)
+        self.collection_list.finish()
 
     def _refresh_collection_list_content(
         self,
@@ -25920,6 +26155,7 @@ class GardenDashboard(DialogShell):
             self.collection_list.scroll.verticalScrollBar().value()
         )
         self.collection_list.clear()
+        self._collection_species_cards: list[QWidget] = []
         state = self.storage.state
         registry_views = list(collection_entry_views(state))
         projected_beds = bed_unlock_rows(state)
@@ -25955,7 +26191,7 @@ class GardenDashboard(DialogShell):
         collected = collection_projection.collection_entries_discovered
         species_owned = collection_projection.species_discovered
         species_total = collection_projection.species_total
-        plant_summary_accessible = f"{species_owned} / {species_total} plant types discovered"
+        plant_summary_accessible = f"{species_owned} of {species_total} species discovered"
         self.collection_section.set_plant_summary(plant_summary_accessible, plant_summary_accessible)
         self.collection_section.subtabs.plants_summary.setProperty(
             "semanticId", "progress.collection-count"
@@ -25974,8 +26210,6 @@ class GardenDashboard(DialogShell):
             collection_projection.collection_entries_total,
         )
         self._collection_category = "plants"
-        self._collection_filter = "all"
-        self._collection_query = ""
         no_results = EmptyState("No plants yet", "Choose a plant in the Garden.")
         no_results.setProperty("excludedFromProgressGrid", True)
         no_results.hide()
@@ -25986,19 +26220,12 @@ class GardenDashboard(DialogShell):
         rendered = 0
         result_count = 0
         ordered_species = list(species_catalog)
-        if self._collection_sort == "name":
-            ordered_species.sort(key=lambda value: format_status_label(value).casefold())
+        instances_by_species: dict[str, list[Any]] = {}
+        for plant in state.plants:
+            instances_by_species.setdefault(str(plant.species), []).append(plant)
         for species in ordered_species:
-            if self._collection_category not in {"all", "plants"}:
-                continue
-            if self._collection_query and self._collection_query.casefold() not in format_status_label(species).casefold():
-                continue
-            instances = [plant for plant in state.plants if plant.species == species]
+            instances = instances_by_species.get(species, [])
             collected_species = species in owned_species or bool(instances)
-            if self._collection_filter == "collected" and not collected_species:
-                continue
-            if self._collection_filter == "not_collected" and collected_species:
-                continue
             highest = max(
                 instances,
                 key=lambda plant: stage_rank.get(str(plant.growth_stage), 0),
@@ -26022,13 +26249,14 @@ class GardenDashboard(DialogShell):
             card.setStyleSheet(f"""
                 QPushButton[collectionSpeciesCard='true'] {{border-radius:9px;}}
                 QPushButton[collectionSpeciesCard='true']:hover {{background:{GARDEN_THEME['raised_surface']};border-color:{GARDEN_THEME['growth_accent']};}}
+                QPushButton[collectionSpeciesCard='true']:checked {{background:{GARDEN_THEME['selected_surface']};border:1px solid {GARDEN_THEME['growth_accent']};}}
                 QPushButton[collectionSpeciesCard='true']:pressed {{background:{GARDEN_THEME['selected_surface']};}}
                 QPushButton[collectionSpeciesCard='true']:focus {{border:2px solid {GARDEN_THEME['growth_accent']};}}
             """)
-            card.setFixedHeight(156)
+            card.setMinimumHeight(148)
             card.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Minimum,
             )
             layout = QVBoxLayout(card)
             layout.setContentsMargins(8, 8, 8, 8)
@@ -26037,7 +26265,7 @@ class GardenDashboard(DialogShell):
                 self.engine,
                 species,
                 highest_stage if collected_species else "seed",
-                size=88,
+                size=76,
             )
             artwork.setStyleSheet("background:transparent;border:0;")
             artwork_row = QWidget(card)
@@ -26072,12 +26300,12 @@ class GardenDashboard(DialogShell):
             title.setWordWrap(True)
             layout.addWidget(title)
             highest_label = QLabel(
-                f"Reached {format_status_label(highest_stage)}"
-                if instances else "Stage record unavailable" if collected_species else
-                "Currently locked.\nPurchase in Shop."
+                f"Current stage: {format_status_label(highest_stage)}"
+                if instances else "In your collection" if collected_species else
+                "Available in Shop"
             )
             highest_label.setProperty("collectionMetricLabel", True)
-            highest_label.setToolTip("The furthest stage reached by your owned plants of this type.")
+            highest_label.setToolTip("This plant’s current growth stage.")
             highest_label.setStyleSheet(f"color:{GARDEN_THEME['text_secondary']};")
             highest_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             highest_label.setWordWrap(True)
@@ -26087,7 +26315,7 @@ class GardenDashboard(DialogShell):
             card.setAccessibleName(
                 f"{format_status_label(species)}, "
                 + (
-                    f"collected, highest stage {format_status_label(highest_stage)}"
+                    f"collected, current stage {format_status_label(highest_stage)}"
                     if collected_species else
                     "not collected"
                 )
@@ -26095,6 +26323,7 @@ class GardenDashboard(DialogShell):
             card.setAccessibleDescription(
                 "See the plants you own and their growth stages."
             )
+            self._collection_species_cards.append(card)
             self.collection_list.add_card(card)
             rendered += 1
         result_count += rendered
@@ -26202,10 +26431,10 @@ class GardenDashboard(DialogShell):
             result_count += len(extra)
         is_empty = result_count == 0
         no_results.setProperty("excludedFromProgressGrid", not is_empty)
-        self.collection_list.finish()
         no_results.setVisible(is_empty)
         self.collection_list.setProperty("emptyResult", is_empty)
         self.collection_section.set_plants_empty(is_empty)
+        self._apply_collection_view()
         if refresh_landmarks:
             self._refresh_garden_landmarks_content()
         QTimer.singleShot(
@@ -26636,506 +26865,289 @@ class GardenDashboard(DialogShell):
         return card
 
     def _open_species_overview(self, species: str) -> None:
-        dialog = self._build_species_overview_dialog(species)
-        if dialog is not None:
-            try:
-                dialog.exec()
-            finally:
-                _dispose_owned_dialog(self, "species_overview_dialog", dialog)
+        self.collection_plants_workspace.show_species(species)
+
+    def _append_mastery_controls(self, layout: QVBoxLayout, species: str) -> None:
+        """Use the existing species detail and engine transaction projection."""
+        snapshot = self.engine.growth_projects_snapshot()
+        track = snapshot.mastery_track(str(species))
+        next_rank = next((row for row in track.tiers if not row.claimed), None)
+        heading = QLabel("Mastery" if next_rank else "All Mastery appearances unlocked")
+        apply_text_role(heading, TextRole.CARD_TITLE)
+        layout.addWidget(heading)
+        if next_rank is None:
+            return
+        active = snapshot.active_target == track.target
+        details = QLabel(f"Next appearance · {next_rank.display_name}")
+        details.setWordWrap(True)
+        layout.addWidget(details)
+        progress = LabeledProgress("Mastery Growth")
+        progress.set_progress("", min(track.growth_units_funded, next_rank.cumulative_growth_threshold_units),
+                             next_rank.cumulative_growth_threshold_units,
+                             value_text=f"{growth_points(min(track.growth_units_funded, next_rank.cumulative_growth_threshold_units))} / "
+                             f"{growth_points(next_rank.cumulative_growth_threshold_units)} Growth")
+        progress.label.hide()
+        layout.addWidget(progress)
+        routing = QLabel("Overflow Growth goes here after unfinished plants." if active else
+                         "Choose this species to receive overflow Growth after unfinished plants.")
+        routing.setWordWrap(True)
+        apply_text_role(routing, TextRole.METADATA)
+        layout.addWidget(routing)
+        if not active and "activate" in track.allowed_actions:
+            choose = QPushButton("Grow this species")
+            _set_button_variant(choose, BUTTON_VARIANT_SECONDARY)
+            choose.clicked.connect(lambda: self._commit_mastery_action(GrowthProjectAction.ACTIVATE, track.target))
+            layout.addWidget(choose, 0, Qt.AlignmentFlag.AlignLeft)
+        unlock = QPushButton(f"Unlock appearance · {next_rank.coin_cost:,} Coins")
+        _set_button_variant(unlock, BUTTON_VARIANT_PRIMARY)
+        shortfall = max(0, next_rank.coin_cost - snapshot.wallet_balance_coins)
+        reason = (f"{growth_points(next_rank.remaining_growth_units)} more Growth needed" if not next_rank.funded else
+                  f"Need {shortfall:,} more Coins" if shortfall else "")
+        set_control_enabled(unlock, next_rank.can_claim_now, disabled_reason=reason)
+        unlock.setAccessibleName(f"Unlock {next_rank.display_name} appearance for {next_rank.coin_cost:,} Coins")
+        unlock.clicked.connect(lambda: self._commit_mastery_action(GrowthProjectAction.CLAIM, track.target, claim_id=next_rank.tier_id))
+        layout.addWidget(unlock, 0, Qt.AlignmentFlag.AlignLeft)
+        if reason:
+            helper = QLabel(reason)
+            helper.setWordWrap(True)
+            apply_text_role(helper, TextRole.METADATA)
+            layout.addWidget(helper)
+        if "contribute" in track.allowed_actions:
+            amount = min(snapshot.stored_balance_units, track.remaining_capacity_units or 0)
+            stored = QPushButton("Add Stored Growth")
+            _set_button_variant(stored, BUTTON_VARIANT_TERTIARY)
+            set_control_enabled(stored, amount > 0, disabled_reason="No Stored Growth available.")
+            stored.setToolTip(f"Optionally add {growth_points(amount)} Stored Growth to this species.")
+            stored.clicked.connect(lambda: self._commit_mastery_action(GrowthProjectAction.CONTRIBUTE, track.target))
+            layout.addWidget(stored, 0, Qt.AlignmentFlag.AlignLeft)
+
+    def _commit_mastery_action(self, action: GrowthProjectAction, target: GrowthTargetRef, *, claim_id: str = "") -> None:
+        snapshot = self.engine.growth_projects_snapshot()
+        request = GrowthProjectRequest(request_id=str(uuid4()), expected_state_revision=snapshot.state_revision,
+            action=action, target=target, claim_id=claim_id,
+            contribution_mode=ContributionMode.MAXIMUM if action is GrowthProjectAction.CONTRIBUTE else ContributionMode.NONE)
+        quote = self.engine.quote_growth_project(request)
+        if not quote.can_apply:
+            self.collection_plants_workspace.show_feedback(project_feedback_copy(quote.blocking_reason))
+            return
+        outcome = self.engine.confirm_growth_project(request, GrowthProjectConfirmation.from_quote(quote))
+        if outcome.applied:
+            self._refresh_after_commit("Mastery")
+        self.collection_plants_workspace.show_feedback(project_feedback_copy(outcome.message))
 
     def _build_species_overview_dialog(
         self,
         species: str,
         *,
         parent: QWidget | None = None,
-    ) -> GardenDialog | None:
+        embedded: bool = False,
+    ) -> GardenDialog | GardenPage | None:
+        """One detail panel for the single plant owned of each species."""
         summary = self.engine.catalog_summary()
-        catalog = [str(value) for value in summary.get("release_ready_species", [])]
-        if str(species) not in catalog:
+        if str(species) not in {str(value) for value in summary.get("release_ready_species", [])}:
             return None
+        plant = next((item for item in self.storage.state.plants if str(item.species) == str(species)), None)
         species_name = format_status_label(species)
-        instances = [
-            plant for plant in self.storage.state.plants
-            if str(plant.species) == str(species)
-        ]
-        owned_species = {str(value) for value in summary.get("owned_species", [])}
-        collected = bool(instances) or str(species) in owned_species
-        stage_rank = {stage: index for index, stage in enumerate(GROWTH_STAGES)}
-        highest = max(
-            instances,
-            key=lambda plant: stage_rank.get(str(plant.growth_stage), 0),
-            default=None,
-        )
-        highest_stage = str(highest.growth_stage) if highest is not None else "seed"
-        dialog = GardenDialog(
-            parent or self,
-            species_name,
-            subtitle="",
-        )
+        stage = str(plant.growth_stage) if plant is not None else "seed"
+        collected = plant is not None
+        dialog = (CollectionDetailPage if embedded else GardenDialog)(parent or self, species_name)
         dialog.setProperty("compactSpeciesOverview", True)
-        dialog._shell_layout.setContentsMargins(24, 18, 24, 20)
-        dialog._shell_layout.setSpacing(10)
-        dialog.header.setMinimumHeight(32)
-        dialog.header.setMaximumHeight(36)
-        dialog.header_layout.setAlignment(
-            dialog.top_close,
-            Qt.AlignmentFlag.AlignVCenter,
-        )
-        dialog.dialog_title.setMaximumWidth(16777215)
-        apply_text_role(dialog.dialog_title, TextRole.SCREEN_TITLE)
-        dialog.apply_size_policy(
-            DialogSizeClass.SPECIES_DETAIL,
-        )
-        dialog.apply_view_size_profile(
-            "collected" if collected else "uncollected"
-        )
-        dialog.setProperty("speciesWidthMinimum", dialog.minimumWidth())
-        dialog.setProperty("speciesWidthMaximum", dialog.maximumWidth())
+        dialog.setProperty("collectionDetailPage", embedded)
         dialog.setProperty("windowFamily", "SpeciesOverviewDialog")
         dialog.setProperty("speciesId", str(species))
-        dialog.setProperty("layoutMode", "default")
         dialog.setProperty("collectionState", "collected" if collected else "not-collected")
+        dialog._shell_layout.setContentsMargins(12, 0 if embedded else 18, 12, 12)
+        dialog._shell_layout.setSpacing(10)
+        dialog.header.setMinimumHeight(32)
+        dialog.header.setMaximumHeight(16777215)
+        dialog.header_layout.setAlignment(dialog.top_close, Qt.AlignmentFlag.AlignVCenter)
+        dialog.dialog_title.setMaximumWidth(16777215)
+        apply_text_role(dialog.dialog_title, TextRole.SCREEN_TITLE)
+        dialog.apply_size_policy(DialogSizeClass.SPECIES_DETAIL)
+        dialog.apply_view_size_profile("collection-panel" if collected else "uncollected")
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # This pane owns its scroll independently of the Garden canvas.
+        scroll.setProperty("dialogLocalScrollRegion", embedded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setAccessibleName("Species overview details")
+        scroll.setAccessibleName(f"{species_name} plant details")
         body = QWidget()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        hero_art = _asset_preview_label(
-            self.engine,
-            species,
-            highest_stage if collected else "seed",
-            size=44,
-        )
-        discovered_date = (
-            self._local_date(min(plant.planted_on for plant in instances))
-            if instances else
-            ""
-        )
-        if collected:
-            facts = QWidget()
-            facts_layout = QVBoxLayout(facts)
-            facts_layout.setContentsMargins(0, 0, 0, 0)
-            facts_layout.setSpacing(4)
-            highest_label = QLabel(
-                f"Highest stage: {format_status_label(highest_stage)}"
-                if instances else "Stage record unavailable"
-            )
-            apply_text_role(highest_label, TextRole.CARD_TITLE)
-            highest_label.setWordWrap(True)
-            facts_layout.addWidget(highest_label)
-            record = QLabel(
-                f"Discovered {discovered_date}" if discovered_date else "Discovered · Date unavailable"
-            )
-            record.setWordWrap(True)
-            apply_text_role(record, TextRole.SECONDARY)
-            facts_layout.addWidget(record)
+        layout.setSpacing(12)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        summary_panel = SectionCard()
+        summary_panel.setProperty("speciesOverviewCard", True)
+        summary_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        summary_layout = QVBoxLayout(summary_panel)
+        summary_layout.setContentsMargins(12, 10, 12, 12)
+        summary_layout.setSpacing(10)
+        hero = QWidget()
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(0, 0, 0, 0)
+        hero_layout.setSpacing(12)
+        artwork = _asset_preview_label(self.engine, species, stage, size=64)
+        artwork.setStyleSheet("background:transparent;border:0;")
+        hero_layout.addWidget(artwork, 0, Qt.AlignmentFlag.AlignVCenter)
+        facts = QWidget()
+        facts_layout = QVBoxLayout(facts)
+        facts_layout.setContentsMargins(0, 0, 0, 0)
+        facts_layout.setSpacing(4)
+        if plant is not None:
+            summary_panel.setProperty("speciesPlantId", plant.plant_id)
+            summary_panel.setProperty("speciesPlantList", True)
+            location = f"Bed {plant.slot_index + 1}" if plant.planted and plant.slot_index is not None else "In storage"
+            if plant.plant_id == self.storage.state.active_plant_id:
+                location += " · Nurtured"
+            location_label = QLabel(location)
+            location_label.setProperty("speciesPlantMetadata", True)
+            location_label.setWordWrap(True)
+            apply_text_role(location_label, TextRole.CARD_TITLE)
+            facts_layout.addWidget(location_label)
+            planted = QLabel(f"Added {self._local_date(plant.planted_on)}")
+            planted.setWordWrap(True)
+            apply_text_role(planted, TextRole.METADATA)
+            facts_layout.addWidget(planted)
+            actions = QWidget()
+            actions.setProperty("speciesPlantActions", True)
+            actions_layout = QHBoxLayout(actions)
+            actions_layout.setContentsMargins(0, 4, 0, 0)
+            actions_layout.setSpacing(8)
+            action_specs = [("View in garden", "view")] if plant.planted else [("Place in garden", "plant")]
+            if plant.planted and not plant.fully_grown and plant.plant_id != self.storage.state.active_plant_id:
+                action_specs.append(("Nurture", "nurture"))
+            if plant.planted:
+                action_specs.append(("More", "more"))
+            for label_text, action_name in action_specs:
+                action = GardenIconButton("overflow", f"More actions for {format_plant_name(plant)}") if action_name == "more" else QPushButton(label_text)
+                action.setProperty("speciesPlantAction", action_name)
+                if action_name == "more":
+                    action.setFixedSize(32, 32)
+                    action.clicked.connect(lambda _checked=False, selected=plant.plant_id, owner=dialog, anchor=action: self._show_collection_plant_more(selected, owner, anchor))
+                else:
+                    _set_button_variant(action, BUTTON_VARIANT_PRIMARY if action_name in {"plant", "nurture"} else BUTTON_VARIANT_SECONDARY)
+                    set_button_size(action, ButtonSize.COMPACT_ROW)
+                    action.clicked.connect(lambda _checked=False, selected=plant.plant_id, requested=action_name, owner=dialog: self._collection_plant_action(requested, selected, owner))
+                actions_layout.addWidget(action)
+            actions_layout.addStretch(1)
+            facts_layout.addWidget(actions)
         else:
-            facts = QWidget()
-            facts_layout = QVBoxLayout(facts)
-            facts_layout.setContentsMargins(0, 0, 0, 0)
-            facts_layout.setSpacing(2)
-            collection_state = QLabel("Not collected")
-            apply_text_role(collection_state, TextRole.CARD_TITLE)
-            facts_layout.addWidget(collection_state)
-            availability = QLabel("Available to buy")
-            availability.setProperty("catalogStatus", True)
-            apply_text_role(availability, TextRole.METADATA)
+            availability = QLabel("Available in Shop")
+            availability.setWordWrap(True)
+            apply_text_role(availability, TextRole.CARD_TITLE)
             facts_layout.addWidget(availability)
-        facts.setProperty("speciesMetricGrid", True)
-        hero = ResponsiveActionCard(
-            hero_art,
-            facts,
-            semantic_id="species-overview.hero",
-            summary_floor=44,
-            action_floor=360,
-            spacing=12,
-            margins=(12, 8, 12, 8),
-            wide_maximum_height=64,
-        )
-        hero.setProperty("sectionCard", True)
-        hero.setProperty("speciesOverviewCard", True)
-        hero.setMinimumHeight(0)
-        hero.setMaximumHeight(16777215)
-        hero.setStyleSheet("QFrame[speciesOverviewCard='true'] {background:transparent;border:0;}")
-        hero_art.setStyleSheet("background:transparent;border:0;")
-        dialog.hero_responsive = hero.responsive
-        layout.addWidget(hero)
+            shop = QPushButton("View in Shop")
+            _set_button_variant(shop, BUTTON_VARIANT_PRIMARY)
+            set_button_size(shop, ButtonSize.COMPACT_ROW)
+            shop.clicked.connect(lambda: (dialog.accept(), QTimer.singleShot(0, self._open_nursery)))
+            facts_layout.addWidget(shop, 0, Qt.AlignmentFlag.AlignLeft)
+        hero_layout.addWidget(facts, 1)
+        summary_layout.addWidget(hero)
+        if plant is not None:
+            progress = growth_display(plant_growth_points(plant))
+            growth = LabeledProgress(f"{species_name} Growth progress", semantic_id=f"progress.collection-plant.{plant.plant_id}.growth")
+            growth.setProperty("speciesPlantProgress", True)
+            growth.set_progress("", 1 if progress.fully_grown else progress.stage_points,
+                                1 if progress.fully_grown else max(1, progress.stage_goal),
+                                value_text="Full Bloom" if progress.fully_grown else format_stage_progress(progress.stage_points, progress.stage_goal, progress.next_stage))
+            growth.label.hide()
+            growth.value_label.setWordWrap(False)
+            growth.layout().itemAt(0).layout().setStretch(1, 1)
+            growth.value_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            growth.bar.setFixedHeight(5)
+            summary_layout.addWidget(growth)
+            if plant.fully_grown:
+                self._append_mastery_controls(summary_layout, species)
+        layout.addWidget(summary_panel)
 
         stage_panel = SectionCard()
         stage_panel.setProperty("speciesStagesSection", True)
-        stage_panel_layout = QVBoxLayout(stage_panel)
-        stage_panel_layout.setContentsMargins(12, 10, 12, 12)
-        stage_panel_layout.setSpacing(7)
-        stages_title = QLabel("Growth stages")
-        stages_title.setProperty("detailSection", True)
-        apply_text_role(stages_title, TextRole.CARD_TITLE)
-        stage_panel_layout.addWidget(stages_title)
-        stages = SpeciesArtworkGalleryStageStrip(
-            breakpoint=536,
-            minimum_tile_width=80,
-        )
-        stages.setAccessibleName(
-            f"Preview all {species_name} species artwork stages"
-        )
+        stage_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        stage_layout = QVBoxLayout(stage_panel)
+        stage_layout.setContentsMargins(12, 10, 12, 12)
+        stage_layout.setSpacing(8)
+        heading = QLabel("Growth stages")
+        apply_text_role(heading, TextRole.CARD_TITLE)
+        stage_layout.addWidget(heading)
+        stages = SpeciesArtworkGalleryStageStrip(breakpoint=630, minimum_tile_width=92)
+        stages.setAccessibleName(f"{species_name} growth stages and artwork previews")
         stages.grid.setHorizontalSpacing(8)
         stages.grid.setVerticalSpacing(8)
-        highest_index = stage_rank.get(highest_stage, 0) if instances else -1
-        for index, stage in enumerate(GROWTH_STAGES):
-            stage_card = QFrame()
-            stage_card.setProperty("storyStage", True)
-            stage_card.setProperty("speciesStageTile", True)
-            stage_card.setProperty("uniformStageCardHeight", 104)
-            stage_card.setMinimumHeight(104)
-            stage_layout = QVBoxLayout(stage_card)
-            stage_layout.setContentsMargins(6, 6, 6, 6)
-            stage_layout.setSpacing(3)
-            stage_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            mystery_stage = stage == "rare" and not _rare_stage_unlocked(self.engine, species)
-            gallery_state = (
-                SpeciesArtworkGalleryStageState.HIDDEN_RARE_STAGE
-                if mystery_stage else
-                SpeciesArtworkGalleryStageState.SELECTED_PREVIEW
-                if index == highest_index and collected else
-                SpeciesArtworkGalleryStageState.DISCOVERED_PREVIEW
-            )
-            if mystery_stage:
-                preview = QLabel("")
+        current_index = GROWTH_STAGES.index(stage) if plant is not None else -1
+        for index, stage_key in enumerate(GROWTH_STAGES):
+            card = QFrame()
+            card.setProperty("storyStage", True)
+            card.setProperty("speciesStageTile", True)
+            card.setProperty("uniformStageCardHeight", 96)
+            card.setMinimumHeight(96)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(6, 6, 6, 6)
+            card_layout.setSpacing(3)
+            card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            locked = stage_key == "rare" and not _rare_stage_unlocked(self.engine, species)
+            current = plant is not None and index == current_index
+            future = not locked and index > current_index
+            gallery_state = (SpeciesArtworkGalleryStageState.HIDDEN_RARE_STAGE if locked else
+                             SpeciesArtworkGalleryStageState.SELECTED_PREVIEW if current else
+                             SpeciesArtworkGalleryStageState.DISCOVERED_PREVIEW)
+            if locked:
+                preview = QLabel()
                 preview.setFixedSize(40, 40)
                 preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                preview.setProperty("stagePreview", True)
-                preview.setPixmap(
-                    garden_icon(
-                        "lock",
-                        color=GARDEN_THEME["text_muted"],
-                    ).pixmap(18, 18)
-                )
-                preview.setAccessibleName("Undiscovered Full Bloom stage locked")
+                preview.setPixmap(garden_icon("lock", color=GARDEN_THEME["text_muted"]).pixmap(18, 18))
+                preview.setAccessibleName("Full Bloom artwork undiscovered")
             else:
-                preview = _asset_preview_label(
-                    self.engine,
-                    species,
-                    stage,
-                    size=40,
-                )
-            future_catalog_art = bool(
-                not mystery_stage and index > highest_index
-            )
-            stage_name = QLabel(format_status_label(stage))
-            stage_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            stage_name.setProperty("storyStageName", True)
-            stage_name.setWordWrap(False)
-            stage_metadata = QLabel(
-                f"{GROWTH_THRESHOLDS[-1]:,} Growth required"
-                if mystery_stage else "",
-                stage_card,
-            )
-            stage_metadata.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            stage_metadata.setProperty("stageStatus", True)
-            stage_metadata.setProperty("rareUnlockMetadataBounded", mystery_stage)
-            stage_metadata.setProperty(
-                "catalogArtworkState",
-                "preview" if future_catalog_art else "current",
-            )
-            stage_card.setProperty(
-                "catalogFutureArtworkPreview",
-                future_catalog_art,
-            )
-            stage_metadata.setProperty(
-                "rareUnlockGrowthThreshold",
-                int(GROWTH_THRESHOLDS[-1]) if mystery_stage else 0,
-            )
-            stage_metadata.setWordWrap(True)
-            stage_metadata.setFixedHeight(30 if mystery_stage else 0)
-            if not mystery_stage:
-                stage_metadata.hide()
-            if mystery_stage:
-                apply_text_role(stage_metadata, TextRole.METADATA)
-                stage_metadata.setToolTip(
-                    f"Unlocks at {GROWTH_THRESHOLDS[-1]:,} total Growth."
-                )
-                stage_card.setToolTip(stage_metadata.toolTip())
-            elif future_catalog_art:
-                stage_card.setToolTip(
-                    f"Preview {plant_stage_title(species, stage)} artwork."
-                )
-            stage_metadata.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Fixed,
-            )
-            stage_layout.addWidget(preview, 0, Qt.AlignmentFlag.AlignHCenter)
-            stage_layout.addWidget(stage_name)
-            stage_metadata.setText(
-                "Undiscovered" if mystery_stage else
-                "Highest" if index == highest_index and collected else
-                "Preview" if future_catalog_art else "Reached"
-            )
-            stage_metadata.setMinimumHeight(0)
-            stage_metadata.setMaximumHeight(16777215)
-            stage_metadata.setWordWrap(False)
-            stage_metadata.setStyleSheet(f"font-size:11px;color:{GARDEN_THEME['text_secondary']};")
-            stage_layout.addWidget(stage_metadata)
-            stage_metadata.show()
+                preview = _asset_preview_label(self.engine, species, stage_key, size=40)
             preview.setStyleSheet("background:transparent;border:0;")
-            accessible_state = {
-                SpeciesArtworkGalleryStageState.DISCOVERED_PREVIEW:
-                    "Artwork preview" if future_catalog_art else "Reached",
-                SpeciesArtworkGalleryStageState.SELECTED_PREVIEW:
-                    "Highest stage reached",
-                SpeciesArtworkGalleryStageState.HIDDEN_RARE_STAGE:
-                    "Hidden until unlocked",
-            }[gallery_state]
-            stage_card.setAccessibleName(
-                f"{format_status_label(stage)} stage. {accessible_state}."
-            )
-            stages.add_stage_tile(stage_card, gallery_state)
-        stage_panel_layout.addWidget(stages)
-
-        instances_panel = SectionCard()
-        instances_panel.setProperty("speciesPlantList", True)
-        instances_layout = QVBoxLayout(instances_panel)
-        instances_layout.setContentsMargins(12, 10, 12, 12)
-        instances_layout.setSpacing(7)
-        instances_title = QLabel(f"{_plant_count(len(instances))} owned")
-        instances_title.setProperty("detailSection", True)
-        apply_text_role(instances_title, TextRole.CARD_TITLE)
-        instances_layout.addWidget(instances_title)
-        instances_panel.setProperty("keepFirstPlantRowVisible", True)
-        empty_instances: QWidget | None = None
-        if not instances:
-            nursery = QPushButton("Shop")
-            _set_button_variant(nursery, BUTTON_VARIANT_PRIMARY)
-            nursery.setMinimumWidth(120)
-            nursery.setMaximumWidth(140)
-            nursery.clicked.connect(
-                lambda: (
-                    dialog.accept(),
-                    QTimer.singleShot(0, self._open_nursery),
-                )
-            )
-            empty_footer = QWidget()
-            empty_footer.setProperty("speciesUncollectedFooter", True)
-            empty_footer_layout = QHBoxLayout(empty_footer)
-            empty_footer_layout.setContentsMargins(0, 2, 0, 0)
-            empty_footer_layout.setSpacing(8)
-            if collected:
-                empty_copy = QLabel("No plants of this type currently owned.")
-                empty_copy.setWordWrap(True)
-                empty_footer_layout.addWidget(empty_copy, 1)
-            else:
-                empty_footer_layout.addStretch(1)
-            empty_footer_layout.addWidget(nursery)
-            empty_instances = empty_footer
-        else:
-            instances_body = QWidget()
-            instance_rows_layout = QVBoxLayout(instances_body)
-            instance_rows_layout.setContentsMargins(0, 0, 0, 0)
-            instance_rows_layout.setSpacing(0)
-            instances_body.setAccessibleName("Your plants list")
-            instances_body.setProperty("singleOuterScrollOwner", True)
-            instances_body.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Maximum,
-            )
-            dialog.species_plant_responsive = []
-            ordered_instances = sorted(
-                instances,
-                key=lambda item: (not item.planted, item.planted_on, item.plant_id),
-            )
-            for instance_index, plant in enumerate(ordered_instances):
-                location = (
-                    f"Bed {plant.slot_index + 1}"
-                    if plant.planted and plant.slot_index is not None else
-                    "In Collection"
-                )
-                identity = QWidget()
-                identity.setProperty("speciesPlantIdentity", True)
-                identity_layout = QHBoxLayout(identity)
-                identity_layout.setContentsMargins(0, 0, 0, 0)
-                identity_layout.setSpacing(10)
-                plant_art = _asset_preview_label(
-                    self.engine,
-                    str(plant.species),
-                    str(plant.growth_stage),
-                    size=44,
-                    property_name="speciesPlantThumbnail",
-                )
-                plant_art.setStyleSheet("background:transparent;border:0;")
-                identity_layout.addWidget(
-                    plant_art,
-                    0,
-                    Qt.AlignmentFlag.AlignVCenter,
-                )
-                identity_copy = QWidget()
-                identity_copy_layout = QVBoxLayout(identity_copy)
-                identity_copy_layout.setContentsMargins(0, 0, 0, 0)
-                identity_copy_layout.setSpacing(1)
-                row_name = QLabel()
-                row_name.setTextFormat(Qt.TextFormat.RichText)
-                row_name.setText(f'<a href="details" style="color:{GARDEN_THEME["text_primary"]};text-decoration:none;">{escape(format_plant_name(plant))}</a>')
-                row_name.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse | Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
-                row_name.setToolTip("Open plant details")
-                row_name.linkActivated.connect(
-                    lambda _link, selected=plant.plant_id, owner=dialog, name=row_name:
-                    self._open_collection_plant_details(selected, owner, name)
-                )
-                row_name.setProperty("speciesPlantName", True)
-                row_name.setWordWrap(True)
-                apply_text_role(row_name, TextRole.CARD_TITLE)
-                name_line = QHBoxLayout()
-                name_line.setContentsMargins(0, 0, 0, 0)
-                name_line.setSpacing(6)
-                name_line.addWidget(row_name, 1)
-                row_meta_parts = [location]
-                if plant.plant_id == self.storage.state.active_plant_id:
-                    row_meta_parts.append("Nurtured")
-                row_meta = QLabel(" · ".join(row_meta_parts))
-                row_meta.setProperty("speciesPlantMetadata", True)
-                row_meta.setWordWrap(True)
-                apply_text_role(row_meta, TextRole.METADATA)
-                identity_copy_layout.addLayout(name_line)
-                identity_copy_layout.addWidget(row_meta)
-                identity_layout.addWidget(identity_copy, 1)
-
-                progress = growth_display(plant_growth_points(plant))
-                growth = LabeledProgress(
-                    f"{format_plant_name(plant)} Growth progress",
-                    semantic_id=(
-                        "progress.collection-plant."
-                        f"{plant.plant_id}.growth"
-                    ),
-                )
-                growth.setProperty("speciesPlantProgress", True)
-                if progress.fully_grown:
-                    growth.set_progress(
-                        "",
-                        1,
-                        1,
-                        value_text="Full Bloom",
-                    )
-                else:
-                    growth.set_progress(
-                        f"Next: {format_status_label(progress.next_stage)}",
-                        progress.stage_points,
-                        max(1, progress.stage_goal),
-                        value_text=f"{progress.stage_points:,} / {progress.stage_goal:,} Growth",
-                    )
-                growth.label.setVisible(not progress.fully_grown)
-                growth.value_label.setVisible(not progress.fully_grown)
-                growth.bar.setFixedHeight(5)
-                apply_text_role(growth.value_label, TextRole.BUTTON_LABEL)
-
-                actions = QWidget()
-                actions.setProperty("speciesPlantActions", True)
-                actions_layout = QHBoxLayout(actions)
-                actions_layout.setContentsMargins(0, 0, 0, 0)
-                actions_layout.setSpacing(8)
-                action_specs = [
-                    (
-                        "View in garden" if plant.planted else "Place in garden",
-                        "view" if plant.planted else "plant",
-                    ),
-                ]
-                if (
-                    plant.planted
-                    and not plant.fully_grown
-                    and plant.plant_id != self.storage.state.active_plant_id
-                ):
-                    action_specs.append(
-                        ("Nurture", "nurture")
-                    )
-                if plant.planted:
-                    action_specs.append(("More", "more"))
-                for label_text, action_name in action_specs:
-                    primary_action = action_name in {"plant", "nurture"}
-                    action = (
-                        GardenIconButton(
-                            "overflow",
-                            f"More actions for {format_plant_name(plant)}",
-                        )
-                        if action_name == "more" else
-                        QPushButton(label_text)
-                    )
-                    action.setProperty("speciesPlantAction", action_name)
-                    if action_name != "more":
-                        _set_button_variant(
-                            action,
-                            BUTTON_VARIANT_PRIMARY if primary_action else BUTTON_VARIANT_SECONDARY,
-                        )
-                        # Keep primary emphasis while using the shared 36 px
-                        # row geometry for every text action.
-                        set_button_size(action, ButtonSize.SECONDARY)
-                    action.setAccessibleName(
-                        f"More actions for {format_plant_name(plant)}"
-                        if action_name == "more" else
-                        f"{label_text} for {format_plant_name(plant)}"
-                    )
-                    action.setAccessibleDescription(
-                        f"More actions for {format_plant_name(plant)}."
-                        if action_name == "more" else
-                        f"{label_text} for {format_plant_name(plant)}."
-                    )
-                    if action_name == "more":
-                        action.setFixedSize(32, 32)
-                        action.clicked.connect(
-                            lambda _checked=False, selected=plant.plant_id,
-                            owner=dialog, anchor=action:
-                            self._show_collection_plant_more(
-                                selected,
-                                owner,
-                                anchor,
-                            )
-                        )
-                    else:
-                        action.clicked.connect(
-                            lambda _checked=False, selected=plant.plant_id,
-                            requested=action_name, owner=dialog:
-                            self._collection_plant_action(
-                                requested,
-                                selected,
-                                owner,
-                            )
-                        )
-                    actions_layout.addWidget(action)
-
-                row = SpeciesPlantRow(
-                    identity,
-                    growth,
-                    actions,
-                    semantic_id=(
-                        "species-overview.plant-row."
-                        f"{plant.plant_id}"
-                    ),
-                )
-                row.setProperty("firstSpeciesPlantRow", instance_index == 0)
-                row.setProperty("speciesPlantId", str(plant.plant_id))
-                row.setAccessibleName(
-                    f"{format_plant_name(plant)}. "
-                    f"{location}. {growth.value_label.text()}."
-                )
-                dialog.species_plant_responsive.append(row.responsive)
-                if instance_index:
-                    divider = QFrame()
-                    divider.setProperty("speciesPlantDivider", True)
-                    divider.setFixedHeight(1)
-                    instance_rows_layout.addWidget(divider)
-                instance_rows_layout.addWidget(row)
-            instances_layout.addWidget(instances_body)
+            card_layout.addWidget(preview, 0, Qt.AlignmentFlag.AlignHCenter)
+            name = QLabel(format_status_label(stage_key))
+            name.setProperty("storyStageName", True)
+            name.setWordWrap(True)
+            name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            card_layout.addWidget(name)
+            status_text = ("Undiscovered" if locked else "Current" if current else
+                           "Next" if plant is not None and index == current_index + 1 else
+                           "Preview" if future else "Reached")
+            status = QLabel(status_text)
+            status.setProperty("stageStatus", True)
+            status.setProperty("catalogArtworkState", "preview" if future else "current")
+            status.setWordWrap(True)
+            status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            apply_text_role(status, TextRole.METADATA)
+            card_layout.addWidget(status)
+            card.setProperty("catalogFutureArtworkPreview", future)
+            if locked:
+                card.setToolTip(f"Full Bloom unlocks at {GROWTH_THRESHOLDS[-1]:,} total Growth.")
+            elif future:
+                card.setToolTip(f"Preview of {plant_stage_title(species, stage_key)}. Reached at {GROWTH_THRESHOLDS[index]:,} total Growth.")
+            card.setAccessibleName(f"{format_status_label(stage_key)}. {status_text}.")
+            stages.add_stage_tile(card, gallery_state)
+        stages.allowed_columns = (3, 6)
+        stage_layout.addWidget(stages)
         layout.addWidget(stage_panel)
-        if instances:
-            layout.addWidget(instances_panel)
-        elif empty_instances is not None:
-            layout.addWidget(empty_instances)
+
+        if plant is not None and plant.memories:
+            history = SectionCard()
+            history.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+            history_layout = QVBoxLayout(history)
+            history_layout.setContentsMargins(12, 10, 12, 12)
+            history_layout.setSpacing(4)
+            history_heading = QLabel("History")
+            apply_text_role(history_heading, TextRole.CARD_TITLE)
+            history_layout.addWidget(history_heading)
+            timeline = MemoryTimeline(history)
+            timeline.set_memories([(self._local_date(memory.occurred_on), _PlantStoryContent._memory_text(memory, "")) for memory in chronological_memories(plant.memories)])
+            timeline.setStyleSheet(f"QLabel[memoryDate='true'] {{color:{GARDEN_THEME['text_secondary']};font-size:12px;}} QLabel[memoryBody='true'] {{font-size:13px;}} QLabel[memoryMarker='true'] {{color:{GARDEN_THEME['text_muted']};font-size:12px;}}")
+            history_layout.addWidget(timeline)
+            layout.addWidget(history)
         scroll.setWidget(body)
         _set_scroll_surface(scroll, body, GARDEN_THEME["dialog_surface"])
+        dialog.collection_scroll = scroll
         dialog.set_body_widget(scroll)
-        dialog.schedule_content_fit(
-            "species-overview-content",
-            preserve_transition=False,
-        )
+        dialog.schedule_content_fit("collection-detail-content", preserve_transition=False)
         return dialog
 
     def _show_collection_plant_more(
@@ -27148,8 +27160,15 @@ class GardenDashboard(DialogShell):
         if plant is None:
             return
         menu = QMenu(anchor)
+        menu.setStyleSheet(f"""
+            QMenu {{background:{GARDEN_THEME['raised_surface']};color:{GARDEN_THEME['text_primary']};
+                border:1px solid {GARDEN_THEME['strong_border']};border-radius:8px;padding:6px;}}
+            QMenu::item {{padding:8px 16px;border-radius:4px;}}
+            QMenu::item:selected {{background:{GARDEN_THEME['selected_surface']};}}
+            QMenu::item:disabled {{color:{GARDEN_THEME['text_muted']};}}
+        """)
         menu.setAccessibleName(f"More actions for {format_plant_name(plant)}")
-        move_action = menu.addAction("Move")
+        move_action = menu.addAction("Move to another bed")
         storage_action = menu.addAction("Move to storage")
         storage_action.setEnabled(
             plant.plant_id != self.storage.state.active_plant_id
@@ -27168,44 +27187,6 @@ class GardenDashboard(DialogShell):
             self._collection_plant_action("remove", plant_id, dialog)
         )
         menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
-
-    def _open_collection_plant_details(
-        self, plant_id: str, overview: QDialog, name_label: QLabel,
-    ) -> None:
-        """Return from individual details to the same owned-plant row."""
-        plant = self.engine.plant_story(plant_id)
-        if plant is None:
-            return
-        previous_name = str(format_plant_name(plant))
-        dialog = PlantStoryDialog(overview, self.engine, plant_id)
-        self.story_dialog = dialog
-        dialog.remember_invoker(name_label)
-
-        def choose_another() -> None:
-            dialog.accept()
-            overview.accept()
-            self.open_section("garden")
-            self._choose_another_plant()
-
-        dialog.chooseAnother.connect(choose_another)
-        try:
-            dialog.exec()
-        finally:
-            _dispose_owned_dialog(self, "story_dialog", dialog)
-        self._refresh_after_commit("Plant Story")
-        current = self.engine.plant_story(plant_id)
-        if current is not None and overview.isVisible():
-            name_label.setText(
-                f'<a href="details" style="color:{GARDEN_THEME["text_primary"]};text-decoration:none;">{escape(format_plant_name(current))}</a>'
-            )
-            row = name_label.parentWidget()
-            while row is not None and not row.property("speciesPlantId"):
-                row = row.parentWidget()
-            if row is not None:
-                for widget in (row, *row.findChildren(QWidget)):
-                    widget.setAccessibleName(widget.accessibleName().replace(previous_name, format_plant_name(current)))
-                    widget.setAccessibleDescription(widget.accessibleDescription().replace(previous_name, format_plant_name(current)))
-            name_label.setFocus()
 
     def _collection_plant_action(
         self,
@@ -27239,23 +27220,23 @@ class GardenDashboard(DialogShell):
             if not ConfirmationDialog.confirm(
                 dialog,
                 f"Move {format_plant_name(plant)} to storage?",
-                "Its garden bed will become empty.",
+                f"Bed {plant.slot_index + 1} will become empty." if plant.slot_index is not None else "This plant will be kept in storage.",
                 confirm_label="Move to storage",
+                compact=True,
             ):
                 return
             ok, message = self.engine.move_to_collection(plant_id)
         else:
             return
         message = _learner_text(message)
-        if not ok and "unchanged" not in message.casefold():
-            message = f"{message} Your garden is unchanged."
         if ok:
             self._refresh_after_commit(f"collection plant {action}")
-            dialog.accept()
-            QTimer.singleShot(0, self._open_collection)
-        (QMessageBox.information if ok else QMessageBox.warning)(
-            self, UI_TEXT["app_title"], message
-        )
+            self.collection_plants_workspace.show_feedback(
+                f"{format_plant_name(plant)} moved to storage." if action == "remove" else
+                f"Now nurturing {format_plant_name(plant)}."
+            )
+        else:
+            self.collection_plants_workspace.show_feedback(message)
 
     def _environment_collection_artwork(
         self,
@@ -27602,111 +27583,136 @@ class GardenDashboard(DialogShell):
             self, UI_TEXT["app_title"], _learner_text(message)
         )
 
-    def _open_fertilizer_menu(self, plant_id: str) -> None:
+    def _open_fertilizer_menu(self, plant_id: str, *, supply_group: str = "fertilizer") -> None:
         plant = self.engine.plant_story(plant_id)
         if plant is None:
             self.toast_region.show_message("That plant is no longer available.", error=True)
             return
         dialog = GardenDialog(self, "Plant supplies", subtitle=format_plant_name(plant))
         dialog.setProperty("windowFamily", "FertilizerDialog")
-        dialog.apply_size_policy(DialogSizeClass.FERTILIZER, preferred_height=460)
-        dialog.setMinimumHeight(460)
-        dialog.setProperty("contentFitAcrossTabs", True)
+        dialog.setProperty("suppliesLayout", "unified")
+        dialog.apply_size_policy(DialogSizeClass.FERTILIZER, preferred_height=560)
+        dialog.apply_view_size_profile("supplies")
         dialog.remember_invoker(self.plant_card.fertilize)
         self.fertilizer_dialog = dialog
         dialog._shell_layout.setContentsMargins(20, 16, 20, 16)
         dialog._shell_layout.setSpacing(12)
-        tabs = GardenTabs("Plant supplies", dialog)
-        dialog.body_layout.addWidget(tabs, 1)
-        dialog.body_layout.setSpacing(8)
+        scroll = QScrollArea(dialog)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        host = QWidget(scroll)
+        rows = QVBoxLayout(host)
+        rows.setContentsMargins(0, 0, 8, 8)
+        rows.setSpacing(8)
+        rows.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll.setWidget(host)
+        _set_scroll_surface(scroll, host, GARDEN_THEME["dialog_surface"])
+        dialog.body_layout.addWidget(scroll, 1)
+        dialog.register_scroll_region(scroll)
         shop = self._shop_page()
         status = QLabel("", dialog)
         status.setWordWrap(True)
         status.hide()
         dialog.body_layout.addWidget(status)
-        def refresh() -> None:
-            target = self.engine.plant_story(plant_id)
+        sections: dict[str, QWidget] = {}
+        selected_group = "charges" if supply_group == "charges" else "fertilizer"
+
+        def select_group(group: str) -> None:
+            nonlocal selected_group
+            selected_group = "charges" if group == "charges" else "fertilizer"
+            dialog.setProperty("suppliesSection", selected_group)
+
+        def focus_group(group: str) -> None:
+            select_group(group)
+            target = sections.get(selected_group)
             if target is not None:
-                dialog.dialog_subtitle.setText(format_plant_name(target))
-            selected = tabs.currentIndex()
-            while tabs.count():
-                page = tabs.widget(0)
-                tabs.removeTab(0)
-                page.deleteLater()
+                scroll.ensureWidgetVisible(target, 0, 8)
+
+        def refresh() -> None:
+            position = scroll.verticalScrollBar().value()
+            target = self.engine.plant_story(plant_id)
+            dialog.dialog_subtitle.setText(format_plant_name(target) if target else "Plant unavailable")
+            shop._clear_section(rows)
+            sections.clear()
             for key, caption in (("fertilizer", "Fertilizer"), ("charges", "Growth Charges")):
-                scroll = QScrollArea(tabs)
-                scroll.setWidgetResizable(True)
-                scroll.setFrameShape(QFrame.Shape.NoFrame)
-                scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-                host = QWidget(scroll)
-                rows = QVBoxLayout(host)
-                rows.setContentsMargins(0, 8, 0, 8)
-                rows.setSpacing(8)
-                rows.setAlignment(Qt.AlignmentFlag.AlignTop)
+                section = QWidget(host)
+                section.setProperty("suppliesSection", key)
+                section_rows = QVBoxLayout(section)
+                section_rows.setContentsMargins(0, 4, 0, 0)
+                section_rows.setSpacing(6)
+                heading = QLabel(caption, section)
+                heading.setStyleSheet("font-size:14px;font-weight:600;")
+                section_rows.addWidget(heading)
+                sections[key] = heading
                 if key == "fertilizer":
-                    current_plant = self.engine.plant_story(plant_id)
-                    target_active = current_plant is not None and current_plant.plant_id == self.storage.state.active_plant_id
-                    scope = QLabel("Fertilizer follows your nurtured plant." if target_active else
-                        f"Nurture {PlantIdentity.from_plant(current_plant).display_name} to use Fertilizer. It follows your nurtured plant.", host)
+                    is_nurtured = target is not None and target.plant_id == self.storage.state.active_plant_id
+                    scope = QLabel("Follows your nurtured plant." if is_nurtured else
+                        "Nurture this plant to use Fertilizer.", section)
                     scope.setWordWrap(True)
                     scope.setProperty("dialogSubtitle", True)
-                    rows.addWidget(scope)
-                    current = fertilizer_status(self.engine, self.engine.plant_story(plant_id), now=time.time(), description=FERTILIZER_CARD_DESCRIPTION)
+                    section_rows.addWidget(scope)
+                    current = fertilizer_status(self.engine, target, now=time.time(), description=FERTILIZER_CARD_DESCRIPTION)
                     if current.active:
-                        block = FertilizerStatusBlock(host)
+                        block = FertilizerStatusBlock(section)
                         block.set_status(current)
-                        rows.addWidget(block)
-                    for effect in project_garden_setup(self.engine, self.storage).effects:
-                        if effect.pending and effect.plant_id == plant_id and "Fertilizer" in effect.name:
-                            scheduled = QLabel(f"Up next · {effect.name} · {effect.remaining_cards:,} cards", host)
-                            scheduled.setWordWrap(True)
-                            scheduled.setProperty("dialogSubtitle", True)
-                            rows.addWidget(scheduled)
-                    items = [shop._compact_fertilizer_row(tier, plant_id, owned_only=True) for tier in self.engine.FERTILIZERS if self.storage.state.consumables.get(f"fertilizer_{tier}", 0)]
+                        block.countdown_progress.setStyleSheet(f"QProgressBar {{background:{GARDEN_THEME['raised_surface']};border:0;border-radius:3px;}} QProgressBar::chunk {{background:{GARDEN_THEME['action_accent']};border-radius:3px;}}")
+                        section_rows.addWidget(block)
+                    upcoming = [effect for effect in project_garden_setup(self.engine, self.storage).effects
+                        if effect.pending and effect.plant_id == plant_id and "Fertilizer" in effect.name]
+                    if upcoming:
+                        scheduled = QLabel("Scheduled: " + " · ".join(
+                            f"{effect.name} ({effect.remaining_cards:,} cards)" for effect in upcoming), section)
+                        scheduled.setWordWrap(True)
+                        scheduled.setProperty("dialogSubtitle", True)
+                        section_rows.addWidget(scheduled)
+                    items = [shop._compact_fertilizer_row(tier, plant_id, owned_only=True)
+                        for tier in self.engine.FERTILIZERS
+                        if self.storage.state.consumables.get(f"fertilizer_{tier}", 0)]
                 else:
-                    items = [shop._compact_charge_row(spec, plant_id, owned_only=True) for spec in GROWTH_CHARGES.values() if self.storage.state.consumables.get(spec.charge_id, 0)]
+                    items = [shop._compact_charge_row(spec, plant_id, owned_only=True)
+                        for spec in GROWTH_CHARGES.values()
+                        if self.storage.state.consumables.get(spec.charge_id, 0)]
                 for item in items:
-                    rows.addWidget(item)
+                    section_rows.addWidget(item)
+                    for action in item.findChildren(QPushButton):
+                        action.pressed.connect(lambda group=key: select_group(group))
                 if not items:
-                    empty = QLabel("No fertilizer owned." if key == "fertilizer" else "No Growth Charges owned.", host)
-                    rows.addWidget(empty)
-                scroll.setWidget(host)
-                _set_scroll_surface(scroll, host, GARDEN_THEME["dialog_surface"])
-                dialog.register_scroll_region(scroll)
-                tabs.addTab(scroll, caption)
-            tabs.setCurrentIndex(max(0, selected))
+                    empty = QLabel("No Fertilizer owned." if key == "fertilizer" else "No Growth Charges owned.", section)
+                    empty.setProperty("dialogSubtitle", True)
+                    section_rows.addWidget(empty)
+                rows.addWidget(section)
+            QTimer.singleShot(0, lambda: scroll.verticalScrollBar().setValue(position))
+            dialog.schedule_content_fit("plant-supplies-refresh", breathing_room=8, preserve_transition=False)
+
         def feedback(ok: bool, message: str) -> None:
             status.setText(_learner_text(message))
             status.show()
             if ok:
                 refresh()
+
+        previous_feedback = getattr(shop, "_item_feedback", None)
         shop._item_feedback = feedback
         dialog.refresh_items = refresh
+        dialog.focus_supply_group = focus_group
         browse = QPushButton("Shop supplies", dialog)
         _set_button_variant(browse, BUTTON_VARIANT_SECONDARY)
+
         def open_shop() -> None:
-            supply_kind = "charges" if tabs.currentIndex() == 1 else "fertilizer"
             dialog.accept()
-            self.open_section("shop", "supplies", item_id=supply_kind, plant_id=plant_id)
+            self.open_section("shop", "supplies", item_id=selected_group, plant_id=plant_id)
+
         browse.clicked.connect(open_shop)
         dialog.footer_layout.addStretch(1)
         dialog.footer_layout.addWidget(browse)
         dialog.footer.show()
         try:
             refresh()
-            def retain_supplies_height() -> None:
-                # Both tabs share their largest settled content height. This
-                # is a content minimum, not an in-flight transaction state.
-                dialog.setMinimumHeight(max(
-                    460, dialog.fit_content_to_family(preserve_transition=False)
-                ))
-            supplies_fit_timer = QTimer(dialog)
-            supplies_fit_timer.setSingleShot(True)
-            supplies_fit_timer.timeout.connect(retain_supplies_height)
-            supplies_fit_timer.start(60)
+            dialog.schedule_content_fit("plant-supplies", breathing_room=8, preserve_transition=False)
+            QTimer.singleShot(60, lambda: focus_group(selected_group))
             dialog.exec()
         finally:
-            shop._item_feedback = None
+            shop._item_feedback = previous_feedback
             _dispose_owned_dialog(self, "fertilizer_dialog", dialog)
 
     def _use_owned_fertilizer_from_dialog(
@@ -28016,12 +28022,27 @@ class GardenDashboard(DialogShell):
             QTimer.singleShot(0, self._begin_starter_placement)
 
     def open_section(self, section: str, subsection: str | None = None, item_id: str | None = None, plant_id: str | None = None) -> None:
+        started = RUNTIME_PERFORMANCE.begin()
+        try:
+            self._open_workspace_section(section, subsection, item_id, plant_id)
+        finally:
+            RUNTIME_PERFORMANCE.finish("dashboard.navigation", started)
+
+    def _open_workspace_section(self, section: str, subsection: str | None = None, item_id: str | None = None, plant_id: str | None = None) -> None:
         key = "garden" if str(section) == "shop" and not self.storage.state.starter_selection_complete else str(section)
         if key == "trophies":
             key, subsection = "progress", "trophies"
         if not hasattr(self, "workspace_stack"):
             return
         if key not in {"garden", "collection", "shop", "progress"}:
+            return
+        if (
+            key == self._workspace_section and self.isVisible()
+            and subsection is None and item_id is None and plant_id is None
+            and key in {"garden", "collection", "shop"}
+            and not (key == "collection" and "collection" in self._progress_page_dirty)
+            and not (key == "shop" and (self._shop_dirty or (self._shop is not None and self._shop._target_plant_id)))
+        ):
             return
         if self.scene._interaction.placing and key != "garden":
             self._cancel_move()
@@ -28131,11 +28152,14 @@ class GardenDashboard(DialogShell):
         page.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         host = QWidget(page)
         outer = QVBoxLayout(host)
-        outer.setContentsMargins(24, 24, 24, 24)
+        outer.setContentsMargins(24, 16, 24, 24)
         outer.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
         group = QWidget(host)
         group.setMaximumWidth(920)
-        group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        # The previous column arrangement must not impose a wider minimum
+        # on the scroll viewport before its resize event can reflow the tiles.
+        group.setMinimumWidth(0)
+        group.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Maximum)
         layout = QVBoxLayout(group)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
@@ -28146,16 +28170,22 @@ class GardenDashboard(DialogShell):
         helper = QLabel(NURSERY_STARTER_RATIONALE, group)
         helper.setWordWrap(True)
         layout.addWidget(helper)
-        grid = ResponsiveTileGrid(minimum_tile_width=200, maximum_columns=4,
+        grid = ResponsiveTileGrid(minimum_tile_width=184, maximum_columns=4,
                                   allowed_columns=(2, 4), parent=group)
         grid.grid.setHorizontalSpacing(12)
         grid.grid.setVerticalSpacing(12)
         layout.addWidget(grid)
         self._starter_tiles = {}
         self._starter_choice_pending = False
+        self._starter_pending_species = str(self.storage.state.onboarding.pending_species or "")
+
+        def select(species: str) -> None:
+            if not self._starter_choice_pending:
+                self._starter_pending_species = species
+                self._sync_starter_selection()
 
         def choose(species: str) -> None:
-            if self._starter_choice_pending:
+            if self._starter_choice_pending or species not in self._starter_tiles:
                 return
             self._starter_choice_pending = True
             self._starter_continue.setEnabled(False)
@@ -28191,7 +28221,7 @@ class GardenDashboard(DialogShell):
                 ),
                 group,
             )
-            tile.chosen.connect(choose)
+            tile.chosen.connect(select)
             grid.add_tile(tile)
             self._starter_tiles[species] = tile
         action = QHBoxLayout()
@@ -28201,7 +28231,7 @@ class GardenDashboard(DialogShell):
         _set_button_variant(self._starter_continue, BUTTON_VARIANT_PRIMARY)
         self._starter_continue.setFixedHeight(32)
         self._starter_continue.clicked.connect(
-            lambda: choose(str(self.storage.state.onboarding.pending_species or "")))
+            lambda: choose(self._starter_pending_species))
         action.addWidget(self._starter_continue)
         layout.addLayout(action)
         outer.addWidget(group)
@@ -28213,7 +28243,7 @@ class GardenDashboard(DialogShell):
         self._sync_starter_selection()
 
     def _sync_starter_selection(self) -> None:
-        species = str(self.storage.state.onboarding.pending_species or "")
+        species = self._starter_pending_species
         for key, tile in self._starter_tiles.items():
             tile.set_selected(key == species)
         self._starter_continue.setEnabled(species in self._starter_tiles and not self._starter_choice_pending)

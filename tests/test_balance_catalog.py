@@ -168,19 +168,21 @@ def test_environment_prices_effects_and_persistent_contracts_are_exact() -> None
     assert not effects["booster_cards_plus_25"].cadence.active_only
     assert not effects["full_moon_booster_cards_plus_25"].cadence.active_only
     assert hourglass.cadence.active_only
-    firefly = effects["instant_growth_every_5_plus_3_closest_checkpoint"]
+    firefly = effects["instant_growth_every_5_plus_3_nurtured"]
     assert firefly.cadence.every_n == 5
-    assert firefly.target_policy is catalog.TargetPolicy.CLOSEST_CHECKPOINT
+    assert firefly.target_policy is catalog.TargetPolicy.ACTIVE_PLANT
     assert firefly.target_tie_break is (
-        catalog.TargetTieBreak.REMAINING_GROWTH_THEN_BED_THEN_SPECIES
+        catalog.TargetTieBreak.NONE
     )
-    prism = effects["prism_bank_per_answer_1"]
+    prism = effects["prism_completion_growth_100"]
     assert (
         prism.cadence.first_n_per_day,
         prism.bank_cap_growth,
         prism.release_trigger,
         prism.release_active_only,
-    ) == (100, 300, catalog.TriggerKind.VALID_COMPLETION, True)
+    ) == (None, None, None, False)
+    assert prism.trigger is catalog.TriggerKind.VALID_COMPLETION
+    assert grant_signature(prism.grant) == ("instant_growth", 100, None)
 
     assert grant_signature(effects["spring_growth_first_20"].grant) == (
         "growth",
@@ -214,9 +216,9 @@ def test_environment_prices_effects_and_persistent_contracts_are_exact() -> None
 
 @pytest.mark.parametrize(
     ("answers_today", "expected_cap"),
-    [(0, 3), (1, 3), (199, 3), (200, 4), (399, 4), (400, 5), (10_000, 5)],
+    [(n, None) for n in (0, 1, 199, 200, 399, 400, 10_000)],
 )
-def test_standard_find_daily_cap_is_dynamic(answers_today: int, expected_cap: int) -> None:
+def test_standard_find_daily_cap_is_unlimited(answers_today: int, expected_cap: int | None) -> None:
     assert catalog.standard_find_daily_cap(answers_today) == expected_cap
 
 
@@ -469,7 +471,7 @@ def test_catalog_registries_are_immutable_and_validation_rejects_drift() -> None
                 stages=(replace(catalog.STAGES[0], threshold_growth=1), *catalog.STAGES[1:]),
             )
         )
-    with pytest.raises(ValueError, match="dynamic Find daily caps drifted"):
+    with pytest.raises(ValueError, match="Standard Finds must be uncapped"):
         catalog.validate_balance_catalog(
             replace(
                 catalog.CATALOG,
@@ -495,9 +497,7 @@ def test_catalog_snapshot_is_deterministic_json_safe_and_detached() -> None:
     encoded = json.dumps(first, sort_keys=True, separators=(",", ":"))
     assert '"catalog_version":"2.2.0"' in encoded
     assert first["standard_find_daily_cap_bands"] == [
-        {"minimum_answers_today": 0, "maximum_answers_today": 199, "cap": 3},
-        {"minimum_answers_today": 200, "maximum_answers_today": 399, "cap": 4},
-        {"minimum_answers_today": 400, "maximum_answers_today": None, "cap": 5},
+        {"minimum_answers_today": 0, "maximum_answers_today": None, "cap": None},
     ]
     first["catalog_version"] = "changed"
     assert catalog.CATALOG.catalog_version == "2.2.0"

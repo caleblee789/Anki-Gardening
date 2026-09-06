@@ -578,7 +578,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         560,
         380,
         640,
-        520,
+        680,
         1.0,
         1.0,
         False,
@@ -757,6 +757,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "success": DialogHeightProfile(180, 230, 340, 420, 480, 560),
     },
     DialogSizeClass.FERTILIZER: {
+        "supplies": DialogHeightProfile(280, 560, 680, 480, 560, 640),
         "default": DialogHeightProfile(280, 380, 460, 480, 560, 640),
         "selection": DialogHeightProfile(280, 380, 460, 480, 560, 640),
         "replacement": DialogHeightProfile(230, 280, 380, 420, 480, 560),
@@ -831,6 +832,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "default": DialogHeightProfile(300, 440, 640, 600, 660, 740),
         "collected": DialogHeightProfile(300, 440, 640, 600, 660, 740),
         "uncollected": DialogHeightProfile(300, 380, 580, 600, 660, 740),
+        "collection-panel": DialogHeightProfile(420, 600, 720, 600, 680, 740),
     },
     DialogSizeClass.GROWTH_CHARGE: {
         # Garden overflow has a short destination receipt without plant artwork.
@@ -838,9 +840,8 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "garden-loading": DialogHeightProfile(280, 320, 440, 460, 480, 560),
         "garden-stale": DialogHeightProfile(300, 350, 480, 460, 480, 560),
         "garden-success": DialogHeightProfile(220, 260, 380, 460, 480, 560),
-        # Preview, commit, and result all use one markup tree and one geometry
-        # envelope. Content-fit may settle anywhere inside these bounds, but
-        # changing tense or footer callbacks must not resize the window.
+        # Keep the confirmation stable during consumption. The shorter result
+        # reuses the same markup and width, then fits its remaining content.
         "ready": DialogHeightProfile(480, 480, 560, 460, 480, 560),
         "loading": DialogHeightProfile(480, 480, 560, 460, 480, 560),
         # An availability refresh adds one compact status banner. Let the
@@ -850,7 +851,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "empty": DialogHeightProfile(280, 340, 440, 460, 480, 560),
         "warning": DialogHeightProfile(280, 340, 440, 460, 480, 560),
         "error": DialogHeightProfile(280, 340, 440, 460, 480, 560),
-        "success": DialogHeightProfile(480, 480, 560, 460, 480, 560),
+        "success": DialogHeightProfile(380, 420, 560, 460, 480, 560),
     },
 }
 

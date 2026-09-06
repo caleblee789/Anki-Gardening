@@ -2537,6 +2537,9 @@ class ReviewerHookHandler:
         )
         if not asset_key:
             return None
+        # Garden Finds retain the logical Growth reference in their ledger;
+        # the current artwork catalog names the same resource explicitly.
+        asset_key = {"growth": "growth_resource"}.get(asset_key, asset_key)
         kind_source = getattr(hero, "kind", "") or getattr(
             hero, "reward_type", ""
         )
@@ -3816,128 +3819,11 @@ class ReviewerHookHandler:
         self._reward_toast_history = history[-20:]
 
     def _expand_reward_summary(self, parent: Any) -> None:
-        """Open a bounded reviewer-owned list for collapsed rewards."""
-
-        try:
-            from aqt.qt import (
-                QFrame,
-                QHBoxLayout,
-                QLabel,
-                QPushButton,
-                QScrollArea,
-                QSize,
-                QVBoxLayout,
-                QWidget,
-                Qt,
-            )
-            from ..ui.icons import garden_icon
-
-            self._hide_reward_list_panel()
-            history = list(getattr(self, "_reward_toast_history", []) or [])
-            if not history:
-                return
-            panel = QFrame(parent)
-            panel.setObjectName("ankiGardenRewardList")
-            panel.setProperty("semanticId", "reviewer.reward-list")
-            panel.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-            panel.setStyleSheet(
-                "QFrame#ankiGardenRewardList {"
-                f"background:{GARDEN_THEME['elevated_surface']};"
-                f"border:1px solid {GARDEN_THEME['strong_border']};"
-                "border-radius:14px;}"
-                f"QLabel {{color:{GARDEN_THEME['text_primary']};font-size:12px;}}"
-                f"QLabel[rewardListTitle='true'] {{color:{GARDEN_THEME['text_primary']};font-size:14px;font-weight:600;}}"
-                f"QFrame[rewardListRow='true'] {{background:{GARDEN_THEME['raised_surface']};border:0;border-radius:8px;}}"
-                "QPushButton {background:transparent;border:0;border-radius:6px;}"
-                f"QPushButton:hover {{background:{GARDEN_THEME['selected_surface']};}}"
-            )
-            root = QVBoxLayout(panel)
-            root.setContentsMargins(12, 10, 12, 12)
-            root.setSpacing(8)
-            header = QHBoxLayout()
-            title = QLabel(f"Recent Garden rewards ({len(history)})")
-            title.setProperty("rewardListTitle", True)
-            header.addWidget(title, 1)
-            close = QPushButton("")
-            close.setFixedSize(32, 32)
-            close.setIcon(garden_icon("close", color=GARDEN_THEME["text_primary"]))
-            close.setIconSize(QSize(18, 18))
-            close.setAccessibleName("Close Garden rewards list")
-            close.clicked.connect(self._close_reward_list_panel)
-            header.addWidget(close)
-            root.addLayout(header)
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QFrame.Shape.NoFrame)
-            scroll.setHorizontalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-            )
-            body = QWidget()
-            body_layout = QVBoxLayout(body)
-            body_layout.setContentsMargins(0, 0, 10, 16)
-            body_layout.setSpacing(8)
-            for event in reversed(history):
-                row = QFrame()
-                row.setProperty("rewardListRow", True)
-                row_layout = QVBoxLayout(row)
-                row_layout.setContentsMargins(10, 8, 10, 8)
-                row_layout.setSpacing(3)
-                heading = QLabel(
-                    str(getattr(event, "title", "") or self._reward_title(event))
-                )
-                heading.setProperty("rewardListTitle", True)
-                detail = QLabel(
-                    " · ".join(
-                        part
-                        for part in (
-                            str(getattr(event, "reward_detail", "") or ""),
-                            str(getattr(event, "message", "") or ""),
-                        )
-                        if part
-                    )
-                )
-                detail.setWordWrap(True)
-                row_layout.addWidget(heading)
-                row_layout.addWidget(detail)
-                body_layout.addWidget(row)
-            body_layout.addStretch(1)
-            scroll.setWidget(body)
-            root.addWidget(scroll, 1)
-            width = min(320, max(280, int(parent.width()) - 32))
-            height = min(300, max(150, 54 + len(history) * 58))
-            hud = getattr(self, "_reviewer_hud", None)
-            hud_projection = getattr(self, "_reviewer_hud_projection", None)
-            inside_hud = hud is not None and not bool(
-                getattr(hud_projection, "collapsed", False)
-            )
-            if inside_hud:
-                try:
-                    width = min(width, max(1, int(hud.width()) - 12))
-                    height = min(height, max(1, int(hud.height()) - 72))
-                except (AttributeError, RuntimeError, TypeError, ValueError):
-                    inside_hud = False
-            panel.setFixedSize(width, min(height, max(1, int(parent.height()) - 144)))
-            if inside_hud:
-                panel.move(
-                    int(hud.x()) + max(0, (int(hud.width()) - panel.width()) // 2),
-                    max(int(hud.y()) + 48, int(hud.y()) + int(hud.height()) - panel.height() - 12),
-                )
-            else:
-                panel.move(
-                    max(16, int(parent.width()) - panel.width() - 16),
-                    max(16, int(parent.height()) - panel.height() - 112),
-                )
-            panel.setProperty("rewardInsideHud", inside_hud)
-            panel.setAccessibleName("Recent Garden rewards")
-            panel.show()
-            panel.raise_()
-            self._reward_list_panel = panel
-            self._pause_reward_toast_stack()
-        except Exception:
-            logger.debug(
-                "Anki Garden: collapsed reward list could not be expanded",
-                exc_info=True,
-            )
+        """Open the canonical current-session history next to its HUD trigger."""
+        self._hide_reward_list_panel()
+        hud = getattr(self, "_reviewer_hud", None)
+        if hud is not None:
+            hud.open_reward_history()
 
     def _position_reward_toast_stack(self, parent: Any) -> None:
         """Stack at most two cards above Anki's answer controls."""

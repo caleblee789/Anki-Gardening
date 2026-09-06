@@ -268,8 +268,8 @@ def _load_current_contract_payload(
         ]
         active_ids = {str(row.get("id", "")) for row in active}
         retired_ids = set(payload.get("retired_ids", ()))
-        if len(active) != 51 or payload.get("surface_count") != 51:
-            issues.append("compiled v29 contract must contain 51 active surfaces")
+        if len(active) != 50 or payload.get("surface_count") != 50:
+            issues.append("compiled v29 contract must contain 50 active surfaces")
         if "nursery-weather-scenery" not in retired_ids:
             issues.append("compiled v29 contract did not reserve the retired nursery ID")
         for index, row in enumerate(surfaces):
@@ -286,7 +286,7 @@ def _load_current_contract_payload(
     if isinstance(profiles, dict):
         for profile, expected in {
             "representative": (22, 5),
-            "full": (51, 5),
+            "full": (50, 5),
         }.items():
             raw_profile = profiles.get(profile)
             if not isinstance(raw_profile, dict) or (
@@ -1852,7 +1852,12 @@ def _inside_directory(path: Path, directory: Path) -> bool:
     return True
 
 
-def _read_png(path: Path, *, normalize_pixels: bool = True) -> PngEvidence | None:
+def _read_png(
+    path: Path,
+    *,
+    normalize_pixels: bool = True,
+    color_sample_rect: list[int] | None = None,
+) -> PngEvidence | None:
     """Verify the complete PNG stream and decode every filtered image row."""
 
     try:
@@ -1972,9 +1977,26 @@ def _read_png(path: Path, *, normalize_pixels: bool = True) -> PngEvidence | Non
             rgba = opened.convert("RGBA")
             rgba.load()
             rgba_bytes = rgba.tobytes()
-            sample_width = min(width, 128)
-            sample_height = min(height, 128)
-            sampled = rgba.resize(
+            # Keep the complete image digest, but judge a reviewer overlay's
+            # visual content inside its independently validated pixel bounds.
+            sample_region = rgba
+            if color_sample_rect is not None:
+                if not (
+                    isinstance(color_sample_rect, list)
+                    and len(color_sample_rect) == 4
+                    and all(type(value) is int for value in color_sample_rect)
+                ):
+                    return None
+                x, y, region_width, region_height = color_sample_rect
+                if not (
+                    x >= 0 and y >= 0 and region_width > 0 and region_height > 0
+                    and x + region_width <= width and y + region_height <= height
+                ):
+                    return None
+                sample_region = rgba.crop((x, y, x + region_width, y + region_height))
+            sample_width = min(sample_region.width, 128)
+            sample_height = min(sample_region.height, 128)
+            sampled = sample_region.resize(
                 (sample_width, sample_height),
                 Image.Resampling.NEAREST,
             )
@@ -4044,14 +4066,14 @@ def growth_charge_rendered_value_issue_codes(
         "impact_value": "+100 Growth",
         "growth_label": "Total Growth",
         "growth_value": "350 → 450",
-        "inventory_label": "Charges remaining",
+        "inventory_label": "Owned",
         "inventory_value": "2 → 1",
-        "progress_label": "To Young after use",
+        "progress_label": "Progress toward Young",
         "stage_progress": "50 / 1,600 Growth",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Coins earned" if label == "growth-charge-success-stage-reward" else "Reaching Sprout earns",
+        "reward_label": "Coins earned" if label == "growth-charge-success-stage-reward" else "Reach Sprout",
         "reward_value": "+2 Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
@@ -4075,7 +4097,7 @@ def growth_charge_rendered_value_issue_codes(
             "variant": "ready",
             "component_variant": "confirmation",
             "data_source": "engine-preview",
-            "dialog_title": "Use a Growth Charge?",
+            "dialog_title": "Use Small Growth Charge?",
             "transition_statement": "Bonsai Seed",
             "primary_action": "Use 1 charge",
             "secondary_action": "Cancel",
@@ -4087,12 +4109,12 @@ def growth_charge_rendered_value_issue_codes(
             "after_label": "Seed → Sprout",
             "impact_name": "Growth applied",
             "growth_value": "450",
-            "inventory_label": "Small Growth Charge remaining",
+            "inventory_label": "Owned",
             "inventory_value": "1",
-            "progress_label": "To Young",
+            "progress_label": "Progress toward Young",
             "transition_arrow_visible": False,
             "data_source": "engine-confirmed",
-            "dialog_title": "Bonsai reached sprout",
+            "dialog_title": "Bonsai reached Sprout",
             "transition_statement": "Bonsai Sprout",
             "primary_action": "View plant",
             "secondary_action": "Close",
@@ -5022,8 +5044,8 @@ def reviewer_reward_dock_issue_codes(
         "eyebrow": "MILESTONE REACHED",
         "hero_title": "Bonsai reached full bloom",
         "secondary_summary_count": 2,
-        "details_action_copy": "Details ›",
-        "details_action_heading_row": True,
+        "details_action_copy": "Reward details ›",
+        "details_action_inside_reveal": True,
         "obsolete_bottom_details_absent": True,
         "milestone_chevron_absent": True,
         "individual_close_button_count": 0,
@@ -5081,17 +5103,17 @@ def reviewer_reward_dock_issue_codes(
         and geometry.get("overlaps_bottom_controls") is False
         and geometry.get("horizontal_scroll_maximum") == 0
         and 0 < int(geometry.get("reveal_height", 0) or 0)
-        == int(geometry.get("reveal_natural_height", -1)) <= 150
+        == int(geometry.get("reveal_natural_height", -1)) <= 240
         and geometry.get("collapsed_session") is True
-        and geometry.get("session_totals_hidden") is True
-        and int(geometry.get("footer_height", 0) or 0) == 32
+        and geometry.get("session_totals_hidden") is False
+        and 76 <= int(geometry.get("footer_height", 0) or 0) <= 88
         and geometry.get("single_outer_surface") is True
         and geometry.get("divider_visible") is True
         and int(geometry.get("divider_count", 0) or 0) == 1
         and geometry.get("hero_components_contained") is True
         and geometry.get("hero_components_non_overlapping") is True
         and geometry.get("title_details_non_overlapping") is True
-        and geometry.get("details_heading_aligned") is True
+        and geometry.get("details_own_row") is True
         and int(geometry.get("details_click_height", 0) or 0) >= 28
         and geometry.get("details_visible_in_scroll_viewport") is True
         and geometry.get("details_footer_non_overlapping") is True
@@ -5467,9 +5489,9 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             }
             and isinstance(restored, dict)
             and isinstance(collapsed, dict)
-            and restored.get("label") == "Next card:"
-            and collapsed.get("collapsed_next_expected_copy")
-            == f"{restored.get('label')} {restored.get('value')}"
+            and restored.get("label") == "Next card"
+            and restored.get("value") == "+18 Growth"
+            and collapsed.get("collapsed_next_expected_copy") == ""
             and restored.get("result_state") == "projection"
             and restored.get("art_pulse") is False
             and restored.get("reward_visible") is False
@@ -5960,7 +5982,9 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             ),
             "one-garden-find": lambda row: (
                 row.get("find_count") == 1
-                and row.get("footer_copy") == "1 Garden Find"
+                and row.get("garden_unlock_count") == 2
+                and row.get("discovery_count") == 3
+                and row.get("footer_copy") == "3"
             ),
             "discovery-new-wording": lambda row: (
                 row.get("visible_summary_labels")
@@ -5969,7 +5993,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             ),
             "full-bloom": lambda row: (
                 row.get("eyebrow") == "MILESTONE REACHED"
-                and row.get("hero_title") == "Recent rewards"
+                and row.get("hero_title") == "Bonsai reached full bloom"
                 and str(row.get("hero_subtitle", "")).strip() == ""
                 and row.get("active_plant_identity_suppressed") is True
                 and row.get("class_label") == "Bonsai"
@@ -5977,7 +6001,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("settled") is True
                 and row.get("temporary_gold_cleared") is True
                 and row.get("settled_copy")
-                == "New Growth is shared or stored."
+                == "Growth goes to unfinished plants; any extra is stored."
                 and row.get("select_another_visible") is True
                 and row.get("select_another_copy") == "Choose next plant"
                 and row.get("art_scale") == 1.0
@@ -6031,11 +6055,11 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                     "2 Discoveries",
                 ]
                 and compact_reward_summary_passed(row)
-                and row.get("details_action_copy") == "Details ›"
+                and row.get("details_action_copy") == "Reward details ›"
                 and int(row.get("details_click_height", 0) or 0) >= 28
-                and row.get("details_heading_aligned") is True
+                and row.get("details_own_row") is True
                 and 0 < int(row.get("reveal_height", 0) or 0)
-                == int(row.get("reveal_natural_height", -1)) <= 150
+                == int(row.get("reveal_natural_height", -1)) <= 240
                 and row.get("title_details_non_overlapping") is True
                 and row.get("detail_event_ids_reconciled") is True
                 and row.get("obsolete_bottom_details_present") is False
@@ -6045,10 +6069,10 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("reveal_state") == "celebrating"
             ),
             "reward-details-action-copy": lambda row: (
-                row.get("collapsed_action_copy") == "Details ›"
+                row.get("collapsed_action_copy") == "Reward details ›"
                 and int(row.get("minimum_click_height", 0) or 0) >= 28
                 and row.get("event_ids_reconciled") is True
-                and row.get("heading_row_action") is True
+                and row.get("inline_action") is True
                 and row.get("obsolete_bottom_action_absent") is True
                 and row.get("milestone_chevron_absent") is True
             ),
@@ -6078,7 +6102,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("sticky_reward_and_footer") is True
                 and row.get("reward_footer_non_overlapping") is True
                 and 0 < int(row.get("reveal_height", 0) or 0)
-                == int(row.get("reveal_natural_height", -1)) <= 150
+                == int(row.get("reveal_natural_height", -1)) <= 240
                 and row.get("canonical_viewport_restored") is True
             ),
             "session-footer-reconciliation": lambda row: (
@@ -6087,8 +6111,8 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 == row.get("live_growth_units") == 6_000
                 and row.get("footer_coins") == row.get("live_coins") == 14
                 and row.get("footer_finds") == row.get("live_finds") == 1
-                and row.get("footer_copy")
-                == ["+60 Growth", "+14 Coins", "1 Garden Find"]
+                and row.get("footer_discoveries") == row.get("live_discoveries") == 3
+                and row.get("footer_copy") == ["+60", "+14", "3"]
             ),
             "reward-reveal-lifecycle": lambda row: (
                 row.get("celebrating") == "celebrating"
@@ -6174,7 +6198,8 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and collapsed.get("collapsed_today_visible") is False
                 and collapsed.get("collapsed_today_copy") == ""
                 and collapsed.get("collapsed_today_full_copy") == ""
-                and collapsed.get("collapsed_next_visible") is True
+                and collapsed.get("collapsed_next_visible") is False
+                and collapsed.get("collapsed_next_copy") == ""
                 and collapsed.get("collapsed_next_full_copy")
                 == collapsed.get("collapsed_next_expected_copy")
                 and collapsed.get("collapsed_next_copy")
@@ -8312,7 +8337,16 @@ def validate_capture_manifest(
                 issues.append(
                     f"capture {index:03d} {label}: screenshot filename must be {expected_name}"
                 )
-            png_evidence = _read_png(screenshot_path)
+            color_sample_rect = None
+            if label.startswith(("reviewer-", "workspace-reviewer-")) and index <= len(records):
+                candidate_record = records[index - 1]
+                if isinstance(candidate_record, dict):
+                    pixel_audit = candidate_record.get("unpainted_client_pixel_audit")
+                    if isinstance(pixel_audit, dict):
+                        # _unpainted_client_record_issues independently compares
+                        # this rectangle with native overlay geometry below.
+                        color_sample_rect = pixel_audit.get("scanned_rect")
+            png_evidence = _read_png(screenshot_path, color_sample_rect=color_sample_rect)
             if png_evidence is None:
                 issues.append(
                     f"capture {index:03d} {label}: screenshot is missing or not a valid PNG"

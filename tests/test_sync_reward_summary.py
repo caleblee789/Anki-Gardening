@@ -84,16 +84,18 @@ def test_geometry_is_upper_right_and_viewport_bounded() -> None:
     assert y + height <= 260
 
 
-def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
+def test_metric_plan_matches_session_totals_and_preserves_source_rewards() -> None:
     assert sync_reward_metric_plan(_summary()) == (
         ("42", "cards", "sync_review_cards"),
+        ("+12", "Coins", "garden_coin"),
         ("+520", "Growth", "growth_resource"),
-        ("+12", "Coins", "garden_coin"),
+        ("0", "Discoveries", "garden_discovery"),
     )
-    assert len(sync_reward_metric_plan(_summary(garden_coin_delta=0))) == 2
-    assert sync_reward_metric_plan(_summary(growth_total_units=0)) == (
-        ("42", "cards", "sync_review_cards"),
-        ("+12", "Coins", "garden_coin"),
+    assert sync_reward_metric_plan(_summary(garden_coin_delta=0))[1] == (
+        "0", "Coins", "garden_coin"
+    )
+    assert sync_reward_metric_plan(_summary(growth_total_units=0))[2] == (
+        "0", "Growth", "growth_resource"
     )
     find_rows = ({
         "reward_id": "small_charge",
@@ -121,14 +123,13 @@ def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
 
     assert sync_reward_metric_plan(reward_summary) == (
         ("42", "cards", "sync_review_cards"),
-        ("+520", "Growth", "growth_resource"),
         ("+12", "Coins", "garden_coin"),
-        ("+3", "Garden Finds", "standard_find"),
-        ("+2", "Discoveries", "garden_discovery"),
+        ("+520", "Growth", "growth_resource"),
+        ("5", "Discoveries", "garden_discovery"),
     )
     assert sync_reward_metric_plan(
         _summary(environment_discoveries=discovery_rows[:1])
-    )[-1] == ("+1", "Discoveries", "garden_discovery")
+    )[-1] == ("1", "Discoveries", "garden_discovery")
     restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
 
     assert restored is not None
@@ -190,10 +191,10 @@ def test_exact_generalized_subtitle_copy() -> None:
         "Rewards from 42 card answers on another device."
     )
     assert sync_reward_subtitle(_summary(eligible_answer_count=1)) == (
-        "Rewards added during this sync"
+        "From 1 synced review"
     )
     assert sync_reward_subtitle(_summary()) == (
-        "Rewards added during this sync"
+        "From 42 synced reviews"
     )
 
 

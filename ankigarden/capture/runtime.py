@@ -9330,9 +9330,8 @@ class _UiFaceCaptureRunner:
                     owner_evidence.get("container_size", ()) or ()
                 ),
                 "visible": bool(painted.get("visible", False)),
-                "contained_in_dialog": bool(
-                    painted.get("contained", False)
-                ),
+                "contained_in_dialog": root.rect().contains(visible_bounds),
+                "unclipped_contained_in_dialog": bool(painted.get("contained", False)),
                 "contained_in_owner": bool(
                     owner_evidence.get("contained", False)
                 ),
@@ -11391,7 +11390,10 @@ class _UiFaceCaptureRunner:
             "zero_reward_dock_hidden": zero_reward_dock_hidden,
             "reward_dock_integrated": reward_dock_integrated,
             "dock_visibility_passed": dock_visibility_passed,
-            "today_cards_visible": "today" in normalized_copy,
+            "today_cards_visible": bool(
+                getattr(hud, "_today_card", None) is not None
+                and hud._today_card.isVisibleTo(hud)
+            ),
             "plant_name_wrap_safe": title_wrap_safe,
             "plant_class_label": plant_class_label,
             "bed_visible": bed_visible,
@@ -11418,7 +11420,7 @@ class _UiFaceCaptureRunner:
                 and horizontal_range == 0
                 and sticky_header
                 and dock_visibility_passed
-                and "today" in normalized_copy
+                and not hud._today_card.isVisibleTo(hud)
                 and title_wrap_safe
                 and bool(plant_class_label)
                 and not bed_visible
@@ -11433,6 +11435,14 @@ class _UiFaceCaptureRunner:
             compact = compact_reward_audit(self, hud)
             compact["checks"]["answer_controls_clear"] = bool(
                 result.get("answer_controls_exclusion", {}).get("passed"))
+            compact["checks"]["daily_cards_removed"] = not result["today_cards_visible"]
+            compact["checks"]["next_card_row_removed"] = not hud._next_answer.isVisibleTo(hud)
+            if getattr(hud, "_session_has_results", False):
+                metrics = tuple(getattr(hud, "_session_metric_tiles", ()))
+                compact["checks"]["three_session_boxes"] = len(metrics) == 3 and all(widget.isVisibleTo(hud) for widget in metrics)
+                compact["checks"]["session_boxes_aligned"] = len({widget.y() for widget in metrics}) == 1
+                compact["checks"]["totals_above_rewards"] = (hud._session_footer.geometry().bottom() < hud._reward_scroll.y()
+                                                               if hud._reward_scroll.isVisibleTo(hud) else True)
             compact["passed"] = all(compact["checks"].values())
             result.update(compact)
         return result
@@ -11514,7 +11524,10 @@ class _UiFaceCaptureRunner:
             if expected_collapsed else
             reviewer_hud_width(int(viewport[0]) if len(viewport) == 2 else 0)
         )
-        expected_height = HUD_COLLAPSED_HEIGHT if expected_collapsed else 0
+        expected_height = (
+            max(HUD_COLLAPSED_HEIGHT, collapsed_tab.layout().sizeHint().height() + 2)
+            if expected_collapsed and collapsed_tab is not None else 0
+        )
         top = int(bounds[1]) if len(bounds) == 4 else -1
         right_clearance = (
             int(viewport[0]) - (int(bounds[0]) + actual_width)
@@ -11598,17 +11611,8 @@ class _UiFaceCaptureRunner:
         ).strip()
         projection = getattr(hud, "_projection", None)
         nurture_projection = getattr(projection, "nurture", None)
-        collapsed_next_expected_copy = str(
-            getattr(nurture_projection, "next_card_line", "") or ""
-        ).strip()
-        collapsed_next_expected_visible_copy = re.sub(
-            r"\s+Growth$",
-            "\nGrowth",
-            str(
-                getattr(nurture_projection, "next_answer_value", "") or ""
-            ).strip(),
-            flags=re.IGNORECASE,
-        )
+        collapsed_next_expected_copy = ""
+        collapsed_next_expected_visible_copy = ""
         progress_ring = next((
             widget
             for widget in (hud.findChildren(QWidget) if hud is not None else [])
@@ -11702,7 +11706,7 @@ class _UiFaceCaptureRunner:
                 and not collapsed_today_visible
                 and not collapsed_today_copy
                 and not collapsed_today_full_copy
-                and collapsed_next_visible
+                and not collapsed_next_visible
                 and collapsed_next_copy == collapsed_next_declared_copy
                 and collapsed_next_full_copy == collapsed_next_expected_copy
                 and collapsed_next_copy
@@ -11984,8 +11988,8 @@ class _UiFaceCaptureRunner:
             and not bounds_overlap(details_dock_bounds, footer_bounds)
         )
         details_divider_clearance = (
-            int(divider_bounds[1])
-            - (int(details_dock_bounds[1]) + int(details_dock_bounds[3]))
+            max(int(divider_bounds[1]) - (int(details_dock_bounds[1]) + int(details_dock_bounds[3])),
+                int(details_dock_bounds[1]) - (int(divider_bounds[1]) + int(divider_bounds[3])))
             if len(divider_bounds) == 4 and len(details_dock_bounds) == 4
             else -1
         )
@@ -11994,17 +11998,16 @@ class _UiFaceCaptureRunner:
             if reward_scroll is not None
             else -1
         )
-        details_heading_aligned = bool(
+        details_own_row = bool(
             details_toggle is not None
             and details_toggle.isVisibleTo(reveal)
-            and details_toggle.parentWidget() is getattr(hud, "_reward_heading", None)
+            and details_toggle.parentWidget() is reveal
+            and details_geometry.get("contained", False)
             and len(details_bounds) == 4
-            and len(reveal_bounds) == 4
-            and int(details_bounds[0]) >= int(reveal_bounds[2]) // 2
-            and (
-                int(reveal_bounds[2])
-                - (int(details_bounds[0]) + int(details_bounds[2]))
-            ) <= 16
+            and hero_components
+            and int(details_bounds[1]) >= max(
+                int(bounds[1]) + int(bounds[3]) for bounds in hero_components.values()
+            )
         )
         in_normal_flow = bool(
             dock is not None
@@ -12030,17 +12033,17 @@ class _UiFaceCaptureRunner:
             and in_normal_flow
             and not overlaps_bottom_controls
             and horizontal_range == 0
-            and 0 < reveal_height == reveal_natural_height <= 150
+            and 0 < reveal_height == reveal_natural_height <= 240
             and collapsed_session
-            and session_totals_hidden
-            and footer_height == 32
+            and not session_totals_hidden
+            and 76 <= footer_height <= 88
             and single_outer_surface
             and divider_visible
             and divider_count == 1
             and hero_components_contained
             and hero_components_non_overlapping
             and title_details_non_overlapping
-            and details_heading_aligned
+            and details_own_row
             and details_click_height >= 28
             and details_visible_in_scroll_viewport
             and details_footer_non_overlapping
@@ -12083,7 +12086,7 @@ class _UiFaceCaptureRunner:
                 details_viewport_geometry.get("bounds", ()) or ()
             ),
             "details_click_height": details_click_height,
-            "details_heading_aligned": details_heading_aligned,
+            "details_own_row": details_own_row,
             "details_visible_in_scroll_viewport": (
                 details_visible_in_scroll_viewport
             ),
@@ -12583,7 +12586,18 @@ class _UiFaceCaptureRunner:
         """Prove the post-review summary's complete responsive contract."""
         if CAPTURE_CONTRACT_VERSION >= 27:
             from .workspace import compact_reward_audit
-            return compact_reward_audit(self, card)
+            audit = compact_reward_audit(self, card)
+            if card is not None:
+                metrics = [widget for widget in card.findChildren(QWidget) if widget.property("summaryMetric") is True]
+                audit["checks"].update({
+                    "daily_cards_removed": card.findChild(QWidget, "ankiGardenSessionToday") is None,
+                    "details_always_visible": bool(card.property("summaryDetailsAlwaysVisible")),
+                    "details_toggle_removed": card.findChild(QWidget, "ankiGardenSessionBreakdownToggle") is None,
+                    "three_summary_boxes": [str(widget.property("summaryMetricKey")) for widget in metrics] == ["garden_coins", "growth_applied", "discoveries"],
+                    "summary_boxes_aligned": len({widget.y() for widget in metrics}) == 1,
+                })
+                audit["passed"] = all(audit["checks"].values())
+            return audit
 
 
         parent = getattr(mw, "web", None)
@@ -16057,7 +16071,7 @@ class _UiFaceCaptureRunner:
                                 ),
                             }
                             restored_ready = bool(
-                                restored["label"] == "Next card:"
+                                restored["label"] == "Next card"
                                 and restored["value"]
                                 == str(routine_post.nurture.next_answer_value)
                                 and restored["result_state"] == "projection"
@@ -16102,7 +16116,7 @@ class _UiFaceCaptureRunner:
                                 and settled["session_growth_units"] == 1_800
                                 and settled["session_metric_copy"] == ["+18 Growth"]
                                 and settled["released_after_progress"]
-                                and restored["label"] == "Next card:"
+                                and restored["label"] == "Next card"
                                 and restored["value"]
                                 == str(routine_post.nurture.next_answer_value)
                                 and restored["result_state"] == "projection"
@@ -16718,20 +16732,38 @@ class _UiFaceCaptureRunner:
         presented = bool(hud.present_reward(bundle))
         if app is not None:
             app.processEvents()
+        feedback = hud._collapsed_feedback
+        feedback_bounds = self._widget_bounds_evidence(feedback, hud._collapsed_tab)
         collapsed = {
             "presented": presented,
             "collapsed": bool(hud.property("hudCollapsed")),
             "unseen_major": int(hud.property("hudUnseenMajorRewards") or 0),
             "queued": len(hud._reward_queue),
             "visible_reveal": bool(hud.property("hudRewardVisible")),
+            "inline_feedback": hud._collapsed_tab.isAncestorOf(feedback),
+            "feedback_contained": bool(feedback_bounds.get("contained", False)),
+            "feedback_below_ring": feedback.y() >= hud._collapsed_ring.geometry().bottom(),
+            "feedback_caption": feedback.caption.text().replace("\n", " "),
+            "active_bundle_id": str(feedback.property("rewardBundleId") or ""),
         }
         collapsed["passed"] = bool(
             collapsed["presented"]
             and collapsed["collapsed"]
             and collapsed["unseen_major"] == 1
-            and collapsed["queued"] == 1
-            and not collapsed["visible_reveal"]
+            and collapsed["queued"] == 0
+            and collapsed["visible_reveal"]
+            and collapsed["inline_feedback"]
+            and collapsed["feedback_contained"]
+            and collapsed["feedback_below_ring"]
+            and collapsed["feedback_caption"] == "Full Bloom Reached"
+            and collapsed["active_bundle_id"] == bundle.bundle_id
         )
+        if collapsed["passed"]:
+            from PyQt6.QtTest import QTest
+            QTest.qWait(200)
+            feedback_dir = self.session_dir / "reviewer-feedback"
+            feedback_dir.mkdir(exist_ok=True)
+            hud.grab().save(str(feedback_dir / "04-full-bloom-inline.png"))
         interactions["collapsed-unseen-reward"] = collapsed
 
         hud._expand_from_tab()
@@ -16822,8 +16854,8 @@ class _UiFaceCaptureRunner:
             "details_click_height": int(
                 compact_geometry.get("details_click_height", 0) or 0
             ),
-            "details_heading_aligned": bool(
-                compact_geometry.get("details_heading_aligned", False)
+            "details_own_row": bool(
+                compact_geometry.get("details_own_row", False)
             ),
             "details_visible_in_scroll_viewport": bool(
                 compact_geometry.get(
@@ -16875,7 +16907,7 @@ class _UiFaceCaptureRunner:
             compact["bundle_id"] == bundle.bundle_id
             and not compact["details_expanded"]
             and compact["eyebrow"] == compact_projection.eyebrow
-            and compact["hero_title"] == "Recent rewards"
+            and compact["hero_title"] == compact_projection.hero_title
             and compact["active_plant_identity_suppressed"]
             and compact["hero_subtitle"] == ""
             and not compact["hero_title_clamped"]
@@ -16902,14 +16934,14 @@ class _UiFaceCaptureRunner:
                 },
             ]
             and bool(compact["visible_summary_rows"][0]["artwork_ref"])
-            and compact["details_action_copy"] == "Details ›"
+            and compact["details_action_copy"] == "Reward details ›"
             and compact["details_click_height"] >= 28
-            and compact["details_heading_aligned"]
+            and compact["details_own_row"]
             and compact["details_visible_in_scroll_viewport"]
             and compact["details_footer_non_overlapping"]
             and compact["details_divider_clearance"] >= 8
             and compact["compact_vertical_scroll_maximum"] == 0
-            and 0 < compact["reveal_height"] == compact["reveal_natural_height"] <= 150
+            and 0 < compact["reveal_height"] == compact["reveal_natural_height"] <= 240
             and compact["title_details_non_overlapping"]
             and compact["detail_event_ids_reconciled"]
             and not compact["obsolete_bottom_details_present"]
@@ -16942,7 +16974,7 @@ class _UiFaceCaptureRunner:
             "event_ids_reconciled": compact[
                 "detail_event_ids_reconciled"
             ],
-            "heading_row_action": compact["details_heading_aligned"],
+            "inline_action": compact["details_own_row"],
             "obsolete_bottom_action_absent": not compact[
                 "obsolete_bottom_details_present"
             ],
@@ -16950,11 +16982,11 @@ class _UiFaceCaptureRunner:
                 "obsolete_milestone_disclosure_present"
             ],
             "passed": bool(
-                compact["details_action_copy"] == "Details ›"
+                compact["details_action_copy"] == "Reward details ›"
                 and compact["details_click_height"] >= 28
                 and compact["detail_event_ids_reconciled"]
                 and compact["eyebrow"] == "MILESTONE REACHED"
-                and compact["details_heading_aligned"]
+                and compact["details_own_row"]
                 and not compact["obsolete_bottom_details_present"]
                 and not compact["obsolete_milestone_disclosure_present"]
             ),
@@ -17155,7 +17187,7 @@ class _UiFaceCaptureRunner:
             )
             and celebration_record["select_another_visible"]
             and celebration_record["settled_copy"]
-            == "New Growth is shared or stored."
+            == "Growth goes to unfinished plants; any extra is stored."
         )
         content["full-bloom-celebration"] = celebration_record
         celebration_started = bool(celebration_record["passed"])
@@ -17415,16 +17447,17 @@ class _UiFaceCaptureRunner:
         if app is not None:
             app.processEvents()
         visible_history_text = [
-            str(label.text()).strip()
-            for label in tuple(getattr(hud, "_history_labels", ()) or ())
+            " · ".join(part for part in (str(label.text()).strip(), hud._history_values[index].text().strip()) if part)
+            for index, label in enumerate(tuple(getattr(hud, "_history_labels", ()) or ()))
             if str(label.text()).strip()
         ]
         routine_non_clickable = any(
             bundle_candidate is None
             and index < len(tuple(getattr(hud, "_history_labels", ()) or ()))
-            and str(
-                getattr(hud._history_labels[index], "_full_text", "") or ""
-            ).strip() == routine_line
+            and " · ".join(part for part in (
+                str(getattr(hud._history_labels[index], "_full_text", "") or "").strip(),
+                hud._history_values[index].text().strip(),
+            ) if part) == routine_line
             for index, bundle_candidate in enumerate(
                 tuple(getattr(hud, "_visible_history_bundles", ()) or ())
             )
@@ -17526,7 +17559,7 @@ class _UiFaceCaptureRunner:
         }
         full_bloom["passed"] = bool(
             full_bloom["eyebrow"] == "MILESTONE REACHED"
-            and full_bloom["hero_title"] == "Recent rewards"
+            and full_bloom["hero_title"] == "Bonsai reached full bloom"
             and full_bloom["hero_subtitle"] == ""
             and full_bloom["active_plant_identity_suppressed"]
             and full_bloom["class_label"] == "Bonsai"
@@ -17540,7 +17573,7 @@ class _UiFaceCaptureRunner:
             and full_bloom["art_height"] >= 132
             and not full_bloom["light_rays"]
             and full_bloom["settled_copy"]
-            == "New Growth is shared or stored."
+            == "Growth goes to unfinished plants; any extra is stored."
             and full_bloom["select_another_visible"]
             and full_bloom["select_another_copy"] == "Choose next plant"
             and full_bloom["art_scale"] == 1.0
@@ -17784,8 +17817,8 @@ class _UiFaceCaptureRunner:
         reward_footer_non_overlapping = bool(
             len(reveal_bounds) == 4
             and len(footer_bounds) == 4
-            and int(reveal_bounds[1]) + int(reveal_bounds[3])
-            <= int(footer_bounds[1])
+            and int(footer_bounds[1]) + int(footer_bounds[3])
+            <= int(reveal_bounds[1])
         )
         dock = getattr(hud, "_reward_dock", None)
         footer = getattr(hud, "_session_footer", None)
@@ -17916,12 +17949,16 @@ class _UiFaceCaptureRunner:
                 item.kind is RewardHero.GARDEN_FIND for item in bundle.all_items
             ),
             "footer_copy": str(hud._session_finds.text()),
+            "garden_unlock_count": len(live_session.environment_discoveries),
+            "discovery_count": int(hud._session_footer.property("sessionDiscoveries") or 0),
             "passed": bool(
                 sum(
                     item.kind is RewardHero.GARDEN_FIND
                     for item in bundle.all_items
                 ) == 1
-                and str(hud._session_finds.text()) == "1 Garden Find"
+                and int(hud._session_footer.property("sessionFinds") or 0) == 1
+                and int(hud._session_footer.property("sessionDiscoveries") or 0) == 3
+                and str(hud._session_finds.text()) == "3"
             ),
         }
         history_bundle_ids = tuple(
@@ -17943,6 +17980,8 @@ class _UiFaceCaptureRunner:
             "live_growth_units": int(live_session.footer_growth_units),
             "live_coins": int(live_session.garden_coins_earned),
             "live_finds": int(live_session.footer_find_count),
+            "footer_discoveries": int(hud._session_footer.property("sessionDiscoveries") or 0),
+            "live_discoveries": int(live_session.footer_find_count) + len(live_session.environment_discoveries),
             "footer_copy": [
                 str(hud._session_growth.text()),
                 str(hud._session_coins.text()),
@@ -17963,7 +18002,9 @@ class _UiFaceCaptureRunner:
                     str(hud._session_growth.text()),
                     str(hud._session_coins.text()),
                     str(hud._session_finds.text()),
-                ] == ["+60 Growth", "+14 Coins", "1 Garden Find"]
+                ] == ["+60", "+14", "3"]
+                and int(hud._session_footer.property("sessionDiscoveries") or 0)
+                == live_session.footer_find_count + len(live_session.environment_discoveries) == 3
             ),
         }
 
@@ -17987,15 +18028,17 @@ class _UiFaceCaptureRunner:
             app.processEvents()
         content["all-cards-complete"] = {
             "completion_status": str(hud._today_card.property("completionStatus") or ""),
-            "heading": str(hud._today_heading.text()),
+            "heading": str(hud._today_heading._full_text),
+            "daily_card_removed": not hud._today_card.isVisibleTo(hud),
             "displayed_progress_percent": int(
                 hud._today_progress.property("displayedProgressPercent") or 100
             ),
             "reward_copy": str(hud._today_value.text()),
             "passed": bool(
                 hud._today_card.property("completionStatus") == "complete"
-                and str(hud._today_heading.text()) == "All cards complete"
+                and str(hud._today_heading._full_text) == "All cards complete"
                 and str(hud._today_value.text()) == "+10 Coins"
+                and not hud._today_card.isVisibleTo(hud)
             ),
         }
         hud.update_projection(canonical_projection, animate=False)
@@ -19028,11 +19071,9 @@ class _UiFaceCaptureRunner:
     ) -> None:
         """Exercise responsive states without creating additional surfaces."""
         if CAPTURE_CONTRACT_VERSION >= 27:
-            from .workspace import compact_reward_audit, compact_reward_disclosure_audit
-            disclosure = compact_reward_disclosure_audit(self, card)
-            audit = compact_reward_audit(self, card)
-            on_ready({"scope": "compact summary and Details", "passed": disclosure["passed"],
-                      "content_states": disclosure}, audit)
+            audit = self._session_summary_geometry_audit(card)
+            on_ready({"scope": "always-visible reward details", "passed": audit["passed"],
+                      "content_states": audit}, audit)
             return
 
 
@@ -19881,10 +19922,10 @@ class _UiFaceCaptureRunner:
             )
             metrics["required_overlays_present"] = overlay_pixels
             overlay_unique_colors = 0
-            if surface_id in {"workspace-reviewer-collapsed", "workspace-reviewer-rewards-list"}:
-                # The whole-window grid can miss almost every pixel of the
-                # narrow collapsed tab. Measure its native content at its own
-                # scale, while the separate pixel match proves it is in frame.
+            if surface_id in _REVIEWER_CAPTURE_LABELS:
+                # A whole-window grid can miss most of the compact or expanded
+                # HUD. Measure its own pixels while the exact overlay match
+                # separately proves that the HUD is present in the capture.
                 for overlay in required_overlays:
                     overlay_metrics = self._home_pixmap_metrics(
                         overlay.grab(), expected_width=overlay.width(),
@@ -19893,21 +19934,22 @@ class _UiFaceCaptureRunner:
                     overlay_unique_colors = max(overlay_unique_colors,
                         int(overlay_metrics.get("unique_sampled_colors", 0)))
             metrics["overlay_unique_sampled_colors"] = overlay_unique_colors
-            compact_overlay_content = bool(
-                surface_id in {"workspace-reviewer-collapsed", "workspace-reviewer-rewards-list"}
+            reviewer_overlay_content = bool(
+                surface_id in _REVIEWER_CAPTURE_LABELS
                 and required_overlays
                 and overlay_pixels
                 and self._active_reviewer_dom_audit.get("ready") is True
-                and max(metrics.get("unique_sampled_colors", 0), overlay_unique_colors) >= 8
+                and overlay_unique_colors >= 8
                 and metrics.get("dominant_color_ratio", 1.0) < 0.995
                 and metrics.get("dark_shell_sample_ratio", 0.0) >= 0.001
                 and metrics.get("aspect_ratio_error", 1.0) <= 0.02
             )
-            # A collapsed HUD occupies a small part of an otherwise white
-            # Reviewer. Its exact overlay pixels plus the real card's DOM
-            # identity prove content without requiring Home-card density.
-            metrics["compact_overlay_content_passed"] = compact_overlay_content
-            content_passed = bool(metrics.get("generic_content_passed", False) or compact_overlay_content)
+            metrics["reviewer_overlay_content_passed"] = reviewer_overlay_content
+            metrics["compact_overlay_content_passed"] = bool(
+                reviewer_overlay_content
+                and surface_id in {"workspace-reviewer-collapsed", "workspace-reviewer-rewards-list"}
+            )
+            content_passed = bool(metrics.get("generic_content_passed", False) or reviewer_overlay_content)
             pixmap_dpr_reader = getattr(pixmap, "devicePixelRatio", None)
             pixmap_dpr = (
                 float(pixmap_dpr_reader())
@@ -20113,7 +20155,7 @@ class _UiFaceCaptureRunner:
                 {
                     "method": candidate.backend,
                     "generic": bool(metrics.get("generic_content_passed", False)),
-                    "compact_overlay": bool(metrics.get("compact_overlay_content_passed", False)),
+                    "reviewer_overlay": bool(metrics.get("reviewer_overlay_content_passed", False)),
                     "unique_colors": metrics.get("unique_sampled_colors", 0),
                     "overlay_unique_colors": metrics.get("overlay_unique_sampled_colors", 0),
                     "reviewer_dom_ready": self._active_reviewer_dom_audit.get("ready") is True,
@@ -22312,7 +22354,7 @@ class _UiFaceCaptureRunner:
                     and "18 cards remaining" in normalized_copy
                     and "176 cards completed" in normalized_copy
                     and "standard finds" in normalized_copy
-                    and "2 / 3 earned today" in normalized_copy
+                    and "2 Finds today" in normalized_copy
                     and not banned_terms
                 )
                 require(
@@ -25773,7 +25815,12 @@ class _UiFaceCaptureRunner:
                 scroll_id = id(scroll)
                 if scroll_id in seen_ids:
                     continue
-                if scroll.window() is not root:
+                try:
+                    if scroll.window() is not root:
+                        continue
+                except RuntimeError:
+                    # A replaced detail page may leave a deleted Qt wrapper
+                    # in the shell registry until its next layout pass.
                     continue
                 is_deliberate = (
                     scroll_id in registered_ids
@@ -26094,6 +26141,7 @@ class _UiFaceCaptureRunner:
                         **metrics,
                     })
         except Exception as exc:
+            logger.exception("Anki Garden: native scroll audit failed for %s", capture_label)
             dialog_scroll_audit = {
                 "applicable": True,
                 "registered_count": int(
@@ -32605,8 +32653,8 @@ class _UiFaceCaptureRunner:
                         and bool(expected_singletons)
                         and all(
                             card["grid_position"][1] == 0
-                            and card["grid_span"] == [1, 2]
-                            and card["declared_singleton"]
+                            and card["grid_span"] == [1, 1]
+                            and not card["declared_singleton"]
                             for card in singleton_cards
                         )
                     ),
@@ -35091,6 +35139,29 @@ class _UiFaceCaptureRunner:
         )))
         alert_copy = str(dialog.alert.text()).strip()
         receipt_copy = str(dialog.receipt_copy.text()).strip()
+        # The result may become shorter. Header geometry and bottom-anchored
+        # footer controls stay stable within the same mounted dialog.
+        preview_signature = dict(getattr(dialog, "_capture_preview_layout_signature", {}) or {})
+        success_signature = dict(getattr(dialog, "_capture_success_layout_signature", {}) or {})
+
+        def anchored_signature(signature: dict[str, Any]) -> dict[str, Any]:
+            required = {"dialog", "title", "close", "footer", "primary_action", "secondary_action"}
+            if set(signature) != required or any(len(rect) != 4 for rect in signature.values()):
+                return {}
+            normalized = {key: list(rect) for key, rect in signature.items()}
+            height = normalized["dialog"][3]
+            normalized["dialog"][3] = 0
+            for key in ("footer", "primary_action", "secondary_action"):
+                normalized[key][1] -= height
+            return normalized
+
+        layout_stable = bool(
+            anchored_signature(preview_signature)
+            and anchored_signature(preview_signature) == anchored_signature(success_signature)
+            and 0 < success_signature["dialog"][3] <= preview_signature["dialog"][3]
+            and getattr(dialog, "_capture_preview_position", [])
+            == getattr(dialog, "_capture_success_position", [])
+        )
         conditions = [actual_status == expected_status]
         if variant == "ready":
             conditions.extend([
@@ -35221,17 +35292,7 @@ class _UiFaceCaptureRunner:
                         False,
                     )
                 ),
-                bool(
-                    getattr(
-                        dialog,
-                        "_capture_preview_layout_signature",
-                        {},
-                    )
-                )
-                and getattr(dialog, "_capture_preview_layout_signature", {})
-                == getattr(dialog, "_capture_success_layout_signature", {})
-                and getattr(dialog, "_capture_preview_position", [])
-                == getattr(dialog, "_capture_success_position", []),
+                layout_stable,
                 bool(
                     getattr(
                         dialog,
@@ -35362,15 +35423,15 @@ class _UiFaceCaptureRunner:
             and rendered_values["impact_value"] == "+100 Growth"
             and rendered_values["growth_label"] == "Total Growth"
             and rendered_values["growth_value"] == ("450" if variant == "success" else "350 → 450")
-            and rendered_values["inventory_label"] == ("Small Growth Charge remaining" if variant == "success" else "Charges remaining")
+            and rendered_values["inventory_label"] == "Owned"
             and rendered_values["inventory_value"] == ("1" if variant == "success" else "2 → 1")
-            and rendered_values["progress_label"] == ("To Young" if variant == "success" else "To Young after use")
+            and rendered_values["progress_label"] == "Progress toward Young"
             and rendered_values["stage_progress"]
             == "50 / 1,600 Growth"
             and rendered_values["progress_minimum"] == 0
             and rendered_values["progress_maximum"] == 1_600
             and rendered_values["progress_value"] == 50
-            and rendered_values["reward_label"] == ("Coins earned" if variant == "success" else "Reaching Sprout earns")
+            and rendered_values["reward_label"] == ("Coins earned" if variant == "success" else "Reach Sprout")
             and rendered_values["reward_value"] == "+2 Coins"
             and rendered_values["reward_visible"] is True
             and rendered_values["charge_artwork_fallback"] is False
@@ -35392,7 +35453,7 @@ class _UiFaceCaptureRunner:
                 dialog.summary_panel.isVisibleTo(dialog)
                 and common_rendered_ok
                 and rendered_values["dialog_title"]
-                == "Use a Growth Charge?"
+                == "Use Small Growth Charge?"
                 and rendered_values["component_variant"] == "confirmation"
                 and rendered_values["data_source"] == "engine-preview"
                 and rendered_values["transition_statement"]
@@ -35416,15 +35477,7 @@ class _UiFaceCaptureRunner:
                 ) if outcome is not None else 0,
                 "preview_layout_signature": preview_signature,
                 "success_layout_signature": success_signature,
-                "layout_stable": bool(
-                    preview_signature
-                    and preview_signature == success_signature
-                    and list(
-                        getattr(dialog, "_capture_preview_position", []) or []
-                    ) == list(
-                        getattr(dialog, "_capture_success_position", []) or []
-                    )
-                ),
+                "layout_stable": layout_stable,
                 "repeated_activation_safe": bool(
                     getattr(
                         dialog,
@@ -35437,7 +35490,7 @@ class _UiFaceCaptureRunner:
                 dialog.summary_panel.isVisibleTo(dialog)
                 and common_rendered_ok
                 and rendered_values["dialog_title"]
-                == "Bonsai reached sprout"
+                == "Bonsai reached Sprout"
                 and rendered_values["component_variant"] == "success"
                 and rendered_values["data_source"] == "engine-confirmed"
                 and rendered_values["transition_statement"]
@@ -43222,28 +43275,15 @@ class _UiFaceCaptureRunner:
                         )
                     }
                     required_names_present = {
-                        "ankiGardenSessionHeader",
-                        "ankiGardenSessionScroll",
-                        "ankiGardenSessionBody",
-                        "ankiGardenSessionFooter",
-                        "ankiGardenSessionTodayProgress",
-                        "ankiGardenSessionBreakdownToggle",
+                        "ankiGardenSessionHeader", "ankiGardenSessionScroll",
+                        "ankiGardenSessionBody", "ankiGardenSessionFooter",
+                        "ankiGardenSessionRewards", "ankiGardenSessionBreakdown",
                     } <= names
-                    progress = next((
-                        candidate
-                        for candidate in card.findChildren(QWidget)
-                        if str(candidate.objectName() or "")
-                        == "ankiGardenSessionTodayProgress"
-                    ), None)
-                    try:
-                        progress_finished = bool(
-                            progress is not None
-                            and int(progress.value())
-                            == capture_today_cards_completed
-                            and int(progress.maximum()) == capture_today_cards_total
-                        )
-                    except (AttributeError, RuntimeError, TypeError, ValueError):
-                        progress_finished = False
+                    progress_finished = bool(
+                        "ankiGardenSessionTodayProgress" not in names
+                        and "ankiGardenSessionBreakdownToggle" not in names
+                        and card.property("summaryDetailsAlwaysVisible") is True
+                    )
                     animations_finished = True
                     for animation in tuple(
                         getattr(card, "_animations", ()) or ()
@@ -44879,9 +44919,9 @@ class _UiFaceCaptureRunner:
                     "details_action_copy": str(
                         current_hud._reward_details_toggle.text()
                     ),
-                    "details_action_heading_row": bool(
+                    "details_action_inside_reveal": bool(
                         current_hud._reward_details_toggle.parentWidget()
-                        is current_hud._reward_heading
+                        is current_hud._reward_reveal
                     ),
                     "obsolete_bottom_details_absent": (
                         current_hud.findChild(QWidget, "reviewerHudRewardMore")
@@ -44931,8 +44971,8 @@ class _UiFaceCaptureRunner:
                     and bundle_evidence["visible_summary_reward_types"]
                     == ["garden_find", "environment_discovery"]
                     and all(bundle_evidence["visible_summary_artwork_refs"])
-                    and bundle_evidence["details_action_copy"] == "Details ›"
-                    and bundle_evidence["details_action_heading_row"]
+                    and bundle_evidence["details_action_copy"] == "Reward details ›"
+                    and bundle_evidence["details_action_inside_reveal"]
                     and bundle_evidence["obsolete_bottom_details_absent"]
                     and bundle_evidence["milestone_chevron_absent"]
                     and bundle_evidence["individual_close_button_count"] == 0

@@ -828,10 +828,10 @@ def _annual_production_row(
     storage.environment_effect_growth_units += day_environment_growth_units
     booster_remaining_by_source = {
         str(batch.source_event_key): max(0, int(batch.remaining_cards))
-        for plant in engine.state.plants
+        for target in (*engine.state.plants, engine.state.garden_card_effects)
         for batch in (
-            *plant.booster_card_batches,
-            *plant.booster_card_queue,
+            *target.booster_card_batches,
+            *target.booster_card_queue,
         )
         if str(batch.source_event_key or "")
     }

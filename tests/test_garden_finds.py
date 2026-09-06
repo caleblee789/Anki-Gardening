@@ -131,7 +131,7 @@ def test_v2_registry_and_drought_schedule_match_the_approved_contract():
     ]
 
 
-def test_standard_roll_is_deterministic_namespaced_and_pauses_at_daily_cap():
+def test_standard_roll_is_deterministic_namespaced_and_uncapped():
     identity = stable_answer_event_identity(101, card_id=12, answered_at_ms=101)
     lineage_identity = stable_answer_event_identity(202, lineage_id="undo-lineage-7")
     assert lineage_identity == stable_answer_event_identity(303, lineage_id="undo-lineage-7")
@@ -159,63 +159,29 @@ def test_standard_roll_is_deterministic_namespaced_and_pauses_at_daily_cap():
     assert first.attempted and first.hit and first.reward is not None
     assert first.next_drought_misses == 0
 
-    capped = resolve_standard_find(
-        secret="profile-secret",
-        answer_identity=identity,
-        drought_misses=37,
-        finds_today=STANDARD_DAILY_CAP,
-    )
-    assert not capped.attempted and capped.capped and not capped.hit
-    assert capped.next_drought_misses == 37
-
-    status = standard_find_status(finds_today=2, drought_misses=74)
-    assert status.finds_today == 2
-    assert status.daily_cap == 3
-    assert status.next_card_guaranteed
-    assert not status.daily_limit_reached
-    assert not hasattr(status, "drought_misses")
-
-    capped_status = standard_find_status(finds_today=3, drought_misses=74)
-    assert capped_status.daily_limit_reached and capped_status.rolls_paused
-    assert not capped_status.next_card_guaranteed
+    assert STANDARD_DAILY_CAP is None
+    for count in (3, 4, 5, 12):
+        continued = resolve_standard_find(secret="profile-secret", answer_identity=identity,
+            drought_misses=74, finds_today=count)
+        assert continued.attempted and continued.hit and not continued.capped
+        assert continued.next_drought_misses == 0
+        status = standard_find_status(finds_today=count, drought_misses=74)
+        assert status.finds_today == count and status.daily_cap is None
+        assert status.next_card_guaranteed
+        assert not status.daily_limit_reached and not status.rolls_paused
 
 
-def test_stepped_daily_cap_pauses_and_resumes_the_preserved_drought(
-    monkeypatch,
-) -> None:
-    assert [
-        (answers, standard_daily_cap(answers))
-        for answers in (0, 199, 200, 399, 400, 10_000)
-    ] == [
-        (0, 3),
-        (199, 3),
-        (200, 4),
-        (399, 4),
-        (400, 5),
-        (10_000, 5),
-    ]
-    identity = stable_answer_event_identity(909)
-    paused = resolve_standard_find(
-        secret="profile-secret",
-        answer_identity=identity,
-        drought_misses=37,
-        finds_today=3,
-        eligible_answers_today=199,
-    )
-    assert paused.capped and not paused.attempted
-    assert paused.next_drought_misses == 37
-
+def test_former_cap_boundaries_continue_the_preserved_drought(monkeypatch):
     monkeypatch.setattr(garden_finds, "_draw_below", lambda *args, **kwargs: False)
-    resumed = resolve_standard_find(
-        secret="profile-secret",
-        answer_identity=identity,
-        drought_misses=paused.next_drought_misses,
-        finds_today=3,
-        eligible_answers_today=200,
-    )
-    assert resumed.attempted and not resumed.capped and not resumed.hit
-    assert resumed.drought_answer_number == 38
-    assert resumed.next_drought_misses == 38
+    drought = 37
+    for answers in (199, 200, 399, 400, 1000):
+        assert standard_daily_cap(answers) is None
+        result = resolve_standard_find(secret="profile-secret",
+            answer_identity=stable_answer_event_identity(answers),
+            drought_misses=drought, finds_today=12, eligible_answers_today=answers)
+        assert result.attempted and not result.capped and not result.hit
+        assert result.next_drought_misses == drought + 1
+        drought = result.next_drought_misses
 
 
 def test_natural_environment_ties_award_rarest_only_but_forced_ties_award_all(
@@ -506,7 +472,7 @@ def test_special_environment_denominators_hard_pity_and_pool_are_exact_and_indep
         secret="profile-secret",
         answer_identity=identity,
         drought_misses=8,
-        finds_today=STANDARD_DAILY_CAP,
+        finds_today=12,
     )
     special = resolve_environment_find(
         secret="profile-secret",
@@ -515,7 +481,7 @@ def test_special_environment_denominators_hard_pity_and_pool_are_exact_and_indep
         tier_pity_misses={"ultra_environment": 8},
     )
     assert standard.consumption_id == special.consumption_id
-    assert standard.capped
+    assert standard.attempted and not standard.capped
     assert special.next_ultra_pity_misses == 9
 
 
@@ -527,7 +493,7 @@ def test_100k_simulation_stays_within_find_and_economy_budgets():
 
     assert 45 <= result.average_answers_per_find <= 55
     assert result.max_drought_misses <= 74
-    assert result.max_daily_finds <= STANDARD_DAILY_CAP
+    assert sum(result.reward_counts.values()) == result.total_finds
     assert result.coins_per_100_answers <= 6
     assert result.direct_growth_percent_of_base <= 6
     assert 500 <= 100_000 / result.inventory_counts["growth_charge_small"] <= 650

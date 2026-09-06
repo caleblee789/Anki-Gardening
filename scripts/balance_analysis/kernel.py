@@ -294,7 +294,7 @@ class DayEvents:
     environment_blocked_card_checks: Tuple[Tuple[str, int], ...] = ()
     environment_blocked_completion_checks: Tuple[Tuple[str, int], ...] = ()
     find_drought_counter_after: int = 0
-    daily_find_cap_after: int = 3
+    daily_find_cap_after: Optional[int] = None
     environment_card_pity_after: Tuple[Tuple[str, int], ...] = ()
     environment_completion_pity_after: Tuple[Tuple[str, int], ...] = ()
     environment_owned_item_ids_after: Tuple[str, ...] = ()
@@ -612,7 +612,7 @@ def generate_event_stream(
         capped = False
         attempted = answers
         daily_cap = facts.standard_daily_cap(answers)
-        while attempted > 0 and finds < daily_cap:
+        while attempted > 0 and (daily_cap is None or finds < daily_cap):
             if remaining_gap > attempted:
                 remaining_gap -= attempted
                 attempted = 0
@@ -634,7 +634,7 @@ def generate_event_stream(
                 inventory.extend([reward.inventory_item_id] * reward.amount)
             remaining_gap = gap_sampler.sample(rng)
             maximum_gap = max(maximum_gap, remaining_gap)
-        if finds >= daily_cap and attempted > 0:
+        if daily_cap is not None and finds >= daily_cap and attempted > 0:
             capped = True
         rows.append(DayEvents(
             day=day,
@@ -893,7 +893,7 @@ class RunState:
     environment_blocked_completions_by_tier: Counter
     environment_owned_count_by_tier: Counter
     find_drought_counter: int
-    daily_find_cap: int
+    daily_find_cap: Optional[int]
     daily_find_count: int
     environment_card_pity: Dict[str, int]
     environment_completion_pity: Dict[str, int]
@@ -1057,7 +1057,7 @@ def _initial_state(facts: CatalogFacts, scenario: ScenarioSpec) -> RunState:
         environment_blocked_completions_by_tier=Counter(),
         environment_owned_count_by_tier=environment_owned_count_by_tier,
         find_drought_counter=0,
-        daily_find_cap=3,
+        daily_find_cap=None,
         daily_find_count=0,
         environment_card_pity={},
         environment_completion_pity={},
@@ -1268,7 +1268,9 @@ def _planted_indices(state: RunState) -> Tuple[int, ...]:
     return tuple(range(planted))
 
 
-def _rotate_completed_plants(state: RunState, facts: CatalogFacts) -> None:
+def _rotate_completed_plants(
+    state: RunState, facts: CatalogFacts, *, replace_completed: bool = True,
+) -> None:
     """Model one end-of-day Collection visit, preserving occupied bed order.
 
     Full Blooms stay on display until an owned unfinished plant needs their
@@ -1285,6 +1287,8 @@ def _rotate_completed_plants(state: RunState, facts: CatalogFacts) -> None:
         if len(state.planted_order) < state.beds_owned:
             state.planted_order.append(index)
             continue
+        if not replace_completed:
+            break
         slot = next((slot for slot, planted in enumerate(state.planted_order)
                      if state.plant_growth_units[planted] >= full), None)
         if slot is None:
@@ -1681,8 +1685,9 @@ def _purchase_day(
         elif option.category == "bed":
             state.beds_owned += 1
 
-    if scenario.rotate_completed_plants:
-        _rotate_completed_plants(state, facts)
+    _rotate_completed_plants(
+        state, facts, replace_completed=scenario.rotate_completed_plants,
+    )
 
     # The endgame strategy acknowledges an active project and contributes the
     # entire existing reserve. Funding is independent from later Coin claims.
@@ -2124,7 +2129,7 @@ def _apply_firefly_review_day(
                 state.active_garden_bonus_id, ()
             )
             if effect.effect_id
-            == "instant_growth_every_5_plus_3_closest_checkpoint"
+            in {"instant_growth_every_5_plus_3_closest_checkpoint", "instant_growth_every_5_plus_3_nurtured"}
         ),
         None,
     )
@@ -2208,9 +2213,10 @@ def _apply_firefly_review_day(
                     firefly.grant,
                     1,
                     milestone_schedule,
-                    intended_plant_index=_closest_checkpoint_plant_index(
-                        state,
-                        milestone_schedule,
+                    intended_plant_index=(
+                        _closest_checkpoint_plant_index(state, milestone_schedule)
+                        if firefly.effect_id == "instant_growth_every_5_plus_3_closest_checkpoint"
+                        else state.active_plant_index
                     ),
                 )
         find_units = max(
@@ -2952,7 +2958,7 @@ def _annual_release_state_row(
     return {
         "find_drought_counter": max(0, int(state.find_drought_counter)),
         "daily_find_cap_and_count": {
-            "cap": max(0, int(state.daily_find_cap)),
+            "cap": state.daily_find_cap,
             "count": max(0, int(state.daily_find_count)),
         },
         "environment_pity_counters": {
@@ -3020,8 +3026,8 @@ def simulate_scenario(
 ) -> ScenarioOutcome:
     stream = tuple(events or generate_event_stream(facts, scenario, config, seed_index))
     state = _initial_state(facts, scenario)
-    if scenario.rotate_completed_plants:
-        state.planted_order = list(_planted_indices(state))
+    # Bed unlocks do not plant seedlings until the next Collection visit.
+    state.planted_order = list(_planted_indices(state))
     _equip_best_environment(state, facts, scenario)
     permanent_plan = _permanent_priority(facts, scenario)
     consumable = _best_consumable(
@@ -3208,7 +3214,7 @@ def simulate_scenario(
         state.find_drought_counter = max(
             0, int(event.find_drought_counter_after)
         )
-        state.daily_find_cap = max(0, int(event.daily_find_cap_after))
+        state.daily_find_cap = event.daily_find_cap_after
         state.daily_find_count = max(0, int(event.standard_finds))
         state.environment_card_pity = {
             str(tier): max(0, int(value))
@@ -3944,7 +3950,7 @@ def _catalog_analysis(facts: CatalogFacts) -> Mapping[str, object]:
             "schedule_adjusted_expected_growth_equivalent_fixed_6": fixed_six(schedule_expected[1]),
             "schedule_adjusted_expected_inventory_units_fixed_6": fixed_six(schedule_expected[2]),
             "fixed_point_note": "scaled_integer / scale; rounded half-up with integer arithmetic",
-            "daily_cap_caveat": "Per-opportunity values exclude reviews suppressed by the daily Find cap.",
+            "daily_cap_caveat": "Standard Finds are uncapped; every eligible answer advances the chance/guarantee sequence.",
             "rewards": find_rows,
         },
         "environment_tiers": [
@@ -4502,8 +4508,8 @@ def simulate_balance(
         (
             "CATALOG-FIND-CAPS",
             [catalog.standard_daily_cap(value) for value in (10, 200, 400)]
-            == [3, 4, 5],
-            [3, 4, 5],
+            == [None, None, None],
+            [None, None, None],
         ),
         (
             "CATALOG-FULL-BLOOM-POSITIVE",

@@ -315,59 +315,41 @@ def test_typed_committed_result_carries_generic_project_allocations(monkeypatch)
 
 
 def test_engine_committed_result_owns_standard_find_count():
+    from ankigarden.garden_finds import STANDARD_FIND_REGISTRY, PreparedRewardRegistry
+
     engine, storage = _engine()
-    baseline = engine._committed_answer_baseline()
-    outcomes = (
-        GardenFindOutcome(
-            answer_key="one",
-            scheduler_day=DAY,
-            status="hit",
-            pool_id="standard",
-            pool_version="v1",
-            occurred_at="2026-08-28T10:00:01Z",
-            reward_id="morning_dew",
-            display_name="Morning Dew",
-        ),
-        GardenFindOutcome(
-            answer_key="two",
-            scheduler_day=DAY,
-            status="hit",
-            pool_id="standard",
-            pool_version="v1",
-            occurred_at="2026-08-28T10:00:02Z",
-            reward_id="garden_twine",
-            display_name="Garden Twine",
-        ),
-        GardenFindOutcome(
-            answer_key="three",
-            scheduler_day=DAY,
-            status="hit",
-            pool_id="environment",
-            pool_version="v1",
-            occurred_at="2026-08-28T10:00:03Z",
-            reward_id="firefly_lantern",
-            display_name="Firefly Lantern",
-        ),
-    )
-    for outcome in outcomes:
-        storage.state.garden_find_outcomes[outcome.outcome_key] = outcome
-    award = ReviewAward(
-        None,
-        10,
-        0,
-        0,
-        0,
-        correlation_id="answer:find-count",
+    # Durable storage owns outcomes outside the renderer's bounded state cache.
+    outcomes = {}
+    storage.stage_garden_find_outcome = lambda outcome: outcomes.setdefault(outcome.outcome_key, outcome)
+    storage.garden_find_outcome = lambda key, pool: outcomes.get(f"{pool}:{key}")
+    state = storage.state
+    state.starter_selection_complete = True
+    state.progression_activation_ms = storage.day_start_ms - 1
+    for plant in state.plants:
+        plant.growth_points = 35_000
+    state.active_plant_id = None
+    state.active_growth_target_type = "mastery"
+    state.active_growth_target_id = "bonsai"
+    state.active_growth_target_activation_identity = "selected-bonsai"
+    state.inventory["garden_features"].append("prism_trellis")
+    assert engine.equip_environment("garden_feature", "prism_trellis")[0]
+    engine.initialize_reward_state()
+    state.garden_find_drought_count = 74
+    engine.garden_find_registry = PreparedRewardRegistry(tuple(
+        item for item in STANDARD_FIND_REGISTRY if item.reward_id == "find_growth_burst"
+    ))
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    result = engine.commit_reviewer_answer(
+        _review_payload(storage.now_ms + 1, 101), due_status=DueObligationStatus(),
     )
 
-    result = engine._committed_answer_result(
-        payload={"scheduler_day": DAY},
-        award=award,
-        baseline=baseline,
-    )
-
-    assert result.garden_find_outcomes == outcomes
-    assert result.standard_find_count == 2
+    assert result is not None and result.daily_completion_rewarded
+    assert result.standard_find_count == 1
+    assert [item.reward_id for item in result.garden_find_outcomes if item.status == "hit"] == ["find_growth_burst"]
+    assert not state.garden_find_outcomes
+    # The receipt includes ordinary Growth, its 100-Growth Find, and Prism's 100 Growth.
+    assert sum(row.units for row in result.project_allocations) == result.mastery_growth_delta_units
+    assert result.mastery_growth_delta_units == result.award.mastery_growth_units + 20_000
 
 
 def test_reviewer_find_details_fail_closed_against_engine_count(

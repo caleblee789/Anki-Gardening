@@ -662,7 +662,7 @@ HOME_WIDGET_STYLE = """
   max-width:260px;
   margin-top:0;
   overflow:hidden;
-  color:#95A89F;
+  color:#B7C4BD;
   font-size:12px;
   line-height:14px;
   font-variant-numeric:tabular-nums;
@@ -673,6 +673,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__plant-name { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .ag-home__plant-stage { flex:none; }
 .ag-home__growth-track {
+  max-width:100%;
   position:relative;
   left:0;
   right:auto;
@@ -1346,7 +1347,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             growth_text = f"{display_growth_current:,} total Growth"
         elif display_growth_goal > 0:
             destination = format_status_label(data.active_next_stage or "the next stage")
-            growth_text = f"To {destination}: {format_growth(display_growth_current, display_growth_goal)}"
+            growth_text = f"Next: {destination} · {format_growth(display_growth_current, display_growth_goal)}"
         else:
             growth_text = preview.growth_text or "0"
         preview_identity = preview.active_plant_name

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ankigarden import balance_catalog
+from ankigarden.models.state import STATE_VERSION
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,14 +21,14 @@ def _typographic(value: str) -> str:
     return value.replace("'", "’")
 
 
-def test_current_economy_docs_identify_schema27_catalog_authority() -> None:
+def test_current_economy_docs_identify_current_schema_and_catalog_authority() -> None:
     reference = _text(REFERENCE)
     docs_index = _text(DOCS_INDEX)
     release_notes = _text(RELEASE_NOTES)
 
-    assert "Anki Garden 2.2.0 and state schema 27" in reference
+    assert f"Anki Garden 2.2.0 and state schema {STATE_VERSION}" in reference
     assert "ankigarden/balance_catalog.py" in reference
-    assert "schema-27 Anki Garden 2.2.0" in docs_index
+    assert f"schema-{STATE_VERSION} Anki Garden 2.2.0" in docs_index
     assert "Anki Garden 2.2.0 release notes" in release_notes
     assert "release-notes-2.2.0.md" in docs_index
     assert "Garden Cycle" in reference and "30 Garden Coins" in reference
@@ -61,7 +62,7 @@ def test_reference_covers_every_canonical_catalog_family() -> None:
         )
 
     assert "30 of 39 collection entries discovered" in reference
-    assert "0–199" in reference and "200–399" in reference and "400+" in reference
+    assert "Standard Finds have no daily limit" in reference
     assert "60 completions" in reference
     assert "180 completions" in reference
     assert "365 completions per item" in reference

@@ -4,7 +4,7 @@ from copy import deepcopy
 from ..feature_availability import landmarks_enabled
 
 from ._surface_specs import SURFACE_ROWS as LEGACY_ROWS
-from .handoff import ADDITIONS
+from .handoff import ADDITIONS, RETIRED_SURFACES
 
 
 # (surface ID, renderer, route, representative). Empty routes retain the
@@ -21,13 +21,14 @@ GROUPS = (
         ("garden-inspector-nurtured", "GardenDashboard", "inspector", True),
         ("garden-inspector-available", "GardenDashboard", "inspector-available", False),
         ("garden-move-plant", "GardenDashboard", "move", False),
+        # Unified supplies: active Fertilizer versus charge-focused, no-active-effect state.
         ("garden-use-fertilizer", "FertilizerDialog", "fertilizer", True),
         ("garden-use-growth-charges", "FertilizerDialog", "charges", False),
     )),
     ("Collection", (
         ("collection-plants-page", "GardenDashboard", "collection/plants", True),
-        ("collection-species-details", "SpeciesOverviewDialog", "species", False),
-        ("collection-plant-details", "PlantStoryDialog", "plant", True),
+        ("collection-species-details", "GardenDashboard", "species", False),
+        ("collection-plant-details", "GardenDashboard", "plant", True),
         ("collection-scenery-page", "GardenDashboard", "collection/scenery", True),
         ("collection-decorations-page", "GardenDashboard", "collection/decorations", False),
         ("collection-landmarks-page", "GardenDashboard", "collection/garden-landmarks", True),
@@ -115,7 +116,7 @@ def workspace_surface_rows():
                     "cleanup": ("close-dialog", "drain-deferred-delete", "restore-checkpoint"),
                     "evidence_requirements": ("fixture-identity", "geometry", "semantic-state", "nonblank-pixels"),
                     "owned_dependency_groups": (),
-                    "owned_module_dependencies": ("capture/workspace.py", "feature_availability.py", "ui/dashboard.py", "ui/dialog_foundations.py", "ui/theme.py", "ui/copy.py", "ui/garden_studio.py", "ui/formatters.py", "ui/plant_display.py", "ui/scene.py"),
+                    "owned_module_dependencies": ("capture/workspace.py", "feature_availability.py", "ui/dashboard.py", "ui/dialog_foundations.py", "ui/theme.py", "ui/copy.py", "ui/garden_studio.py", "ui/formatters.py", "ui/plant_display.py", "ui/scene.py") + (("ui/collection_workspace.py",) if group_name == "Collection" else ()),
                     "state_contract": {
                         "kind": "workspace",
                         "profile": {"profile_id": label, "window_family": family, "kind": "workspace", "state": label, "route": route},
@@ -143,19 +144,27 @@ def workspace_surface_rows():
                 row["prerequisites"] = ("garden-inspector-nurtured",)
             rows.append(row)
     template = next(row for row in rows if row["id"] == "garden-overview")
-    for within, (label, route, representative) in enumerate(ADDITIONS):
+    full_within = representative_within = 0
+    for label, route, representative in ADDITIONS:
         row = deepcopy(template)
-        placements = [("full", "Refinement views", len(GROUPS), full_order, within)]
-        full_order += 1
-        if representative:
-            rep_within = sum(1 for _, _, enabled in ADDITIONS[:within] if enabled)
-            placements.append(("representative", "Refinement views", len(GROUPS), representative_order, rep_within))
-            representative_order += 1
+        retired_reason = RETIRED_SURFACES.get(label, "")
+        placements = []
+        if not retired_reason:
+            placements.append(("full", "Refinement views", len(GROUPS), full_order, full_within))
+            full_order += 1
+            full_within += 1
+            if representative:
+                placements.append(("representative", "Refinement views", len(GROUPS), representative_order, representative_within))
+                representative_order += 1
+                representative_within += 1
         family = "AnkiQt" if route.startswith("reviewer-") else "GardenDashboard"
-        row.update(id=label, placements=tuple(placements), executor="_capture_handoff_surface",
+        row.update(id=label, active=not bool(retired_reason), retired_reason=retired_reason,
+                   placements=tuple(placements), executor="_capture_handoff_surface",
                    arguments=(label, route), scenario_id=label, fixture_id=f"{label}-v1",
                    scenario_step=1, renderer_family=family)
         row["owned_module_dependencies"] += ("capture/handoff_runtime.py", "ui/welcome.py", "ui/welcome_animation.py", "welcome_presentation.py", "models/welcome.py", "ui/trophy_room.py", "trophies.py", "ui/decoration_card.py", "ui/reviewer_hud_widget.py", "hooks/reviewer.py")
+        if route in {"collection-menu", "storage-confirmation"}:
+            row["owned_module_dependencies"] += ("ui/collection_workspace.py",)
         if route.startswith("reviewer-"):
             row.update(acquisition_policy="qt-shell-webview-verified", allow_foreground_fallback=True)
         row["state_contract"] = {

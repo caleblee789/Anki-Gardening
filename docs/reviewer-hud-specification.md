@@ -1,316 +1,70 @@
-# Reviewer HUD release specification
+# Reviewer and reward UI specification
 
-This document is the release contract for the persistent Anki Garden Reviewer
-HUD. It is a compact, content-driven progression surface owned by the add-on.
-It does not modify Anki's navigation, card canvas, answer controls, Edit button,
-or More button, and never expands into the central review canvas.
+The HUD and receipts render committed engine projections. Growth, Coins, Finds, inventory, completion, scheduling, and sync mechanics remain authoritative in the engine. The live HUD and finalized session summary share one session accumulator.
 
-The HUD consumes committed engine projections. It does not calculate Growth,
-milestones, rewards, daily completion, or Garden Find protection independently.
-The same live session accumulator powers its footer and the exit Session
-Summary.
+## Expanded review HUD
 
-## Information hierarchy
+1. Text-only Anki Garden title, Coin balance, and collapse control.
+2. Active plant name, artwork, and progress.
+3. Three equal-width **Coins / Growth / Discoveries** boxes under “This session”, directly below the plant.
+4. Current reward, then Recent rewards, inside the existing HUD.
 
-The expanded HUD presents:
+The Today’s cards bar, completed/remaining counts, and Next card Growth row are absent. The expanded shell stays 296 px wide, content-fitted, inside Anki’s navigation and answer-control safe area. “This session” is brighter and semibold at its unchanged 12 px size. The totals row appears after the first earned result, displays all three categories (including zeros), and retains its history chevron. Long totals abbreviate within their own box; the exact value is available in the tooltip and committed records. The boxes never wrap into separate rows or enlarge the HUD.
 
-1. Anki Garden header and Coin balance.
-2. Global Today's Cards progress.
-3. Active plant identity, art, stage, immediate result, checkpoint, and effects.
-4. One integrated reward dock after the first nonzero result.
-5. A compact `This session` total after it has a positive category.
+The existing plant art composition and checkpoint semantics remain intact. Assets use alpha-aware sizing, correct stage imagery, and restrained ground shading. The progress track shows checkpoints within the current growth stage; “Next” names the next plant stage. Full Bloom remains the player-facing label for the persisted `rare` plant stage.
 
-Persistent copy uses `card/cards` for quantities and estimates. `Next card`
-remains the action label. Shared quantity formatting owns singular/plural forms
-for cards, effects, Finds, rewards, and Coins.
+## Compact review HUD
 
-## Shell and header
+One vertical rail contains the plant/progress circle and one reward slot below it. No detached reward HUD, toast, automatic expansion, or separate history window appears.
 
-| Property | Contract |
+| State | Logical size |
 |---|---|
-| Width | 296 px in the normal expanded layout; collapse to the narrow edge tab when that safe area cannot be reserved |
-| Height | Content-driven; never fixed to the full Reviewer height |
-| Top safe area | 44 px |
-| Bottom safe area | Measured from Anki's answer controls, with a 72 px fallback when those controls cannot be measured |
-| Edge inset | 16 px from the right edge in the canonical layout |
-| Card gap/padding | 10 px / 12 px |
-| Outer radius | 14 px |
+| Idle | 80 × 48 px |
+| Coins or Growth | 80 × 70 px |
+| Stored or Shared Growth | 80 × 86 px |
+| Item, discovery, or milestone | 80 × 115 px |
 
-The HUD remains beneath Anki's navigation and above the answer bar, with no
-horizontal scrollbar. At short heights, the header and existing session footer
-stay sticky while Today's Cards, plant, and current reward can scroll. Nothing
-may extend behind Anki's answer controls.
+The circle stays anchored. Bottom padding is 5–7 px. Coins/Growth use one icon-and-amount row, with no redundant resource caption. Stored and Shared each use one short line. Milestones use 32 px artwork and deliberate two-line captions, such as “Full Bloom / Reached”. Fonts retain the established compact scale; long totals abbreviate instead of clipping or adding lines.
 
-The shell stays mounted between cards. Sync, answer display, resize, collapse,
-and Reviewer reload update it in place and must not replay rewards.
+Committed reward priority is preserved: important plant milestones and discoveries/Finds/items first, then Coins, then Growth. Events are shown sequentially inside the rail. Routine amounts coalesce without losing totals. Every original event remains in history. A bundle cannot archive during its inline sequence. Expanding pauses the sequence; collapsing resumes it. Remount restores the current frame, queued frames, and remaining hold without replay.
 
-When the available width cannot preserve the 296 px card plus its safe inset,
-the HUD enters its explicit narrow collapsed layout. It never compresses the
-expanded information model into an unreadable intermediate width.
+## Shared rarity and artwork treatment
 
-The full header opens Garden. The existing collapse chevron retains a 32 x 32
-px hit target. The balance cluster reserves measured width and uses tabular
-numerals. `248`, `9,999`, `10,013`, `999,999`, and `1,000,000` remain exact
-while they fit; larger values compact only when exact text would collide.
-Earned Coins animate only the delta, number, and Coin icon.
-
-## Today's Cards
-
-Today's Cards always uses global all-decks completion. While cards remain, its
-visual fill is capped at 99 percent even when the exact ratio rounds to 100.
-Exact counts remain authoritative.
-
-```text
-Today's cards                         175 / 176
-██████████████████████████████████░
-1 card left
-```
-
-The final committed card fills to 100, briefly illuminates the border,
-crossfades to the completed layout, applies the engine-confirmed reward, and
-settles after about 1.5 seconds.
-
-```text
-check icon  Today’s Cards Complete
-176 cards complete                    +10 coins
-```
-
-The completed state does not primarily show `0 cards left` or `176 / 176`.
-Persistent Today's Cards content never shows Find caps, pity state,
-daily-limit copy, or an `ALL DECKS` control.
-
-## Active plant
-
-The plant card always retains the species/class overline and a stable two-line
-18 px name region. Bed number remains available to Garden management surfaces
-but is not rendered in the Reviewer. Short names do not move art or progress.
-
-The art region is approximately 146 px high. Alpha-aware placement metadata
-crops transparent padding and targets visible heights of approximately 90, 99,
-109, 118, 124, and 136 px from Seed through Full Bloom. A soft painted ground
-ellipse and low-opacity glow anchor the art without a rectangular backdrop.
-
-The stage row consumes the shared six-stage projection and numeric values use
-tabular figures. Internal `rare` remains the persisted final-stage key, but
-renderers show **Full Bloom**:
-
-```text
-Sprout · 2 of 6 stages                       38%
-```
-
-Checkpoint markers are not controls:
-
-- completed checkpoints are solid mint with a dark outer ring;
-- the next checkpoint is solid gold;
-- later checkpoints and the endpoint are muted sage-gray;
-- no handle appears at the current percentage.
-
-Distance and estimate use a two-column layout:
-
-```text
-250 growth to next checkpoint              ~14 cards
-```
-
-Distance, future reward, and immediate result form three parallel rows:
-
-```text
-250 growth to next checkpoint              ~14 cards
-Checkpoint reward                            +2 coins
-Next card                                +18 growth
-```
-
-Only the icon and `+2 coins` are gold. No learner-facing quantity uses
-`answer/answers`.
-
-## Committed-answer feedback
-
-After commit, the immediate row temporarily becomes the applied result:
-
-```text
-Growth applied                              +18
-```
-
-The row swaps in about 150 ms, progress fills in about 420 ms, the plant lifts
-roughly 2 px and glows for 300 ms, changed session values highlight for 600 ms,
-and the latest projection returns after about 850 ms. Revision guards prevent
-rapid answers from restoring stale copy. Routine Growth never opens a reveal.
-
-Checkpoint bundles animate every crossed marker chronologically, including
-stage boundaries, continue through excess Growth, and open one consolidated
-reveal after the last marker. Header/session Coin increments wait for it.
-
-## Effects and no-target states
-
-Show two passive chips using this priority for actual projected effects:
-Fertilizer, Booster, temporary card-Growth modifier, streak-derived modifier,
-then environment-only effect. Passive chips have no pointer cursor, hover lift,
-or prominent border. Additional effects use a right-aligned control:
-
-```text
-1 more effect ›
-2 more effects ›
-```
-
-Stored Growth is hidden while a plant accepts Growth. With no target, explain
-that review Growth will be stored and show its exact value. Do not expose share
-calculations or environment names as persistent text.
-
-## Integrated reward dock
-
-The reveal, divider, history, and Session Summary are one logical RewardDock.
-Its scroll-body reveal and sticky footer render as connected halves with one
-surface hierarchy, no gap, and no nested reward-card outline. The divider exists
-only when reveal and footer are both visible.
-
-Before any positive result and with no reveal, the dock is hidden. The footer is
-`This session`, omits zero categories, uses `+` for Growth/Coins, and ordinary
-quantities for Finds:
-
-```text
-This session
-+40 growth · +14 coins · 1 Standard Find
-```
-
-The footer is clickable only when exact history exists. All accepted nonempty
-bundles, including routine Growth, remain in in-memory history; only major
-rewards enter the reveal queue. History presents named milestone, Find,
-discovery, checkpoint, and effect rows while aggregating routine Growth into
-one session-level row. Four presentation rows are shown at a time.
-
-Each major answer has one bundle keyed by its committed event ID. Rapid rewards
-queue inside the dock rather than stacking toasts. Answer display, next-card
-load, sync, resize, collapse, remount, and webview reopening cannot replay it.
-
-| Event | Eyebrow |
+| Reward | Accent |
 |---|---|
-| Full Bloom or stage change | `MILESTONE REACHED` |
-| Standard Find | `STANDARD FIND` |
-| Checkpoint | `CHECKPOINT REACHED` |
-| Environment discovery | `NEW DISCOVERY` |
-| Other major reward | `REWARD EARNED` |
+| Rare | Gold `#E8C568` |
+| Very Rare | Lavender `#CBB2F4` |
+| Exceptional / Ultra Rare | Pearl pink `#EFB9DB` |
+| Full Bloom | Gold `#E8C568` |
 
-Full Bloom uses `Full Bloom achieved` as hero. When the event plant is already
-shown above, its name is suppressed. Artwork is a 52 px milestone medallion.
-Compact reveals show at most two typed summary chips in deterministic priority:
-Find, customization, discovery, checkpoint, Booster, Fertilizer, Coins, then
-routine Growth. Same-plant intermediate stages remain in exact history but are
-excluded from the compact reveal and overflow count.
+Rarity comes from committed event metadata or the reward catalog. A consolidated inventory reward preserves its source Find rarity. Titles, badges, and indicators use the same mapping in the expanded HUD, compact HUD, session summary, and sync receipt.
 
-```text
-MILESTONE REACHED                         Details ›
+Both HUD sizes use one finite attention pulse when a notable drop arrives: approximately 480 ms compact or 650 ms expanded. **The glow behind the item exists only during that pulse and clears completely afterward.** The colored text, badge, and subtle indicator remain. Session-summary artwork has no persistent glow. Reduced motion suppresses the pulse. Opening details, reopening history, remounting, and repeated event IDs cannot replay it.
 
-[badge] Full Bloom achieved
-      coin icon  +14 coins
+Reward cards use a short eyebrow, a rarity badge, clear artwork, and the item’s name. Discoveries show “NEW DISCOVERY” and the name once; there is no duplicate “Discovery” subtitle or “discovered” suffix. Finds use “GARDEN FIND”. Keep actual reward amounts or granted-item names where they add information. Avoid repeating category or backend source labels.
 
-[1 Standard Find] [2 Garden discoveries]
-────────────────────────────────────────
-This session
-+40 growth · +14 coins · 1 Standard Find
-```
+## Session summary
 
-`Details ›` is the only active-reward disclosure. It becomes `Hide details`
-while exact itemized rows are open. The session footer retains its separate
-down/up history chevron. Hidden counts derive from represented event IDs, not
-text.
+The 400 px, nonmodal summary shows three horizontal **Coins / Growth / Discoveries** boxes first, followed by the session’s studied-card count and earned rewards. The Today’s cards bar is absent.
 
-## Full Bloom plant state
+Reward details remain visible. There is no expand/collapse control for the reward details or plants affected. Milestones and discoveries use the HUD’s card treatment; earned inventory and Find rows use the same badge, colors, artwork alignment, and concise copy. A Find is not repeated in the highlights when its earned-item row already represents it.
 
-The 2.2-second celebration uses a temporary gold border, localized glow, one
-scale pulse, and finite particles. Reduced motion uses restrained color/opacity
-instead. No celebration blocks input or repeats indefinitely.
+Growth distribution, affected plants, checkpoint details, Coin sources, and active consumables appear as naturally sized sections when relevant. The top metric boxes own the totals, so the details do not repeat “Total applied”, “Total earned”, or “Included in the session total” on every row. Long names wrap, quantities remain aligned, and item rows have no fixed-height clipping.
 
-After settling, show the engine-selected replacement plant when one exists.
-Otherwise retain a calm completed snapshot with normal border, small gold
-accent, class/name/art, `Full Bloom`, and this exact copy:
+Discoveries means committed Garden Finds plus new Garden unlocks. An item granted by a Find is not counted again. Zero categories remain visible so the box order is stable. The underlying typed event streams remain separate.
 
-```text
-Future growth will be shared or stored.
-Choose next plant ›
-```
+The body alone scrolls when needed, with header and actions visible. The shell fits content up to 520 px and respects measured Home/Anki control clearances. Session and sync summaries remain mutually exclusive through the existing coordinator. Closing or continuing review restores focus correctly.
 
-The action opens a nonmodal HUD-anchored chooser and uses the existing
-Collection selection route as its no-choice or compatibility fallback. It
-commits through the engine without resetting the reviewer or session totals.
+## Sync summary
 
-The active reward lifecycle is explicit: `celebrating`, `settled`,
-`details_open`, then `archived`. Archiving requires both the 2.5-second minimum
-hold and a subsequent committed card. Open details defer archiving. Archived
-events remain in session history and never replay on remount, sync, or resize.
+The sync receipt uses the same text-only header, three equal-width Coins / Growth / Discoveries boxes, shared resource icons, reward cards, rarity badges, and actions as the session summary. The synced-review count follows the boxes. Discoveries combines committed Find quantities and Garden unlocks, with no duplicate counting of granted inventory.
 
-## Visual hierarchy and data integrity
+Keep one Reward details control for the sync receipt's additional plant allocations and current boosts. This preserves its existing progressive disclosure. Discoveries use NEW DISCOVERY and their name once; Finds use GARDEN FIND and their canonical artwork. Full Bloom uses the same gold title and rounded indicator treatment in either state. Transparent item images remain clear, and scenery thumbnails render at the display's pixel density.
 
-Use a neutral shell, dark plant surface, restrained Today's Cards surface,
-tonal `Next card` inset, and raised reward dock. Border strength is shell,
-standard plant/dock, then subtle Today. Passive chips and `Next card` have no
-outline. Gold is reserved for Coins, next checkpoint, and temporary Full Bloom;
-mint is reserved for Growth.
+All three headers omit the former Growth logo. Coin, Growth, and Discovery icons beside values remain. The session entrance is one 200 ms fade that clears its graphics effect at completion; layout-managed children never move during the animation.
 
-Plant names are 18 px, reward titles 15.5–16 px, stage/count text 13 px,
-secondary copy 11.5–12 px, and session totals 13.5 px. Reduce content rather
-than fonts. Counts, percentages, balances, Growth, effect values, and totals use
-tabular numerals.
+## Verification and handoff
 
-- Show only engine-confirmed committed results.
-- Keep Growth, Shared/Stored Growth, Coins, Finds, discoveries, checkpoints,
-  stages, Full Bloom, Booster, and Fertilizer state typed separately.
-- Compact summaries retain represented event IDs; atomic items remain intact.
-- HUD footer and exit Session Summary consume one accumulator.
-- No persistence migration or duplicate reward calculation is introduced.
-- Animation never delays Anki's card transition or review input.
+Use existing checks and focused native rendering. Do not create a broad new test or accessibility matrix for this presentation work. Check actual text bounds, art clarity, three-box alignment, removed daily bars, fixed-open details, event priority, rapid reward aggregation, and pause/remount continuity.
 
-Session Summary and Sync Rewards are mutually exclusive nonmodal surfaces. One
-shared coordinator owns the active surface, Escape dismissal, and focus
-restoration. A Sync receipt replaces an open Session Summary through that
-coordinator and docks in the safe upper-right region; neither summary may steal
-or strand focus in the Reviewer.
-
-## Release acceptance
-
-The reviewer-specific states are covered by capture contract v26 (contract
-schema 2, scenario schema 3) within the 18-surface representative and
-38-surface full topology. Representative output is two contact-sheet pages;
-full output is six. The separate Sync Rewards receipt remains its own
-registered surface. Every capture record carries `scenario_id`, `fixture_id`,
-and one-based `scenario_step`; v25 evidence is ineligible for reuse. Native
-macOS review at 100 percent scaling exercises these transient states:
-
-1. 18 cards left.
-2. 1 card left.
-3. Today’s Cards Complete.
-4. No session rewards yet.
-5. Growth only.
-6. Growth and Coins.
-7. One Find.
-8. Two active effects.
-9. Three or more active effects.
-10. A short plant name.
-11. A two-line plant name.
-12. A checkpoint crossing.
-13. Multiple checkpoints crossed by one answer.
-14. A stage change.
-15. Full Bloom.
-16. Full Bloom plus several secondary rewards.
-17. 248 Coins.
-18. 9,999 Coins.
-19. 10,013 Coins.
-20. A short-height Anki window.
-
-Retain separate resilience gates for no target, Stored Growth, reduced motion,
-collapsed unseen rewards, rapid rewards, overflow/history expansion, sync while
-open, resize, and remount idempotence. Release evidence must prove no clipping,
-overlap, horizontal scroll, control collision, duplicate border, replay, or
-mismatch among reveal, footer, history, and exit Session Summary.
-
-## v26 evidence record
-
-Current run paths, archive and capture hashes, artifact sizes, and validation
-totals are recorded in the
-[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and its
-[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
-
-The v26 gates fail closed on deprecated visible copy, root/DOM overflow,
-progress-fraction mismatches, asset mappings, Reviewer exclusion rectangles,
-scroll-state coverage, or scenario-lineage mismatches. This remains automated
-review evidence: `quality_status` is `review-required` and `release_ready` is
-`false`. Manual macOS interaction, Windows/Linux, mixed-DPI, forced-colors,
-screen-reader, broader-keyboard, and human release approval remain open.
+The current capture contract is v29: 51 full-profile surfaces across five contact sheets, with 22 representative surfaces. This lane owns the seven Sheet 5 integration/reward surfaces. Its focused captures and 35-frame reward gallery do not imply combined five-sheet release approval. Current evidence and implementation details are recorded in [the Sheet 5 handoff](ui/reviewer-release-polish-20260905.md).

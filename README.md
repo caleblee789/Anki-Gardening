@@ -2,16 +2,19 @@
 
 Turn your Anki study sessions into a growing, hand-painted garden. Choose a plant, complete cards, and earn new plants, scenery, and decorations as you go.
 
-**Anki Garden 2.2.0** · [What’s new](docs/release-notes-2.2.0.md)
+**Anki Garden 2.2.0 — unreleased candidate** · [What’s new](docs/release-notes-2.2.0.md)
 
-![Anki Garden with six plants at different growth stages](docs/images/garden-overview-2.2.0.png)
+Release is on hold while the progression pacing guardrail is resolved. The combined changes are available for development and UI review; they are not approved for public distribution. See the [integration report](docs/ui/combined-integration-20260906.md).
+
+![Anki Garden with six plants at different growth stages](docs/images/garden-overview-20260906.png)
 
 ## Get started
 
 1. Install `anki_garden.ankiaddon` through Anki’s **Tools → Add-ons → Install from file**, then restart Anki.
 2. Choose **Choose a plant** on Anki’s home screen. After setup, this becomes **Open garden**.
 3. Pick a free starter and choose its garden bed.
-4. Study as usual. Your nurtured plant gains Growth as you complete cards.
+4. Choose **Nurture** in the plant’s panel to start growing it.
+5. Study as usual. Your nurtured plant gains Growth as you complete cards.
 
 Bonsai, Rose, Sunflower, and Lavender are the free starter choices. All plants grow at the same rate. Plants are identified by their growth stage and species. You can rename your garden in Settings.
 
@@ -28,12 +31,11 @@ Click a plant to see its progress and actions. **Nurture** chooses the plant tha
 
 ## Make the garden yours
 
-Scenery and Decorations share one garden preview in Collection. Each browsing tile shows a short bonus summary; select it for the full details.
+Collection has two areas: **Plants** and **Appearance**. Select a species to see its current plant, growth stages, history, and actions in one panel. In Appearance, Scenery and Decorations share one garden preview; select an item to see its complete effect.
 
-- **Equip** selects an item's artwork and its bonus. **Apply** commits the previewed selection; **Undo** restores the previous equipment.
-- **In your garden** shows your equipped scenery and decoration, with their effects.
+- Selecting an item previews it. **Equip** saves its artwork and bonus together; **Cancel preview** returns to your saved equipment.
+- **Equipped** shows your saved scenery and decoration with their effects. **Undo** restores your previous equipment.
 - **Show artwork** only changes visibility. Hiding an item keeps its bonus active.
-- **Other active bonuses** shows Fertilizer, Booster Potions, and Garden Rhythm, including the affected plant and remaining cards.
 
 Previewing an item does not spend Coins, use supplies, or save changes. Cosmetic decorations have no study bonus. Purchases add items to your collection; choose **Equip** to use them.
 
@@ -45,15 +47,17 @@ Previewing an item does not spend Coins, use supplies, or save changes. Cosmetic
 
 **Garden Rhythm** adds up to 10% Growth based on recent days when you completed today’s cards. Your **Anki streak** tracks consecutive days of study and gives Coin rewards.
 
-**Garden Finds** can bring Coins, Growth, and useful supplies. **Garden discoveries** add new scenery and decorations to your collection.
+**Garden Finds** can bring Coins, Growth, and useful supplies, with no daily Find limit. **Garden discoveries** add new scenery and decorations to your collection. Rare finds use gold accents, Very Rare finds use lavender, and Exceptional and Ultra Rare discoveries use pink pearl accents consistently across reward panels.
 
 Your first two garden beds are included. More beds unlock as your plants reach Mature and as more plant types reach Full Bloom. New plant types in the Shop cost 250 Coins.
 
 ## While you study
 
-The compact review panel shows today’s cards, your nurtured plant’s stage progress, and the Growth expected from the next card. You can collapse it while studying. Recent rewards and session totals have separate disclosures, so you can inspect the details when you want them.
+The review panel shows your nurtured plant and progress toward its next stage. **This session** keeps Coins, Growth, and Discoveries together below the plant, followed by your recent rewards. Today’s card totals remain in **Progress → Today**.
 
-Session summaries show the rewards from that study session, with today’s progress below them. After syncing, a separate receipt shows the rewards added during that sync. Garden Finds and new garden discoveries are counted separately.
+Collapse the panel to a narrow vertical strip while studying. Milestones, discoveries, Coins, and Growth appear below the plant circle, one at a time, with the most significant rewards first. Notable rewards briefly pulse in their rarity color; the glow clears while the reward stays readable.
+
+Session summaries and sync receipts share the same three totals boxes, discovery artwork, rarity badges, and reward cards. Session reward details stay visible; sync receipts can expand for additional details. **Discoveries** counts Garden Finds and newly unlocked scenery or decorations once each. Each summary covers its own session or sync batch.
 
 ## Supplies
 
@@ -67,11 +71,13 @@ Session summaries show the rewards from that study session, with today’s progr
 | **Standard Growth Charge** | +500 Growth when used · 125 Coins |
 | **Grand Growth Charge** | +2,000 Growth when used · earned through rewards |
 
-Fertilizer and Potions last for cards, not time. The menu shows whether a dose starts now, extends an active supply, or waits its turn. Growth Charges apply to one planted, unfinished plant. Before you choose **Use 1 charge**, the confirmation shows the plant’s current and resulting stages, Growth, remaining charges, and any earned stage reward. Canceling changes nothing. After use, the matching receipt shows the updated plant and current totals, with **View plant** opening the affected plant.
+Fertilizer and Potions last for cards, not time. Owning Herbalist’s Hourglass or Full Moon Garden adds 25 cards to new Potions for each, up to 150 cards when you own both. The menu shows whether a dose starts now, extends an active supply, or waits its turn. Growth Charges normally target a planted, unfinished plant. Once all species reach Full Bloom, charges follow the garden’s Growth route into your selected Mastery project or Stored Growth. The confirmation shows where the Growth will go, any stage changes, and the charges left after use. The matching receipt shows the result and offers **View plant** when a plant was affected.
 
 ## Stored Growth
 
-Growth that cannot fit in your planted plants stays in **Stored Growth**. Reaching Full Bloom never discards the Growth you earn from studying.
+After your plants receive their Growth, any overflow is saved as **Stored Growth** unless you have selected a Cultivation Mastery project. Reaching Full Bloom never discards earned Growth.
+
+For **Cultivation Mastery**, choose a Full Bloom species and let overflow fund its next appearance. You can also contribute Stored Growth. **Unlock appearance** shows the Coin cost and becomes available when the rank is funded and affordable; Coins are spent only when you choose it.
 
 ## Settings and help
 

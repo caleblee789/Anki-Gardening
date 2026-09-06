@@ -82,8 +82,8 @@ class TrophyPresentation:
 def trophy_presentations(state: Any) -> tuple[TrophyPresentation, ...]:
     requirements = {
         "botanists_plaque": "All 10 species at Full Bloom",
-        "garden_journal": "365 completed review days",
-        "golden_trowel": "100,000 eligible answers",
+        "garden_journal": "Complete today’s cards on 365 days",
+        "golden_trowel": "100,000 study answers",
     }
     result = []
     for trophy in ACHIEVEMENT_TROPHIES:

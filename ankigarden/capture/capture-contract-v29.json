@@ -1,5 +1,5 @@
 {
-  "contract_digest": "8c072b8f1a8a959dac5491c6f90cd1c2998448e6336f148ffbacc2515abc796d",
+  "contract_digest": "44afdedce635830632865a6b74279869940e5eb4159a4b63cfa2ed1942bb4469",
   "contract_version": 29,
   "profiles": {
     "full": {
@@ -33,8 +33,7 @@
             "collection-scenery-page",
             "workspace-scenery-preview",
             "workspace-scenery-applied-undo",
-            "collection-decorations-page",
-            "workspace-additional-bonuses-expanded"
+            "collection-decorations-page"
           ],
           "name": "Collection and appearance",
           "sheet": 2
@@ -163,7 +162,6 @@
             "workspace-collection-storage-confirmation",
             "workspace-scenery-preview",
             "workspace-scenery-applied-undo",
-            "workspace-additional-bonuses-expanded",
             "workspace-shop-supplies-scroll-end",
             "workspace-trophy-room",
             "workspace-achievements-scroll-end",
@@ -175,8 +173,8 @@
           "name": "Refinement views"
         }
       ],
-      "surface_count": 51,
-      "topology_digest": "a9e0f20375c08ce2450884cd3dd91da7e0898f7dfc4be1b67bbd26c9ed8c94c5"
+      "surface_count": 50,
+      "topology_digest": "cef84d63553c6293dab9747445817bbe5f5858ed8e5d99e4477751d76fbbe369"
     },
     "representative": {
       "contact_sheet_page_count": 5,
@@ -421,11 +419,12 @@
     "growth-charge-loading-disabled",
     "growth-charge-stale-inventory",
     "growth-charge-invalid-target",
-    "growth-charge-persistence-failure"
+    "growth-charge-persistence-failure",
+    "workspace-additional-bonuses-expanded"
   ],
   "scenario_schema_version": 3,
   "schema_version": 2,
-  "surface_count": 51,
+  "surface_count": 50,
   "surfaces": [
     {
       "acquisition_policy": "qt-shell-webview-verified",
@@ -10447,7 +10446,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3245b462f3879332513632d672448eb092e7cce6ce2c3c5ec10824da17c20ef1",
+      "dependency_digest": "8c431d97b13ef1a702e9371f83d39e80ce896cd3dbca703e02ec7ef8f91915a2",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10476,7 +10475,8 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/collection_workspace.py"
       ],
       "placements": [
         {
@@ -10551,7 +10551,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "b5f8b3e23165f9c743c7e580809f1f677fe82359784c7bd58dc657a65cad2383",
+      "dependency_digest": "a662210ccafc057c75a18aa19e1c3018fa5e131694f7a7f4ff428eb3290b6775",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10580,7 +10580,8 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/collection_workspace.py"
       ],
       "placements": [
         {
@@ -10597,7 +10598,7 @@
         "two-stable-painted-frames",
         "visible-nonzero-geometry"
       ],
-      "renderer_family": "SpeciesOverviewDialog",
+      "renderer_family": "GardenDashboard",
       "retired_reason": "",
       "scenario_id": "collection-species-details",
       "scenario_step": 1,
@@ -10611,7 +10612,7 @@
           },
           "state_profile_declared": "collection-species-details",
           "visible_content": true,
-          "window_family": "SpeciesOverviewDialog",
+          "window_family": "GardenDashboard",
           "workspace_route": "species"
         },
         "fact_constraints": {},
@@ -10621,7 +10622,7 @@
           "profile_id": "collection-species-details",
           "route": "species",
           "state": "collection-species-details",
-          "window_family": "SpeciesOverviewDialog"
+          "window_family": "GardenDashboard"
         },
         "required_facts": [
           "ordered_fixture_label",
@@ -10648,7 +10649,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4237f014de452792c41a8ad8c74d0a547bebac6e8209e0ab667735c838d03fd9",
+      "dependency_digest": "db2466e4a30e39a48bc360099133fed6af341d8c67dcfc0d16538bc8b50c9bb9",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10677,7 +10678,8 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/collection_workspace.py"
       ],
       "placements": [
         {
@@ -10701,7 +10703,7 @@
         "two-stable-painted-frames",
         "visible-nonzero-geometry"
       ],
-      "renderer_family": "PlantStoryDialog",
+      "renderer_family": "GardenDashboard",
       "retired_reason": "",
       "scenario_id": "collection-plant-details",
       "scenario_step": 1,
@@ -10715,7 +10717,7 @@
           },
           "state_profile_declared": "collection-plant-details",
           "visible_content": true,
-          "window_family": "PlantStoryDialog",
+          "window_family": "GardenDashboard",
           "workspace_route": "plant"
         },
         "fact_constraints": {},
@@ -10725,7 +10727,7 @@
           "profile_id": "collection-plant-details",
           "route": "plant",
           "state": "collection-plant-details",
-          "window_family": "PlantStoryDialog"
+          "window_family": "GardenDashboard"
         },
         "required_facts": [
           "ordered_fixture_label",
@@ -10752,7 +10754,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "a91179516a770d3883b28dd23c9d98f30df5e9bf062f3c38f115385fc32a3337",
+      "dependency_digest": "80a43ec11bf1c50a12a8e007ea431a9602173769f06b25654ed2e33fd8c2805b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10781,7 +10783,8 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/collection_workspace.py"
       ],
       "placements": [
         {
@@ -10856,7 +10859,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "9100b04206801821f57bf23a621eed0dc67d911f706a40ea0b3fb7919d000ca6",
+      "dependency_digest": "c4c71bf9a4c6f3e983e3708e8496da6fe6f74028c1bb2aa05214b750e171ac28",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10885,7 +10888,8 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/collection_workspace.py"
       ],
       "placements": [
         {
@@ -13279,7 +13283,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "10d487eb604c72aa4da0d8df29616f987bb3567e8568b5d12aed93c5c48711e6",
+      "dependency_digest": "b0e34d466b03062f27311251ca56cb6a06081df0adee4e0045962b3cb9b166ed",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13318,7 +13322,8 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/collection_workspace.py"
       ],
       "placements": [
         {
@@ -13385,7 +13390,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "51e1197c69e182c72bd1c8478f47df906f8dc667fce633aa4ea79e33ee73b4b5",
+      "dependency_digest": "4a7150c3d02404775f05f274ed8c22f2501298b45bed7dcc868921f5025ff9dc",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13424,7 +13429,8 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/collection_workspace.py"
       ],
       "placements": [
         {
@@ -13669,7 +13675,7 @@
     },
     {
       "acquisition_policy": "qt-widget-grab",
-      "active": true,
+      "active": false,
       "allow_foreground_fallback": false,
       "arguments": [
         "workspace-additional-bonuses-expanded",
@@ -13691,11 +13697,7 @@
       ],
       "executor": "_capture_handoff_surface",
       "fixture_id": "workspace-additional-bonuses-expanded-v1",
-      "handoff": {
-        "display_order": 10,
-        "sheet": 2,
-        "sheet_name": "Collection and appearance"
-      },
+      "handoff": null,
       "id": "workspace-additional-bonuses-expanded",
       "internal_setups": [
         "development-stress"
@@ -13723,15 +13725,7 @@
         "ui/reviewer_hud_widget.py",
         "hooks/reviewer.py"
       ],
-      "placements": [
-        {
-          "group": "Refinement views",
-          "group_order": 6,
-          "order": 43,
-          "profile": "full",
-          "within_group_order": 8
-        }
-      ],
+      "placements": [],
       "prerequisites": [],
       "readiness": [
         "semantic-state",
@@ -13739,7 +13733,7 @@
         "visible-nonzero-geometry"
       ],
       "renderer_family": "GardenDashboard",
-      "retired_reason": "",
+      "retired_reason": "Removed Other active bonuses from Appearance at user request; equipped-item summaries remain. Historical evidence is retained.",
       "scenario_id": "workspace-additional-bonuses-expanded",
       "scenario_step": 1,
       "state_contract": {
@@ -13826,9 +13820,9 @@
         {
           "group": "Refinement views",
           "group_order": 6,
-          "order": 44,
+          "order": 43,
           "profile": "full",
-          "within_group_order": 9
+          "within_group_order": 8
         }
       ],
       "prerequisites": [],
@@ -13925,9 +13919,9 @@
         {
           "group": "Refinement views",
           "group_order": 6,
-          "order": 45,
+          "order": 44,
           "profile": "full",
-          "within_group_order": 10
+          "within_group_order": 9
         },
         {
           "group": "Refinement views",
@@ -14031,9 +14025,9 @@
         {
           "group": "Refinement views",
           "group_order": 6,
-          "order": 46,
+          "order": 45,
           "profile": "full",
-          "within_group_order": 11
+          "within_group_order": 10
         }
       ],
       "prerequisites": [],
@@ -14130,9 +14124,9 @@
         {
           "group": "Refinement views",
           "group_order": 6,
-          "order": 47,
+          "order": 46,
           "profile": "full",
-          "within_group_order": 12
+          "within_group_order": 11
         }
       ],
       "prerequisites": [],
@@ -14229,9 +14223,9 @@
         {
           "group": "Refinement views",
           "group_order": 6,
-          "order": 48,
+          "order": 47,
           "profile": "full",
-          "within_group_order": 13
+          "within_group_order": 12
         }
       ],
       "prerequisites": [],
@@ -14328,9 +14322,9 @@
         {
           "group": "Refinement views",
           "group_order": 6,
-          "order": 49,
+          "order": 48,
           "profile": "full",
-          "within_group_order": 14
+          "within_group_order": 13
         }
       ],
       "prerequisites": [],
@@ -14430,9 +14424,9 @@
         {
           "group": "Refinement views",
           "group_order": 6,
-          "order": 50,
+          "order": 49,
           "profile": "full",
-          "within_group_order": 15
+          "within_group_order": 14
         },
         {
           "group": "Refinement views",

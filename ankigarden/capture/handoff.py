@@ -21,6 +21,13 @@ ADDITIONS = (
     ("workspace-reviewer-rewards-list", "reviewer-rewards-list", True),
 )
 
+RETIRED_SURFACES = {
+    "workspace-additional-bonuses-expanded": (
+        "Removed Other active bonuses from Appearance at user request; "
+        "equipped-item summaries remain. Historical evidence is retained."
+    ),
+}
+
 SHEETS = (
     ("Garden and onboarding", (
         "starter-deck-browser-home", "garden-starter-picker",
@@ -35,7 +42,7 @@ SHEETS = (
         "collection-plant-details", "workspace-collection-plant-menu",
         "workspace-collection-storage-confirmation", "collection-scenery-page",
         "workspace-scenery-preview", "workspace-scenery-applied-undo",
-        "collection-decorations-page", "workspace-additional-bonuses-expanded",
+        "collection-decorations-page",
     )),
     ("Shop and item use", (
         "shop-plants-page", "shop-scenery-page", "shop-decorations-page",

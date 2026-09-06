@@ -2095,7 +2095,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     assert rearrange.retry.focused is True
     assert rearrange.heading == "Move Bonsai"
     assert rearrange.instruction == (
-        "Choose an empty bed, or another plant to swap."
+        "Choose an empty bed or a plant to swap with."
     )
 
 

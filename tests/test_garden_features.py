@@ -154,9 +154,9 @@ def test_registry_is_exact_and_uses_shipped_bonus_values() -> None:
         "watering_station": "growth_every_5_first_100_plus_1",
         "herbalist_hourglass": "hourglass_completion_booster",
         "firefly_lantern": (
-            "instant_growth_every_5_plus_3_closest_checkpoint"
+            "instant_growth_every_5_plus_3_nurtured"
         ),
-        "prism_trellis": "prism_bank_per_answer_1",
+        "prism_trellis": "prism_completion_growth_100",
     }
     assert [GARDEN_FEATURE_CATALOG[key].price for key in GARDEN_FEATURE_CATALOG] == [
         None, 100, 175, 250, 350, None, None,
@@ -405,11 +405,11 @@ def test_retired_cosmetics_cannot_replace_equipped_decoration_or_its_effect() ->
     assert engine.display_garden_feature("prism_trellis")[0]
     assert engine.active_garden_feature_id() == "prism_trellis"
     assert engine.set_environment_visibility("garden_feature", False)[0]
-    assert _answer(engine, storage, 2).decoration_result.prism_growth_banked_units == 100
+    assert _answer(engine, storage, 2).decoration_result.prism_growth_banked_units == 0
     assert not engine.display_decoration("garden_bench")[0]
     assert storage.state.displayed_garden_feature == "prism_trellis"
-    assert _answer(engine, storage, 3).decoration_result.prism_growth_banked_units == 100
-    assert storage.state.prism_pending_growth_units == 200
+    assert _answer(engine, storage, 3).decoration_result.prism_growth_banked_units == 0
+    assert storage.state.prism_pending_growth_units == 0
     restored = GardenState.from_dict(storage.state.to_dict())
     assert restored.displayed_garden_feature == "prism_trellis"
     assert restored.loadout.active_garden_bonus_id == "prism_trellis"
@@ -435,12 +435,12 @@ def test_cadence_progress_persists_across_cutoff_and_inactive_days() -> None:
     assert [award.weather_growth for award in awards] == [0, 0, 1]
 
 
-def test_prism_banks_exact_units_releases_once_and_then_applies_directly() -> None:
+def test_prism_completion_grants_100_growth_once_without_banking() -> None:
     engine, storage = _engine("prism_trellis")
     assert engine.observe_due_start(DueObligationStatus(review_count=2))
     first = _answer(engine, storage, 1)
-    assert first.decoration_result.prism_growth_banked_units == 100
-    assert storage.state.prism_pending_growth_units == 100
+    assert first.decoration_result.prism_growth_banked_units == 0
+    assert storage.state.prism_pending_growth_units == 0
     assert not engine.evaluate_today_cards(
         DueObligationStatus(review_count=1), record_completed_delta=True
     )[0]
@@ -450,16 +450,19 @@ def test_prism_banks_exact_units_releases_once_and_then_applies_directly() -> No
         DueObligationStatus(), record_completed_delta=True
     )
     assert ok
-    assert engine.last_completion_result.prism_growth_released_units == 200
+    assert engine.last_completion_result.prism_growth_released_units == 10_000
     assert storage.state.prism_pending_growth_units == 0
-    assert storage.state.plants[0].growth_units == before_units + 200
+    assert storage.state.plants[0].growth_units == before_units + 10_000
+    assert not engine.evaluate_today_cards(DueObligationStatus(), record_completed_delta=True)[0]
+    assert storage.state.plants[0].growth_units == before_units + 10_000
     later = _answer(engine, storage, 3)
     assert later.decoration_result.direct_growth_awarded_units == 0
-    assert later.decoration_result.prism_growth_banked_units == 100
+    assert later.decoration_result.prism_growth_banked_units == 0
 
 
-def test_unreleased_prism_bank_persists_at_the_anki_cutoff() -> None:
+def test_legacy_prism_bank_is_inert_across_answers_and_cutoff() -> None:
     engine, storage = _engine("prism_trellis")
+    storage.state.prism_pending_growth_units = 3_700
     for index in range(37):
         _answer(engine, storage, index)
     assert storage.state.prism_pending_growth_units == 3_700

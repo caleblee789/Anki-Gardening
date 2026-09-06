@@ -14,7 +14,7 @@ FALLBACK_GARDEN_NAME = DEFAULT_GARDEN_NAME
 
 WELCOME_TITLE = "Welcome to your new Anki Garden!"
 WELCOME_BODY = (
-    "As you study cards each day, you will receive rewards and help your plants grow!"
+    "Study each day to earn rewards and help your plants grow."
 )
 WELCOME_REWARDS_ACTION = "View rewards"
 
@@ -27,7 +27,7 @@ def past_study_intro(review_count: int | None, *, has_rewards: bool) -> str:
     noun = "card review" if count == 1 else "card reviews"
     total = f"You’ve completed {count:,} {noun} in Anki."
     return (
-        f"{total} Your past study has earned you these rewards:"
+        f"Rewards from your {count:,} past Anki {'review' if count == 1 else 'reviews'}:"
         if has_rewards else
         f"{total} Keep studying to reach your first study milestone."
     )
@@ -53,8 +53,7 @@ GARDEN_NURTURE_ACTION = "Open plant"
 
 NURSERY_STARTER_TITLE = "Choose your first plant"
 NURSERY_STARTER_RATIONALE = (
-    "Your first plant is free. The plant you choose will start as a seed. "
-    "Study your cards each day to help it grow!"
+    "Your first plant is free. It starts as a seed and grows as you study."
 )
 NURSERY_STARTER_COUNT = ""
 DISABLED_STARTER_TABS = "The Shop opens after you choose a plant."

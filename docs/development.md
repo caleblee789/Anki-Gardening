@@ -37,7 +37,7 @@ Capture builds cannot overwrite the production artifact.
 # Explicit union of both lanes:
 ./.venv/bin/pytest -q -o addopts=''
 
-# Non-mutating v27 capture diagnostics and registry inspection:
+# Non-mutating v29 capture diagnostics and registry inspection:
 ./.venv/bin/python scripts/capture_sequence.py --doctor
 ./.venv/bin/python scripts/capture_sequence.py --list-surfaces
 ./.venv/bin/python scripts/capture_sequence.py --plan-only --profile representative
@@ -105,6 +105,11 @@ metadata, and size savings before replacing any source asset. Preserve a
 baseline checkout and production archive before applying an optimization.
 For an isolated candidate, call `scripts.package_addon.build(output=...)`;
 the production CLI intentionally targets the normal distribution path.
+
+The current v29 inventory contains 50 surfaces in five grouped contact sheets,
+with a 22-surface representative preflight. Removed interfaces retain reserved
+IDs and are excluded from the active inventory. Build the production archive
+first, then capture representative and full profiles from that same package.
 
 Capture contract and orchestration tests are deliberately small and Qt-free;
 the real exact-package Qt/WebView, shutdown, manifest, and contact-sheet

@@ -278,7 +278,7 @@ class CatalogFacts:
     environment_discoveries: Tuple[EnvironmentItemFact, ...]
     bed_unlocks: Tuple[BedUnlockFact, ...]
     catalog_records: Tuple[Mapping[str, Any], ...]
-    daily_cap_resolver: Callable[[int], int]
+    daily_cap_resolver: Callable[[int], Optional[int]]
     trophies: Tuple[TrophyFact, ...] = ()
 
     @property
@@ -296,8 +296,9 @@ class CatalogFacts:
             band.last_answer for band in self.standard_find_schedule
         )
 
-    def standard_daily_cap(self, answers_today: int) -> int:
-        return max(0, int(self.daily_cap_resolver(max(0, int(answers_today)))))
+    def standard_daily_cap(self, answers_today: int) -> Optional[int]:
+        cap = self.daily_cap_resolver(max(0, int(answers_today)))
+        return None if cap is None else max(0, int(cap))
 
     def standard_minimum_tier(self, drought_answer: int) -> str:
         for band in self.standard_find_schedule:

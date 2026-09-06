@@ -108,7 +108,6 @@ from .garden_finds import (
     KNOWN_ARTWORK_REFS,
     STANDARD_POOL_ID,
     STANDARD_POOL_VERSION,
-    STANDARD_DAILY_CAP,
     STANDARD_DROUGHT_SCHEDULE,
     GardenFindReward,
     consumption_id,
@@ -3697,7 +3696,7 @@ class GardenGameEngine:
                 trigger_reached=bool(awards),
                 decoration_growth_awarded_units=reward_units * awards,
             )
-        if effect == "instant_growth_every_5_plus_3_closest_checkpoint":
+        if effect == "instant_growth_every_5_plus_3_nurtured":
             before = max(0, int(self.state.firefly_lantern_progress or 0))
             reached = before + 1 >= 5
             return DecorationResult(
@@ -3706,21 +3705,6 @@ class GardenGameEngine:
                 progress_after=0 if reached else before + 1,
                 trigger_reached=reached,
                 direct_growth_awarded_units=300 if reached else 0,
-            )
-        if effect == "prism_bank_per_answer_1":
-            available = max(
-                0,
-                300 * GROWTH_UNITS_PER_POINT
-                - int(self.state.prism_pending_growth_units),
-            )
-            banked = (
-                min(100, available)
-                if answer_number <= 100
-                else 0
-            )
-            return DecorationResult(
-                active_bonus_id=active_id,
-                prism_growth_banked_units=banked,
             )
         return DecorationResult(active_bonus_id=active_id)
 
@@ -3830,41 +3814,6 @@ class GardenGameEngine:
         start = planted.index(after)
         ordered = planted[start + 1:] + planted[:start]
         return next((item for item in ordered if not item.fully_grown), None)
-
-    def _closest_checkpoint_target(self) -> Plant | None:
-        """Choose Firefly Lantern's deterministic Instant Growth target."""
-
-        candidates: list[tuple[int, int, str, Plant]] = []
-        for plant in self.state.plants:
-            if not plant.planted or plant.fully_grown:
-                continue
-            current_units = self._plant_growth_units(plant)
-            boundaries: list[int] = []
-            for index in range(len(GROWTH_THRESHOLDS) - 1):
-                start = GROWTH_THRESHOLDS[index]
-                end = GROWTH_THRESHOLDS[index + 1]
-                for percent in (25, 50, 75, 100):
-                    point = (
-                        end
-                        if percent == 100
-                        else start + math.ceil((end - start) * percent / 100)
-                    )
-                    point_units = point * GROWTH_UNITS_PER_POINT
-                    if point_units > current_units:
-                        boundaries.append(point_units)
-            if not boundaries:
-                continue
-            candidates.append((
-                min(boundaries) - current_units,
-                int(
-                    plant.slot_index
-                    if plant.slot_index is not None
-                    else MAX_GARDEN_SLOTS
-                ),
-                str(plant.plant_id),
-                plant,
-            ))
-        return min(candidates, default=(0, 0, "", None))[3]
 
     def _shared_growth_plan(
         self,
@@ -5007,11 +4956,7 @@ class GardenGameEngine:
         )
         direct_result = GrowthGrantResult(0, 0, 0)
         if decoration.direct_growth_awarded_units:
-            direct_target = (
-                self._closest_checkpoint_target()
-                if decoration.active_bonus_id == "firefly_lantern"
-                else plant
-            )
+            direct_target = plant
             direct_result = self._apply_direct_growth_units(
                 direct_target,
                 decoration.direct_growth_awarded_units,
@@ -5340,16 +5285,11 @@ class GardenGameEngine:
                     outcome.scheduler_day, 0
                 )
             ))
-            self.state.garden_find_daily_counts[outcome.scheduler_day] = min(
-                STANDARD_DAILY_CAP, finds_today + 1
-            )
+            self.state.garden_find_daily_counts[outcome.scheduler_day] = finds_today + 1
             reward_counts = self.state.garden_find_reward_daily_counts.setdefault(
                 outcome.scheduler_day, {}
             )
-            reward_counts[outcome.reward_id] = min(
-                STANDARD_DAILY_CAP,
-                max(0, int(reward_counts.get(outcome.reward_id, 0))) + 1,
-            )
+            reward_counts[outcome.reward_id] = max(0, int(reward_counts.get(outcome.reward_id, 0))) + 1
 
     def _resolve_garden_finds(
         self,
@@ -5887,6 +5827,34 @@ class GardenGameEngine:
         )
         return coins, 0
 
+    def today_cards_reward_summary(self) -> dict[str, Any]:
+        """Project the completion reward and five-completion bonus without granting them."""
+        day = self.state.daily_stats.day
+        earned = bool(self.state.daily_completion.reward_claimed)
+        bonus = self.active_garden_feature_id()
+        scenery = self.locked_environment_id("scenery")
+        def applies(key: str, active: bool) -> bool:
+            return self._reward_applied(f"{key}:{day}") if earned else active
+        coins = self.ALL_DUE_BASE_COINS
+        if applies("harvest-bell", bonus == "harvest_bell"):
+            coins += self.CLOUDY_ALL_DUE_BONUS_COINS
+        if applies("autumn-hearth", scenery == "autumn"):
+            coins += 4
+        journal = trophy_effects(self.state).completion_coins
+        if applies("achievement-trophy:garden_journal", journal > 0):
+            coins += journal
+        cycle = max(0, int(self.state.garden_cycle_remainder))
+        cycle_earned = earned and self._reward_applied(f"completion_cycle_5:{day}")
+        if cycle_earned or (not earned and cycle + 1 == self.GARDEN_CYCLE_COMPLETIONS):
+            coins += self.GARDEN_CYCLE_COINS
+        prism = (self.state.prism_released_anki_day_id == day if earned else bonus == "prism_trellis")
+        growth = next(item.amount for item in GARDEN_FEATURE_CATALOG["prism_trellis"].effects
+                      if item.effect_id == "prism_completion_growth_100") if prism else 0
+        return {"earned": earned, "coins": coins, "growth": growth,
+                "cycle_progress": self.GARDEN_CYCLE_COMPLETIONS if cycle_earned else cycle,
+                "cycle_goal": self.GARDEN_CYCLE_COMPLETIONS, "cycle_coins": self.GARDEN_CYCLE_COINS,
+                "rhythm_percent": self.current_streak_bonus_percent()}
+
     @staticmethod
     def _cards_remaining_copy(count: int) -> str:
         remaining = max(0, int(count))
@@ -6335,8 +6303,12 @@ class GardenGameEngine:
             prism_destination_kind = ""
             prism_destination_id = ""
             prism_grant = GrowthGrantResult(0, 0, 0)
-            if active_effect == "prism_bank_per_answer_1":
-                prism_units = max(0, int(self.state.prism_pending_growth_units))
+            if active_effect == "prism_completion_growth_100":
+                prism_effect = next(
+                    item for item in GARDEN_FEATURE_CATALOG["prism_trellis"].effects
+                    if item.effect_id == active_effect
+                )
+                prism_units = prism_effect.amount * GROWTH_UNITS_PER_POINT
                 if prism_units:
                     prism_grant = self._apply_direct_growth_units(
                         self.active_plant(),
@@ -6407,7 +6379,6 @@ class GardenGameEngine:
                             prism_grant.project_allocations
                         ),
                     ))
-                self.state.prism_pending_growth_units = 0
                 self.state.prism_released_anki_day_id = stats.day
             self.last_completion_result = CompletionResult(
                 base_coins=self.ALL_DUE_BASE_COINS,
@@ -6562,6 +6533,9 @@ class GardenGameEngine:
                 0, int(self.state.garden_project.landmark_growth_units_funded)
             ),
             "mastery_growth_units": mastery_funded,
+            "mastery_growth_by_species": dict(
+                self.state.cultivation_mastery.growth_units_funded_by_species
+            ),
             "legacy_growth_units": legacy_funded,
             "active_plant_id": str(self.state.active_plant_id or ""),
             "transaction_ids": {
@@ -6580,7 +6554,7 @@ class GardenGameEngine:
         }
 
     @staticmethod
-    def _answer_correlation_id(payload: Mapping[str, Any]) -> str:
+    def _answer_consumption_id(payload: Mapping[str, Any]) -> str:
         try:
             revlog_id = max(0, int(payload.get("revlog_id", 0) or 0))
         except (TypeError, ValueError):
@@ -6608,9 +6582,13 @@ class GardenGameEngine:
                 or None
             ),
         )
+        return consumption_id(identity)
+
+    @classmethod
+    def _answer_correlation_id(cls, payload: Mapping[str, Any]) -> str:
         return str(
             payload.get("correlation_id")
-            or f"answer:{consumption_id(identity)}"
+            or f"answer:{cls._answer_consumption_id(payload)}"
         )
 
     def _committed_answer_result(
@@ -6637,10 +6615,45 @@ class GardenGameEngine:
                 if bool(payload.get("historical_sync", False))
                 else "local"
             )
-        committed_find_outcomes = tuple(
-            deepcopy(outcome)
+        outcomes_by_key = {
+            outcome.outcome_key: outcome
             for answer_key, outcome in self.state.garden_find_outcomes.items()
             if str(answer_key) not in previous_find_ids
+        }
+        # SQLite stages outcomes outside the bounded state cache. Read the
+        # authoritative outcome for this answer before the transaction saves.
+        answer_key = self._answer_consumption_id(payload)
+        for pool_id in (STANDARD_POOL_ID, ENVIRONMENT_POOL_ID):
+            outcome = self._garden_find_outcome(answer_key, pool_id)
+            if outcome is not None and outcome.outcome_key not in previous_find_ids:
+                outcomes_by_key[outcome.outcome_key] = outcome
+        committed_find_outcomes = tuple(
+            deepcopy(outcome) for outcome in outcomes_by_key.values()
+        )
+        # Completion rewards and direct Finds may fund the same target after
+        # the ordinary answer award. Project every committed funding delta.
+        project_deltas = [(
+            GrowthTargetType.LANDMARK, "garden_landmark",
+            self.state.garden_project.landmark_growth_units_funded
+            - int(baseline.get("landmark_growth_units", 0)),
+        )]
+        previous_mastery = baseline.get("mastery_growth_by_species", {})
+        project_deltas.extend(
+            (GrowthTargetType.MASTERY, species_id,
+             int(units) - int(previous_mastery.get(species_id, 0)))
+            for species_id, units in sorted(
+                self.state.cultivation_mastery.growth_units_funded_by_species.items()
+            )
+        )
+        project_deltas.append((
+            GrowthTargetType.LEGACY, "garden_legacy",
+            self.state.garden_legacy_level * GARDEN_LEGACY_LEVEL_COST_UNITS
+            + self.state.garden_legacy_progress_units
+            - int(baseline.get("legacy_growth_units", 0)),
+        ))
+        project_allocations = tuple(
+            ProjectGrowthAllocation(target_type, target_id, units)
+            for target_type, target_id, units in project_deltas if units > 0
         )
         return CommittedAnswerResult(
             event_id=str(award.correlation_id),
@@ -6710,7 +6723,7 @@ class GardenGameEngine:
                 * GARDEN_LEGACY_LEVEL_COST_UNITS
                 + max(0, int(self.state.garden_legacy_progress_units))
             ),
-            project_allocations=tuple(award.project_allocations),
+            project_allocations=project_allocations,
             active_plant_before_id=str(
                 baseline.get("active_plant_id", "") or ""
             ),
@@ -8696,6 +8709,27 @@ class GardenGameEngine:
         outcome = self.confirm_growth_charge(GrowthChargeRequest.from_quote(quote))
         return outcome.success, outcome.message
 
+    def overflow_destination_summary(self) -> str:
+        """Describe the committed destination after unfinished plants are filled."""
+        projects = self.growth_projects_snapshot()
+        target = projects.active_target
+        choice = next((item for item in projects.target_choices
+                       if item.target == target and item.available), None)
+        if choice is None:
+            return "Overflow becomes Stored Growth after unfinished plants."
+        if target.target_type is GrowthTargetType.MASTERY:
+            track = projects.mastery_track(target.target_id)
+            destination = f"{target.target_id.replace('_', ' ').title()} Mastery"
+        elif target.target_type is GrowthTargetType.LANDMARK:
+            track = projects.landmark_track
+            destination = "Garden Landmarks"
+        else:
+            track = projects.legacy_track
+            destination = "Garden Legacy"
+        if track.remaining_capacity_units == 0:
+            return "Overflow becomes Stored Growth after unfinished plants."
+        return f"Overflow goes to {destination} after unfinished plants."
+
     @staticmethod
     def growth_destination_text(stored_units: int, allocations: tuple) -> str:
         parts = [f"{item.units / GROWTH_UNITS_PER_POINT:,.0f} Growth to {item.target_id.replace('_', ' ').title()} Mastery"
@@ -9434,7 +9468,7 @@ class GardenGameEngine:
         self._queue_feedback(
             f"starter:{species}",
             "unlock",
-            f"{PlantIdentity.from_plant(plant).display_name} is growing in Bed {destination + 1}.",
+            f"{PlantIdentity.from_plant(plant).species_name} planted.",
             plant.plant_id,
         )
         try:
@@ -9452,7 +9486,7 @@ class GardenGameEngine:
         )
         return (
             True,
-            f"{PlantIdentity.from_plant(plant).display_name} is growing in Bed {destination + 1}.",
+            f"{PlantIdentity.from_plant(plant).species_name} planted.",
             plant,
             change,
         )

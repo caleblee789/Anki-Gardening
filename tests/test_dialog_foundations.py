@@ -88,9 +88,9 @@ def test_every_dialog_size_class_has_a_sane_policy() -> None:
         assert isinstance(policy.window_mode, DialogWindowMode)
 
 
-def test_every_non_canvas_dialog_content_fits_with_one_central_scroll_owner() -> None:
-    for policy in DIALOG_SIZE_POLICIES.values():
-        if policy.window_mode is DialogWindowMode.CANVAS:
+def test_dialog_content_fit_preserves_settings_workspace_and_canvas_geometry() -> None:
+    for family, policy in DIALOG_SIZE_POLICIES.items():
+        if policy.window_mode is DialogWindowMode.CANVAS or family is DialogSizeClass.SETTINGS:
             assert policy.content_fit is False
         else:
             assert policy.content_fit is True
@@ -170,12 +170,12 @@ def test_dialog_size_clamps_to_small_available_geometry() -> None:
 def test_dialog_geometry_exposes_screen_clamped_minimum_initial_and_maximum() -> None:
     large = resolved_dialog_geometry(DialogSizeClass.SETTINGS, 2560, 1440)
     assert large.minimum_size == (560, 360)
-    assert large.initial_size == (600, 480)
+    assert large.initial_size == (600, 580)
     assert large.maximum_size == (660, 700)
 
     small = resolved_dialog_geometry(DialogSizeClass.SETTINGS, 760, 560)
     assert small.minimum_size == (560, 360)
-    assert small.initial_size == (600, 480)
+    assert small.initial_size == (600, 512)
     assert small.maximum_size == (660, 512)
     assert small.maximum_width <= 760 - 48
     assert small.maximum_height <= 560 - 48
@@ -186,7 +186,7 @@ def test_release_dialog_families_use_authoritative_content_fit_geometry() -> Non
         DialogSizeClass.COMPACT_STATUS: (480, 200),
         DialogSizeClass.TRANSACTION: (480, 270),
         DialogSizeClass.FERTILIZER: (560, 380),
-        DialogSizeClass.SETTINGS: (600, 480),
+        DialogSizeClass.SETTINGS: (600, 580),
         DialogSizeClass.NURSERY: (940, 420),
         DialogSizeClass.PROGRESS: (950, 570),
         DialogSizeClass.LOADOUT: (1000, 540),
@@ -200,6 +200,7 @@ def test_release_dialog_families_use_authoritative_content_fit_geometry() -> Non
 
     content_fit_families = set(expected) - {
         DialogSizeClass.GARDEN_WORKSPACE,
+        DialogSizeClass.SETTINGS,
     }
     assert all(
         DIALOG_SIZE_POLICIES[family].content_fit
@@ -221,14 +222,16 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
     assert dialog_height_profile(DialogSizeClass.SPECIES_DETAIL, "collected").preferred_width == 660
 
 
-def test_growth_charge_preview_commit_and_success_share_one_geometry_envelope() -> None:
+def test_growth_charge_commit_stays_stable_and_result_can_fit_its_content() -> None:
     policy = DIALOG_SIZE_POLICIES[DialogSizeClass.GROWTH_CHARGE]
     profiles = [
         dialog_height_profile(DialogSizeClass.GROWTH_CHARGE, state)
         for state in ("ready", "loading", "success")
     ]
 
-    assert profiles[0] == profiles[1] == profiles[2]
+    assert profiles[0] == profiles[1]
+    assert profiles[2].min_height < profiles[0].min_height
+    assert profiles[2].preferred_width == profiles[0].preferred_width
     assert max(profile.max_height for profile in DIALOG_VIEW_HEIGHT_PROFILES[DialogSizeClass.GROWTH_CHARGE].values()) <= policy.max_height
     garden_ready = dialog_height_profile(DialogSizeClass.GROWTH_CHARGE, "garden-ready")
     garden_result = dialog_height_profile(DialogSizeClass.GROWTH_CHARGE, "garden-success")

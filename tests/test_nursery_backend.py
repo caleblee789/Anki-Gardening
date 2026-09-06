@@ -392,9 +392,9 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
     assert storage.state.selected_garden_feature == "wind_chime"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
-        "garden_feature": False,
+        "garden_feature": True,
         "scenery": True,
-        "weather": False,
+        "weather": True,
     }
 
     storage.fail_save = True
@@ -407,9 +407,9 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
     assert storage.state.selected_garden_feature == "wind_chime"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
-        "garden_feature": False,
+        "garden_feature": True,
         "scenery": True,
-        "weather": False,
+        "weather": True,
     }
 
 

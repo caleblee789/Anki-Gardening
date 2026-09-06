@@ -174,9 +174,12 @@ class GardenAssetThumbnail(QLabel):  # type: ignore[misc,valid-type]
                 logical_size=width,
             )
             return pixmap, path
-        source = preview_source_pixmap(path)
         if self._asset_type == "environment":
-            return cover_pixmap(source, width, height), path
+            source = preview_source_pixmap(path)
+            dpr = _active_device_pixel_ratio()
+            pixmap = cover_pixmap(source, max(1, round(width * dpr)), max(1, round(height * dpr)))
+            pixmap.setDevicePixelRatio(dpr)
+            return pixmap, path
         return self._contained_pixmap(path, width, height), path
 
 

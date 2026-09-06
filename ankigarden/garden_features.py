@@ -17,8 +17,8 @@ GardenFeatureEffectKey = Literal[
     "completion_coins_plus_5",
     "growth_every_5_first_100_plus_1",
     "hourglass_completion_booster",
-    "instant_growth_every_5_plus_3_closest_checkpoint",
-    "prism_bank_per_answer_1",
+    "instant_growth_every_5_plus_3_nurtured",
+    "prism_completion_growth_100",
 ]
 
 
@@ -35,8 +35,8 @@ FEATURE_EFFECT_KEYS: dict[str, GardenFeatureEffectKey] = {
     "harvest_bell": "completion_coins_plus_5",
     "watering_station": "growth_every_5_first_100_plus_1",
     "herbalist_hourglass": "hourglass_completion_booster",
-    "firefly_lantern": "instant_growth_every_5_plus_3_closest_checkpoint",
-    "prism_trellis": "prism_bank_per_answer_1",
+    "firefly_lantern": "instant_growth_every_5_plus_3_nurtured",
+    "prism_trellis": "prism_completion_growth_100",
 }
 
 GARDEN_FEATURES: dict[str, GardenFeatureDefinition] = {

@@ -442,13 +442,13 @@ def test_maintenance_signature_covers_day_high_water_and_ledger_revision() -> No
     assert storage.maintenance_signature() == ("2026-08-27", 345, 12)
 
 
-def test_find_count_fallback_retains_the_release_maximum_cap() -> None:
+def test_find_count_fallback_preserves_uncapped_totals_and_repairs_old_clamps() -> None:
     storage = object.__new__(GardenStorage)
     storage._reward_ledger = None
     storage.state = GardenState()
     day = storage.state.daily_stats.day
 
-    for index in range(5):
+    for index in range(12):
         storage.stage_garden_find_outcome(GardenFindOutcome(
             answer_key=f"answer-{index}",
             scheduler_day=day,
@@ -457,9 +457,19 @@ def test_find_count_fallback_retains_the_release_maximum_cap() -> None:
             pool_version="standard-v2",
             occurred_at="2026-08-30T12:00:00+00:00",
             reward_id="find_coin_sprout",
+            reward_type="coins", amount=2,
         ))
 
     assert storage.garden_find_counts(day) == (
-        5,
-        {"find_coin_sprout": 5},
+        12,
+        {"find_coin_sprout": 12},
     )
+
+    payload = storage.state.to_dict()
+    restored = GardenState.from_dict(payload)
+    assert restored.garden_find_daily_counts[day] == 12
+    payload["garden_find_daily_counts"][day] = 3
+    payload["garden_find_reward_daily_counts"][day]["find_coin_sprout"] = 3
+    restored = GardenState.from_dict(payload)
+    assert restored.garden_find_daily_counts[day] == 12
+    assert restored.garden_find_reward_daily_counts[day]["find_coin_sprout"] == 12

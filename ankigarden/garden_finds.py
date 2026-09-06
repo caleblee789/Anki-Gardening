@@ -46,9 +46,8 @@ STANDARD_POOL_VERSION = CATALOG_STANDARD_POOL_VERSION
 ENVIRONMENT_POOL_ID = CATALOG_ENVIRONMENT_POOL_ID
 LEGACY_ENVIRONMENT_POOL_VERSION = LEGACY_ENVIRONMENT_POOL_VERSIONS[0]
 ENVIRONMENT_POOL_VERSION = CATALOG_ENVIRONMENT_POOL_VERSION
-# Maximum possible daily cap. The active cap rises with committed eligible
-# answers so long review days remain rewarding without flooding routine UI.
-STANDARD_DAILY_CAP = 5
+# Compatibility export: None explicitly means unlimited.
+STANDARD_DAILY_CAP: Optional[int] = None
 STANDARD_GUARANTEE_ANSWER = CATALOG_STANDARD_GUARANTEE_ANSWER
 FALLBACK_REWARD_ID = CATALOG_FALLBACK_REWARD_ID
 
@@ -380,7 +379,7 @@ class StandardFindStatus:
     """
 
     finds_today: int
-    daily_cap: int
+    daily_cap: Optional[int]
     daily_limit_reached: bool
     rolls_paused: bool
     next_card_guaranteed: bool
@@ -597,8 +596,8 @@ def standard_chance_for_answer(answer_number: int) -> ChanceBand:
     return STANDARD_DROUGHT_SCHEDULE[-1]
 
 
-def standard_daily_cap(eligible_answers_today: int) -> int:
-    """Return the stepped Standard Find cap for a committed Anki-day count."""
+def standard_daily_cap(eligible_answers_today: int) -> Optional[int]:
+    """Return None for uncapped production Standard Finds."""
 
     return catalog_standard_find_daily_cap(eligible_answers_today)
 
@@ -619,8 +618,8 @@ def standard_find_status(
     """Project internal Find state without exposing the drought counter."""
 
     active_cap = standard_daily_cap(eligible_answers_today)
-    daily_count = min(active_cap, max(0, int(finds_today)))
-    capped = daily_count >= active_cap
+    daily_count = max(0, int(finds_today))
+    capped = active_cap is not None and daily_count >= active_cap
     guaranteed = (
         not capped
         and max(0, int(drought_misses)) + 1 >= STANDARD_GUARANTEE_ANSWER
@@ -835,7 +834,7 @@ def resolve_standard_find(
     consumed = consumption_id(identity)
     drought = max(0, int(drought_misses))
     active_cap = standard_daily_cap(eligible_answers_today)
-    if max(0, int(finds_today)) >= active_cap:
+    if active_cap is not None and max(0, int(finds_today)) >= active_cap:
         return StandardFindDecision(
             consumed,
             attempted=False,

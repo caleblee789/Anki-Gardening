@@ -484,7 +484,7 @@ class FindScheduleBand:
 class DailyCapBand:
     minimum_answers_today: int
     maximum_answers_today: Optional[int]
-    cap: int
+    cap: Optional[int]
 
     def includes(self, answers_today: int) -> bool:
         return answers_today >= self.minimum_answers_today and (
@@ -1042,20 +1042,17 @@ GARDEN_BONUSES = (
         AcquisitionKind.DISCOVERY,
         None,
         (_effect(
-            "instant_growth_every_5_plus_3_closest_checkpoint",
+            "instant_growth_every_5_plus_3_nurtured",
             TriggerKind.ELIGIBLE_CARD,
             RewardKind.INSTANT_GROWTH,
             3,
             every_n=5,
             counter_scope=CounterScope.LIFETIME_ACTIVE,
-            target_policy=TargetPolicy.CLOSEST_CHECKPOINT,
-            target_tie_break=(
-                TargetTieBreak.REMAINING_GROWTH_THEN_BED_THEN_SPECIES
-            ),
+            target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_feature_firefly_lantern",
         "Rare Garden discovery.",
-        "Every fifth eligible card: +3 Instant Growth to the unfinished planted plant closest to its next checkpoint.",
+        "Every fifth eligible card: +3 Instant Growth to the nurtured plant, with normal overflow.",
     ),
     GardenBonusDefinition(
         GardenBonusId.PRISM_TRELLIS,
@@ -1064,24 +1061,17 @@ GARDEN_BONUSES = (
         AcquisitionKind.DISCOVERY,
         None,
         (
-            EffectDefinition(
-                effect_id="prism_bank_per_answer_1",
-                trigger=TriggerKind.ELIGIBLE_CARD,
-                cadence=CardCadence(
-                    every_n=1,
-                    first_n_per_day=100,
-                    counter_scope=CounterScope.PERSISTENT_BANK,
-                ),
-                grant=RewardGrant(RewardKind.BANKED_GROWTH, 1),
+            _effect(
+                "prism_completion_growth_100",
+                TriggerKind.VALID_COMPLETION,
+                RewardKind.INSTANT_GROWTH,
+                100,
                 target_policy=TargetPolicy.ACTIVE_PLANT,
-                bank_cap_growth=300,
-                release_trigger=TriggerKind.VALID_COMPLETION,
-                release_active_only=True,
             ),
         ),
         "garden_feature_prism_trellis",
         "Very Rare Garden discovery.",
-        "Bank 1 Growth on each of the first 100 eligible cards per day, up to 300; release it on Today’s Cards completion while active.",
+        "+100 Growth when Today’s Cards is complete while equipped, with normal overflow.",
     ),
 )
 
@@ -1284,8 +1274,8 @@ KNOWN_EFFECT_RESOLVER_IDS = frozenset({
     "hourglass_completion_booster",
     "booster_cards_plus_25",
     "full_moon_booster_cards_plus_25",
-    "instant_growth_every_5_plus_3_closest_checkpoint",
-    "prism_bank_per_answer_1",
+    "instant_growth_every_5_plus_3_nurtured",
+    "prism_completion_growth_100",
     "spring_growth_first_20",
     "summer_growth_every_2_first_120",
     "autumn_completion_coins",
@@ -1465,9 +1455,7 @@ STANDARD_FIND_SCHEDULE = (
 )
 
 STANDARD_FIND_DAILY_CAP_BANDS = (
-    DailyCapBand(0, 199, 3),
-    DailyCapBand(200, 399, 4),
-    DailyCapBand(400, None, 5),
+    DailyCapBand(0, None, None),
 )
 
 
@@ -2112,7 +2100,7 @@ def garden_rhythm_percent(completed_prior_eligible_days: int) -> int:
     )
 
 
-def standard_find_daily_cap(answers_today: int) -> int:
+def standard_find_daily_cap(answers_today: int) -> Optional[int]:
     if isinstance(answers_today, bool) or not isinstance(answers_today, int):
         raise TypeError("answers_today must be an integer")
     if answers_today < 0:
@@ -2592,8 +2580,8 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
         "hourglass_completion_booster": ("valid_completion", ("consumable", 1, "booster_potion"), 30, None, "lifetime_active", "inventory", None, None, False),
         "booster_cards_plus_25": ("booster_activation", ("booster_card_limit", 25, None), 1, None, "event", "none", None, None, False),
         "full_moon_booster_cards_plus_25": ("booster_activation", ("booster_card_limit", 25, None), 1, None, "event", "none", None, None, False),
-        "instant_growth_every_5_plus_3_closest_checkpoint": ("eligible_card", ("instant_growth", 3, None), 5, None, "lifetime_active", "closest_checkpoint", None, None, False),
-        "prism_bank_per_answer_1": ("eligible_card", ("banked_growth", 1, None), 1, 100, "persistent_bank", "active_plant", 300, "valid_completion", True),
+        "instant_growth_every_5_plus_3_nurtured": ("eligible_card", ("instant_growth", 3, None), 5, None, "lifetime_active", "active_plant", None, None, False),
+        "prism_completion_growth_100": ("valid_completion", ("instant_growth", 100, None), 1, None, "event", "active_plant", None, None, False),
         "spring_growth_first_20": ("eligible_card", ("growth", 2, None), 1, 20, "anki_day", "active_plant", None, None, False),
         "summer_growth_every_2_first_120": ("eligible_card", ("growth", 1, None), 2, 120, "anki_day", "active_plant", None, None, False),
         "autumn_completion_coins": ("valid_completion", ("coins", 4, None), 1, None, "event", "none", None, None, False),
@@ -2614,16 +2602,16 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
     )
     _require(
         effects_by_id[
-            "instant_growth_every_5_plus_3_closest_checkpoint"
+            "instant_growth_every_5_plus_3_nurtured"
         ].target_tie_break
-        is TargetTieBreak.REMAINING_GROWTH_THEN_BED_THEN_SPECIES,
-        "Firefly Lantern tie-break policy drifted",
+        is TargetTieBreak.NONE,
+        "Firefly Lantern target policy drifted",
     )
     _require(
         all(
             effect.target_tie_break is TargetTieBreak.NONE
             for effect_id, effect in effects_by_id.items()
-            if effect_id != "instant_growth_every_5_plus_3_closest_checkpoint"
+            if effect_id != "instant_growth_every_5_plus_3_nurtured"
         ),
         "unexpected environment target tie-break",
     )
@@ -2689,8 +2677,8 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
         tuple(
             (item.minimum_answers_today, item.maximum_answers_today, item.cap)
             for item in candidate.standard_find_daily_cap_bands
-        ) == ((0, 199, 3), (200, 399, 4), (400, None, 5)),
-        "dynamic Find daily caps drifted",
+        ) == ((0, None, None),),
+        "Standard Finds must be uncapped",
     )
 
     tier_ids = unique_ids(candidate.environment_tiers, "tier_id", "environment tier")

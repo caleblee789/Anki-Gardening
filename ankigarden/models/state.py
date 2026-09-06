@@ -2211,6 +2211,19 @@ class GardenState:
         state.garden_find_outcomes = _garden_find_outcomes(
             data.get("garden_find_outcomes"), issues
         )
+        # Retained hits repair old clamps without lowering counts from partial history.
+        recorded: dict[str, dict[str, int]] = {}
+        for outcome in state.garden_find_outcomes.values():
+            if outcome.pool_id == "standard" and outcome.status == "hit":
+                counts = recorded.setdefault(outcome.scheduler_day, {})
+                counts[outcome.reward_id] = counts.get(outcome.reward_id, 0) + 1
+        for day, counts in recorded.items():
+            saved = state.garden_find_reward_daily_counts.setdefault(day, {})
+            for reward_id, count in counts.items():
+                saved[reward_id] = max(saved.get(reward_id, 0), count)
+            state.garden_find_daily_counts[day] = max(
+                state.garden_find_daily_counts.get(day, 0), sum(saved.values())
+            )
         state.garden_find_ultra_misses = _nonnegative_int(
             data.get("garden_find_ultra_misses"), 0, "garden_find_ultra_misses", issues
         )
@@ -4141,11 +4154,9 @@ def _garden_find_daily_counts(value: Any, issues: list[str]) -> dict[str, int]:
     for raw_day, raw_count in value.items():
         if not _valid_iso_date(raw_day):
             continue
-        result[str(raw_day)] = _bounded_int(
+        result[str(raw_day)] = _nonnegative_int(
             raw_count,
             0,
-            0,
-            3,
             f"garden_find_daily_counts.{raw_day}",
             issues,
         )
@@ -4169,11 +4180,9 @@ def _garden_find_reward_daily_counts(
         for raw_reward_id, raw_count in raw_counts.items():
             if not isinstance(raw_reward_id, str) or not raw_reward_id:
                 continue
-            counts[raw_reward_id] = _bounded_int(
+            counts[raw_reward_id] = _nonnegative_int(
                 raw_count,
                 0,
-                0,
-                3,
                 f"garden_find_reward_daily_counts.{raw_day}.{raw_reward_id}",
                 issues,
             )

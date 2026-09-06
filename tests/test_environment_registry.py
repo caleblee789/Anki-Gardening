@@ -41,7 +41,7 @@ def test_normalized_garden_feature_effects_are_structured_and_player_copy_is_pla
         (),
     ),)
     assert _effect_rows(GARDEN_FEATURE_CATALOG["firefly_lantern"]) == ((
-        "instant_growth_every_5_plus_3_closest_checkpoint",
+        "instant_growth_every_5_plus_3_nurtured",
         "eligible_card",
         "instant_growth",
         3,
@@ -53,15 +53,15 @@ def test_normalized_garden_feature_effects_are_structured_and_player_copy_is_pla
         (),
     ),)
     assert _effect_rows(GARDEN_FEATURE_CATALOG["prism_trellis"]) == ((
-        "prism_bank_per_answer_1",
-        "eligible_card",
+        "prism_completion_growth_100",
+        "today_cards_complete",
         "instant_growth",
+        100,
+        None,
+        None,
+        None,
+        None,
         0,
-        100,
-        None,
-        None,
-        None,
-        100,
         (),
     ),)
 

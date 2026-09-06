@@ -1,0 +1,11 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Use case: stylized-concept. Asset type: one tiny painted resource icon for the Discoveries total in the Anki Garden game UI, displayed at only 12\u201316 logical pixels beside a number. Create a single chunky four-point discovery spark, with a pale mint/aquamarine faceted center and warm champagne-gold beveled edges. Its four points should be broad enough to remain legible at tiny size, with the top and bottom points slightly longer. Style: premium hand-painted storybook gouache fantasy game inventory art, dimensional painterly shading, crisp clean silhouette, the same artisanal look as an engraved gold garden coin and a translucent green leaf-shaped Growth crystal. Soft light from upper left, warm highlights and deep teal shadows inside the object. Centered square composition; the single object fills about 85% of the canvas. Actual transparent RGBA background. No background glow, no cast shadow, no surrounding particles, no separate satellite stars, no foliage, no outline frame, no text, no letters, no watermark. Keep the silhouette simple and the internal details restrained so it reads cleanly as one bright discovery gem at very small HUD scale.",
+  "source": "garden_discovery.png",
+  "runtime_asset": "ankigarden/assets/v6_storybook_gouache/ui/garden_discovery.webp",
+  "runtime_size": [
+    256,
+    256
+  ],
+  "processing": "Resized and encoded to WebP; original colors and alpha preserved."
+}

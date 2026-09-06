@@ -589,7 +589,7 @@ def test_profile_retention_preserves_malformed_fake_complete_artifacts(
 def test_profile_retention_uses_the_current_v29_contract() -> None:
     assert runner.CONTRACT_VERSION == 29
     assert runner._profile_evidence_counts(29, "representative") == (22, 5)
-    assert runner._profile_evidence_counts(29, "full") == (51, 5)
+    assert runner._profile_evidence_counts(29, "full") == (50, 5)
     assert runner._profile_evidence_counts(25, "full") is None
     assert runner._profile_evidence_counts(24, "representative") == (26, 4)
 

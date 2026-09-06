@@ -1584,6 +1584,8 @@ def growth_display(growth_points: Any) -> PlantGrowthDisplay:
     current = 0 if result.fully_grown else round(exact - result.stage_start, 2)
     return replace(result, total_growth=exact, projected_total=exact,
         stage_points=current,
+        next_checkpoint_growth_remaining=(None if result.next_checkpoint_growth is None
+            else round(result.next_checkpoint_growth - exact, 2)),
         points_remaining=round(max(0, (result.next_threshold or exact) - exact), 2),
         progress=1.0 if result.fully_grown else current / result.stage_goal)
 
@@ -2103,12 +2105,10 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                 if (
                     release_layout_candidate
                     and base_type == "direct_soil"
-                    and (layout_family == "compact" or surface_context != "home")
                 ):
                     # Preserve authored progression while applying the same
                     # readability floor as the shared layout validator. Young
-                    # plants also need this in compact native Garden views.
-                    # Home retains its existing compact-stage-only rule.
+                    # plants also need this in compact Garden and Home views.
                     minimum_visible = 20.01 if layout_family == "compact" else readable_art + 0.01
                     readability_lift = max(
                         1.0,
@@ -2691,7 +2691,7 @@ def bed_interaction_state(
         return BedInteractionState(slot, "current", "Current bed", False, occupied)
     selected = slot == destination_slot
     if starter_placement:
-        label = f"Bed {slot + 1} selected" if selected else "Available"
+        label = f"Bed {slot + 1}" if selected else "Available"
         return BedInteractionState(
             slot,
             "selected" if selected else "available",

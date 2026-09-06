@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -87,6 +88,7 @@ def test_animation_timer_stops_when_static_and_restores_effect_cadences() -> Non
         {
             "ANIMATION_INTERVAL_MS": 42,
             "MOVE_ANIMATION_INTERVAL_MS": 16,
+            "time": time,
         },
     )
     timer = _Timer(active=True, interval=42)
@@ -99,6 +101,7 @@ def test_animation_timer_stops_when_static_and_restores_effect_cadences() -> Non
         _hover_opacity={},
         _move_transition=None,
         _animation_tick_required=lambda: False,
+        _hover_fade_active=lambda: False,
     )
 
     sync(scene)
@@ -116,6 +119,13 @@ def test_animation_timer_stops_when_static_and_restores_effect_cadences() -> Non
     assert timer.starts[-1] == 16
 
     scene._move_transition = None
+    sync(scene)
+    assert timer.starts[-1] == 42
+
+    scene._hover_fade_active = lambda: True
+    sync(scene)
+    assert timer.starts[-1] == 16
+    scene._hover_fade_active = lambda: False
     sync(scene)
     assert timer.starts[-1] == 42
 
@@ -168,6 +178,10 @@ def test_animation_tick_requirement_covers_every_visual_effect() -> None:
 
     assert required(scene) is False
     scene.scene["animation_intensity"] = 0.4
+    assert required(scene) is True
+    scene._ambient_motion_visible = False
+    assert required(scene) is False
+    scene._ambient_motion_visible = True
     assert required(scene) is True
     scene.scene["animation_intensity"] = 0.0
 
@@ -413,3 +427,38 @@ def test_render_cache_enforces_bytes_through_replacement_eviction_and_clear() ->
     assert "oversized" not in cache and len(cache) == 2
     cache.clear()
     assert cache.current_bytes == 0 and len(cache) == 0
+
+
+def test_hover_exit_deadline_does_not_restart_during_empty_space_motion() -> None:
+    schedule = _compiled_scene_method("_schedule_hover_clear")
+    timer = _Timer()
+    # QTimer.start() without an interval retains the configured grace period.
+    timer.start = lambda: (timer.starts.append(80), setattr(timer, "active", True))
+    scene = SimpleNamespace(_interaction=SimpleNamespace(hovered_id="rose"), _hover_close_timer=timer)
+    for _ in range(20):
+        schedule(scene)
+    assert timer.starts == [80]
+    timer.stop()
+    scene._interaction.hovered_id = None
+    schedule(scene)
+    assert timer.starts == [80]
+
+
+def test_hover_fades_use_elapsed_time_and_reverse_without_opacity_jumps() -> None:
+    advance = _compiled_scene_method("_advance_hover")
+    scene = SimpleNamespace(
+        _hover_updated_at=0.0, HOVER_FADE_SECONDS=0.1,
+        _hover_opacity={}, _interaction=SimpleNamespace(hovered_id="rose"),
+        hasFocus=lambda: False,
+    )
+    advance(scene, 0.04)
+    assert abs(scene._hover_opacity["rose"] - 0.4) < 1e-9
+    scene._interaction.hovered_id = "bonsai"
+    advance(scene, 0.06)
+    assert abs(scene._hover_opacity["rose"] - 0.2) < 1e-9
+    assert abs(scene._hover_opacity["bonsai"] - 0.2) < 1e-9
+    scene._interaction.hovered_id = "rose"
+    advance(scene, 0.08)
+    assert abs(scene._hover_opacity["rose"] - 0.4) < 1e-9
+    advance(scene, 0.2)
+    assert scene._hover_opacity == {"rose": 1.0}
