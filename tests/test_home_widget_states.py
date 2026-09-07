@@ -214,7 +214,7 @@ def test_success_state_renders_key_fields() -> None:
     assert '<div class="ag-home__metrics"' not in html
     assert ".ag-home__garden-context,.ag-home__status-notice { display:none; }" in html
     assert "min-height:36px" in html
-    assert "max-height:36px" not in html
+    assert "max-height:36px !important" in html
     assert "min-width:112px" in html
     assert "outline:2px solid #75E4AE" in html
     assert "outline-offset: 2px" in html
@@ -240,7 +240,7 @@ def test_hidden_or_noncontent_home_states_omit_garden_feature_markup() -> None:
         assert 'data-testid="home-garden-feature"' not in html
 
 
-def test_success_state_uses_resolved_background_as_compact_scene() -> None:
+def test_success_state_uses_resolved_background_as_compact_scene(monkeypatch) -> None:
     base = _sample_data()
     landmark_asset = {
         "category": "landmarks",
@@ -279,7 +279,7 @@ def test_success_state_uses_resolved_background_as_compact_scene() -> None:
     assert "aspect-ratio:var(--ag-source-aspect, 2.4)" in html
     assert 'data-landmark=' not in html
     assert 'data-landmark-anchor=' not in html
-    assert 'data-plant-id="plant-bonsai" data-slot-index="0" data-mastery-rank="gold"' in html
+    assert 'class="ag-home__mastery"' not in html
 
     mismatched = HomeWidgetData(**{
         **data.__dict__,
@@ -291,6 +291,10 @@ def test_success_state_uses_resolved_background_as_compact_scene() -> None:
     )
     assert 'class="ag-home__landmark"' not in fail_closed
     assert 'class="ag-home__mastery"' not in fail_closed
+    from ankigarden import feature_availability
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", True)
+    restored = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=data))
+    assert 'data-plant-id="plant-bonsai" data-slot-index="0" data-mastery-rank="gold"' in restored
 
 
 def test_home_scene_layers_theme_terrace_and_readable_seedling_cue() -> None:

@@ -1,9 +1,40 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Mapping
 
-from .plant_display import cover_project_point, scene_surface_variant
+from .plant_display import scene_surface_variant
+
+
+GARDEN_BACKGROUND_FOCAL = (0.5, 0.48)
+
+
+def background_cover_rect(
+    width: float, height: float, source_width: float, source_height: float,
+    focal: tuple[float, float],
+) -> tuple[float, float, float, float]:
+    """The raster draw rectangle, relative to the Garden canvas origin."""
+
+    scale = max(width / source_width, height / source_height)
+    draw_width, draw_height = source_width * scale, source_height * scale
+    return (
+        -(draw_width - width) * focal[0],
+        -(draw_height - height) * focal[1],
+        draw_width, draw_height,
+    )
+
+
+def project_landmark_point(
+    point: tuple[float, float], *, width: float, height: float,
+    source_aspect: float, focal: tuple[float, float],
+) -> tuple[float, float]:
+    """Project authored image coordinates through the painted cover crop."""
+
+    x, y, draw_width, draw_height = background_cover_rect(
+        width, height, source_aspect, 1.0, focal,
+    )
+    return x + point[0] * draw_width, y + point[1] * draw_height
 
 
 @dataclass(frozen=True)
@@ -68,9 +99,8 @@ def resolve_scene_landmarks(
 ) -> tuple[SceneLandmark, ...]:
     """Resolve manifest geometry only for explicitly registered actions.
 
-    `interactive` describes the host surface, not the selected responsive crop.
-    This lets an ultrawide full Garden use its `home` artwork variant while the
-    actual home-screen preview remains inert.
+    The native Garden uses its active surface variant at every window size;
+    the actual home-screen preview remains inert.
     """
 
     if not interactive or not isinstance(placement, dict):
@@ -106,6 +136,8 @@ def resolve_scene_landmarks(
             continue
         polygon = _normalized_polygon(geometry.get("polygon"))
         outline_paths = _normalized_paths(geometry.get("outline_paths"))
+        if not polygon or ("outline_paths" in geometry and not outline_paths):
+            continue
         label_anchor = _normalized_point(geometry.get("label_anchor"))
         resolved.append(SceneLandmark(
             landmark_id=landmark_id,
@@ -137,26 +169,24 @@ def project_landmark_bounds(
     if scene_width <= 0 or scene_height <= 0:
         return None
     left, top, span_width, span_height = landmark.bounds
-    first = cover_project_point(
-        left,
-        top,
-        width=scene_width,
-        height=scene_height,
+    first = project_landmark_point(
+        (left, top),
+        width=width,
+        height=height,
         source_aspect=source_aspect,
         focal=focal,
     )
-    second = cover_project_point(
-        left + span_width,
-        top + span_height,
-        width=scene_width,
-        height=scene_height,
+    second = project_landmark_point(
+        (left + span_width, top + span_height),
+        width=width,
+        height=height,
         source_aspect=source_aspect,
         focal=focal,
     )
-    x1 = max(0, min(scene_width, int(round(min(first[0], second[0]) * scene_width))))
-    y1 = max(0, min(scene_height, int(round(min(first[1], second[1]) * scene_height))))
-    x2 = max(0, min(scene_width, int(round(max(first[0], second[0]) * scene_width))))
-    y2 = max(0, min(scene_height, int(round(max(first[1], second[1]) * scene_height))))
+    x1 = max(0, min(scene_width, math.floor(min(first[0], second[0]))))
+    y1 = max(0, min(scene_height, math.floor(min(first[1], second[1]))))
+    x2 = max(0, min(scene_width, math.ceil(max(first[0], second[0]))))
+    y2 = max(0, min(scene_height, math.ceil(max(first[1], second[1]))))
     if x2 <= x1 or y2 <= y1:
         return None
 
@@ -177,27 +207,16 @@ def project_landmark_polygon(
     source_aspect: float,
     focal: tuple[float, float],
 ) -> tuple[tuple[float, float], ...]:
-    points = landmark.polygon or (
-        (landmark.bounds[0], landmark.bounds[1]),
-        (landmark.bounds[0] + landmark.bounds[2], landmark.bounds[1]),
-        (
-            landmark.bounds[0] + landmark.bounds[2],
-            landmark.bounds[1] + landmark.bounds[3],
-        ),
-        (landmark.bounds[0], landmark.bounds[1] + landmark.bounds[3]),
-    )
-    projected: list[tuple[float, float]] = []
-    for x, y in points:
-        px, py = cover_project_point(
-            x,
-            y,
+    return tuple(
+        project_landmark_point(
+            point,
             width=width,
             height=height,
             source_aspect=source_aspect,
             focal=focal,
         )
-        projected.append((px * width, py * height))
-    return tuple(projected)
+        for point in landmark.polygon
+    )
 
 
 def project_landmark_outline_paths(
@@ -213,16 +232,14 @@ def project_landmark_outline_paths(
     projected_paths: list[tuple[tuple[float, float], ...]] = []
     for path in landmark.outline_paths:
         projected: list[tuple[float, float]] = []
-        for x, y in path:
-            px, py = cover_project_point(
-                x,
-                y,
+        for point in path:
+            projected.append(project_landmark_point(
+                point,
                 width=width,
                 height=height,
                 source_aspect=source_aspect,
                 focal=focal,
-            )
-            projected.append((px * width, py * height))
+            ))
         projected_paths.append(tuple(projected))
     return tuple(projected_paths)
 
@@ -254,10 +271,14 @@ def _normalized_point(value: Any) -> tuple[float, float] | None:
 def _normalized_polygon(value: Any) -> tuple[tuple[float, float], ...]:
     if not isinstance(value, list):
         return ()
-    points = tuple(
-        point for point in (_normalized_point(item) for item in value) if point is not None
+    points = tuple(_normalized_point(item) for item in value)
+    if len(points) < 3 or any(point is None for point in points):
+        return ()
+    area = sum(
+        a[0] * b[1] - b[0] * a[1]
+        for a, b in zip(points, points[1:] + points[:1])
     )
-    return points if len(points) >= 3 else ()
+    return points if abs(area) > 1e-8 else ()
 
 
 def _normalized_paths(value: Any) -> tuple[tuple[tuple[float, float], ...], ...]:
@@ -266,12 +287,9 @@ def _normalized_paths(value: Any) -> tuple[tuple[tuple[float, float], ...], ...]
     paths: list[tuple[tuple[float, float], ...]] = []
     for raw_path in value:
         if not isinstance(raw_path, list):
-            continue
-        points = tuple(
-            point
-            for point in (_normalized_point(item) for item in raw_path)
-            if point is not None
-        )
-        if len(points) >= 2:
-            paths.append(points)
+            return ()
+        points = tuple(_normalized_point(item) for item in raw_path)
+        if len(points) < 2 or any(point is None for point in points):
+            return ()
+        paths.append(points)
     return tuple(paths)

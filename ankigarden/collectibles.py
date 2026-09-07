@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Literal
 
 from .balance_catalog import COSMETICS, LANDMARKS, MASTERY_RANKS
+from .feature_availability import landmarks_enabled, mastery_enabled
 from .environment import GARDEN_FEATURE_CATALOG, GROWTH_CHARGES, SCENERY_CATALOG
 from .garden_finds import (
     ENVIRONMENT_TIER_COMPLETION_PITY,
@@ -427,8 +428,8 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
     plants = tuple(_species_definition(species) for species in CURRENT_CATALOG_SPECIES_ORDER)
     environments = tuple(_environment_definitions())
     cosmetics = tuple(_cosmetic_definitions())
-    landmarks = tuple(_landmark_definitions())
-    mastery = tuple(_mastery_definitions())
+    landmarks = tuple(_landmark_definitions()) if landmarks_enabled() else ()
+    mastery = tuple(_mastery_definitions()) if mastery_enabled() else ()
     beds = tuple(
         CollectibleDefinition(
             item_id=f"garden_beds:{index}",

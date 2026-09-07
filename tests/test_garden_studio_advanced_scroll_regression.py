@@ -700,11 +700,9 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             workspace.show_species("bonsai")
             for _ in range(4):
                 application.processEvents()
-            assert workspace.detail_dialog is not None
-            assert workspace.species_page.top_close.isVisible()
-            workspace.close_details()
-            application.processEvents()
             assert workspace.detail_dialog is None
+            assert workspace.detail_host.isVisibleTo(workspace)
+            assert workspace.rect().contains(workspace.detail_host.geometry())
     finally:
         for surface in surfaces:
             surface.close()
@@ -868,7 +866,8 @@ def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.M
     card = PlantInfoCard(owner)
     base = dict(plant_id="rose", name="Rose Plant", species="rose", stage="sprout",
                 next_stage="young", stage_points=0, stage_goal=2000, is_active=True,
-                fully_grown=False, fertilizer_status={"phase": "inactive"}, asset=None)
+                fully_grown=False, fertilizer_status={"phase": "inactive"}, asset=None,
+                next_checkpoint_growth_remaining=100, next_checkpoint_base_coins=1)
 
     def settle(**changes: Any) -> None:
         card.set_selected({**base, **changes})
@@ -879,6 +878,10 @@ def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.M
         assert card.content_scroll.horizontalScrollBar().maximum() == 0
         assert card.content_scroll.verticalScrollBar().maximum() == 0
         assert card.close_btn.isVisibleTo(card)
+        assert not any(widget.isVisibleTo(card) and widget.property("fertilizerStatusBlock")
+                       for widget in card.findChildren(QWidget))
+        assert not any("checkpoint" in str(getattr(widget, "text", lambda: "")()).lower()
+                       for widget in card.findChildren(QWidget))
 
     for current in (0, 1000, 2000):
         settle(stage_points=current)
@@ -897,6 +900,9 @@ def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.M
     settle(fertilizer_status={"phase": "active", "name": "Magical Fertilizer", "duration": "100 cards remaining"})
     assert card.status_value.text() == "Magical Fertilizer · 100 cards remaining"
     assert card.status_row.isVisibleTo(card)
+    card.hide()
+    settle(fertilizer_status={"phase": "active", "name": "Magical Fertilizer", "duration": "99 cards remaining"})
+    assert card.status_value.text() == "Magical Fertilizer · 99 cards remaining"
     settle(name="An extraordinarily long name for this particular Rose Plant")
     assert card.heading.property("fullText") == "Rose Sprout"
     assert not card.artwork.pixmap().isNull()
@@ -926,7 +932,7 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
-        from aqt.qt import QApplication, QWidget, Qt
+        from aqt.qt import QApplication, QLabel, QWidget, Qt
         from PyQt6.QtTest import QTest
         from ankigarden.ui.dashboard import GardenDashboard, GardenDialog
         from ankigarden.models.state import OnboardingStep, Plant
@@ -994,6 +1000,13 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         monkeypatch.setattr(GardenDialog, "exec", close_owned_dialog)
         QTest.mouseClick(dashboard.plant_card.story, Qt.MouseButton.LeftButton)
         settle()
+        assert dashboard._workspace_section == "collection"
+        assert dashboard.collection_plants_workspace.selected_species == "bonsai"
+        assert dashboard.collection_plants_workspace.detail_dialog is None
+        dashboard.open_section("garden")
+        dashboard.scene.keep_card_open("p1")
+        dashboard._on_scene_selection("p1")
+        settle()
         assert dashboard.plant_card.isVisibleTo(dashboard)
         QTest.mouseClick(dashboard.plant_card.fertilize, Qt.MouseButton.LeftButton)
         settle()
@@ -1033,6 +1046,21 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         settle()
         assert dashboard.plant_card.isVisibleTo(dashboard)
         assert storage.state.active_plant_id is None
+        # Plant supplies can create its helper without loading Shop catalogs.
+        shop = dashboard._shop
+        assert shop is not None
+        assert shop.catalog_layout.count() == shop.supplements_layout.count() == 0
+        dashboard.open_section("shop", "supplies", plant_id="p2")
+        assert shop.catalog_layout.count() == shop.upgrades_layout.count() == 0
+        assert shop.supply_context.isHidden()  # Inspection does not choose a fertilizer target.
+        first_row = shop.supplements_layout.itemAt(1).widget()
+        dashboard.open_section("garden")
+        dashboard.open_section("shop", "supplies", plant_id="p2")
+        assert shop.supplements_layout.itemAt(1).widget() is first_row
+        dashboard._mark_progress_pages_dirty()
+        dashboard.open_section("shop", "supplies", plant_id="p2")
+        assert shop.supplements_layout.itemAt(1).widget() is not first_row
+        assert shop.catalog_layout.count() == shop.upgrades_layout.count() == 0
     finally:
         dashboard.close()
         owner.close()
@@ -1660,7 +1688,8 @@ def test_live_welcome_and_trophies_keep_text_and_actions_reachable(
                 assert label.height() + 2 >= required, label.text()
         welcome.details.verticalScrollBar().setValue(welcome.details.verticalScrollBar().maximum())
         trophies.verticalScrollBar().setValue(trophies.verticalScrollBar().maximum())
-        assert "expanded" in welcome.view_rewards.accessibleDescription()
+        assert welcome.start_gardening.text() == "Start gardening"
+        assert "rewards are already saved" in welcome.start_gardening.accessibleDescription()
     finally:
         welcome.close()
         trophies.close()

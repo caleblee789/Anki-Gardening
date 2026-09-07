@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .copy import STORED_GROWTH_TOOLTIP
+
 from ..presentation import plant_stage_title
 
 from collections import deque
@@ -15,6 +17,7 @@ from .reviewer_hud import (
     FULL_BLOOM_GROWTH_ROUTE_COPY,
     HUD_ANSWER_CONTROLS_SCHEMA_VERSION,
     HUD_CONTROLS_CLEARANCE,
+    HUD_EDGE_MARGIN,
     HUD_HEADER_LEFT_INSET,
     HUD_HEADER_RIGHT_INSET,
     HUD_TOP_MARGIN,
@@ -32,6 +35,7 @@ from .theme import GARDEN_THEME, apply_tabular_numerals
 
 try:  # Source-contract and projection tests run without Anki/Qt installed.
     from aqt.qt import (
+        QApplication,
         QColor,
         QEasingCurve,
         QEvent,
@@ -822,7 +826,6 @@ class _ElidedLabel(QLabel):  # type: ignore[misc,valid-type]
 
     def set_full_text(self, text: Any) -> None:
         self._full_text = str(text or "")
-        self.setToolTip(self._full_text)
         self.setAccessibleName(self._full_text)
         self._sync()
 
@@ -837,6 +840,7 @@ class _ElidedLabel(QLabel):  # type: ignore[misc,valid-type]
         except Exception:
             visible = self._full_text
         QLabel.setText(self, visible)
+        self.setToolTip(self._full_text if visible != self._full_text else "")
         self.setProperty("textElided", visible != self._full_text)
 
     def resizeEvent(self, event: Any) -> None:
@@ -913,7 +917,6 @@ class _TwoLineLabel(QLabel):  # type: ignore[misc,valid-type]
 
     def set_full_text(self, text: Any) -> None:
         self._full_text = str(text or "")
-        self.setToolTip(self._full_text)
         self.setAccessibleName(self._full_text)
         self._sync()
 
@@ -951,6 +954,7 @@ class _TwoLineLabel(QLabel):  # type: ignore[misc,valid-type]
         except Exception:
             visible = text
         QLabel.setText(self, visible)
+        self.setToolTip(self._full_text if visible.replace("\n", " ") != text else "")
         self.setProperty("textClamped", visible.replace("\n", " ") != text)
 
     def resizeEvent(self, event: Any) -> None:
@@ -1468,6 +1472,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         *,
         on_open_garden: Callback = None,
         on_open_plant: Callback = None,
+        on_open_supplies: Callback = None,
+        on_position_changed: Callback = None,
         on_open_collection: Callback = None,
         on_select_plant: Callback = None,
         on_choose_plant: Callback = None,
@@ -1486,6 +1492,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._viewport_parent = parent
         self._on_open_garden = on_open_garden
         self._on_open_plant = on_open_plant
+        self._on_open_supplies = on_open_supplies
+        self._on_position_changed = on_position_changed
         self._on_open_collection = on_open_collection
         self._on_select_plant = on_select_plant
         self._on_choose_plant = on_choose_plant
@@ -1512,6 +1520,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._body_compact_level = 0
         self._effect_details_requested = False
         self._dock = "right"
+        self._position: tuple[float, float] | None = None
+        self._drag_start = None
+        self._drag_moved = False
         self._revision = 0
         self._art_key: tuple[Any, ...] | None = None
         self._coin_animation: Any | None = None
@@ -1672,6 +1683,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "seen_bundle_ids": tuple(self._seen_bundle_ids),
             "seen_commit_ids": tuple(getattr(self, "_seen_commit_ids", set())),
             "history": tuple(self._reward_history),
+            "feed_scroll": self._reward_feed.view.verticalScrollBar().value() if hasattr(self, "_reward_feed") else 0,
+            "feed_expanded": bool(self._session_footer.property("historyExpanded")) if hasattr(self, "_session_footer") else True,
             "pending": tuple(pending),
             "unseen_major": max(0, int(self._unseen_major)),
             "current": current,
@@ -1739,6 +1752,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._unseen_major = max(0, int(snapshot.get("unseen_major", 0) or 0))
         self.setProperty("hudRewardHistoryCount", len(self._reward_history))
+        if hasattr(self, "_reward_feed"):
+            for bundle in self._reward_history:
+                self._reward_feed.append(bundle, animate=False)
+            self._session_footer.setProperty("historyExpanded", bool(snapshot.get("feed_expanded", True)))
+            QTimer.singleShot(0, lambda: self._reward_feed.view.verticalScrollBar().setValue(int(snapshot.get("feed_scroll", 0))))
         self._sync_history_rows()
         self._sync_unseen_badge()
         self._history_reward_inspection = None
@@ -1775,6 +1793,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         *,
         on_open_garden: Callback = None,
         on_open_plant: Callback = None,
+        on_open_supplies: Callback = None,
+        on_position_changed: Callback = None,
         on_open_collection: Callback = None,
         on_select_plant: Callback = None,
         on_choose_plant: Callback = None,
@@ -1788,6 +1808,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
     ) -> None:
         self._on_open_garden = on_open_garden
         self._on_open_plant = on_open_plant
+        self._on_open_supplies = on_open_supplies
+        self._on_position_changed = on_position_changed
         self._on_open_collection = on_open_collection
         self._on_select_plant = on_select_plant
         self._on_choose_plant = on_choose_plant
@@ -1808,7 +1830,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 self._stop_session_count_animation()
                 self._set_session_metric_values(self._session_totals)
                 self._clear_session_highlight(self._session_feedback_revision)
-        self._header.set_callback(self._open_garden)
+        if hasattr(self, "_reward_feed"):
+            self._reward_feed.animations_enabled = self._animations_enabled
+        self._header.set_callback(None)
+        self._header.setCursor(Qt.CursorShape.OpenHandCursor)
         self._plant_card.set_callback(self._open_plant)
 
     def _apply_style(self) -> None:
@@ -1820,7 +1845,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "border-radius:14px;}"
             "QFrame#reviewerHudHeader {background:transparent;border:0;"
             "border-bottom:1px solid " + t["reviewer_hud_divider"] + ";}"
-            "QFrame#reviewerHudHeader:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
             "QFrame[hudCard='true'] {background:" + t["reviewer_hud_surface"] + ";border-radius:12px;}"
             "QFrame[hudCard='true'][cardRole='subtle'] {border:1px solid rgba(112,220,170,26);}"
             "QFrame[hudCard='true'][cardRole='standard'] {background:transparent;border:0;}"
@@ -1955,7 +1979,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         expanded_layout.setContentsMargins(0, 0, 0, 0)
         expanded_layout.setSpacing(0)
 
-        self._header = _ClickableFrame(self._expanded, self._open_garden)
+        self._header = _ClickableFrame(self._expanded)
+        self._header.setCursor(Qt.CursorShape.OpenHandCursor)
+        self._header.setToolTip("Drag to move Anki Garden")
+        self._header.installEventFilter(self)
         self._header.setObjectName("reviewerHudHeader")
         self._header.setProperty("semanticId", "reviewer.hud.header")
         self._header.setFixedHeight(44)
@@ -1986,7 +2013,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         title_width = max(0, int(self._title_group.sizeHint().width()))
         header_actions_width = reviewer_hud_header_actions_width(title_width)
         self._header_actions.setFixedWidth(header_actions_width)
-        _set_decoration(self._header_actions)
+        self._header_actions.installEventFilter(self)
         actions_layout = QHBoxLayout(self._header_actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(8)
@@ -2392,6 +2419,45 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         layout.addWidget(self._effect_details)
         body.addWidget(self._plant_card)
 
+        self._consumables = QFrame(self._body_contents)
+        self._consumables.setObjectName("reviewerHudConsumables")
+        effects = QHBoxLayout(self._consumables)
+        effects.setContentsMargins(12, 0, 12, 6)
+        effects.setSpacing(6)
+        self._consumable_pills = {}
+        for family in ("fertilizer", "booster"):
+            pill = QToolButton(self._consumables)
+            pill.setObjectName(f"reviewerHudConsumable_{family}")
+            pill.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            pill.setIconSize(QSize(18, 18))
+            pill.setFixedHeight(24)
+            pill.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            pill.setCursor(Qt.CursorShape.PointingHandCursor)
+            pill.setStyleSheet(f"QToolButton {{background:{GARDEN_THEME['raised_surface']};color:{GARDEN_THEME['text_secondary']};border:1px solid {GARDEN_THEME['subtle_border']};border-radius:12px;padding:0 6px;font-size:11px;}} QToolButton:hover {{background:{GARDEN_THEME['secondary_hover']};}}")
+            pill.clicked.connect(lambda _checked=False, group=family: _call(self._on_open_supplies, group))
+            apply_tabular_numerals(pill)
+            effects.addWidget(pill)
+            self._consumable_pills[family] = pill
+        effects.addStretch(1)
+        self._consumables.hide()
+        body.addWidget(self._consumables)
+
+    def _update_consumables(self, effects: Any) -> None:
+        active = {effect.family: effect for effect in effects}
+        for family, pill in self._consumable_pills.items():
+            effect = active.get(family)
+            pill.setVisible(effect is not None)
+            if effect is None:
+                continue
+            pill.setText(f"{effect.remaining_cards:,} {'card' if effect.remaining_cards == 1 else 'cards'} left")
+            pill.setIcon(QIcon(self._effect_art_pixmap(effect.artwork_ref, 18)))
+            description = f"{effect.name} · {effect.remaining_cards:,} cards remaining. Open Plant supplies."
+            pill.setToolTip(description)
+            pill.setAccessibleName(description)
+            pill.setProperty("remainingCards", effect.remaining_cards)
+            pill.setProperty("activeItemId", effect.item_id)
+        self._consumables.setVisible(bool(active) and not self._collapsed)
+
     def _build_reward_dock(self, expanded_layout: Any) -> None:
         # One logical dock owns a bounded scroll-body and a sticky session
         # footer. The connected surface appears only after a nonzero result or
@@ -2680,14 +2746,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_divider.hide()
         surface.addWidget(self._reward_divider)
 
-        self._session_footer = _ClickableFrame(
-            self._reward_surface,
-            self._toggle_reward_history,
-        )
+        self._session_footer = QFrame(self._reward_surface)
         self._session_footer.setObjectName("reviewerHudSessionFooter")
         self._session_footer.setProperty("semanticId", "reviewer.hud.session-footer")
         self._session_footer.setProperty("historyAvailable", False)
-        self._session_footer.setProperty("historyExpanded", False)
+        self._session_footer.setProperty("historyExpanded", True)
         self._session_footer.setCursor(Qt.CursorShape.ArrowCursor)
         self._session_footer.setMinimumHeight(76)
         footer = QVBoxLayout(self._session_footer)
@@ -2701,7 +2764,18 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _set_decoration(self._session_heading)
         heading_row.addWidget(self._session_heading)
         heading_row.addStretch(1)
-        self._session_history_chevron = QLabel("", self._session_footer)
+        self._session_history_toggle = _ClickableFrame(self._session_footer, self._toggle_reward_history)
+        self._session_history_toggle.setObjectName("reviewerHudSessionHistoryToggle")
+        self._session_history_toggle.setMinimumHeight(24)
+        self._session_history_toggle.setAccessibleName("Toggle recent rewards")
+        history_heading = QHBoxLayout(self._session_history_toggle)
+        history_heading.setContentsMargins(0, 2, 0, 2)
+        history_heading.setSpacing(4)
+        history_label = QLabel("Recent rewards", self._session_history_toggle)
+        history_label.setProperty("hudMuted", True)
+        _set_decoration(history_label)
+        history_heading.addWidget(history_label, 1)
+        self._session_history_chevron = QLabel("", self._session_history_toggle)
         self._session_history_chevron.setObjectName("reviewerHudSessionChevron")
         self._session_history_chevron.setProperty(
             "semanticId", "reviewer.hud.session-footer.chevron"
@@ -2713,7 +2787,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._session_history_chevron.hide()
         _set_decoration(self._session_history_chevron)
-        heading_row.addWidget(self._session_history_chevron)
+        history_heading.addWidget(self._session_history_chevron)
         footer.addLayout(heading_row)
         from .session_summary_card import session_summary_palette
         metrics = receipt_metrics_layout()
@@ -2736,11 +2810,17 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             self._session_metric_tiles.append(metric.widget)
             metrics.addWidget(metric.widget, 1)
         footer.addLayout(metrics)
+        footer.addWidget(self._session_history_toggle)
+        self._session_history_toggle.hide()
         self._session_footer.hide()
         # Session totals belong directly beneath the plant, ahead of its rewards.
         surface.insertWidget(0, self._session_footer)
         surface.removeWidget(self._reward_divider)
         surface.insertWidget(1, self._reward_divider)
+        from .reward_feed import RewardFeed
+        self._reward_feed = RewardFeed(self._reward_surface, self._effect_art_pixmap, animations_enabled=self._animations_enabled)
+        self._reward_feed.hide()
+        surface.addWidget(self._reward_feed)
         self._reward_dock.hide()
         expanded_layout.addWidget(self._reward_dock)
 
@@ -2799,6 +2879,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def _build_collapsed(self) -> None:
         self._collapsed_tab = _ClickableFrame(self, self._expand_from_tab)
+        self._collapsed_tab.installEventFilter(self)
+        self._collapsed_tab.setToolTip("Click to expand · Drag to move")
         self._collapsed_tab.setObjectName("reviewerHudCollapsedTab")
         self._collapsed_tab.setProperty("semanticId", "reviewer.hud.collapsed-tab")
         self._collapsed_tab.setAccessibleName("Expand Anki Garden review panel")
@@ -3098,11 +3180,19 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         if not isinstance(projection, ReviewerHudProjection):
             raise TypeError("projection must be a ReviewerHudProjection")
         previous = self._projection
+        if previous == projection:
+            # Repeated question/geometry hooks must not restart committed
+            # feedback or repaint the same artwork and text.
+            self.show()
+            self.raise_()
+            return
         animate = bool(animate and self._animations_enabled)
         self._projection = projection
         self._revision += 1
         revision = self._revision
         self._dock = projection.dock
+        if self._drag_start is None:
+            self._position = projection.position
         self.setProperty("hudDock", projection.dock)
         self._collapse_button.setIcon(self._icon(
             "chevron-up",
@@ -3172,6 +3262,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 self._flush_deferred_checkpoint_feedback()
 
         self.set_collapsed(projection.collapsed)
+        self._update_consumables(projection.active_consumables)
         self.show()
         self.raise_()
         if animate:
@@ -3519,7 +3610,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         """Keep the rail quiet between earned feedback below its plant ring."""
         self._collapsed_next.clear()
         self._collapsed_next.hide()
-        self._collapsed_tab.setToolTip("Open Anki Garden")
+        self._collapsed_tab.setToolTip("Click to expand · Drag to move")
         self._collapsed_tab.setAccessibleName("Expand Anki Garden review panel")
         self._collapsed_tab.setProperty("collapsedNextValueCopy", "")
         self._collapsed_tab.setProperty("collapsedNextVisibleCopy", "")
@@ -3633,7 +3724,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                     resolved = self._resolve_reward_art(item)
                 except Exception:
                     pass
-            if resolved is None:
+            if kind == "checkpoint":
+                resolved = self._effect_art_pixmap(item, 40)
+            elif resolved is None:
                 resolved = _hero_art(item)
             path = getattr(resolved, "path", resolved)
             pixmap = QPixmap(resolved) if hasattr(resolved, "isNull") else QPixmap(str(path or ""))
@@ -3899,7 +3992,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             )
         elif nurture.fully_grown:
             self._apply_projected_full_bloom_settled(nurture)
-        elif nurture.all_plants_full_bloom:
+        elif nurture.all_plants_full_bloom or not nurture.has_target:
             self._sync_full_bloom_destination(nurture)
         self._sync_reward_identity_visibility()
         self._sync_collapsed_summary()
@@ -3963,6 +4056,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._growth_destination.set_callback(
             self._open_growth_projects if actionable else None
         )
+        self._growth_destination.setToolTip(STORED_GROWTH_TOOLTIP if kind == "stored_growth" else "")
         project_pixmap = self._effect_art_pixmap(artwork_id, 19)
         self._growth_destination_icon.setPixmap(
             project_pixmap
@@ -3984,7 +4078,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 if value
             )
         )
-        self._growth_destination.show()
+        self._growth_destination.setVisible(kind != "stored_growth" or stored_units > 0)
         self.setProperty("hudFullBloomNextAction", "growth_destination")
         self.setProperty("hudGrowthDestinationKind", kind)
         self.setProperty("hudGrowthDestinationId", project_id)
@@ -4239,18 +4333,22 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         animation.start()
 
     def _effect_art_pixmap(self, reference: Any, size: int = 18) -> Any:
-        """Resolve one compact active-effect item image through the shared catalog."""
+        """Resolve catalog items or the committed plant artwork on a reward."""
 
+        if _hero_kind(reference) == "checkpoint":
+            return self._icon_pixmap("checkpoint", size, GARDEN_THEME["text_primary"])
+        if _hero_kind(reference) == "routine_growth" and _hero_art(reference) != "stored_growth":
+            return self._icon_pixmap("reviews", size, GARDEN_THEME["text_primary"])
         normalized = str(
             getattr(reference, "artwork_ref", "") or reference or ""
         )
-        if not normalized or not callable(self._resolve_reward_art):
+        if not normalized:
             return QPixmap()
         try:
-            resolved = self._resolve_reward_art(reference)
+            resolved = self._resolve_reward_art(reference) if callable(self._resolve_reward_art) else None
         except Exception:
             resolved = None
-        candidate_path = getattr(resolved, "path", resolved)
+        candidate_path = getattr(resolved, "path", resolved) or _hero_art(reference)
         if not candidate_path:
             return QPixmap()
         cache_key = f"effect:{candidate_path}"
@@ -4263,12 +4361,15 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             self._reward_art_cache[cache_key] = QPixmap(pixmap)
             while len(self._reward_art_cache) > 32:
                 self._reward_art_cache.pop(next(iter(self._reward_art_cache)))
-        return pixmap.scaled(
-            max(1, int(size)),
-            max(1, int(size)),
+        dpr = self.devicePixelRatioF()
+        scaled = pixmap.scaled(
+            max(1, round(size * dpr)),
+            max(1, round(size * dpr)),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        scaled.setDevicePixelRatio(dpr)
+        return scaled
 
     def _sync_effects(self, nurture: Any) -> None:
         self._all_effects = tuple(
@@ -4904,6 +5005,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         finds = reward_discovery_count(snapshot)
         previous = self._session_totals
         current = (growth_units, coins, finds)
+        if current == previous and self._session_footer.property("sessionFinds") == _session_find_count(snapshot):
+            return
         self._session_totals = current
         self._session_has_results = any(current)
         self._session_footer.setVisible(self._session_has_results)
@@ -4942,6 +5045,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         expanded = bool(self._session_footer.property("historyExpanded"))
         self._session_heading.setText("This session")
         self._session_history_chevron.setVisible(bool(self._reward_history))
+        self._session_history_toggle.setVisible(bool(self._reward_history))
         self._set_session_history_chevron(expanded)
         for widget in self._session_metric_widgets():
             widget.show()
@@ -5026,6 +5130,25 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             _repolish(widget)
 
     def _sync_reward_dock_visibility(self) -> None:
+        if hasattr(self, "_reward_feed"):
+            available = bool(self._reward_feed.model.rowCount())
+            expanded = bool(self._session_footer.property("historyExpanded"))
+            visible = available and expanded and not self._collapsed
+            self._reward_scroll.hide()
+            self._reward_reveal.hide()
+            self._reward_details_toggle.hide()
+            self._reward_history_panel.hide()
+            self._reward_feed.setVisible(visible)
+            self._session_footer.setVisible(self._session_has_results or available)
+            self._reward_divider.setVisible(visible)
+            self._reward_dock.setVisible((self._session_has_results or available) and not self._collapsed)
+            self._reward_dock.setProperty("hasReveal", visible)
+            self._reward_dock.setProperty("hasSession", self._session_has_results)
+            self.setProperty("hudRewardVisible", visible)
+            self.setProperty("hudRewardDockVisible", not self._reward_dock.isHidden())
+            self._sync_session_metric_wrap()
+            self._schedule_layout_reposition()
+            return
         reveal_visible = bool(
             self._current_reward is not None and not self._reward_reveal.isHidden()
         )
@@ -5155,6 +5278,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         # History reconciles to every accepted bundle, including routine
         # Growth, while only major bundles enter the reveal queue.
         self._reward_history.append(bundle)
+        if hasattr(self, "_reward_feed"):
+            self._reward_feed.append(bundle, animate=reveal and not self._collapsed)
         self._reward_history_page = 0
         self.setProperty("hudRewardHistoryCount", len(self._reward_history))
         self._sync_history_rows()
@@ -5271,7 +5396,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_title.set_full_text(_reward_hero_title(bundle))
         self._sync_reward_identity_visibility()
         treatment = reward_treatment(_bundle_hero(bundle))
-        rarity = treatment.label if treatment.key != "full_bloom" else ""
+        rarity = treatment.label
         self._reward_rarity.setText(rarity)
         self._reward_rarity.setStyleSheet(rarity_badge_style(treatment))
         self._reward_rarity.setProperty("rarityTone", treatment.key)
@@ -5822,6 +5947,16 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         return " · ".join(part for part in self._history_parts(bundle) if part)
 
     def _sync_history_rows(self) -> None:
+        if hasattr(self, "_reward_feed"):
+            count = self._reward_feed.model.rowCount()
+            self._projected_history_count = count
+            available = bool(count or self._session_has_results)
+            self._session_footer.setProperty("historyAvailable", available)
+            self._session_history_chevron.setVisible(available)
+            self._set_session_history_chevron(bool(self._session_footer.property("historyExpanded")))
+            self._session_history_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._sync_reward_dock_visibility()
+            return
         atomic_bundles = tuple(self._reward_history)
         try:
             from ..reward_presentation import project_reward_session_history
@@ -5993,7 +6128,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         if not self._session_has_results and not self._reward_history:
             return
         expanded = not bool(self._session_footer.property("historyExpanded"))
-        self._reward_history_panel.setVisible(expanded and bool(self._reward_history))
+        self._reward_history_panel.hide()
         self._session_footer.setProperty("historyExpanded", expanded)
         self._set_session_history_chevron(expanded)
         if expanded:
@@ -6226,6 +6361,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 self._apply_body_compact_level(1)
                 body_height = natural_height(self._body_contents, body_layout)
                 uncompacted_body_height = body_height
+                if hasattr(self, "_reward_feed"):
+                    room = reviewer_hud_safe_bottom(height, detected_top) - HUD_TOP_MARGIN - 46 - body_height - self._session_footer.sizeHint().height() - 20
+                    self._reward_feed.set_available_height(min(216, max(72, room)))
                 reward_height = (
                     natural_height(self._reward_dock, reward_layout)
                     if not self._reward_dock.isHidden()
@@ -6281,6 +6419,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 dock=self._dock,
                 content_height=content_height,
                 answer_controls_top=detected_top,
+                position=self._position,
             )
             self.setFixedSize(geometry[2], geometry[3])
             self.move(geometry[0], geometry[1])
@@ -6334,7 +6473,65 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             request_if_current,
         )
 
+    def _position_at(self, left: int, top: int) -> tuple[float, float]:
+        parent = self._viewport_parent
+        horizontal = max(1, parent.width() - 2 * HUD_EDGE_MARGIN)
+        safe_bottom = reviewer_hud_safe_bottom(parent.height(), self.property("hudAnswerControlsTop"))
+        vertical = max(1, safe_bottom - HUD_TOP_MARGIN)
+        return (max(0.0, min(1.0, (left + self.width() - HUD_EDGE_MARGIN) / horizontal)),
+                max(0.0, min(1.0, (top - HUD_TOP_MARGIN) / vertical)))
+
+    def _save_position(self) -> None:
+        value = {"custom": self._position is not None, "x": 1.0, "y": 0.0}
+        if self._position is not None:
+            value.update(x=self._position[0], y=self._position[1])
+        _call(self._on_position_changed, value)
+
+    def _reset_position(self) -> None:
+        self._position = None
+        self._save_position()
+        self.reposition()
+
+    def _handle_header_event(self, watched: Any, event: Any) -> bool:
+        kind = event.type()
+        if kind == QEvent.Type.ContextMenu:
+            menu = QMenu(self)
+            menu.addAction("Reset position", self._reset_position)
+            menu.exec(event.globalPos())
+            return True
+        if kind == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start = (event.globalPosition().toPoint(), self.pos(), watched)
+            self._drag_moved = False
+            watched.grabMouse()
+            return True
+        if kind == QEvent.Type.MouseMove and self._drag_start is not None:
+            pointer, origin, handle = self._drag_start
+            delta = event.globalPosition().toPoint() - pointer
+            self._drag_moved = self._drag_moved or delta.manhattanLength() >= QApplication.startDragDistance()
+            if self._drag_moved:
+                handle.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self._position = self._position_at(origin.x() + delta.x(), origin.y() + delta.y())
+                self.reposition()
+            return True
+        if kind == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            gesture = self._drag_start
+            self._drag_start = None
+            if gesture is not None:
+                handle = gesture[2]
+                handle.releaseMouse()
+                handle.setCursor(Qt.CursorShape.OpenHandCursor)
+                if self._drag_moved:
+                    self._position = self._position_at(self.x(), self.y())
+                    self._save_position()
+                elif watched is self._collapsed_tab:
+                    self._expand_from_tab()
+            return True
+        return False
+
     def eventFilter(self, watched: Any, event: Any) -> bool:
+        if watched in (getattr(self, "_header", None), getattr(self, "_header_actions", None), getattr(self, "_collapsed_tab", None)):
+            if self._handle_header_event(watched, event):
+                return True
         if watched is self._viewport_parent:
             try:
                 if event.type() in {QEvent.Type.Resize, QEvent.Type.Show}:
@@ -6346,6 +6543,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def dispose(self) -> None:
         self._disposed = True
+        if hasattr(self, "_reward_feed"):
+            self._reward_feed._stop_motion()
         self._plant_size_cache.clear()
         self._plant_geometry_cache.clear()
         pulse = getattr(self, "_rarity_pulse", None)

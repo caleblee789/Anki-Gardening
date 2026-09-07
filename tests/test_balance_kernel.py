@@ -231,7 +231,7 @@ def test_exact_derived_totals_and_expected_find_values_are_frozen():
         assert statistic["pooled_total"] == exact_total
 
 
-def test_endgame_spending_preserves_mastery_while_landmarks_are_dormant():
+def test_deferred_endgame_preserves_overflow_in_storage():
     facts = load_catalog_facts()
     scenario = next(
         row for row in approved_scenarios()
@@ -243,7 +243,10 @@ def test_endgame_spending_preserves_mastery_while_landmarks_are_dormant():
     def metric(metric_id):
         return next(row for row in report["statistics"] if row["metric_id"] == metric_id)
 
-    assert metric("growth.spent_units")["max"] > 0
+    assert metric("growth.spent_units")["max"] == 0
+    assert metric("growth.contributed_to_mastery_units")["max"] == 0
+    assert metric("growth.contributed_to_legacy_units")["max"] == 0
+    assert metric("growth.stored_balance_units")["max"] > 0
     assert metric("growth.contributed_to_landmarks_units")["max"] == 0
     assert metric("legacy.level")["max"] == 0
     assert metric("landmarks.tiers_funded")["max"] >= metric(
@@ -256,10 +259,8 @@ def test_endgame_spending_preserves_mastery_while_landmarks_are_dormant():
     assert metric("mastery.bonsai.ranks_claimed")["max"] >= 0
     assert metric("mastery.bonsai.ranks_claimable")["max"] >= 0
     assert metric("coins.spent")["max"] > 0
-    assert metric("landmarks.owned")["max"] + metric("mastery.owned")["max"] > 0
-    assert metric("endgame.active_project_selected")["min"] == 1
-    assert metric("endgame.active_project_unallocated_stored_units")["max"] == 0
-    assert metric("endgame.active_project_no_unallocated_storage")["min"] == 1
+    assert metric("landmarks.owned")["max"] + metric("mastery.owned")["max"] == 0
+    assert metric("endgame.active_project_selected")["max"] == 0
     assert metric("endgame.finite_growth_remaining_units")["min"] > 0
 
 

@@ -6,7 +6,84 @@ from typing import Any
 
 from .icons import garden_icon
 from .reward_rarity import apply_reward_treatment, reward_treatment, rarity_badge_style
-from .theme import apply_tabular_numerals
+from .theme import GARDEN_THEME, apply_tabular_numerals
+
+
+def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
+                          progress_percent: int | None, coins: int, palette: dict[str, str],
+                          full_bloom: bool = False) -> Any:
+    """One illustrated journey and its committed progression reward."""
+    from aqt.qt import QFrame, QHBoxLayout, QLabel, QProgressBar, Qt, QVBoxLayout
+    frame = QFrame(parent)
+    frame.setProperty("receiptProgressCard", True)
+    frame.setStyleSheet(
+        f"QFrame[receiptProgressCard='true'] {{background:{palette['receipt_secondary_surface']};"
+        f"border:1px solid {palette['receipt_border_strong']};border-radius:10px;}}"
+    )
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(10, 9, 10, 9)
+    row.setSpacing(10)
+    row.addWidget(artwork, 0, Qt.AlignmentFlag.AlignTop)
+    copy = QVBoxLayout()
+    copy.setSpacing(4)
+    heading = QHBoxLayout()
+    name = QLabel(title, frame)
+    name.setWordWrap(True)
+    name.setStyleSheet(f"color:{palette['text_primary']};font-size:12px;font-weight:650;background:transparent;border:0;")
+    heading.addWidget(name, 1)
+    if full_bloom:
+        treatment = reward_treatment(full_bloom=True)
+        apply_reward_treatment(frame, treatment, artwork=artwork)
+        badge = QLabel(treatment.label, frame)
+        badge.setProperty("receiptRarityBadge", True)
+        badge.setStyleSheet(rarity_badge_style(treatment))
+        heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
+    if coins > 0:
+        reward = receipt_resource_values(frame, coins=coins, compact=True)
+        reward.setProperty("receiptProgressCoins", coins)
+        heading.addWidget(reward, 0, Qt.AlignmentFlag.AlignTop)
+    copy.addLayout(heading)
+    description = QLabel(text, frame)
+    description.setWordWrap(True)
+    description.setTextFormat(Qt.TextFormat.PlainText)
+    description.setStyleSheet(f"color:{palette['text_secondary']};font-size:12px;font-weight:400;background:transparent;border:0;")
+    copy.addWidget(description)
+    progress = QProgressBar(frame)
+    progress.setRange(0, 100)
+    progress.setValue(max(0, min(100, int(progress_percent or 0))))
+    progress.setTextVisible(False)
+    progress.setFixedHeight(5)
+    progress.setStyleSheet(f"QProgressBar {{background:{palette['divider']};border:0;border-radius:2px;}} "
+                          f"QProgressBar::chunk {{background:{palette['receipt_primary_mint']};border-radius:2px;}}")
+    progress.setVisible(progress_percent is not None)
+    copy.addWidget(progress)
+    row.addLayout(copy, 1)
+    return SimpleNamespace(widget=frame, progress=progress, title=name, description=description)
+
+
+def receipt_resource_values(parent: Any, *, coins: int = 0, growth_units: int = 0, compact: bool = False) -> Any:
+    """One icon-adjacent amount per resource, shared by both summary menus."""
+    from aqt.qt import QFrame, QHBoxLayout, QLabel, Qt
+    from .session_summary import format_growth_units
+    frame = QFrame(parent)
+    frame.setStyleSheet("QFrame {background:transparent;border:0;}")
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(4)
+    for kind, text in (("coin", (f"+{coins:,}" if compact else f"+{coins:,} Coins") if coins else ""),
+                       ("growth", f"{format_growth_units(growth_units, signed=True)} Growth" if growth_units else "")):
+        if not text:
+            continue
+        icon = QLabel(frame)
+        icon.setFixedSize(14, 14)
+        icon.setPixmap(garden_icon(kind).pixmap(14, 14))
+        row.addWidget(icon, 0, Qt.AlignmentFlag.AlignVCenter)
+        value = QLabel(text, frame)
+        value.setStyleSheet(f"color:{GARDEN_THEME['coin_accent' if kind == 'coin' else 'growth_accent']};font-size:12px;font-weight:600;")
+        apply_tabular_numerals(value)
+        row.addWidget(value)
+    row.addStretch(1)
+    return frame
 
 
 def build_receipt_shell(owner: Any, title: str, close: Any, palette: dict[str, str], *, prefix: str) -> Any:
@@ -96,7 +173,6 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
         """Keep large totals on one line, with their exact amount in the tooltip."""
         def setText(self, text: str) -> None:
             self._full_text = str(text)
-            self.setToolTip(self._full_text)
             self.setAccessibleName(self._full_text)
             self._fit_text()
 
@@ -123,6 +199,7 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
                 except InvalidOperation:
                     pass
             super().setText(fitted)
+            self.setToolTip(full if fitted != full else "")
 
         def resizeEvent(self, event: Any) -> None:
             super().resizeEvent(event)
@@ -220,6 +297,9 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
     frame.setProperty("receiptEvent", True)
     frame.setProperty("receiptMilestone", milestone)
     treatment = reward_treatment(reward, full_bloom=milestone)
+    if milestone or treatment.notable:
+        eyebrow = eyebrow or ("Growth milestone" if milestone else "Item earned")
+        rarity_badge = True
     if eyebrow or rarity_badge:
         outer = QVBoxLayout(frame)
         outer.setContentsMargins(10, 8, 10, 8)
@@ -232,11 +312,11 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
             category.setTextFormat(Qt.TextFormat.PlainText)
             category.setWordWrap(True)
             category.setMinimumWidth(0)
-            category.setStyleSheet("color:#AEBFB7;font-size:11px;font-weight:650;background:transparent;border:0;")
+            category.setStyleSheet("color:#F2F5EC;font-size:11px;font-weight:650;background:transparent;border:0;")
             heading.addWidget(category, 1)
         else:
             heading.addStretch(1)
-        if rarity_badge and treatment.label and not milestone:
+        if rarity_badge and treatment.label:
             badge = QLabel(treatment.label, frame)
             badge.setProperty("receiptRarityBadge", True)
             badge.setStyleSheet(rarity_badge_style(treatment))
@@ -270,6 +350,13 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
         copy.addWidget(secondary)
     row.addLayout(copy, 1)
     apply_reward_treatment(frame, treatment, title=name, artwork=artwork)
+    if not treatment.notable:
+        frame.setStyleSheet(
+            f"QFrame[receiptEvent='true'] {{background:{GARDEN_THEME['raised_surface']};"
+            "border:0;border-radius:10px;}"
+        )
+    if milestone or eyebrow.casefold() in {"growth milestone", "checkpoint"}:
+        name.setStyleSheet("color:#AEBFB7;font-weight:400;")
     return SimpleNamespace(widget=frame, layout=row, copy=copy, title=name)
 
 
@@ -288,7 +375,6 @@ def receipt_style(p: dict[str, str]) -> str:
     QPushButton[receiptSecondary='true']:hover {{ background:{p['selected_surface']}; }}
     QPushButton[receiptSecondary='true']:pressed {{ background:{p['strong_border']}; }}
     QFrame[receiptMetric='true'], QFrame[receiptEvent='true'] {{ background:transparent; border:0; }}
-    QFrame[receiptMilestone='true'] {{ border-left:3px solid {p['coin_accent']}; }}
     QLabel[receiptMetricLabel='true'] {{ color:{p['text_secondary']}; font-size:11px; font-weight:500; }}
     QLabel[receiptMetricValue='true'] {{ font-size:18px; font-weight:600; }}
     QLabel[receiptEventTitle='true'] {{ color:{p['text_primary']}; font-size:13px; font-weight:600; }}

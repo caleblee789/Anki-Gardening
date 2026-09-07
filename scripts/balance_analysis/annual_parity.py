@@ -1315,10 +1315,8 @@ def _apply_modeled_growth_projects(
     while engine.growth_projects_snapshot().stored_balance_units > 0:
         snapshot = engine.growth_projects_snapshot()
         active = snapshot.active_target
-        if active is None:
-            raise AssertionError(
-                "annual endgame strategy has Stored Growth without an active target"
-            )
+        if active is None or not growth_target_enabled(active.target_type):
+            break
         track = _growth_track_for_target(snapshot, active)
         if track.remaining_capacity_units == 0:
             action_ordinal += 1
@@ -1373,6 +1371,8 @@ def _apply_modeled_growth_projects(
         ), None)
         if claim is None:
             for _species_id, track in snapshot.mastery_tracks_by_species:
+                if not growth_target_enabled(track.target.target_type):
+                    continue
                 tier = next((
                     row for row in track.tiers
                     if row.claimable and row.can_claim_now

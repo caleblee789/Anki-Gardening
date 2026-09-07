@@ -888,23 +888,36 @@ def reward_summary(
 
 def reward_content_visible(value: Any) -> bool:
     """Hide dormant feature details without changing durable reward records."""
-    if landmarks_enabled():
-        return True
     from .balance_catalog import LANDMARK_BY_ID
 
     for field in (
         "kind", "reward_type", "source", "source_id", "item_id",
         "asset_category", "asset_key", "event_id", "event_key", "correlation_id",
+        "target_type", "event_kind", "sink_id",
     ):
         identity = str(
             value.get(field, "") if isinstance(value, Mapping)
             else getattr(value, field, "")
         )
-        if (
+        if not growth_target_enabled("landmark") and (
             identity in {"landmark", "landmarks", "garden_landmark"}
             or identity in LANDMARK_BY_ID
             or identity.startswith(("landmark_", "landmark:"))
         ):
+            return False
+        if not growth_target_enabled("mastery") and (
+            identity in {"mastery", "cultivation_mastery"}
+            or identity.startswith(("mastery_", "mastery:", "mastery-request:", "cultivation_mastery:"))
+        ):
+            return False
+        if not growth_target_enabled("legacy") and (
+            identity == "garden_legacy"
+            or (identity == "legacy" and field in {"target_type", "kind", "asset_category"})
+            or identity.startswith(("garden_legacy_", "garden_legacy:"))
+        ):
+            return False
+        if (not any(growth_target_enabled(kind) for kind in ("landmark", "mastery", "legacy"))
+                and identity.startswith(("growth-project:", "growth_project_"))):
             return False
     return True
 
@@ -1268,6 +1281,52 @@ def _session_history_row(item: RewardItemProjection) -> RewardDetailRow:
     return row
 
 
+@dataclass(frozen=True)
+class RewardFeedEntry:
+    item: RewardItemProjection
+    event_count: int = 1
+
+
+class RewardFeedHistory:
+    """Incremental session history; only adjacent ordinary Growth is combined."""
+
+    def __init__(self) -> None:
+        self.entries: list[RewardFeedEntry] = []
+        self._seen_bundles: set[str] = set()
+        self._seen_events: set[str] = set()
+
+    @staticmethod
+    def routine(item: RewardItemProjection) -> bool:
+        return item.kind is RewardHero.ROUTINE_GROWTH and not item.garden_coins and not item.inventory_items
+
+    def append(self, bundle: RewardBundleProjection) -> tuple[int, bool]:
+        """Return appended row count and whether the previous final row changed."""
+        if bundle.bundle_id in self._seen_bundles:
+            return 0, False
+        self._seen_bundles.add(bundle.bundle_id)
+        previous_count = len(self.entries)
+        changed = False
+        # The most notable event is the first visible card for a new answer.
+        # Ordinary Growth stays together below that answer's distinct rewards.
+        ordinary = tuple(item for item in bundle.all_items if self.routine(item))
+        notable = tuple(item for item in bundle.all_items if not self.routine(item))
+        for item in (*ordinary, *reversed(notable)):
+            if item.event_id in self._seen_events:
+                continue
+            self._seen_events.add(item.event_id)
+            if (self.routine(item) and self.entries and self.routine(self.entries[-1].item)
+                    and item.artwork_ref == self.entries[-1].item.artwork_ref):
+                last = self.entries[-1]
+                self.entries[-1] = RewardFeedEntry(
+                    replace(last.item, growth_units=last.item.growth_units + item.growth_units),
+                    last.event_count + 1,
+                )
+                changed = changed or len(self.entries) == previous_count
+            else:
+                self.entries.append(RewardFeedEntry(item))
+        return len(self.entries) - previous_count, changed
+
+
 def project_reward_session_history(
     bundles: Iterable[RewardBundleProjection],
 ) -> tuple[RewardDetailRow, ...]:
@@ -1611,7 +1670,7 @@ def project_committed_reward_bundle(
             garden_coins=coins,
             inventory_items=inventory,
             rarity=find.rarity,
-            artwork_ref=find.art_asset,
+            artwork_ref=standard_find_artwork_ref(find.find_id, find.art_asset),
             detail=find.reward_label,
             sequence=len(items),
         ))
@@ -1627,7 +1686,7 @@ def project_committed_reward_bundle(
                 category_label="Garden Find",
                 occurred_at=find.occurred_at or event.occurred_at,
                 rarity=find.rarity,
-                artwork_ref=find.art_asset,
+                artwork_ref=standard_find_artwork_ref(find.find_id, find.art_asset),
                 detail="Additional occurrence",
                 sequence=len(items),
             ))
@@ -1748,7 +1807,8 @@ def project_committed_reward_bundle(
             title = category
         artwork = environment_items[0] if environment_items else (
             inventory[0][0] if inventory else
-            coin_presentation.artwork_id if coin_presentation is not None else ""
+            coin_presentation.artwork_id if coin_presentation is not None else
+            "garden_reward" if kind is RewardHero.COIN_OR_BOOSTER else ""
         )
         detail = next(
             (str(receipt.description) for receipt in group if receipt.description),
@@ -1809,6 +1869,10 @@ def project_committed_reward_bundle(
             category_label="Coin reward",
             occurred_at=event.occurred_at,
             garden_coins=standalone_coins,
+            artwork_ref=coin_reward_receipt(
+                event.coin_awards[0].source_type if len(event.coin_awards) == 1 else "other",
+                standalone_coins,
+            ).artwork_id,
             sequence=len(items),
             is_routine=(
                 standalone_coins <= _MAX_ROUTINE_COIN_ONLY_AMOUNT
@@ -1841,6 +1905,7 @@ def project_committed_reward_bundle(
             category_label="Routine Growth",
             occurred_at=event.occurred_at,
             growth_units=growth_units,
+            artwork_ref="stored_growth" if suffix == "stored" else "",
             sequence=len(items),
         ))
 

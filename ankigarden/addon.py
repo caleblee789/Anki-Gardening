@@ -40,7 +40,8 @@ from .performance import RUNTIME_PERFORMANCE
 from .storage import GardenStorage, RevlogReadError, SchedulerBoundaryError
 from .sync_review_detector import SyncReviewDetector
 from .sync_reward_processor import SyncRewardProcessor
-from .ui.dashboard import GardenDashboard
+# The large Qt dashboard is needed only when its window is first opened.
+GardenDashboard = None
 from .ui.state import GardenUiCoordinator
 from .ui.transient_summary_coordinator import TransientSummaryCoordinator
 from .ui.home_widget import (
@@ -146,11 +147,10 @@ def _iter_submenus(menu: Any, seen: set[int] | None = None):
 class AnkiGardenApp:
     def __init__(self) -> None:
         self.config = ConfigManager(mw)
-        self.storage = GardenStorage(mw, self.config)
+        self.storage = GardenStorage(mw, self.config, deferred=True)
         self.engine = GardenGameEngine(self.config, self.storage)
         self.state_events = GardenUiCoordinator(mw)
         self.state_events.stateChanged.connect(self._invalidate_home_cache)
-        self.state_events.stateChanged.connect(self._invalidate_maintenance_cache)
         self.transient_summary_coordinator = TransientSummaryCoordinator(
             _focused_qt_widget
         )
@@ -158,7 +158,7 @@ class AnkiGardenApp:
             self.engine,
             self.storage,
             state_changed=self.state_events.notify,
-            history_invalidated=self._invalidate_maintenance_cache,
+            history_invalidated=self._invalidate_review_history,
             open_garden=self.open_dashboard,
             summary_coordinator=self.transient_summary_coordinator,
         )
@@ -211,12 +211,17 @@ class AnkiGardenApp:
         self._dashboard_open_attempts = 0
         self._dashboard_open_failures = 0
         self._dashboard_focus_plant_id = ""
+        self._supplies_open_pending = ""
         self._settings_open_pending = False
         self._starter_open_pending = False
         self._dashboard_select_plant_pending = False
         self._collection_open_pending = False
         self._collection_tab_pending = "plants"
         self._collection_focus_tier_id_pending = ""
+        from .runtime import ReconciliationCoordinator
+        self.runtime = ReconciliationCoordinator(self)
+        self.storage.runtime_coordinator = self.runtime
+        self.state_events.refresh_home = self._refresh_home_surface
 
     def _invalidate_home_cache(self, _reason: str = "") -> None:
         self._home_html_cache = None
@@ -230,6 +235,9 @@ class AnkiGardenApp:
 
     def _invalidate_review_history(self, reason: str) -> None:
         self._invalidate_maintenance_cache(reason)
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.invalidate(reason)
         invalidator = getattr(
             getattr(self, "reviewer_hooks", None),
             "invalidate_history",
@@ -254,7 +262,8 @@ class AnkiGardenApp:
 
     def _sync_reward_can_present(self) -> bool:
         """Arbitrate the sync receipt against Reviewer-owned surfaces."""
-
+        if bool(getattr(self.storage, "runtime_pending", False)):
+            return False
         reviewer = getattr(self, "reviewer_hooks", None)
         local_card = getattr(reviewer, "_session_summary_card", None)
         if local_card is not None:
@@ -291,6 +300,8 @@ class AnkiGardenApp:
         )
 
     def setup(self) -> None:
+        from .performance import watch_event_loop
+        watch_event_loop(mw)
         try:
             mw.addonManager.setWebExports(__name__, r"assets/.*\.(svg|png|webp)")
         except Exception:
@@ -316,6 +327,12 @@ class AnkiGardenApp:
             return
         if getattr(self, "_ui_face_capture_active", False):
             return
+        if getattr(self.storage, "runtime_pending", False):
+            # Fixture mutations begin only after the production startup
+            # pipeline has committed its initial verified state.
+            from aqt.qt import QTimer
+            QTimer.singleShot(100, self._maybe_start_ui_face_capture)
+            return
         self._ui_face_capture_active = True
         try:
             from .capture_ui_faces import start_capture
@@ -328,9 +345,31 @@ class AnkiGardenApp:
         route = _MAINTENANCE_PERFORMANCE_ROUTES.get(str(source), "other")
         started = RUNTIME_PERFORMANCE.begin()
         try:
+            runtime = getattr(self, "runtime", None)
+            if runtime is not None:
+                runtime.request(source)
+                # The saved Garden remains available during verification.
+                return True
             return self._perform_garden_maintenance(source)
         finally:
             RUNTIME_PERFORMANCE.finish(f"maintenance.{route}", started)
+
+    def _runtime_reconciled(self) -> None:
+        USER_NOTICES.clear(key="review_history")
+        self._mark_review_history_reconciled()
+        self.state_events.notify("history reconciled")
+        self.reviewer_hooks.refresh_from_external_state()
+        self._refresh_home_surface()
+        retry = getattr(self.sync_reward_presenter, "retry", None)
+        if callable(retry):
+            retry()
+
+    def _refresh_home_surface(self) -> None:
+        """Patch Garden's own DOM without resetting Anki's scheduler or page."""
+        if str(getattr(mw, "state", "")) in {"deckBrowser", "overview"}:
+            web = getattr(mw, "web", None)
+            if web is not None:
+                self._replace_home_garden_root(web)
 
     def _perform_garden_maintenance(self, source: str) -> bool:
         """Run rollover and revlog catch-up behind one fail-closed boundary."""
@@ -539,6 +578,11 @@ class AnkiGardenApp:
         op_changes = getattr(changes, "changes", None)
         if not bool(getattr(op_changes, "study_queues", False)):
             return
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.review_undone(self.storage.current_time_ms())
+            self.reviewer_hooks.invalidate_history("review undo")
+            return
         self._invalidate_review_history("review undo")
         try:
             recorded = self.engine.record_review_undo(
@@ -677,6 +721,16 @@ class AnkiGardenApp:
         self._collection_open_pending = True
         self.open_dashboard()
 
+    def open_supplies(self, group: str = "fertilizer") -> None:
+        """Open applied-effect controls after the shared dashboard is ready."""
+        self._settings_open_pending = False
+        self._starter_open_pending = False
+        self._collection_open_pending = False
+        self._dashboard_select_plant_pending = False
+        self._dashboard_focus_plant_id = ""
+        self._supplies_open_pending = "booster" if group == "booster" else "fertilizer"
+        self.open_dashboard()
+
     def open_garden_landmarks(self, *, focus_tier_id: str = "") -> None:
         """Stable project-specific route into Collection's Landmark tab."""
 
@@ -703,6 +757,11 @@ class AnkiGardenApp:
         if callable(dismiss_summary):
             dismiss_summary("garden")
         if str(plant_id or ""):
+            self._supplies_open_pending = ""
+            self._settings_open_pending = False
+            self._starter_open_pending = False
+            self._collection_open_pending = False
+            self._dashboard_select_plant_pending = False
             self._dashboard_focus_plant_id = str(plant_id)
         if bool(select_another_plant):
             self._settings_open_pending = False
@@ -788,6 +847,9 @@ class AnkiGardenApp:
                 starter_selected_callback = getattr(
                     reviewer_hooks, "on_starter_selected", None
                 )
+                global GardenDashboard
+                if GardenDashboard is None:
+                    from .ui.dashboard import GardenDashboard
                 candidate = GardenDashboard(
                     mw,
                     self.engine,
@@ -826,13 +888,14 @@ class AnkiGardenApp:
                 getattr(self, "_dashboard_focus_plant_id", "") or ""
             )
             if focus_plant_id:
+                self.dashboard.open_section("garden")
                 scene = getattr(self.dashboard, "scene", None)
                 select_plant = getattr(scene, "keep_card_open", None)
                 if callable(select_plant):
                     select_plant(focus_plant_id)
                 self._dashboard_focus_plant_id = ""
             acknowledge = getattr(self.dashboard, "acknowledge_rendered_feedback", None)
-            if callable(acknowledge):
+            if callable(acknowledge) and not getattr(self.storage, "runtime_pending", False):
                 acknowledge()
             opening_settings = bool(getattr(self, "_settings_open_pending", False))
             opening_starter = bool(getattr(self, "_starter_open_pending", False))
@@ -908,6 +971,10 @@ class AnkiGardenApp:
                 self._collection_open_pending = False
                 self._collection_tab_pending = "plants"
                 self._collection_focus_tier_id_pending = ""
+            elif getattr(self, "_supplies_open_pending", ""):
+                group = self._supplies_open_pending
+                self._supplies_open_pending = ""
+                self.dashboard.open_section("shop", "supplies", item_id=group)
             else:
                 prompt_starter = getattr(self.dashboard, "_present_starter_setup_if_needed", None)
                 if callable(prompt_starter):
@@ -995,7 +1062,11 @@ class AnkiGardenApp:
 
     def _on_sync_will_start(self, *_args: object, **_kwargs: object) -> None:
         """Establish a clean local reward boundary before collection sync."""
-
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.invalidate("sync start", suspended=True)
+            self.reviewer_hooks.invalidate_history("sync start")
+            return
         detector = getattr(self, "sync_review_detector", None)
         begin = getattr(detector, "begin", None)
         if not callable(begin):
@@ -1018,6 +1089,11 @@ class AnkiGardenApp:
             )
 
     def _on_sync_finished(self, *_args: object, **_kwargs: object) -> None:
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.invalidate("sync completion", replacement=self._collection_replacement_pending)
+            self._collection_replacement_pending = False
+            return
         self._invalidate_review_history("sync completion")
         detector = getattr(self, "sync_review_detector", None)
         processor = getattr(self, "sync_reward_processor", None)
@@ -1083,6 +1159,7 @@ class AnkiGardenApp:
             from aqt import gui_hooks
 
             hook_callbacks = (
+                ("operation_did_execute", self._on_operation_did_execute),
                 (
                     "collection_did_load",
                     getattr(
@@ -1135,6 +1212,15 @@ class AnkiGardenApp:
         except Exception:
             logger.exception("Anki Garden: failed to attach collection reload hook")
 
+    def _on_operation_did_execute(self, changes: Any, handler: Any) -> None:
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.operation_finished(changes, handler)
+        else:
+            invalidator = getattr(self.storage, "invalidate_due_snapshot", None)
+            if callable(invalidator):
+                invalidator()
+
     def _on_collection_did_load(self, *_args: object, **_kwargs: object) -> None:
         self._invalidate_home_cache("collection reload")
         self._invalidate_review_history("collection reload")
@@ -1157,6 +1243,9 @@ class AnkiGardenApp:
         **_kwargs: object,
     ) -> None:
         self._collection_replacement_pending = True
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.invalidate("collection replacement", suspended=True, replacement=True)
         detector = getattr(self, "sync_review_detector", None)
         invalidate = getattr(detector, "invalidate_one_way", None)
         if callable(invalidate):
@@ -1184,6 +1273,10 @@ class AnkiGardenApp:
         *args: object,
         **_kwargs: object,
     ) -> None:
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.invalidate("collection replacement", replacement=True)
+            return
         detector = getattr(self, "sync_review_detector", None)
         note_generation = getattr(detector, "note_collection_generation", None)
         if callable(note_generation):
@@ -1212,6 +1305,9 @@ class AnkiGardenApp:
                 )
 
     def _on_profile_will_close(self, *_args: object, **_kwargs: object) -> None:
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.close()
         self._collection_replacement_pending = False
         detector = getattr(self, "sync_review_detector", None)
         invalidate = getattr(detector, "invalidate", None)
@@ -1226,6 +1322,12 @@ class AnkiGardenApp:
             close_for_profile()
 
     def _on_profile_did_open(self, *_args: object, **_kwargs: object) -> None:
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None and runtime.closed:
+            from .runtime import ReconciliationCoordinator
+            self.runtime = ReconciliationCoordinator(self)
+            self.storage.runtime_coordinator = self.runtime
+            self.runtime.request("profile opened")
         detector = getattr(self, "sync_review_detector", None)
         note_generation = getattr(detector, "note_collection_generation", None)
         if callable(note_generation):
@@ -1480,6 +1582,9 @@ class AnkiGardenApp:
 
     def _home_garden_html_for_injection(self) -> str:
         """Refresh Garden state without allowing it to abort Anki home rendering."""
+        runtime = getattr(self, "runtime", None)
+        if runtime is not None:
+            runtime.request("home rendering")
         self._sync_home_motion_preferences()
         state_events = getattr(self, "state_events", None)
         revision = int(getattr(state_events, "revision", 0))
@@ -1824,6 +1929,12 @@ class AnkiGardenApp:
 
     def _reviews_today(self) -> int:
         fallback = int(getattr(self.storage.state.daily_stats, "reviewed", 0))
+        if getattr(self.storage, "runtime_pending", False):
+            return fallback
+        index = getattr(self.storage, "history_index", None)
+        if index is not None:
+            today = self.storage.current_scheduler_day()
+            return next((int(row["total"]) for row in index.summaries() if row["day"] == today), 0)
         try:
             collection = getattr(mw, "col", None)
             if collection is None or getattr(collection, "db", None) is None:

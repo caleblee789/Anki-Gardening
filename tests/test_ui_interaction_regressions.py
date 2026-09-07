@@ -96,7 +96,7 @@ def test_scene_emphasis_tracks_hover_selection_and_nurture_independently(
     }
 
 
-def test_scene_sanitization_keeps_exactly_one_nurtured_plant() -> None:
+def test_scene_sanitization_keeps_exactly_one_nurtured_plant(monkeypatch) -> None:
     sanitize = _compiled_method(
         SCENE_PATH,
         "GardenSceneWidget",
@@ -156,8 +156,11 @@ def test_scene_sanitization_keeps_exactly_one_nurtured_plant() -> None:
         if plant["is_active"]
     ] == ["plant-a"]
     assert repaired["landmark_id"] == "mossy_stone_path"
-    assert repaired["plants"][0]["mastery_rank_id"] == "gold"
+    assert repaired["plants"][0]["mastery_rank_id"] == ""
     assert repaired["plants"][1]["mastery_rank_id"] == ""
+    from ankigarden import feature_availability
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", True)
+    assert sanitize(scene, payload)["plants"][0]["mastery_rank_id"] == "gold"
 
     payload["landmark_id"] = "birdbath_terrace"
     mismatched = sanitize(scene, payload)
@@ -1495,13 +1498,14 @@ def test_external_surface_refresh_never_resets_reviewer_and_only_refreshes_home_
     for state, expected_resets, expected_deck, expected_overview in (
         ("review", 0, 0, 0),
         ("reviewer", 0, 0, 0),
-        ("deckBrowser", 1, 1, 0),
-        ("overview", 1, 0, 1),
+        ("deckBrowser", 0, 1, 0),
+        ("overview", 0, 0, 1),
     ):
         deck = Surface()
         overview = Surface()
         resets: list[str] = []
         dashboard = SimpleNamespace(
+            state_events=SimpleNamespace(),
             mw_window=SimpleNamespace(
                 state=state,
                 deckBrowser=deck,

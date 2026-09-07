@@ -1386,6 +1386,7 @@ def test_summary_lifecycle_calls_the_injected_engine_session_hooks(monkeypatch):
     engine = SimpleNamespace(
         begin_review_session=lambda: calls.append("begin"),
         end_review_session=lambda: calls.append("end"),
+        active_plant=lambda: plant,
         FERTILIZERS={"quality": SimpleNamespace(name="Quality Fertilizer")},
     )
     handler = reviewer_module.ReviewerHookHandler(

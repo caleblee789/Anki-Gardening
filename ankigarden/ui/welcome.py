@@ -1,11 +1,11 @@
-"""The first Garden celebration and its progressively disclosed reward receipt."""
+"""The first Garden celebration and its immediately visible reward receipt."""
 from __future__ import annotations
 
 import time
 from typing import Any
 
 from aqt.qt import (
-    QEvent, QFrame, QHBoxLayout, QLabel, QObject, QPushButton, QScrollArea,
+    QBoxLayout, QEvent, QFrame, QHBoxLayout, QLabel, QObject, QPushButton, QScrollArea,
     QSize, QSizePolicy, QTimer, QVBoxLayout, QWidget, Qt,
 )
 
@@ -23,7 +23,7 @@ from .theme import TextRole, apply_text_role, typography_stylesheet
 
 
 class WelcomeCard(QFrame):
-    """One child card: a short greeting, with details available on request."""
+    """A content-sized welcome receipt with one dismissal action."""
 
     def __init__(self, parent: QWidget, dismiss: Any, engine: Any) -> None:
         super().__init__(parent)
@@ -74,14 +74,15 @@ class WelcomeCard(QFrame):
         actions = QHBoxLayout()
         self._actions_layout = actions
         actions.setContentsMargins(0, 0, 0, 0)
-        self.view_rewards = QPushButton(WELCOME_REWARDS_ACTION, self)
-        self.view_rewards.setObjectName("gardenWelcomeViewRewards")
+        self.view_rewards = QPushButton("Start gardening", self)
+        self.start_gardening = self.view_rewards
+        self.view_rewards.setObjectName("gardenWelcomeStartGardening")
         self.view_rewards.setProperty("receiptPrimary", True)
         self.view_rewards.setMinimumHeight(32)
         self.view_rewards.setAutoDefault(False)
         self.view_rewards.setDefault(False)
         self.view_rewards.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.view_rewards.clicked.connect(self._toggle_details)
+        self.view_rewards.clicked.connect(dismiss)
         actions.addWidget(self.view_rewards)
         actions.addStretch(1)
         root.addLayout(actions)
@@ -100,32 +101,46 @@ class WelcomeCard(QFrame):
     def set_receipt(self, receipt: Any) -> None:
         presentation = present_welcome(receipt)
         content = QWidget(self.details)
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 2, 10, 6)
-        layout.setSpacing(8)
-        layout.addWidget(self._label("Welcome gift", TextRole.CARD_TITLE))
+        layout = QHBoxLayout(content)
+        layout.setContentsMargins(0, 2, 0, 6)
+        layout.setSpacing(16)
+        self._reward_columns_layout = layout
+        self._reward_columns = []
+
+        def column(title: str) -> QVBoxLayout:
+            panel = QWidget(content)
+            panel.setMinimumWidth(0)
+            panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            rows = QVBoxLayout(panel)
+            rows.setContentsMargins(0, 0, 0, 0)
+            rows.setSpacing(8)
+            rows.setAlignment(Qt.AlignmentFlag.AlignTop)
+            rows.addWidget(self._label(title, TextRole.CARD_TITLE))
+            layout.addWidget(panel, 1)
+            self._reward_columns.append(panel)
+            return rows
+
+        gift = column("Welcome gift")
         for reward in presentation.gift:
-            layout.addWidget(self._reward_row(reward))
+            gift.addWidget(self._reward_row(reward))
         if presentation.show_history:
-            layout.addSpacing(10)
-            layout.addWidget(self._label("Past Anki study", TextRole.CARD_TITLE))
+            history = column("Past Anki study")
             intro = self._label(presentation.history_intro, TextRole.SECONDARY)
             intro.setObjectName("gardenWelcomePastStudy")
-            layout.addWidget(intro)
+            history.addWidget(intro)
             for reward in presentation.history:
-                layout.addWidget(self._reward_row(reward))
+                history.addWidget(self._reward_row(reward))
             if presentation.achievement_count:
                 count = presentation.achievement_count
-                layout.addWidget(self._label(
-                    f"{count} {'achievement' if count == 1 else 'achievements'} earned", TextRole.CARD_TITLE,
+                history.addWidget(self._label(
+                    f"{count} {'achievement' if count == 1 else 'achievements'} earned", TextRole.SECONDARY,
                 ))
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.details.setWidget(content)
-        self.expanded = False
-        self.body.show()
-        self.details.hide()
-        self.view_rewards.setText(WELCOME_REWARDS_ACTION)
-        self.view_rewards.setAccessibleDescription("Show the rewards already added to your garden.")
+        self.expanded = True
+        self.body.hide()
+        self.details.show()
+        self.view_rewards.setText("Start gardening")
+        self.view_rewards.setAccessibleDescription("Close the welcome and start gardening. Your rewards are already saved.")
 
     def _reward_row(self, reward: Any) -> QWidget:
         art = QLabel(self)
@@ -155,47 +170,43 @@ class WelcomeCard(QFrame):
         return row.widget
 
     def _toggle_details(self) -> None:
-        self.expanded = not self.expanded
-        self.body.setVisible(not self.expanded)
-        self.details.setVisible(self.expanded)
-        self.view_rewards.setText("Hide rewards" if self.expanded else WELCOME_REWARDS_ACTION)
-        self.view_rewards.setAccessibleDescription(
-            "Welcome rewards expanded." if self.expanded else
-            "Show the rewards already added to your garden."
-        )
+        """Older capture callers may request details; they are always visible."""
         self.reposition()
-        QTimer.singleShot(0, self.reposition)
 
     def reposition(self) -> None:
         parent = self.parentWidget()
-        width = min(500, max(0, parent.width() - 32))
+        preferred_width = 720 if len(getattr(self, "_reward_columns", ())) > 1 else 440
+        width = min(preferred_width, max(0, parent.width() - 32))
         self.setFixedWidth(width)
-        # Reserve the main navigation and nurtured-plant bar. Only the optional
-        # details scroll; the heading, close button and disclosure stay visible.
+        margins = self.layout().contentsMargins()
+        inner_width = max(0, width - margins.left() - margins.right() - 2 * self.frameWidth())
+        columns = getattr(self, "_reward_columns_layout", None)
+        if columns is not None:
+            columns.setDirection(QBoxLayout.Direction.TopToBottom if width < 620 else QBoxLayout.Direction.LeftToRight)
+            count = len(self._reward_columns) if width >= 620 else 1
+            panel_width = max(1, (inner_width - 12 - (count - 1) * columns.spacing()) // count)
+            for panel in self._reward_columns:
+                for label in panel.findChildren(QLabel):
+                    if label.property("receiptEventTitle"):
+                        label.setMinimumHeight(max(0, label.heightForWidth(max(1, panel_width - 52))))
+                panel.layout().invalidate()
+            columns.invalidate()
         self.layout().activate()
-        compact = self.layout().totalHeightForWidth(width)
-        if compact < 0:
-            compact = self.sizeHint().height()
-        desired = compact
-        if self.expanded and self.details.widget() is not None:
-            margins = self.layout().contentsMargins()
-            border = 2 * self.frameWidth()
-            inner_width = max(0, width - border - margins.left() - margins.right())
-            content = self.details.widget()
-            content_height = content.layout().totalHeightForWidth(max(0, inner_width - 16))
+        content = self.details.widget()
+        content_height = 0
+        if content is not None:
+            content.setMinimumHeight(0)
+            content_height = content.layout().totalHeightForWidth(max(0, inner_width - 12))
             if content_height < 0:
                 content_height = content.sizeHint().height()
             content_height = max(content_height, content.minimumSizeHint().height())
-            # This overlay owns its overflow independently of the canvas shell.
-            # Reserve the complete receipt so its final reward stays scrollable.
             content.setMinimumHeight(content_height)
-            heading_height = self._heading_layout.totalHeightForWidth(inner_width)
-            if heading_height < 0:
-                heading_height = self._heading_layout.sizeHint().height()
-            desired = (content_height + heading_height + self._actions_layout.sizeHint().height()
-                       + margins.top() + margins.bottom() + border + 2 * self.layout().spacing())
-        height = min(max(0, parent.height() - 32), 540, desired)
-        self.setFixedHeight(max(0, height))
+        heading_height = self._heading_layout.totalHeightForWidth(inner_width)
+        if heading_height < 0:
+            heading_height = self._heading_layout.sizeHint().height()
+        desired = (content_height + heading_height + self._actions_layout.sizeHint().height()
+                   + margins.top() + margins.bottom() + 2 * self.frameWidth() + 2 * self.layout().spacing())
+        self.setFixedHeight(max(0, min(parent.height() - 32, 540, desired)))
         self.move((parent.width() - width) // 2, 16)
         self.raise_()
 

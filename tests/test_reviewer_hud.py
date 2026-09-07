@@ -421,7 +421,9 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
     empty = project_reviewer_hud(SimpleNamespace(active_plant=lambda: None), no_target).nurture
     assert empty.empty_heading == "No plant selected"
     assert empty.empty_message == "Growth earned during review will be stored."
-    assert empty.stored_growth_line == "12.5 Stored Growth in reserve"
+    assert not empty.stored_growth_line
+    assert empty.growth_destination.detail == "12.5 Growth in reserve"
+    assert empty.growth_destination.artwork_id == "stored_growth"
 
     full = SimpleNamespace(
         plant_id="plant-1",
@@ -472,10 +474,10 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
         destination.kind,
         destination.target_type,
         destination.project_id,
-    ) == ("active_project", "mastery", "rose")
-    assert destination.heading == "Rose Cultivation Mastery"
-    assert destination.artwork_id
-    assert destination.status == "In progress"
+    ) == ("stored_growth", "", "")
+    assert destination.heading == "Stored Growth"
+    assert destination.artwork_id == "stored_growth"
+    assert destination.stored_growth_units == 1_250
 
     choose_snapshot = build_growth_projects_snapshot(
         state_revision=2,
@@ -781,7 +783,7 @@ def test_widget_consumes_the_canonical_reward_bundle_shape() -> None:
 def test_named_find_art_uses_the_shared_item_resolver_in_reviewer_ui() -> None:
     assert 'getattr(hero, "artwork_ref", "")' in REVIEWER_HOOK_SOURCE
     assert 'resolver_names = (' in REVIEWER_HOOK_SOURCE
-    assert '("resolve_item_asset",)' in REVIEWER_HOOK_SOURCE
+    assert '"resolve_item_asset", "resolve_garden_feature_preview_asset", "resolve_scenery_preview_asset"' in REVIEWER_HOOK_SOURCE
     assert 'asset_category == "ui" and asset_key' in REVIEWER_HOOK_SOURCE
     assert 'hero, "reward_type", ""' in REVIEWER_HOOK_SOURCE
     assert '"garden_pouch": "Garden Pouch artwork"' in REVIEWER_HOOK_SOURCE
@@ -1727,3 +1729,14 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
     assert "changed = changed_metrics[index]" in session_feedback
     assert "changed_metrics=changed_metrics" in WIDGET_SOURCE
     assert "receipt_metric(self._session_footer" in WIDGET_SOURCE
+
+
+def test_custom_hud_position_preserves_anchor_and_stays_clear_of_answer_controls():
+    expanded = reviewer_hud_geometry(1200, 900, collapsed=False, dock="right", content_height=360, answer_controls_top=820, position=(.7, .2))
+    compact = reviewer_hud_geometry(1200, 900, collapsed=True, dock="right", answer_controls_top=820, position=(.7, .2))
+    assert expanded[0] + expanded[2] == compact[0] + compact[2]
+    assert expanded[1] == compact[1]
+    for width, height, controls in ((800, 600, 520), (1600, 960, 850)):
+        x, y, w, h = reviewer_hud_geometry(width, height, collapsed=False, dock="right", content_height=360, answer_controls_top=controls, position=(1., 1.))
+        assert 0 <= x <= width - w
+        assert 0 <= y <= reviewer_hud_safe_bottom(height, controls) - h

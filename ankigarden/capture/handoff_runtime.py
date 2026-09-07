@@ -108,10 +108,12 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
                         scheduler_day=(today - timedelta(days=31 - min(29, (n-1)//167))).isoformat(),
                         card_day_ordinal=(n-1) % 167 + 1,
                     ) for n in range(1, 5001))
-                    original_history = storage.load_eligible_review_history
-                    storage.load_eligible_review_history = lambda: HistoricalReviewSnapshot(
+                    history = HistoricalReviewSnapshot(
                         entries=entries, high_water_revlog_id=5000, fingerprint="capture-welcome-5000-v1")
-                    cleanups.append(lambda: setattr(storage, "load_eligible_review_history", original_history))
+                    for name in ("load_eligible_review_history", "load_reconciliation_history"):
+                        original = getattr(storage, name)
+                        setattr(storage, name, lambda: history)
+                        cleanups.append(lambda name=name, original=original: setattr(storage, name, original))
                     ok, message = engine.reconcile_reward_history()
                     if not ok:
                         raise RuntimeError(message)
@@ -137,13 +139,11 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
                     dashboard.welcome.settle()
                     _settle()
                     card = dashboard.welcome.card
-                    if route == "welcome-rewards" and not card.expanded:
-                        card.view_rewards.click()
-                    _settle()
                     receipt = storage.state.welcome_receipt
                     checks["gift_committed"] = receipt is not None and bool(receipt.gift_rewards)
                     checks["welcome_visible"] = card.isVisible()
-                    checks["disclosure_matches"] = card.expanded == (route == "welcome-rewards")
+                    checks["rewards_immediately_visible"] = card.expanded
+                    checks["start_gardening_visible"] = card.start_gardening.isVisible()
                 capture()
                 return
 
@@ -344,7 +344,7 @@ def _capture_reviewer(runner, label, route, capture_and_advance):
                 for number, (coins, growth, title) in enumerate(((0, 17, "Growth earned"), (7, 40, "Checkpoint reward"), (3, 20, "Garden reward")), 1):
                     identity = f"capture:{label}:{number}"
                     receipts = engine._grant_reward_bundle(
-                        identity, source="review", source_id=f"capture-answer-{number}",
+                        identity, source="plant_milestone" if number == 2 else "review", source_id=f"capture-answer-{number}",
                         correlation_id=identity, reason=title, title=title, coins=coins, growth=growth, plant=plant)
                     if not receipts:
                         raise RuntimeError("Committed history fixture produced no receipts")
@@ -370,7 +370,7 @@ def _capture_reviewer(runner, label, route, capture_and_advance):
                 runner.app.storage.save()
                 hud.open_reward_history()
                 _settle()
-                panel = hud._reward_history_panel
+                panel = hud._reward_feed
                 checks.pop("hud_collapsed", None)
                 checks["hud_expanded"] = not hud._collapsed
                 checks["reward_list_visible"] = panel.isVisible()

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+
 import time
 from dataclasses import dataclass
+
+
+HISTORY_UPDATE_MESSAGE = "Your Anki Garden is still updating"
 
 
 @dataclass

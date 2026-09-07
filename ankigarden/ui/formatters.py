@@ -81,6 +81,44 @@ class GardenDateService:
             return f"Today, {time_text}"
         return f"{self._display_date(event_day)}, {time_text}"
 
+    def format_session_range(self, started_at: str, ended_at: str = "", *, status: str = "ended") -> str:
+        """Show only recorded times; a missing end never becomes a duration."""
+        try:
+            start = self._local_datetime(started_at) if started_at else None
+            end = self._local_datetime(ended_at) if ended_at and status == "ended" else None
+        except (TypeError, ValueError):
+            return "Time unavailable"
+        clock = lambda stamp: stamp.strftime("%I:%M %p").lstrip("0")
+        if start is None:
+            return f"Ended {clock(end)}" if end else "Time unavailable"
+        if end is None:
+            return f"{clock(start)} · In progress" if status == "open" else f"Started {clock(start)}"
+        seconds = (end.astimezone(timezone.utc) - start.astimezone(timezone.utc)).total_seconds()
+        if seconds < 0:
+            return "Time unavailable"
+        if start.date() != end.date():
+            times = f"{self.format_date(start, include_year=False)}, {clock(start)}–{self.format_date(end, include_year=False)}, {clock(end)}"
+        else:
+            first = clock(start)
+            if start.strftime("%p") == end.strftime("%p"):
+                first = first.rsplit(" ", 1)[0]
+            times = f"{first}–{clock(end)}"
+        duration = "<1 min" if seconds < 60 else f"{int(seconds // 60):,} min" if seconds < 3600 else format_duration(seconds)
+        return f"{times} · {duration}"
+
+    def format_activity_day(self, scheduler_day: str, timestamp: str) -> str:
+        """Relative headings follow Anki's day, not the local midnight boundary."""
+        try:
+            event_day = date.fromisoformat(scheduler_day) if scheduler_day else self._local_datetime(timestamp).date()
+        except (TypeError, ValueError):
+            return "Earlier activity"
+        today = self.scheduler_day()
+        if event_day == today:
+            return "Today"
+        if event_day == today - timedelta(days=1):
+            return "Yesterday"
+        return self.format_date(event_day, scheduler_day=event_day.isoformat(), include_year=event_day.year != today.year)
+
 
 def _to_decimal(value: Any, *, default: Decimal = Decimal("0")) -> Decimal:
     try:

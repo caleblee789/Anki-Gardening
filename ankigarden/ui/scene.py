@@ -42,10 +42,13 @@ from ..build_capabilities import CAPTURE_HARNESS_ENABLED
 from ..performance import RUNTIME_PERFORMANCE
 from .landmarks import (
     DEFAULT_LANDMARK_ACTIONS,
+    GARDEN_BACKGROUND_FOCAL,
     LandmarkAction,
+    background_cover_rect,
     normalized_landmark_action,
     project_landmark_bounds,
     project_landmark_outline_paths,
+    project_landmark_point,
     project_landmark_polygon,
     resolve_scene_landmarks,
 )
@@ -113,6 +116,13 @@ HIGHLIGHT_CACHE_LIMIT = 32
 
 
 logger = logging.getLogger(__name__)
+
+
+class _LandmarkHotspot(QToolButton):
+    """Keep direct button events consistent with the shaped pointer target."""
+
+    def hitButton(self, position: Any) -> bool:
+        return self.rect().contains(position) and self.mask().contains(position)
 
 
 class GardenSceneWidget(QWidget):
@@ -255,6 +265,7 @@ class GardenSceneWidget(QWidget):
             str, tuple[tuple[tuple[float, float], ...], ...]
         ] = {}
         self._landmark_labels: dict[str, str] = {}
+        self._landmark_label_anchors: dict[str, tuple[float, float]] = {}
         self._landmark_hotspots: dict[str, QToolButton] = {}
         self._landmark_action_id = ""  # Compatibility alias for the first active landmark.
         self._nursery_hotspot = self._create_landmark_hotspot("nursery_entrance")
@@ -406,6 +417,7 @@ class GardenSceneWidget(QWidget):
 
     def hideEvent(self, event: Any) -> None:
         self.timer.stop()
+        self._clear_landmark_highlight()
         super().hideEvent(event)
 
     def showEvent(self, event: Any) -> None:
@@ -1071,12 +1083,13 @@ class GardenSceneWidget(QWidget):
         return False
 
     def _create_landmark_hotspot(self, landmark_id: str) -> QToolButton:
-        button = QToolButton(self)
+        button = _LandmarkHotspot(self)
         button.setText("")
         button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setStyleSheet(
-            "QToolButton { background:transparent; border:0; }"
+            "QToolButton { background:transparent; border:0; padding:0; "
+            "min-width:0; min-height:0; max-width:16777215px; max-height:16777215px; }"
         )
         button.clicked.connect(
             lambda _checked=False, landmark_id=landmark_id: self._activate_landmark_by_id(landmark_id)
@@ -1102,6 +1115,7 @@ class GardenSceneWidget(QWidget):
         getattr(self, "_landmark_polygons", {}).clear()
         getattr(self, "_landmark_outline_paths", {}).clear()
         getattr(self, "_landmark_labels", {}).clear()
+        getattr(self, "_landmark_label_anchors", {}).clear()
         if self._interaction.placing:
             self.landmarksChanged.emit()
             return
@@ -1110,7 +1124,8 @@ class GardenSceneWidget(QWidget):
         background_path, _legacy, variant, _name = self._surface_asset_record(
             canvas.width(), canvas.height()
         )
-        if background_path is None or self._pixmap_for(background_path) is None:
+        background = self._pixmap_for(background_path) if background_path is not None else None
+        if background is None:
             self.landmarksChanged.emit()
             return
 
@@ -1122,13 +1137,8 @@ class GardenSceneWidget(QWidget):
             interactive=self.interactive,
             actions=self._landmark_actions,
         )
-        source_aspect = float(variant.get("width", 4)) / max(1.0, float(variant.get("height", 3)))
-        focal_raw = variant.get("focal_point", [0.5, 0.5])
-        focal = (
-            (float(focal_raw[0]), float(focal_raw[1]))
-            if isinstance(focal_raw, (list, tuple)) and len(focal_raw) == 2
-            else (0.5, 0.5)
-        )
+        source_aspect = background.width() / max(1.0, background.height())
+        focal = GARDEN_BACKGROUND_FOCAL
         for landmark in landmarks:
             geometry = project_landmark_bounds(
                 landmark,
@@ -1152,11 +1162,7 @@ class GardenSceneWidget(QWidget):
                 geometry[3],
             )
             button.setGeometry(*absolute_geometry)
-            button.show()
-            button.raise_()
-            self._landmark_action_by_id[landmark.landmark_id] = landmark.action_id
-            self._landmark_rects[landmark.landmark_id] = QRectF(*absolute_geometry)
-            self._landmark_polygons[landmark.landmark_id] = tuple(
+            polygon = tuple(
                 (x + canvas.x(), y + canvas.y())
                 for x, y in project_landmark_polygon(
                     landmark,
@@ -1166,6 +1172,26 @@ class GardenSceneWidget(QWidget):
                     focal=focal,
                 )
             )
+            hit_path = QPainterPath()
+            hit_path.moveTo(QPointF(
+                polygon[0][0] - button.x(), polygon[0][1] - button.y(),
+            ))
+            for x, y in polygon[1:]:
+                hit_path.lineTo(QPointF(x - button.x(), y - button.y()))
+            hit_path.closeSubpath()
+            # QRegion rounds to logical pixels (less than one pixel of edge
+            # tolerance). Do not expand back to a rectangular click target.
+            region = QRegion(hit_path.toFillPolygon().toPolygon()).intersected(
+                QRegion(button.rect())
+            )
+            if region.isEmpty():
+                continue
+            button.setMask(region)
+            button.show()
+            button.raise_()
+            self._landmark_action_by_id[landmark.landmark_id] = landmark.action_id
+            self._landmark_rects[landmark.landmark_id] = QRectF(*absolute_geometry)
+            self._landmark_polygons[landmark.landmark_id] = polygon
             self._landmark_outline_paths[landmark.landmark_id] = tuple(
                 tuple((x + canvas.x(), y + canvas.y()) for x, y in path)
                 for path in project_landmark_outline_paths(
@@ -1177,6 +1203,14 @@ class GardenSceneWidget(QWidget):
                 )
             )
             self._landmark_labels[landmark.landmark_id] = landmark.accessible_name
+            if landmark.label_anchor is not None:
+                label_x, label_y = project_landmark_point(
+                    landmark.label_anchor, width=canvas.width(), height=canvas.height(),
+                    source_aspect=source_aspect, focal=focal,
+                )
+                self._landmark_label_anchors[landmark.landmark_id] = (
+                    label_x + canvas.x(), label_y + canvas.y(),
+                )
         self._landmark_action_id = next(iter(self._landmark_action_by_id.values()), "")
         self._sync_landmark_occlusion()
         self.landmarksChanged.emit()
@@ -1249,6 +1283,14 @@ class GardenSceneWidget(QWidget):
     def _activate_landmark_by_id(self, landmark_id: str) -> None:
         self._activate_landmark(self._landmark_action_by_id.get(str(landmark_id), ""))
 
+    def _clear_landmark_highlight(self) -> None:
+        # Mouse focus and hover belong to the current visit to the Garden.
+        # A hidden page must not restore a previously activated building glow.
+        for button in self._landmark_hotspots.values():
+            button.clearFocus()
+            button.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, False)
+        self.update()
+
     def _activate_landmark(self, action_id: str | None = None) -> None:
         normalized_id = str(action_id or self._landmark_action_id or "").strip()
         if (
@@ -1265,6 +1307,7 @@ class GardenSceneWidget(QWidget):
         self._inline_message = ""
         if was_selected:
             self.selectionChanged.emit("")
+        self._clear_landmark_highlight()
         self.landmarkActivated.emit(normalized_id)
         self.update()
 
@@ -1955,7 +1998,7 @@ class GardenSceneWidget(QWidget):
         RUNTIME_PERFORMANCE.finish("scene.paint", performance_started)
 
     def _draw_landmark_affordances(self, painter: QPainter) -> None:
-        """Trace building silhouettes while keeping generous rectangular hits."""
+        """Trace the exposed building edges above their shaped click targets."""
 
         if self._interaction.placing:
             return
@@ -1980,17 +2023,21 @@ class GardenSceneWidget(QWidget):
                 path.closeSubpath()
             focused = button.hasFocus()
             painter.save()
+            painter.setClipRect(canvas, Qt.ClipOperation.IntersectClip)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(QPen(
                 QColor("#e5f2a6") if focused else QColor(244, 213, 138, 235),
                 3.0 if focused else 2.0,
                 Qt.PenStyle.SolidLine,
                 Qt.PenCapStyle.RoundCap,
-                Qt.PenJoinStyle.RoundJoin,
+                Qt.PenJoinStyle.MiterJoin,
             ))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
-            bounds = path.boundingRect()
+            bounds = self._landmark_rects[landmark_id]
+            anchor = self._landmark_label_anchors.get(
+                landmark_id, (bounds.center().x(), bounds.bottom() + 7.0),
+            )
             label_text = self._landmark_labels.get(landmark_id, "Open")
             metrics = painter.fontMetrics()
             label_width = min(
@@ -2002,10 +2049,10 @@ class GardenSceneWidget(QWidget):
                 canvas.left() + 8.0,
                 min(
                     canvas.right() - label_width - 8.0,
-                    bounds.center().x() - label_width / 2,
+                    anchor[0] - label_width / 2,
                 ),
             )
-            below = bounds.bottom() + 7.0
+            below = max(bounds.bottom() + 7.0, anchor[1])
             label_y = (
                 below
                 if below + label_height <= canvas.bottom() - 8
@@ -4030,13 +4077,15 @@ class GardenSceneWidget(QWidget):
             return False
         source_w = max(1, pixmap.width())
         source_h = max(1, pixmap.height())
-        scale = max(box.width() / source_w, box.height() / source_h) if cover else min(
-            box.width() / source_w, box.height() / source_h
-        )
-        draw_w = source_w * scale
-        draw_h = source_h * scale
-        target = QRectF(box.x() - (draw_w - box.width()) * focal[0],
-                        box.y() - (draw_h - box.height()) * focal[1], draw_w, draw_h)
+        if cover:
+            x, y, draw_w, draw_h = background_cover_rect(
+                box.width(), box.height(), source_w, source_h, focal,
+            )
+        else:
+            scale = min(box.width() / source_w, box.height() / source_h)
+            draw_w, draw_h = source_w * scale, source_h * scale
+            x, y = -(draw_w - box.width()) * focal[0], -(draw_h - box.height()) * focal[1]
+        target = QRectF(box.x() + x, box.y() + y, draw_w, draw_h)
         painter.save()
         painter.setOpacity(opacity)
         painter.setClipRect(box)
@@ -4111,7 +4160,7 @@ class GardenSceneWidget(QWidget):
             path,
             box,
             opacity=0.98,
-            focal=(0.5, 0.48),
+            focal=GARDEN_BACKGROUND_FOCAL,
         )
         return foreground_drawn
 

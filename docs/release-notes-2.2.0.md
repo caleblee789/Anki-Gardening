@@ -84,12 +84,13 @@
   ownership are preserved; an equipped retired item falls back to Seedling Sign.
 - Outdoor decorations use individual ground-contact metadata and subtle shadows.
   Tall props appear in front of the middle bed. Home omits decoration artwork.
-- Four cumulative Cultivation Mastery ranks per species provide cosmetic
-  favorite-plant goals after Full Bloom; unpaid ranks do not block later Growth
-  funding.
-- A learner-acknowledged active project receives only final overflow after
-  plant routing. Existing Stored Growth can be contributed with a revalidated
-  atomic quote, while no-target play preserves the complete reserve.
+- Cultivation Mastery and Garden Legacy join Landmarks as deferred features.
+  Saved funding, claims, and selections remain intact; new progress and spending
+  are disabled, and their controls, artwork overlays, and reward details are hidden.
+- Final overflow after planted plants becomes Stored Growth. Its existing bottle
+  icon and positive balance appear beside Coins on Garden and in relevant expanded
+  reviewer states. Zero balances disappear completely. Stored Growth cannot be spent
+  in this version; receipts show the amount added by each reward.
 
 ## Persistence and migration
 

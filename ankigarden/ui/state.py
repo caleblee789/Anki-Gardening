@@ -511,13 +511,32 @@ class _StateSignal:
         self._callbacks = retained
 
 
+@dataclass(frozen=True)
+class GardenChange:
+    reason: str
+    domains: frozenset[str] = frozenset({"scene", "progress", "inventory", "settings"})
+
+    @classmethod
+    def from_reason(cls, reason: str) -> "GardenChange":
+        domains = {
+            "Card complete": frozenset({"scene", "progress", "inventory"}),
+            "history reconciled": frozenset({"scene", "progress", "inventory", "history"}),
+            "plant arrangement": frozenset({"scene", "inventory"}),
+            "plant move": frozenset({"scene", "inventory"}),
+            "move undo": frozenset({"scene", "inventory"}),
+        }
+        return cls(reason, domains[reason]) if reason in domains else cls(reason)
+
+
 class GardenUiCoordinator:
     """Single post-commit event boundary for every Garden surface."""
 
     def __init__(self, _parent: Any | None = None) -> None:
         self.stateChanged = _StateSignal()
         self.revision = 0
+        self.last_change = GardenChange("")
 
-    def notify(self, reason: str) -> None:
+    def notify(self, reason: str | GardenChange) -> None:
         self.revision += 1
-        self.stateChanged.emit(str(reason or "Garden state changed"))
+        self.last_change = reason if isinstance(reason, GardenChange) else GardenChange.from_reason(str(reason or "Garden state changed"))
+        self.stateChanged.emit(self.last_change.reason)

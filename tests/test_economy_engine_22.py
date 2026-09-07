@@ -30,6 +30,8 @@ from ankigarden.storage import DueObligationStatus
 def enabled_landmark_backend(monkeypatch):
     """Keep the dormant transaction contract exercised independently of release UI."""
     monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", True)
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", True)
+    monkeypatch.setattr(feature_availability, "GARDEN_LEGACY_ENABLED", True)
 
 
 class _Config:
@@ -458,19 +460,29 @@ def test_mastery_rolls_back_both_resources_rank_and_feedback_on_save_failure() -
 
 
 @pytest.mark.parametrize("source", ["local", "sync", "instant"])
-def test_dormant_landmarks_conserve_growth_and_preserve_saved_progress(monkeypatch, source):
+@pytest.mark.parametrize("target_type,target_id", [
+    ("landmark", "garden_landmark"), ("mastery", "bonsai"), ("legacy", "garden_legacy"),
+])
+def test_deferred_projects_conserve_growth_and_preserve_saved_progress(monkeypatch, source, target_type, target_id):
     engine, storage = _engine()
     state = storage.state
-    state.active_growth_target_type = "landmark"
-    state.active_growth_target_id = "garden_landmark"
+    state.active_growth_target_type = target_type
+    state.active_growth_target_id = target_id
     state.active_growth_target_activation_identity = "saved-selection"
     state.garden_project.landmark_growth_units_funded = 2_600_000
     state.garden_project.landmark_highest_claimed_tier = 1
     state.garden_project.displayed_landmark_tier_id = "mossy_stone_path"
     engine._sync_landmark_compatibility_projection()
+    state.cultivation_mastery.growth_units_funded_by_species["bonsai"] = 2_600_000
+    state.cultivation_mastery.highest_claimed_rank_by_species["bonsai"] = "bronze"
+    state.garden_legacy_level = 3
+    state.garden_legacy_progress_units = 1_234
+    saved_mastery = deepcopy(state.cultivation_mastery)
     saved_project = deepcopy(state.garden_project)
     stored_before = state.stored_growth_balance_units
     monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", False)
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", False)
+    monkeypatch.setattr(feature_availability, "GARDEN_LEGACY_ENABLED", False)
 
     if source == "instant":
         result = engine._apply_direct_growth_units(
@@ -504,10 +516,14 @@ def test_dormant_landmarks_conserve_growth_and_preserve_saved_progress(monkeypat
             assert not summary.project_allocations
 
     assert state.garden_project == saved_project
+    assert state.cultivation_mastery == saved_mastery
+    assert (state.garden_legacy_level, state.garden_legacy_progress_units) == (3, 1_234)
     assert state.stored_growth_balance_units > stored_before
     restored = GardenState.from_dict(state.to_dict())
     assert restored.garden_project == saved_project
-    assert restored.active_growth_target_type == "landmark"
+    assert restored.active_growth_target_type == target_type
+    assert restored.cultivation_mastery == saved_mastery
+    assert (restored.garden_legacy_level, restored.garden_legacy_progress_units) == (3, 1_234)
     assert restored.active_growth_target_activation_identity == "saved-selection"
     assert restored.stored_growth_balance_units == state.stored_growth_balance_units
     assert not engine._garden_legacy_unlocked()
@@ -545,4 +561,66 @@ def test_dormant_landmarks_reject_new_and_stale_actions_but_replay_committed_req
     assert not engine.display_landmark("mossy_stone_path")[0]
     assert not engine.undo_landmark_appearance("", "")[0]
     assert engine.confirm_landmark(committed_request) == committed
+    assert storage.state.to_dict() == before
+
+
+@pytest.mark.parametrize("kind,target_id,claim_id", [
+    (GrowthTargetType.MASTERY, "bonsai", "bronze"),
+    (GrowthTargetType.LEGACY, "garden_legacy", ""),
+])
+def test_deferred_projects_block_stale_actions_and_replay_commits(monkeypatch, kind, target_id, claim_id):
+    from ankigarden.economy_progression import (
+        ACTIVE_SPECIES, LANDMARK_MAX_GROWTH_UNITS, MASTERY_MAX_GROWTH_UNITS,
+    )
+    engine, storage = _engine()
+    if kind is GrowthTargetType.LEGACY:
+        storage.state.garden_project.landmark_growth_units_funded = LANDMARK_MAX_GROWTH_UNITS
+        storage.state.cultivation_mastery.growth_units_funded_by_species = {
+            species: MASTERY_MAX_GROWTH_UNITS for species in ACTIVE_SPECIES
+        }
+    target = GrowthTargetRef(kind, target_id)
+    committed_request = GrowthProjectRequest(
+        _request_id(910), storage._ledger_revision, GrowthProjectAction.ACTIVATE, target,
+    )
+    committed_confirmation = GrowthProjectConfirmation.from_quote(engine.quote_growth_project(committed_request))
+    committed = engine.confirm_growth_project(committed_request, committed_confirmation)
+    assert committed.applied
+    actions = (GrowthProjectAction.ACTIVATE, GrowthProjectAction.CONTRIBUTE)
+    if kind is GrowthTargetType.MASTERY:
+        actions += (GrowthProjectAction.CLAIM,)
+    requests = tuple(GrowthProjectRequest(
+        _request_id(911 + index), storage._ledger_revision, action, target,
+        ContributionMode.MAXIMUM if action is GrowthProjectAction.CONTRIBUTE else ContributionMode.NONE,
+        claim_id=claim_id if action is GrowthProjectAction.CLAIM else "",
+    ) for index, action in enumerate(actions))
+    confirmations = [GrowthProjectConfirmation.from_quote(engine.quote_growth_project(request)) for request in requests]
+    before = storage.state.to_dict()
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", False)
+    monkeypatch.setattr(feature_availability, "GARDEN_LEGACY_ENABLED", False)
+    for request, stale in zip(requests, confirmations):
+        quote = engine.quote_growth_project(request)
+        assert not quote.can_apply
+        assert quote.accepted_growth_units == quote.coin_cost == 0
+        for confirmation in (stale, GrowthProjectConfirmation.from_quote(quote)):
+            outcome = engine.confirm_growth_project(request, confirmation)
+            assert not outcome.applied
+            assert outcome.stored_balance_delta_units == outcome.coins_spent == 0
+    assert engine.confirm_growth_project(committed_request, committed_confirmation) == committed
+    assert storage.state.to_dict() == before
+
+
+def test_deferred_legacy_mastery_api_replays_without_new_spending(monkeypatch):
+    engine, storage = _engine()
+    committed_request = MasteryRequest(_request_id(920), "bonsai", "bronze")
+    committed = engine.confirm_mastery(committed_request)
+    assert committed.applied
+    before = storage.state.to_dict()
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", False)
+    assert not engine.peek_feedback()
+    request = MasteryRequest(_request_id(921), "bonsai", "silver")
+    quote = engine.quote_mastery(request)
+    assert not quote.can_apply
+    assert quote.growth_spend_units == quote.coin_spend == 0
+    assert not engine.confirm_mastery(request).applied
+    assert engine.confirm_mastery(committed_request) == committed
     assert storage.state.to_dict() == before

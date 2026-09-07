@@ -7,19 +7,21 @@
 
 ## Current feature availability
 
-Landmarks are dormant for the first release. Their catalog, artwork, saved
+Landmarks, Cultivation Mastery, and Garden Legacy are dormant for this release. Their catalog, artwork, saved
 funding, claims, selections, and transaction contracts remain available to
 developer tests. The runtime and UI share the internal
 `ankigarden/feature_availability.py` policy, which defaults to disabled.
-A saved active Landmark receives no new funding: final overflow goes to Stored
-Growth, and new Landmark actions cannot spend resources. No save migration,
+A saved active project receives no new funding: final overflow goes to Stored
+Growth, and new deferred-project actions cannot spend resources. No save migration,
 refund, automatic target switch, or later backfill is performed.
 
-The Landmark section below documents the retained backend for future use.
-Garden Legacy still requires complete Landmark and Mastery funding. Locked
-Legacy entries are hidden; already eligible Legacy and Mastery retain their
-existing behavior. Historical reward records remain intact, while dormant
-feature details are omitted from learner-facing summaries.
+The deferred-system sections below document retained backend contracts for future use.
+Existing Mastery appearances and Legacy levels are hidden and receive no new progress.
+Historical reward records remain intact, while dormant feature details are omitted
+from learner-facing summaries. Full Bloom is the final visible plant stage.
+Stored Growth has no spending option in this version. Its positive balance appears
+beside Coins only on Garden and in the expanded reviewer's storage-destination
+state. Zero balances occupy no UI space; receipts show positive additions only.
 
 ## Economy principles
 
@@ -67,11 +69,10 @@ Garden Finds, Growth Charges, Prism Trellis completion rewards, Firefly Lantern,
 fixed awards grant **Instant Growth**. Instant Growth receives no Rhythm,
 Fertilizer, Booster, Garden Bonus, Scenery, or Shared Growth fan-out.
 
-After the first Full Bloom, the learner may acknowledge one active long-term
-target: Garden Landmark, Cultivation Mastery for a Full Bloom species, or
-Garden Legacy after it unlocks. Plant routing always finishes first. Only final
-overflow reaches that target, and any remainder enters Stored Growth. With no
-acknowledged target, the entire final remainder stays in Stored Growth.
+Plant routing always finishes first. In this release, the entire final remainder
+enters Stored Growth, including when a save retains an active deferred project.
+The retained developer backend can route overflow to an explicitly enabled
+Landmark, Mastery, or Legacy project; production defaults disable all three.
 Switching targets never removes earlier funding.
 
 The engine records exact integer units separately as generated Growth, plant
@@ -239,8 +240,8 @@ cannot repeat these rewards.
 - It is consumed only in the same successful transaction that grants Growth.
 - It receives no modifiers or Shared Growth.
 - Every normal checkpoint and stage crossing still resolves. Excess continues
-  through unfinished planted targets, the selected eligible Mastery project, and
-  Stored Growth. After all catalog species bloom, Charges use this garden route
+  through unfinished planted targets and then into Stored Growth.
+  After all catalog species bloom, Charges use this garden route
   without a plant selection. Quotes and receipts identify the actual allocation.
 
 ## Equipment and daily Rhythm
@@ -438,9 +439,9 @@ cosmetic, and non-compounding:
 - Landmark completion grants no Growth multiplier, Garden Coin faucet, Find bonus, or
   additional effect slot.
 
-## Cultivation Mastery
+## Cultivation Mastery (deferred backend)
 
-After a current species reaches Full Bloom, its cosmetic Mastery track may be
+When explicitly enabled for developer fixtures, after a current species reaches Full Bloom, its cosmetic Mastery track may be
 grown continuously through normal overflow and its appearances unlocked in order. Choose a species in its Collection details; optional Add Stored Growth spending remains available. The explicit Unlock appearance button pays the existing Coin cost:
 
 | Rank | Incremental Growth | Cumulative Growth | Claim cost | Cosmetic reward |
@@ -460,9 +461,9 @@ Find odds, unlock another effect slot, or count again toward bed achievements.
 Each contribution and claim is protected from duplicate or out-of-order
 commit, and no species can exceed 375,000 funded Growth.
 
-## Garden Legacy
+## Garden Legacy (deferred backend)
 
-Garden Legacy unlocks after all 2,475,000 Landmark Growth and all ten species’
+In the retained developer backend, Garden Legacy unlocks after all 2,475,000 Landmark Growth and all ten species’
 375,000 Mastery Growth tracks are funded. Outstanding Garden Coin claims do not
 block it. Each cosmetic Legacy level consumes exactly 500,000 Growth, costs no
 Garden Coins, has no maximum level, and grants no gameplay effect. Continued

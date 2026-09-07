@@ -1,7 +1,7 @@
 """Collection browsing with one detail panel for each owned species."""
 from __future__ import annotations
 
-from aqt.qt import QEvent, QHBoxLayout, QLabel, QStackedWidget, QTimer, QVBoxLayout, QWidget
+from aqt.qt import QBoxLayout, QEvent, QHBoxLayout, QLabel, QStackedWidget, QTimer, QVBoxLayout, QWidget
 
 from .responsive import measured_minimum_width, stable_threshold
 
@@ -97,15 +97,13 @@ class CollectionPlantWorkspace(QWidget):
         self._select_card(reveal=present)
         self._sync_close_buttons()
         self._sync_layout()
-        if present and not self._wide:
-            self._present_dialog()
 
     def show_plant(self, plant_id, *, present=True):
         plant = self.owner.engine.plant_story(plant_id)
         if plant is None:
             self.refresh_selection()
             return
-        self.show_species(str(plant.species), present=present)
+        self.show_species(str(plant.species), present=present, force=True)
 
     def close_details(self, *_args):
         if self.detail_dialog is not None:
@@ -163,8 +161,8 @@ class CollectionPlantWorkspace(QWidget):
             self._wide = wide
             if wide and self.detail_dialog is not None:
                 self.detail_dialog.reject()
-            if self.detail_dialog is None:
-                self.detail_host.setVisible(wide)
+            self.row.setDirection(QBoxLayout.Direction.LeftToRight if wide else QBoxLayout.Direction.TopToBottom)
+            self.detail_host.show()
             self.gallery._wide_columns = 2 if wide else 4
             self.gallery._reflow()
 

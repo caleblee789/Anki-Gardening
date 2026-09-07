@@ -33,6 +33,8 @@ def _report_startup_error(exc: Exception) -> None:
 
 
 def _initialize_addon(setup_func: Optional[Callable[[], None]] = None) -> bool:
+    from .performance import RUNTIME_PERFORMANCE
+    started = RUNTIME_PERFORMANCE.begin()
     try:
         if setup_func is None:
             from .addon import setup_addon as setup_func
@@ -42,6 +44,8 @@ def _initialize_addon(setup_func: Optional[Callable[[], None]] = None) -> bool:
     except Exception as exc:
         _report_startup_error(exc)
         return False
+    finally:
+        RUNTIME_PERFORMANCE.finish("startup.blocking", started)
 
 
 if os.environ.get("ANKI_GARDEN_SKIP_STARTUP") != "1":

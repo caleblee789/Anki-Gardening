@@ -745,6 +745,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
     DialogSizeClass.TRANSACTION: {
         "default": DialogHeightProfile(210, 230, 250, 480, 500, 520),
         "simple": DialogHeightProfile(210, 240, 320, 420, 480, 560),
+        "storage-confirmation": DialogHeightProfile(140, 170, 300, 360, 420, 500),
         # The Growth Charge quote is the smallest complete purchase: one
         # artwork row, one cost row, and its actions.  Keep that proposal a
         # true content-fit window instead of inheriting taller catalog states.

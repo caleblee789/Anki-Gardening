@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Iterable, Mapping
+from .performance import timed
 
 from .balance_catalog import (
     LANDMARKS,
@@ -2086,6 +2087,31 @@ class HistoricalReviewSnapshot:
 
 
 @dataclass(frozen=True)
+class IndexedHistoricalReviewSnapshot:
+    entries: tuple[HistoricalReviewEntry, ...]
+    high_water_revlog_id: int
+    fingerprint: str
+    history: Any
+    closed_history: Any
+    days: tuple[dict[str, Any], ...]
+    day_answer_numbers: Mapping[int, int]
+
+    def streaks(self) -> dict[str, int]:
+        result: dict[str, int] = {}
+        previous = None
+        run = 0
+        for summary in self.days:
+            day = date.fromisoformat(summary["day"])
+            run = run + 1 if previous is not None and day == previous + timedelta(days=1) else 1
+            result[summary["day"]] = run
+            previous = day
+        return result
+
+    def active_after(self, day: str, activation_ms: int) -> bool:
+        return any(row["day"] == day and int(row["last"]) >= activation_ms for row in self.days)
+
+
+@dataclass(frozen=True)
 class LocalAnswerProof:
     """One unambiguous appended answer plus its card/day lineage context."""
 
@@ -2097,7 +2123,13 @@ class GardenStorage:
     _reward_ledger: RewardLedger | None = None
     _ledger_revision: int = 0
 
-    def __init__(self, mw: Any, config: Any) -> None:
+    def __init__(self, mw: Any, config: Any, *, deferred: bool = False) -> None:
+        self.runtime_pending = bool(deferred)
+        self._runtime_initialized = not deferred
+        self._allow_runtime_commit = False
+        self.history_index = None
+        self._due_snapshot = None
+        self._due_snapshot_collection = None
         self.mw = mw
         self.config = config
         self.addon_dir = Path(__file__).parent
@@ -2112,7 +2144,113 @@ class GardenStorage:
         self._reward_ledger: RewardLedger | None = None
         self._ledger_revision = 0
         self.state = self._load_authoritative_state()
-        self._ensure_defaults()
+        self._initialize_activity_history()
+        if self._reward_ledger is not None and self._reward_ledger.interrupt_activity_sessions():
+            committed = self._reward_ledger.commit_state(self._bounded_state_payload(self.state),
+                schema_version=STATE_VERSION, expected_revision=self._ledger_revision)
+            self._ledger_revision = committed.revision
+        if not deferred:
+            self._ensure_defaults()
+
+    def _initialize_activity_history(self) -> None:
+        """Preserve available old receipts once; never infer review sessions."""
+        from .activity import event_from_economy, event_from_transaction, transaction_event_key
+        ledger = self._reward_ledger
+        if ledger is None:
+            return
+        operation_id = "activity-history-v1"
+        if ledger.idempotency_record("migration", operation_id) is not None:
+            return
+        checkpoint = ledger.checkpoint()
+        try:
+            for _rowid, record in ledger.iter_economy_events():
+                if record.coins_earned or record.coins_spent or (
+                    record.event_kind != "answer_growth" and
+                    (record.growth_generated_units or record.quantity)
+                ):
+                    ledger.stage_activity_event(event_from_economy(record, state=self.state, earlier=True))
+            for transaction in self.state.currency_transactions:
+                if ledger.activity_event(transaction_event_key(transaction)) is None:
+                    ledger.stage_activity_event(event_from_transaction(transaction))
+            ledger.stage_idempotency_record(IdempotencyRecord(
+                "migration", operation_id, operation_id, {"status": "applied"},
+                datetime.now(timezone.utc).isoformat()))
+            committed = ledger.commit_state(self._bounded_state_payload(self.state),
+                schema_version=STATE_VERSION, expected_revision=self._ledger_revision)
+            self._ledger_revision = committed.revision
+        except Exception:
+            ledger.rollback(checkpoint)
+            raise
+
+    def begin_activity_session(self, session_id: str, started_at: str) -> None:
+        from .activity import ActivitySession
+        if self._reward_ledger is not None:
+            self._reward_ledger.stage_activity_session(ActivitySession(session_id, started_at=started_at))
+
+    def finish_activity_session(self, session_id: str, ended_at: str) -> None:
+        from .activity import ActivitySession
+        ledger = self._reward_ledger
+        if ledger is None:
+            return
+        checkpoint = ledger.checkpoint()
+        try:
+            ledger.stage_activity_session(ActivitySession(session_id, ended_at=ended_at, status="ended"))
+            if not getattr(self, "runtime_pending", False):
+                self.save()
+        except Exception:
+            ledger.rollback(checkpoint)
+            raise
+
+    def stage_activity_economy_event(self, record: EconomyEventRecord, *, correlation_id: str = "") -> None:
+        from .activity import event_from_economy
+        if self._reward_ledger is not None:
+            self._reward_ledger.stage_activity_event(event_from_economy(
+                record, state=self.state, correlation_id=correlation_id))
+
+    def stage_activity_answer(self, result: Any, *, answer_key: str, window_token: str = "",
+                              batch_id: str = "") -> None:
+        from dataclasses import replace
+        from .activity import ActivityEvent, ActivitySession, iso_from_ms
+        ledger = self._reward_ledger
+        if ledger is None or not result.event_id:
+            return
+        occurred = iso_from_ms(result.occurred_at_ms)
+        if window_token:
+            group_id, kind = f"review-session:{window_token}", "session"
+        else:
+            kind = "sync" if result.origin in {"historical_sync", "sync"} else "study"
+            group_id = f"{kind}:{batch_id or result.event_id}:{result.scheduler_day}"
+        # Existing session metadata keeps its observed beginning and end. Recovered
+        # answers can still attach after the reviewer has already closed.
+        ledger.stage_activity_session(ActivitySession(group_id, kind,
+            status="open" if kind == "session" else "recorded"))
+        ledger.stage_activity_event(ActivityEvent(
+            f"study:{answer_key}", group_id, result.scheduler_day, occurred,
+            "card_answer", result.correlation_id, card_answers=result.cards_completed))
+        keys = {f"answer-growth:{answer_key}",
+                *(tx.event_key for tx in result.currency_transactions),
+                *(receipt.event_key for receipt in result.reward_receipts)}
+        keys.update(event.event_key for event in ledger.pending_activity_events()
+                    if event.correlation_id == result.correlation_id
+                    and event.scheduler_day == result.scheduler_day
+                    and event.group_id == event.event_key)
+        for key in keys:
+            event = ledger.activity_event(key)
+            if event is not None and not event.adjustment and event.coins >= 0:
+                ledger.stage_activity_event(replace(event, group_id=group_id,
+                    occurred_at=occurred, scheduler_day=result.scheduler_day))
+
+    def activity_entries(self, **kwargs: Any) -> tuple[Any, ...]:
+        return self._reward_ledger.activity_entries(**kwargs) if self._reward_ledger else ()
+
+    def activity_details(self, group_id: str) -> tuple[Any, ...]:
+        return self._reward_ledger.activity_details(group_id) if self._reward_ledger else ()
+
+    def activity_day_totals(self, day: str) -> dict[str, int]:
+        return self._reward_ledger.activity_day_totals(day) if self._reward_ledger else {}
+
+    def activity_streak_rewards(self, day: str = "") -> dict[str, int]:
+        return self._reward_ledger.activity_streak_rewards(day) if self._reward_ledger else {}
 
     def _load_authoritative_state(self) -> GardenState:
         """Load the SQLite authority, or atomically import the legacy JSON."""
@@ -2173,7 +2311,11 @@ class GardenStorage:
                 # Validate every exact endgame and Stored Growth authority at
                 # the reload boundary, before any repair can save the state.
                 self.state = state
-                self.refresh_lifetime_economy_aggregates()
+                if not getattr(self, "runtime_pending", False):
+                    # Direct storage users retain synchronous validation;
+                    # Anki startup verifies a private copy in the background.
+                    ledger.reset_economy_projections()
+                    self.refresh_lifetime_economy_aggregates()
                 self._refresh_reanswer_hint_cache(state)
                 self._refresh_recent_find_cache(state)
                 return state
@@ -2867,67 +3009,81 @@ class GardenStorage:
         landmark_funding_baseline = landmark_funding
         mastery_funding_baseline = dict(mastery_funding)
 
-        def claim_landmark(event: EconomyEventRecord, claim_id: str) -> None:
-            nonlocal landmark_claimed
-            expected = (
-                GARDEN_PROJECT_IDS[landmark_claimed]
-                if landmark_claimed < len(GARDEN_PROJECT_IDS) else ""
-            )
-            if (
-                not expected
-                or claim_id != expected
-                or event.item_id != expected
-                or event.quantity != 1
-                or event.coins_spent != LANDMARK_COIN_COST_BY_ID[expected]
-                or landmark_funding
-                < GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[expected]
-            ):
-                raise RewardLedgerCorruptionError(
-                    "A Landmark claim is out of order, unfunded, or unpaid: "
-                    + event.event_key
-                )
-            landmark_claimed += 1
+        initial = {
+            "landmark_funding": landmark_funding,
+            "landmark_claimed": landmark_claimed,
+            "mastery_funding": mastery_funding,
+            "mastery_claimed": mastery_claimed,
+            "legacy_total": legacy_total,
+        }
 
-        def claim_mastery(
-            event: EconomyEventRecord,
-            species_id: str,
-            rank_id: str,
-        ) -> None:
-            if species_id not in CURRENT_CATALOG_SPECIES_ORDER:
-                raise RewardLedgerCorruptionError(
-                    "A Mastery claim targets an unknown species: "
-                    + event.event_key
-                )
-            previous = mastery_claimed.get(species_id, "")
-            previous_index = (
-                CULTIVATION_MASTERY_RANKS.index(previous)
-                if previous else -1
-            )
-            expected_index = previous_index + 1
-            expected = (
-                CULTIVATION_MASTERY_RANKS[expected_index]
-                if expected_index < len(CULTIVATION_MASTERY_RANKS) else ""
-            )
-            if (
-                not expected
-                or rank_id != expected
-                or event.item_id != expected
-                or event.quantity != 1
-                or event.coins_spent != MASTERY_COIN_COST_BY_ID[expected]
-                or mastery_funding[species_id]
-                < CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
-                    expected
-                ]
-            ):
-                raise RewardLedgerCorruptionError(
-                    "A Mastery claim is out of order, unfunded, or unpaid: "
-                    + event.event_key
-                )
-            mastery_claimed[species_id] = expected
+        def accumulate(projection: dict[str, Any], event: EconomyEventRecord) -> None:
+            landmark_funding = projection["landmark_funding"]
+            landmark_claimed = projection["landmark_claimed"]
+            mastery_funding = projection["mastery_funding"]
+            mastery_claimed = projection["mastery_claimed"]
+            legacy_total = projection["legacy_total"]
 
-        for event in ledger.economy_events():
+            def claim_landmark(event: EconomyEventRecord, claim_id: str) -> None:
+                nonlocal landmark_claimed
+                expected = (
+                    GARDEN_PROJECT_IDS[landmark_claimed]
+                    if landmark_claimed < len(GARDEN_PROJECT_IDS) else ""
+                )
+                if (
+                    not expected
+                    or claim_id != expected
+                    or event.item_id != expected
+                    or event.quantity != 1
+                    or event.coins_spent != LANDMARK_COIN_COST_BY_ID[expected]
+                    or landmark_funding
+                    < GARDEN_PROJECT_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[expected]
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "A Landmark claim is out of order, unfunded, or unpaid: "
+                        + event.event_key
+                    )
+                landmark_claimed += 1
+
+            def claim_mastery(
+                event: EconomyEventRecord,
+                species_id: str,
+                rank_id: str,
+            ) -> None:
+                if species_id not in CURRENT_CATALOG_SPECIES_ORDER:
+                    raise RewardLedgerCorruptionError(
+                        "A Mastery claim targets an unknown species: "
+                        + event.event_key
+                    )
+                previous = mastery_claimed.get(species_id, "")
+                previous_index = (
+                    CULTIVATION_MASTERY_RANKS.index(previous)
+                    if previous else -1
+                )
+                expected_index = previous_index + 1
+                expected = (
+                    CULTIVATION_MASTERY_RANKS[expected_index]
+                    if expected_index < len(CULTIVATION_MASTERY_RANKS) else ""
+                )
+                if (
+                    not expected
+                    or rank_id != expected
+                    or event.item_id != expected
+                    or event.quantity != 1
+                    or event.coins_spent != MASTERY_COIN_COST_BY_ID[expected]
+                    or mastery_funding[species_id]
+                    < CULTIVATION_MASTERY_CUMULATIVE_GROWTH_THRESHOLDS_UNITS[
+                        expected
+                    ]
+                ):
+                    raise RewardLedgerCorruptionError(
+                        "A Mastery claim is out of order, unfunded, or unpaid: "
+                        + event.event_key
+                    )
+                mastery_claimed[species_id] = expected
+
             if event.growth_flow_kind == "legacy_unreconciled":
-                continue
+                return
             allocations = dict(
                 (event.metric_deltas or {}).get("project_allocations", {})
             )
@@ -3007,6 +3163,19 @@ class GardenStorage:
                 raise RewardLedgerCorruptionError(
                     "An unknown project claim was committed: " + event.event_key
                 )
+
+            projection.update(
+                landmark_funding=landmark_funding,
+                landmark_claimed=landmark_claimed,
+                legacy_total=legacy_total,
+            )
+
+        projection = ledger.project_economy("endgame-v1", initial, accumulate)
+        landmark_funding = projection["landmark_funding"]
+        landmark_claimed = projection["landmark_claimed"]
+        mastery_funding = projection["mastery_funding"]
+        mastery_claimed = projection["mastery_claimed"]
+        legacy_total = projection["legacy_total"]
 
         actual_landmark_funding = max(
             0, int(self.state.garden_project.landmark_growth_units_funded)
@@ -3554,7 +3723,10 @@ class GardenStorage:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
 
+    @timed("storage.save")
     def save(self) -> None:
+        if getattr(self, "runtime_pending", False) and not getattr(self, "_allow_runtime_commit", False):
+            raise RuntimeError("Garden is still updating. Please try this change again shortly.")
         if self._reward_ledger is None:
             self._atomic_write_json(self.data_path, self.state.to_dict())
             return
@@ -3719,6 +3891,7 @@ class GardenStorage:
             raise
 
     def _ensure_defaults(self) -> None:
+        before = self.state.to_dict()
         self.user_files_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         _materialize_unlocked_species(self.state)
@@ -3798,7 +3971,9 @@ class GardenStorage:
                     desired_plant_id,
                     0 if not self.state.starter_selection_complete else self.current_time_ms(),
                 ))
-        self.save()
+        staged = getattr(self, "reward_ledger_has_staged_writes", None)
+        if self.state.to_dict() != before or (callable(staged) and staged()):
+            self.save()
 
     def load_asset_metadata(self) -> dict:
         if not self.asset_metadata.exists():
@@ -3866,7 +4041,8 @@ class GardenStorage:
         Callers use the established full-day fallback whenever proof is absent.
         """
 
-        normalized_after = max(0, int(after_id))
+        verified_through = max(0, int(getattr(self, "_verified_history_high_water", 0)))
+        normalized_after = max(verified_through, int(after_id))
         normalized_card = max(0, int(card_id))
         normalized_ease = int(ease)
         if normalized_card <= 0 or normalized_ease <= 0:
@@ -3909,6 +4085,8 @@ class GardenStorage:
                 return None
             normalized_card_rows = [tuple(item) for item in card_rows]
             unseen = unprocessed_revlog_entries(self.state, normalized_card_rows)
+            if verified_through:
+                unseen = [item for item in unseen if int(item[0]) > verified_through]
             if len(unseen) != 1 or int(unseen[0][0]) != int(row[0]):
                 return None
             return LocalAnswerProof(row, tuple(normalized_card_rows))
@@ -4088,6 +4266,48 @@ class GardenStorage:
             high_water_revlog_id=high_water,
             next_after_id=next_after,
             has_more=has_more,
+        )
+
+    @timed("history.load-batch")
+    def load_reconciliation_history(self) -> HistoricalReviewSnapshot | IndexedHistoricalReviewSnapshot:
+        """Use the verified index; compatibility adapters retain the full reader."""
+        index = getattr(self, "history_index", None)
+        if index is None or self._reward_ledger is None:
+            return self.load_eligible_review_history()
+        from .history_index import analyze_indexed_days
+
+        current_day = self.current_scheduler_day()
+        days = tuple(day for day in index.summaries() if str(day["day"]) <= current_day)
+        history = analyze_indexed_days(days, current_open_day=current_day)
+        closed = analyze_indexed_days(days, current_open_day=current_day, include_open_day=False)
+        entries: list[HistoricalReviewEntry] = []
+        ordinals: dict[int, int] = {}
+        # The coordinator plans and commits aliases before enabling replay.
+        # Loading a reward batch is now independent of each card's lifetime.
+        for page in index.reward_pages(
+            activation_ms=max(1, int(self.state.reward_activation_ms)),
+            through_day=current_day, ledger_path=self.database_path,
+            limit=getattr(self, "_history_batch_limit", None),
+            after_id=getattr(self, "_history_after_id", 0),
+        ):
+            identities = self._reward_ledger.bindings_for_revlogs(int(row[0]) for row in page)
+            if len(identities) != len(page):
+                raise RevlogReadError("Answer identities are still being prepared.")
+            for row in page:
+                revlog_id = int(row[0])
+                lineage = identities[revlog_id]
+                self.stage_answer_lineage_alias(revlog_id, lineage)
+                entries.append(HistoricalReviewEntry(
+                    revlog_id=revlog_id, card_id=int(row[1]), ease=int(row[2]), interval=int(row[3]),
+                    last_interval=int(row[4]), factor=int(row[5]), response_time_ms=int(row[6]),
+                    review_type=int(row[7]), answer_ms=revlog_id, scheduler_day=str(row[8]),
+                    card_day_ordinal=int(lineage.rsplit("|", 1)[-1]), answer_identity=lineage,
+                ))
+                ordinals[revlog_id] = int(row[9])
+        self._history_loaded_through = max((entry.revlog_id for entry in entries), default=0)
+        return IndexedHistoricalReviewSnapshot(
+            tuple(entries), max((int(row["last"]) for row in days), default=0), history.fingerprint,
+            history, closed, days, ordinals,
         )
 
     def load_eligible_review_history(
@@ -4477,7 +4697,37 @@ class GardenStorage:
                     buried_siblings.add(card_id)
         return transitions, tuple(sorted(buried_siblings))
 
-    def due_obligations(
+    def invalidate_due_snapshot(self) -> None:
+        self._due_snapshot = None
+        self._due_snapshot_collection = None
+
+    def due_obligations(self, *, committed_card_ids: Iterable[int] = ()) -> DueObligationStatus:
+        if getattr(self, "runtime_pending", False) and not getattr(self, "_allow_runtime_commit", False):
+            return DueObligationStatus(available=False, error="Garden is updating.")
+        collection = getattr(self.mw, "col", None)
+        requested = tuple(sorted({int(value) for value in committed_card_ids
+                                  if isinstance(value, int) and not isinstance(value, bool) and value > 0}))
+        cached = getattr(self, "_due_snapshot", None)
+        now_ms = int(time.time() * 1000)
+        if cached is not None and getattr(self, "_due_snapshot_collection", None) is collection:
+            deadlines = [value for value in (cached.cutoff_at_ms, cached.next_learning_due_at_ms) if value > 0]
+            if deadlines and now_ms < min(deadlines):
+                if not requested:
+                    return replace(cached, committed_card_ids=(), card_transitions=(), buried_sibling_card_ids=())
+                if requested == cached.committed_card_ids:
+                    return cached
+        from .performance import RUNTIME_PERFORMANCE
+        started = RUNTIME_PERFORMANCE.begin()
+        try:
+            result = self._read_due_obligations(committed_card_ids=requested)
+            if result.available and not result.error:
+                self._due_snapshot = result
+                self._due_snapshot_collection = collection
+            return result
+        finally:
+            RUNTIME_PERFORMANCE.finish("scheduler.snapshot", started)
+
+    def _read_due_obligations(
         self,
         *,
         committed_card_ids: Iterable[int] = (),

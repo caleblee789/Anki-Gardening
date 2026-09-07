@@ -7,6 +7,7 @@
   "show_rewards_after_syncing": true,
   "reviewer_hud_collapsed": false,
   "reviewer_hud_dock": "right",
+  "reviewer_hud_position": {"custom": false, "x": 1.0, "y": 0.0},
   "onboarding_version": 0,
   "seasonal_visuals": true,
   "visual_theme": "verdant_twilight",

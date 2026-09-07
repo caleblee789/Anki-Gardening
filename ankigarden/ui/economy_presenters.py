@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
-from ..feature_availability import landmarks_enabled
+from ..feature_availability import garden_legacy_enabled, landmarks_enabled, mastery_enabled
 
 from ..balance_catalog import (
     ACHIEVEMENT_BY_ID,
@@ -124,9 +124,22 @@ def coin_reward_receipt(
             definition.receipt_title or definition.display_name
         ),
         detail=_player_card_copy(
-            definition.receipt_detail or definition.eligibility_rule
+            definition.receipt_detail
         ),
-        artwork_id=str(definition.artwork_id),
+        # The large receipt image identifies the source; Coins have their own
+        # small glyph beside the amount. Keep catalog item art when supplied.
+        artwork_id={
+            CoinSourceId.FIRST_ELIGIBLE_ANSWER: "sync_review_cards",
+            CoinSourceId.TODAYS_CARDS: "sync_review_cards",
+            CoinSourceId.COMPLETION_CYCLE_5: "garden_reward",
+            CoinSourceId.SEVEN_DAY_STREAK_CYCLE: "checkpoint_badge",
+            CoinSourceId.ACHIEVEMENT: "checkpoint_badge",
+            CoinSourceId.PLANT_MILESTONE: "checkpoint_badge",
+            CoinSourceId.STANDARD_FIND: "garden_reward",
+            CoinSourceId.HARVEST_BELL: "harvest_bell",
+            CoinSourceId.AUTUMN_HEARTH: "autumn",
+            CoinSourceId.OTHER: "garden_reward",
+        }.get(definition.source_id, str(definition.artwork_id)),
         summary_policy=_id(definition.summary_policy),
         affected_by_harvest_bell=bool(definition.affected_by_harvest_bell),
         affected_by_autumn_hearth=bool(definition.affected_by_autumn_hearth),
@@ -238,7 +251,7 @@ def catalog_item_projections() -> tuple[CatalogItemProjection, ...]:
             str(item.asset_id),
             False, None,
         ))
-    for item in MASTERY_RANKS:
+    for item in MASTERY_RANKS if mastery_enabled() else ():
         item_id = _id(item.rank_id)
         rows.append(CatalogItemProjection(
             f"mastery:{item_id}", item_id, str(item.display_name), "mastery",
@@ -249,7 +262,7 @@ def catalog_item_projections() -> tuple[CatalogItemProjection, ...]:
         ))
     # A state-free catalog cannot establish Legacy eligibility. Its active
     # projection remains available for saves that already meet the requirement.
-    if landmarks_enabled():
+    if garden_legacy_enabled():
         rows.append(CatalogItemProjection(
             "legacy:garden_legacy",
             str(GARDEN_LEGACY.legacy_id),

@@ -15,11 +15,13 @@ from aqt.qt import (
     QEvent,
     QIcon,
     QLabel,
+    QLayout,
     QPainter,
     QPen,
     QPointF,
     QPixmap,
     QRectF,
+    QRect,
     QSize,
     QSizePolicy,
     QTimer,
@@ -211,4 +213,79 @@ class GardenWrappingLabel(QLabel):
 GardenSwitch = GardenToggleSwitch
 
 
-__all__ = ["GardenSwitch", "GardenToggleSwitch", "GardenWrappingLabel"]
+class GardenFlowLayout(QLayout):
+    """Wrap intact inline controls using their measured sizes and normal page flow."""
+
+    def __init__(self, parent=None, *, spacing=12, row_spacing=6, justify=False):
+        super().__init__(parent)
+        self._items = []
+        self.row_spacing = row_spacing
+        self.justify = justify
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setSpacing(spacing)
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, index):
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index):
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._arrange(QRect(0, 0, width, 0), measure=True)
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        return size
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._arrange(rect, measure=False)
+
+    def _arrange(self, rect, *, measure):
+        rows, row, used = [], [], 0
+        for item in self._items:
+            if item.isEmpty():
+                continue
+            size = item.sizeHint()
+            width = min(rect.width(), size.width())
+            if row and used + self.spacing() + width > rect.width():
+                rows.append(row)
+                row, used = [], 0
+            height = item.heightForWidth(width) if item.hasHeightForWidth() else size.height()
+            row.append((item, width, height))
+            used += width + (self.spacing() if len(row) > 1 else 0)
+        if row:
+            rows.append(row)
+        y = rect.y()
+        for row in rows:
+            height = max(h for _, _, h in row)
+            gap = self.spacing()
+            if self.justify and len(row) > 1:
+                gap = max(gap, (rect.width() - sum(w for _, w, _ in row)) // (len(row) - 1))
+            x = rect.x()
+            for item, width, item_height in row:
+                if not measure:
+                    item.setGeometry(QRect(x, y + (height - item_height) // 2, width, item_height))
+                x += width + gap
+            y += height + self.row_spacing
+        return y - rect.y() - (self.row_spacing if rows else 0)
+
+
+__all__ = ["GardenSwitch", "GardenToggleSwitch", "GardenWrappingLabel", "GardenFlowLayout"]

@@ -718,12 +718,18 @@ HOME_WIDGET_STYLE = """
   top:auto;
   right:auto;
 }
-#ag-home-root button,.ag-home__open {
+#ag-home-root button,#ag-home-root button.ag-home__open {
+  appearance:none;
+  height:36px !important;
+  max-height:36px !important;
   min-height:36px !important;
   min-width:112px !important;
   width:auto;
   max-width:100%;
-  padding:8px 12px !important;
+  padding:0 12px !important;
+  line-height:16px !important;
+  align-self:start !important;
+  box-sizing:border-box !important;
   border-color:#63D99F;
   background:#63D99F;
   color:#08251C;

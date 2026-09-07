@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from ankigarden.ui.formatters import (
     GardenDateService,
@@ -131,3 +131,27 @@ def test_garden_date_service_uses_compact_today_timestamp() -> None:
         local_now,
         scheduler_day=local_now.date().isoformat(),
     ) == "Today, 11:25 PM"
+
+
+def test_session_times_use_recorded_bounds_without_inventing_duration() -> None:
+    service = GardenDateService()
+    start = datetime.now().astimezone().replace(hour=16, minute=42, second=0, microsecond=0)
+    end = start + timedelta(minutes=9)
+    assert service.format_session_range(start.isoformat(), end.isoformat()) == "4:42–4:51 PM · 9 min"
+    assert service.format_session_range(start.isoformat(), status="open") == "4:42 PM · In progress"
+    assert service.format_session_range(start.isoformat(), status="interrupted") == "Started 4:42 PM"
+    assert service.format_session_range("", end.isoformat()) == "Ended 4:51 PM"
+    assert service.format_session_range(end.isoformat(), start.isoformat()) == "Time unavailable"
+    assert service.format_session_range("invalid", end.isoformat()) == "Time unavailable"
+    noon = start.replace(hour=11, minute=58)
+    assert service.format_session_range(noon.isoformat(), (noon + timedelta(minutes=4)).isoformat()) == "11:58 AM–12:02 PM · 4 min"
+    midnight = start.replace(hour=23, minute=58)
+    assert " · 4 min" in service.format_session_range(midnight.isoformat(), (midnight + timedelta(minutes=4)).isoformat())
+
+
+def test_activity_headings_follow_anki_day_even_across_local_midnight() -> None:
+    service = GardenDateService(_SchedulerDayStorage("2026-08-25"))
+    timestamp = "2026-08-26T04:30:00+00:00"
+    assert service.format_activity_day("2026-08-25", timestamp) == "Today"
+    assert service.format_activity_day("2026-08-24", timestamp) == "Yesterday"
+    assert service.format_activity_day("2026-08-23", timestamp) == "Aug 23"

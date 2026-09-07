@@ -17,8 +17,33 @@ from ankigarden.reward_ledger import (
 )
 
 
-def test_schema1_upgrades_transactionally_and_preserves_existing_authority(
-    tmp_path,
+def test_incremental_totals_match_audit_after_commit_rollback_and_older_edit(tmp_path):
+    path = tmp_path / "projection.sqlite3"
+    with RewardLedger(path) as ledger:
+        revision = 0
+        for number in range(3):
+            checkpoint = ledger.checkpoint()
+            event = EconomyEventRecord(f"event:{number}", "reward", source_id="study", coins_earned=number + 1)
+            ledger.stage_economy_event(event)
+            staged = dict(ledger.lifetime_economy_aggregates())
+            ledger.rollback(checkpoint)
+            assert ledger.lifetime_economy_aggregates() != staged
+            ledger.stage_economy_event(event)
+            revision = ledger.commit_state({"version": 30}, schema_version=30, expected_revision=revision).revision
+            assert ledger.lifetime_economy_aggregates() == staged
+            ledger.reset_economy_projections()
+            assert ledger.lifetime_economy_aggregates() == staged
+        # Same cardinality and maximum rowid, changed earlier content.
+        with sqlite3.connect(path) as external:
+            external.execute("UPDATE economy_event SET coins_earned=9 WHERE event_key='event:0'")
+        assert ledger.lifetime_economy_aggregates()["coins_earned_by_source"] == {"study": 14}
+    with RewardLedger(path) as reopened:
+        assert reopened.lifetime_economy_aggregates()["coins_earned_by_source"] == {"study": 14}
+
+
+@pytest.mark.parametrize("previous_version", (1, 3))
+def test_prior_schema_upgrades_transactionally_and_preserves_existing_authority(
+    tmp_path, previous_version,
 ) -> None:
     database = tmp_path / "ledger.sqlite3"
     ledger = RewardLedger(database)
@@ -27,10 +52,13 @@ def test_schema1_upgrades_transactionally_and_preserves_existing_authority(
     ledger.close()
 
     with sqlite3.connect(str(database)) as connection:
-        connection.execute("DROP TABLE daily_economy_snapshot")
-        connection.execute("DROP TABLE economy_event")
-        connection.execute("DROP TABLE idempotency_record")
-        connection.execute("PRAGMA user_version = 1")
+        connection.execute("DROP TABLE activity_event")
+        connection.execute("DROP TABLE activity_group")
+        if previous_version == 1:
+            connection.execute("DROP TABLE daily_economy_snapshot")
+            connection.execute("DROP TABLE economy_event")
+            connection.execute("DROP TABLE idempotency_record")
+        connection.execute(f"PRAGMA user_version = {previous_version}")
 
     upgraded = RewardLedger(database)
     assert upgraded.reward_applied("existing-event")
@@ -38,7 +66,7 @@ def test_schema1_upgrades_transactionally_and_preserves_existing_authority(
     with sqlite3.connect(str(database)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == (
             LEDGER_SCHEMA_VERSION
-        ) == 3
+        ) == 4
         tables = {
             row[0]
             for row in connection.execute(
@@ -49,8 +77,10 @@ def test_schema1_upgrades_transactionally_and_preserves_existing_authority(
         "idempotency_record",
         "economy_event",
         "daily_economy_snapshot",
+        "activity_event",
+        "activity_group",
     }.issubset(tables)
-    assert tuple(tmp_path.glob("ledger.ledger-schema-1.legacy-*.sqlite3"))
+    assert tuple(tmp_path.glob(f"ledger.ledger-schema-{previous_version}.legacy-*.sqlite3"))
     upgraded.close()
 
 

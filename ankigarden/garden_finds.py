@@ -332,8 +332,20 @@ def standard_find_artwork_ref(reward_id: str, fallback: str = "") -> str:
     """Return current presentation art without rewriting earned reward facts."""
 
     normalized = str(reward_id or "")
+    illustrated = {
+        "find_growth_burst": "find_growth_burst",
+        "find_sun_patch": "find_sun_patch",
+        "find_coin_sprout": "find_coin_sprout",
+        "find_coin_cache": "find_hidden_coin_cache",
+        "find_buried_coins": "find_buried_coin_cache",
+        "find_coin_treasury": "find_garden_treasury",
+    }
+    if normalized in illustrated:
+        return illustrated[normalized]
     for reward in STANDARD_FIND_REGISTRY:
         if reward.reward_id == normalized and reward.enabled:
+            if reward.inventory_item_id:
+                return str(reward.inventory_item_id)
             return str(reward.artwork_ref or fallback)
     return str(fallback or "")
 

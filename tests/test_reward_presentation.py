@@ -94,11 +94,11 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
         tiers=(SimpleNamespace(can_claim_now=True, claimable=True),),
         display_name="Rose Cultivation Mastery",
     )
-    project = project_growth_allocations(
+    projects = project_growth_allocations(
         (SimpleNamespace(target_type="mastery", target_id="rose", units=100),),
         SimpleNamespace(active_target=target, mastery_track=lambda _species: track),
-    )[0]
-    assert project.status == "Reward ready"
+    )
+    assert projects == ()
 
 
 def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None:
@@ -343,9 +343,10 @@ def test_dormant_reward_details_are_hidden_without_rewriting_history():
     allocations = (
         SimpleNamespace(target_type="landmark", target_id="garden_landmark", units=250),
         SimpleNamespace(target_type="mastery", target_id="rose", units=100),
+        SimpleNamespace(target_type="legacy", target_id="garden_legacy", units=100),
     )
     rows = project_growth_allocations(allocations, landmark_growth_units=300)
-    assert [(row.target_type, row.units) for row in rows] == [("mastery", 100)]
+    assert rows == ()
     hidden = RewardReceipt(
         "landmark:1", "inventory_item", "landmark", "mossy_stone_path", "2026-09-05",
         "landmark:1", "2026-09-05T12:00:00+00:00", item_id="mossy_stone_path",
@@ -360,3 +361,34 @@ def test_dormant_reward_details_are_hidden_without_rewriting_history():
     assert len(summaries) == 1 and summaries[0].receipts == (visible,)
     assert state.to_dict() == before
     assert not reward_content_visible(FeedbackEvent("landmark:1", "landmark", hidden.description, hidden.occurred_at))
+    assert not reward_content_visible(FeedbackEvent("mastery:1", "mastery", "Cultivation Mastery unlocked.", hidden.occurred_at))
+    assert not reward_content_visible({"event_kind": "growth_project_claim"})
+    assert reward_content_visible({"source": "legacy", "reward_type": "coins"})
+
+
+def test_live_reward_feed_groups_only_consecutive_growth_and_preserves_distinct_rewards():
+    from ankigarden.reward_presentation import RewardBundleProjection, RewardFeedHistory, RewardHero, RewardItemProjection
+
+    def bundle(key, *items):
+        return RewardBundleProjection(key, "2026-09-06T12:00:00Z", items)
+
+    def growth(key, units):
+        return RewardItemProjection(key, RewardHero.ROUTINE_GROWTH, "Growth", "Routine Growth", growth_units=units)
+
+    history = RewardFeedHistory()
+    first = bundle("answer-1", growth("growth-1", 1200))
+    history.append(first)
+    history.append(bundle("answer-2", growth("growth-2", 800)))
+    history.append(bundle("answer-3", RewardItemProjection("bloom", RewardHero.FULL_BLOOM, "Bonsai reached Full Bloom", "Milestone", garden_coins=30), RewardItemProjection("find", RewardHero.ENVIRONMENT_DISCOVERY, "Firefly Lantern", "Discovery", artwork_ref="garden_feature_firefly_lantern")))
+    history.append(bundle("answer-4", growth("growth-4", 500)))
+    history.append(first)
+    history.append(bundle("duplicate-event", growth("growth-2", 800)))
+    assert [entry.item.event_id for entry in history.entries] == ["growth-1", "find", "bloom", "growth-4"]
+    assert [entry.item.growth_units for entry in history.entries] == [2000, 0, 0, 500]
+    assert history.entries[0].event_count == 2
+    assert history.entries[2].item.garden_coins == 30
+    stored = RewardItemProjection("stored-1", RewardHero.ROUTINE_GROWTH, "Stored Growth", "Routine Growth", growth_units=1, artwork_ref="stored_growth")
+    history.append(bundle("answer-5", stored))
+    history.append(bundle("answer-6", growth("growth-6", 500)))
+    assert history.entries[-2].item == stored
+    assert history.entries[-1].item.event_id == "growth-6"

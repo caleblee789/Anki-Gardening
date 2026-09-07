@@ -3,6 +3,97 @@ from __future__ import annotations
 import pytest
 
 
+def test_building_clicks_cover_architecture_under_application_button_styling(monkeypatch):
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        import json
+        from pathlib import Path
+        from aqt.qt import QApplication, QPoint, Qt
+        from PyQt6.QtTest import QTest
+        from ankigarden.ui.scene import GardenSceneWidget
+        from ankigarden.ui.theme import tool_button_stylesheet
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+
+    application = QApplication.instance() or QApplication([])
+    root = Path(__file__).resolve().parents[1] / "ankigarden"
+    manifest = json.loads((root / "assets/manifest.json").read_text())
+    background = next(row for row in manifest["assets"]
+                      if row["asset_id"] == "bg_verdant_twilight_any_soil_master_v6")
+    scene = GardenSceneWidget()
+    scene.setStyleSheet(tool_button_stylesheet())
+    scene.set_scene({"plants": [], "asset_paths": {"background": {
+        "asset_root": str(root), "placement": background["placement"],
+    }}})
+    scene.show()
+    fired = []
+    scene.landmarkActivated.connect(fired.append)
+    try:
+        for width, height in ((618, 412), (1200, 800)):
+            scene.resize(width, height)
+            application.processEvents()
+            # Independent image-cover coordinates: roof, wall, and door, then sky.
+            for action, points, sky in (
+                ("garden.nursery.open", [(230, 210), (208, 266), (249, 300)], (300, 150)),
+                ("garden.trophies.open", [(1235, 180), (1240, 266), (1300, 302)], (1165, 140)),
+            ):
+                def project(point):
+                    return QPoint(round(point[0] * width / 1448),
+                                  round(point[1] * width / 1448 - height * .06))
+                for point in points:
+                    position = project(point)
+                    button = scene.childAt(position)
+                    assert button is not None
+                    fired.clear()
+                    QTest.mouseClick(button, Qt.MouseButton.LeftButton,
+                                     pos=position - button.pos())
+                    assert fired == [action]
+                    assert not button.hasFocus() and not button.underMouse()
+                    scene.hide()
+                    scene.show()
+                    application.processEvents()
+                    assert not button.hasFocus()
+                assert scene.childAt(project(sky)) is not button
+    finally:
+        scene.close()
+        scene.deleteLater()
+
+
+def test_toast_replacement_expiry_and_disposal_when_qt_is_available(monkeypatch):
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from aqt.qt import QApplication, QEvent, QWidget
+        from PyQt6.QtTest import QSignalSpy, QTest
+        from ankigarden.ui.dashboard import ToastRegion
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+    application = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    owner.show()
+    toast = ToastRegion(owner)
+    cleared = QSignalSpy(toast.cleared)
+    toast.show_message("Applied", duration_ms=1, fade_ms=1)
+    assert cleared.wait(2000)
+    assert not toast.isVisible()
+    toast.show_message("Old update", duration_ms=1, fade_ms=1)
+    toast.show_message("Replacement", duration_ms=0, dismissible=True)
+    QTest.qWait(40)
+    assert toast.isVisible() and toast.message.text() == "Replacement"
+    toast.dismiss.click()
+    assert not toast.isVisible()
+    cleared = QSignalSpy(toast.cleared)
+    toast.show_message("Reduced motion", duration_ms=1, fade_ms=1, motion_enabled=False)
+    assert cleared.wait(2000)
+    assert not toast.isVisible()
+    toast.show_message("Disposing", duration_ms=1, fade_ms=1)
+    owner.close()
+    owner.deleteLater()
+    application.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QTest.qWait(40)
+
+
 pytestmark = pytest.mark.release_evidence
 
 
@@ -56,12 +147,15 @@ def test_starter_previews_cycle_independently_without_choosing_a_plant(
         ordinary_icon.setIconSize(QSize(18, 18))
         assert [card.stage_label.text() for card in cards] == ["Preview: Full Bloom", "Preview: Full Bloom"]
         assert "undiscovered" not in cards[0].artwork.accessibleName().lower()
+        arrow_positions = (cards[0].previous.x(), cards[0].next_button.x())
         for stage, title in (
             ("Seed", "Rose Seed"), ("Sprout", "Rose Sprout"),
             ("Young", "Young Rose"), ("Mature", "Mature Rose"),
             ("Flowering", "Flowering Rose"), ("Full Bloom", "Full Bloom Rose"),
         ):
             QTest.mouseClick(cards[0].next_button, Qt.MouseButton.LeftButton)
+            application.processEvents()
+            assert (cards[0].previous.x(), cards[0].next_button.x()) == arrow_positions
             assert cards[0].stage_label.text() == f"Preview: {stage}"
             assert cards[0].stage_label.accessibleName() == title
             assert cards[0].artwork.accessibleName() == f"{title} stage preview"
@@ -320,3 +414,118 @@ def test_collection_hides_dormant_landmarks_and_retains_enabled_layout(
     collection.close()
     collection.deleteLater()
     application.processEvents()
+
+
+def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch):
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from dataclasses import replace
+        from aqt.qt import QApplication, QLabel, QPoint, Qt, QWidget
+        from PyQt6.QtTest import QTest
+        from test_garden_studio_advanced_scroll_regression import _live_engine_fixture
+        from ankigarden.models.state import CardEffectBatch
+        from ankigarden.reward_presentation import RewardBundleProjection, RewardHero, RewardItemProjection
+        from ankigarden.ui.reviewer_hud import project_reviewer_hud
+        from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+    application = QApplication.instance() or QApplication([])
+    config, storage, engine = _live_engine_fixture()
+    plant = engine.active_plant()
+    plant.fertilizer_card_batches = [CardEffectBatch("fertilizer_premium", 800, 400, 398)]
+    plant.booster_card_batches = [CardEffectBatch("booster_potion", 100, 100, 45)]
+    owner = QWidget()
+    owner.resize(1200, 900)
+    owner.show()
+    opened, positions = [], []
+    hud = ReviewGardenHud(owner, on_open_garden=lambda: opened.append("garden"),
+                          on_open_plant=lambda plant_id: opened.append(plant_id),
+                          on_open_supplies=opened.append, on_position_changed=positions.append,
+                          resolve_reward_art=engine.resolve_item_asset, animations_enabled=False)
+    hud.set_callbacks(on_open_plant=lambda plant_id: opened.append(plant_id), on_open_supplies=opened.append,
+                      on_position_changed=positions.append, on_toggle_collapsed=lambda value: hud.set_collapsed(value),
+                      resolve_reward_art=engine.resolve_item_asset, animations_enabled=False)
+    projection = project_reviewer_hud(engine, storage.state)
+    hud.update_projection(projection)
+    QTest.qWait(40)
+
+    def click(widget):
+        QTest.mouseClick(owner.windowHandle(), Qt.MouseButton.LeftButton, pos=widget.mapTo(owner, widget.rect().center()))
+        application.processEvents()
+
+    try:
+        click(hud._header_title)
+        assert not opened and not hud._collapsed
+        click(hud._collapse_button)
+        assert hud._collapsed
+        click(hud._collapsed_tab)
+        assert not hud._collapsed
+        click(hud._plant_name)
+        assert opened == [plant.plant_id]
+        click(hud._consumable_pills['fertilizer'])
+        click(hud._consumable_pills['booster'])
+        assert opened[-2:] == ['fertilizer', 'booster']
+        assert hud._consumable_pills['fertilizer'].property('remainingCards') == 398
+
+        before = hud.pos()
+        pointer = hud._header_title.mapTo(owner, QPoint(20, 12))
+        QTest.mousePress(owner.windowHandle(), Qt.MouseButton.LeftButton, pos=pointer)
+        QTest.mouseMove(owner.windowHandle(), pointer + QPoint(-180, 80), delay=20)
+        QTest.mouseRelease(owner.windowHandle(), Qt.MouseButton.LeftButton, pos=pointer + QPoint(-180, 80))
+        assert hud.pos() != before and positions[-1]['custom']
+        moved = hud.pos()
+        hud.update_projection(replace(projection, position=(positions[-1]['x'], positions[-1]['y'])))
+        assert hud.pos() == moved
+        assert opened == [plant.plant_id, 'fertilizer', 'booster']
+
+        click(hud._collapse_button)
+        assert hud._collapsed
+        collapsed_before = hud.pos()
+        pointer = hud._collapsed_tab.mapTo(owner, hud._collapsed_tab.rect().center())
+        QTest.mousePress(owner.windowHandle(), Qt.MouseButton.LeftButton, pos=pointer)
+        QTest.mouseMove(owner.windowHandle(), pointer + QPoint(-150, 50), delay=20)
+        QTest.mouseRelease(owner.windowHandle(), Qt.MouseButton.LeftButton, pos=pointer + QPoint(-150, 50))
+        assert hud._collapsed and hud.pos() != collapsed_before
+        assert len(positions) == 2
+        saved = (positions[-1]['x'], positions[-1]['y'])
+        hud.update_projection(replace(projection, collapsed=True, position=saved))
+        right_edge = hud.geometry().right()
+        click(hud._collapsed_tab)
+        assert not hud._collapsed and hud.geometry().right() == right_edge
+        assert hud._position == saved and len(positions) == 2
+
+        for n in range(8):
+            item = RewardItemProjection(f'coin-{n}', RewardHero.COIN_OR_BOOSTER, 'Checkpoint reward', 'Garden reward', garden_coins=2)
+            hud.present_reward(RewardBundleProjection(f'answer-{n}', '2026-09-06T12:00:00Z', (item,)))
+        QTest.qWait(40)
+        assert hud._reward_feed.isVisibleTo(hud)
+        assert not hud._reward_details_toggle.isVisibleTo(hud)
+        assert hud._reward_feed.model.rowCount() == 8
+        assert hud._session_history_toggle.y() > max(tile.geometry().bottom() for tile in hud._session_metric_tiles)
+        click(hud._session_heading)
+        assert hud._reward_feed.isVisibleTo(hud)
+        click(hud._session_history_toggle)
+        assert not hud._reward_feed.isVisibleTo(hud)
+        assert all(tile.isVisibleTo(hud) for tile in hud._session_metric_tiles)
+        click(hud._session_history_toggle)
+        assert hud._reward_feed.isVisibleTo(hud)
+        assert all(not hud._reward_feed.delegate.artwork_for(entry.item).isNull()
+                   for entry in hud._reward_feed.model.entries)
+        bar = hud._reward_feed.view.verticalScrollBar()
+        assert bar.maximum() > 0
+        bar.setValue(bar.maximum())
+        before_scroll = bar.value()
+        item = RewardItemProjection('new-coin', RewardHero.COIN_OR_BOOSTER, 'Garden reward', 'Garden reward', garden_coins=3)
+        hud.present_reward(RewardBundleProjection('new-answer', '2026-09-06T12:00:01Z', (item,)))
+        assert before_scroll > 0
+        assert bar.value() == 0
+        plant.fertilizer_card_batches.clear()
+        plant.booster_card_batches.clear()
+        hud.update_projection(project_reviewer_hud(engine, storage.state))
+        assert hud._consumables.isHidden()
+    finally:
+        hud.dispose()
+        owner.close()
+        owner.deleteLater()
+        application.processEvents()

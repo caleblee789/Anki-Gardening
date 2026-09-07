@@ -17,7 +17,7 @@ import subprocess
 from time import perf_counter
 from typing import Callable, Mapping, Sequence
 
-from ankigarden.feature_availability import landmarks_enabled
+from ankigarden.feature_availability import garden_legacy_enabled, growth_target_enabled, landmarks_enabled, mastery_enabled
 from .catalog import CatalogFacts, canonical_json_bytes, load_catalog_facts, to_primitive
 from .kernel import (
     _catalog_analysis, _environment_daily_value, _is_right_censored_timing_metric,
@@ -217,11 +217,13 @@ def run_quick_audit(
             "Unreached milestones remain beyond the observed horizon; medians include all seeds, not only finishers.",
         ],
         "availability": {"landmarks_enabled": landmarks_enabled(),
-                         "legacy_reachable_for_fresh_save": landmarks_enabled()},
+                         "mastery_enabled": mastery_enabled(),
+                         "garden_legacy_enabled": garden_legacy_enabled(),
+                         "legacy_reachable_for_fresh_save": landmarks_enabled() and mastery_enabled() and garden_legacy_enabled()},
         "scenarios": results,
         "direct_analysis": _catalog_analysis(replace(catalog, purchase_options=tuple(
             replace(option, available=False)
-            if option.category == "landmark" and not landmarks_enabled() else option
+            if not growth_target_enabled(option.category) else option
             for option in catalog.purchase_options))),
         "item_value_rows": item_value_rows(catalog),
         "runtime_seconds": round(perf_counter() - started, 4),

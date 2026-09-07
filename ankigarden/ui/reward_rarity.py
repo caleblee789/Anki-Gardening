@@ -26,13 +26,13 @@ class RewardTreatment:
 
 _TREATMENTS = {
     "": RewardTreatment("", "", GARDEN_THEME["reviewer_hud_growth_strong"], 0),
-    "common": RewardTreatment("common", "Common", GARDEN_THEME["reviewer_hud_growth_strong"], 0),
-    "uncommon": RewardTreatment("uncommon", "Uncommon", GARDEN_THEME["info"], 1),
+    "common": RewardTreatment("common", "Common", GARDEN_THEME["info"], 0),
+    "uncommon": RewardTreatment("uncommon", "Uncommon", GARDEN_THEME["reviewer_hud_growth_strong"], 1),
     "rare": RewardTreatment("rare", "Rare", GARDEN_THEME["coin_accent"], 2),
     "very_rare": RewardTreatment("very_rare", "Very Rare", "#CBB2F4", 3),
     "exceptional": RewardTreatment("exceptional", "Exceptional", "#EFB9DB", 4),
     "ultra_rare": RewardTreatment("ultra_rare", "Ultra Rare", "#EFB9DB", 4),
-    "full_bloom": RewardTreatment("full_bloom", "Full Bloom", GARDEN_THEME["coin_accent"], 2),
+    "full_bloom": RewardTreatment("full_bloom", "Full Bloom", "#7DDCFF", 2),
 }
 _ALIASES = {"rare_environment": "rare", "very_rare_environment": "very_rare",
             "ultra_environment": "ultra_rare", "ultra": "ultra_rare"}

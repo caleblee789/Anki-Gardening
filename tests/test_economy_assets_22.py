@@ -109,11 +109,14 @@ def test_manifest_resolves_every_new_economy_art_identity() -> None:
             assert resolved.path.is_file()
 
 
-def test_shared_item_resolver_routes_every_new_economy_art_identity() -> None:
+def test_shared_item_resolver_routes_every_new_economy_art_identity(monkeypatch) -> None:
     """Shared cards must not send 2.2 catalog art through UI fallbacks."""
 
     manager = AssetManager(_Config(), _Storage())
     engine = SimpleNamespace(assets=manager, config=_Config())
+    from ankigarden import feature_availability
+    assert GardenGameEngine.resolve_item_asset(engine, "mastery_gold") is None
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", True)
     expected = {
         "cosmetics": tuple(
             (
@@ -155,7 +158,11 @@ def test_shared_item_resolver_routes_every_new_economy_art_identity() -> None:
     assert GardenGameEngine.resolve_item_asset(engine, "") is None
 
 
-def test_collection_registry_is_complete_and_fertilizer_copy_is_card_counted() -> None:
+def test_collection_registry_is_complete_and_fertilizer_copy_is_card_counted(monkeypatch) -> None:
+    from ankigarden import feature_availability
+    assert not {row.category for row in collectible_registry()}.intersection({"mastery", "landmarks"})
+    monkeypatch.setattr(feature_availability, "LANDMARKS_ENABLED", True)
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", True)
     rows = collectible_registry()
     assert len(rows) == 88
     assert Counter(row.category for row in rows) == {
@@ -234,7 +241,7 @@ def test_landmark_resolver_rejects_unfinished_display_and_accepts_completed_art(
     assert resolved.asset_id == "landmark_mossy_stone_path"
 
 
-def test_mastery_resolver_uses_highest_species_rank_and_rejects_unknown_rank() -> None:
+def test_mastery_resolver_uses_highest_species_rank_and_rejects_unknown_rank(monkeypatch) -> None:
     manager = AssetManager(_Config(), _Storage())
     engine = SimpleNamespace(
         assets=manager,
@@ -246,6 +253,9 @@ def test_mastery_resolver_uses_highest_species_rank_and_rejects_unknown_rank() -
         ),
     )
 
+    from ankigarden import feature_availability
+    assert GardenGameEngine.resolve_mastery_asset(engine, "bonsai") is None
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", True)
     resolved = GardenGameEngine.resolve_mastery_asset(engine, "bonsai")
     assert resolved is not None
     assert resolved.asset_id == "mastery_gold"

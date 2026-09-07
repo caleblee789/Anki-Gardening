@@ -27,7 +27,7 @@ from ..game import (
 from ..growth import GROWTH_STAGES
 from ..garden_finds import standard_find_artwork_ref
 from ..notices import USER_NOTICES
-from ..performance import RUNTIME_PERFORMANCE
+from ..performance import RUNTIME_PERFORMANCE, timed
 from ..storage import assign_stable_answer_identities, unprocessed_revlog_entries
 from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 from ..ui.reviewer_hud import (
@@ -578,7 +578,7 @@ class ReviewerHookHandler:
 
         state = getattr(self.storage, "state", None)
         completion = getattr(state, "daily_completion", None)
-        if refresh:
+        if refresh and not getattr(self.storage, "runtime_pending", False):
             try:
                 resolver = getattr(self.engine, "today_cards_status", None)
                 due = getattr(self.storage, "due_obligations", None)
@@ -828,78 +828,22 @@ class ReviewerHookHandler:
         )
 
     def _effects_snapshot(self, *, at_ms: int | None = None) -> EffectsSnapshot:
-        state = getattr(self.storage, "state", None)
+        from ..ui.active_consumables import project_active_consumables
         fertilizers: list[FertilizerSnapshot] = []
         boosters: list[BoosterSnapshot] = []
-        specs = getattr(self.engine, "FERTILIZERS", {}) or {}
-        for plant in tuple(getattr(state, "plants", ()) or ()):
-            plant_id = str(getattr(plant, "plant_id", "") or "")
-            if not plant_id:
-                continue
-            plant_name = PlantIdentity.from_plant(plant).display_name
-            fertilizer_batches = tuple(
-                batch
-                for batch in tuple(
-                    getattr(plant, "fertilizer_card_batches", ()) or ()
-                )
-                if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
-            )
-            if fertilizer_batches:
-                active_effect_id = str(
-                    getattr(fertilizer_batches[0], "effect_id", "") or ""
-                )
-                active_batches = tuple(
-                    batch
-                    for batch in fertilizer_batches
-                    if str(getattr(batch, "effect_id", "") or "")
-                    == active_effect_id
-                )
-                remaining_cards = sum(
-                    max(0, int(getattr(batch, "remaining_cards", 0) or 0))
-                    for batch in active_batches
-                )
-                tier = active_effect_id.removeprefix("fertilizer_")
-                spec = specs.get(tier)
-                name = str(
-                    getattr(spec, "name", "")
-                    or {
-                        "basic": "Basic Fertilizer",
-                        "quality": "Quality Fertilizer",
-                        "premium": "Magical Fertilizer",
-                    }.get(tier, "Fertilizer")
-                )
-                source_ids = tuple(dict.fromkeys(
-                    str(getattr(batch, "source_event_key", "") or "")
-                    for batch in active_batches
-                    if str(getattr(batch, "source_event_key", "") or "")
-                ))
+        for effect in project_active_consumables(self.engine, now_ms=at_ms):
+            source = effect.source_event_ids[0] if len(effect.source_event_ids) == 1 else ""
+            if effect.family == "fertilizer":
+                tier = effect.item_id.removeprefix("fertilizer_")
                 fertilizers.append(FertilizerSnapshot(
-                    effect_id=f"fertilizer:{plant_id}:{tier}",
-                    name=name,
-                    remaining_seconds=0,
-                    remaining_cards=remaining_cards,
-                    plant_id=plant_id,
-                    plant_name=plant_name,
-                    source_event_id=(source_ids[0] if len(source_ids) == 1 else ""),
+                    effect_id=f"fertilizer:{effect.target_id}:{tier}", name=effect.name,
+                    remaining_seconds=0, remaining_cards=effect.remaining_cards,
+                    plant_id=effect.target_id, plant_name=effect.target_name, source_event_id=source,
                 ))
-
-            batches = tuple(getattr(plant, "booster_card_batches", ()) or ())
-            remaining_cards = sum(
-                max(0, int(getattr(batch, "remaining_cards", 0) or 0))
-                for batch in batches
-            )
-            if remaining_cards:
-                source_ids = tuple(dict.fromkeys(
-                    str(getattr(batch, "source_event_key", "") or "")
-                    for batch in batches
-                    if str(getattr(batch, "source_event_key", "") or "")
-                ))
+            else:
                 boosters.append(BoosterSnapshot(
-                    effect_id=f"booster:{plant_id}",
-                    remaining_cards=remaining_cards,
-                    plant_id=plant_id,
-                    plant_name=plant_name,
-                    source_event_id=source_ids[0] if len(source_ids) == 1 else "",
+                    effect_id=f"booster:{effect.target_id}", remaining_cards=effect.remaining_cards,
+                    plant_id=effect.target_id, plant_name=effect.target_name, source_event_id=source,
                 ))
         return EffectsSnapshot(tuple(fertilizers), tuple(boosters))
 
@@ -1039,6 +983,10 @@ class ReviewerHookHandler:
                 anki_day_id=day,
                 start_snapshot=start_snapshot,
             )
+            begin_activity = getattr(self.storage, "begin_activity_session", None)
+            if callable(begin_activity):
+                begin_activity(self._session_summary_accumulator.session_id,
+                               self._session_summary_accumulator.started_at)
             self._schedule_session_cutoff_split()
         except Exception:
             logger.debug(
@@ -1208,6 +1156,7 @@ class ReviewerHookHandler:
         except Exception:
             return ""
 
+    @timed("review.session-event")
     def _session_event_from_result(
         self,
         result: CommittedAnswerResult,
@@ -1749,7 +1698,14 @@ class ReviewerHookHandler:
 
     def on_question(self, *_args: Any, **_kwargs: Any) -> None:
         """Show one non-modal eligibility reminder before a reviewer answer."""
-
+        runtime = getattr(self.storage, "runtime_coordinator", None)
+        if runtime is not None:
+            runtime.request("review question")
+        if getattr(self.storage, "runtime_pending", False):
+            if self._session_summary_accumulator is None:
+                self._start_reviewer_session_totals(today_cards_available=False)
+            self._ensure_reviewer_hud()
+            return
         current_day = self.scheduler_day(self.storage)
         accumulator = self._session_summary_accumulator
         old_end_snapshot = None
@@ -1899,6 +1855,12 @@ class ReviewerHookHandler:
         if accumulator is None:
             return
         try:
+            finish_activity = getattr(self.storage, "finish_activity_session", None)
+            if callable(finish_activity):
+                try:
+                    finish_activity(accumulator.session_id, self._session_now_iso())
+                except Exception:
+                    logger.exception("Anki Garden: session end could not be saved")
             accumulator.finalize(
                 ended_at=self._session_now_iso(),
                 end_snapshot=self._session_end_snapshot(refresh_today=True),
@@ -1941,6 +1903,13 @@ class ReviewerHookHandler:
             "overview": "overview",
         }.get(state_name)
         if surface_name is None:
+            return
+        runtime = getattr(self.storage, "runtime_coordinator", None)
+        if runtime is not None:
+            # Anki is already completing this navigation. Update only Garden
+            # after the transition instead of loading the whole page twice.
+            from aqt.qt import QTimer
+            QTimer.singleShot(0, runtime.app._refresh_home_surface)
             return
         try:
             surface = getattr(mw, surface_name, None)
@@ -2454,6 +2423,15 @@ class ReviewerHookHandler:
                 exc_info=True,
             )
 
+    def _open_supplies_from_reviewer_hud(self, group: str) -> None:
+        owner = getattr(self.open_garden, "__self__", None)
+        callback = getattr(owner, "open_supplies", None)
+        if callable(callback):
+            callback(group)
+
+    def _save_reviewer_hud_position(self, position: dict[str, Any]) -> None:
+        self._persist_hud_preferences(reviewer_hud_position=position)
+
     def _open_active_plant_from_reviewer_hud(self, plant_id: str = "") -> None:
         callback = self.open_garden
         if not callable(callback):
@@ -2528,6 +2506,24 @@ class ReviewerHookHandler:
     def _resolve_reviewer_reward_art(self, hero: Any) -> Any | None:
         """Resolve canonical reward references without teaching the widget catalogs."""
 
+        kind_source = getattr(hero, "kind", "") or getattr(hero, "reward_type", "")
+        kind = str(getattr(kind_source, "value", kind_source) or "")
+        if kind in {"full_bloom", "stage_change"}:
+            species = str(getattr(hero, "plant_class", "") or "").casefold().replace(" ", "_")
+            if not species:
+                plant_id = str(getattr(hero, "plant_id", "") or "")
+                plant = next((plant for plant in getattr(getattr(self.engine, "state", None), "plants", ())
+                              if str(getattr(plant, "plant_id", "")) == plant_id), None)
+                species = str(getattr(plant, "species", "") or "")
+            stage = "rare" if kind == "full_bloom" else str(getattr(hero, "new_stage", "") or "")
+            resolver = getattr(self.engine, "resolve_plant_asset", None)
+            if species and stage and callable(resolver):
+                try:
+                    resolved = resolver(species, stage)
+                    if resolved is not None:
+                        return resolved
+                except Exception:
+                    pass
         asset_key = str(
             hero
             if isinstance(hero, str)
@@ -2535,16 +2531,18 @@ class ReviewerHookHandler:
             or getattr(hero, "art_asset", "")
             or ""
         )
+        if kind == "checkpoint":
+            asset_key = "checkpoint_badge"
+        elif not asset_key and getattr(hero, "inventory_items", ()):
+            asset_key = str(hero.inventory_items[0][0])
+        elif kind == "coin_or_booster" and not getattr(hero, "inventory_items", ()):
+            if asset_key.removeprefix("ui_") in {"", "garden_coin", "garden_coins", "growth", "growth_resource"}:
+                asset_key = "garden_reward"
         if not asset_key:
             return None
         # Garden Finds retain the logical Growth reference in their ledger;
         # the current artwork catalog names the same resource explicitly.
         asset_key = {"growth": "growth_resource"}.get(asset_key, asset_key)
-        kind_source = getattr(hero, "kind", "") or getattr(
-            hero, "reward_type", ""
-        )
-        kind_value = getattr(kind_source, "value", None)
-        kind = str(kind_value or kind_source or "")
         resolver_names = (
             (
                 "resolve_garden_feature_preview_asset",
@@ -2552,7 +2550,7 @@ class ReviewerHookHandler:
                 "resolve_item_asset",
             )
             if kind == "environment_discovery"
-            else ("resolve_item_asset",)
+            else ("resolve_item_asset", "resolve_garden_feature_preview_asset", "resolve_scenery_preview_asset")
         )
         for resolver_name in resolver_names:
             resolver = getattr(self.engine, resolver_name, None)
@@ -2631,7 +2629,7 @@ class ReviewerHookHandler:
         """Persist the supported left/right dock choice and repaint in place."""
 
         dock = "left" if str(side) == "left" else "right"
-        self._persist_hud_preferences(reviewer_hud_dock=dock)
+        self._persist_hud_preferences(reviewer_hud_dock=dock, reviewer_hud_position={"custom": False, "x": 1.0, "y": 0.0})
         self._ensure_reviewer_hud(force_dock=dock)
 
     def _toggle_reviewer_hud(self, collapsed: bool | None = None) -> None:
@@ -2698,6 +2696,7 @@ class ReviewerHookHandler:
         except Exception:
             return
 
+    @timed("review.feedback")
     def _flush_pending_reviewer_results(self) -> None:
         panel = getattr(self, "_reviewer_hud", None)
         present_committed = getattr(panel, "present_committed_result", None)
@@ -2788,6 +2787,7 @@ class ReviewerHookHandler:
         self._update_reviewer_hud_session_totals()
         self._retry_reviewer_feedback_acknowledgements()
 
+    @timed("review.hud")
     def _ensure_reviewer_hud(
         self,
         *,
@@ -2795,6 +2795,8 @@ class ReviewerHookHandler:
         force_dock: str | None = None,
     ) -> None:
         """Mount or refresh one focus-safe HUD inside the Reviewer webview."""
+
+        self._reviewer_hud_refresh_queued = False
 
         if str(getattr(mw, "state", "") or "") != "review":
             self._hide_reviewer_hud()
@@ -2844,6 +2846,7 @@ class ReviewerHookHandler:
             state,
             collapsed=collapsed,
             dock=dock,
+            position=self._hud_config_value("reviewer_hud_position", {}),
         )
         self._render_reviewer_hud(
             parent,
@@ -3143,6 +3146,8 @@ class ReviewerHookHandler:
                     parent,
                     on_open_garden=self._open_garden_from_reviewer_hud,
                     on_open_plant=self._open_active_plant_from_reviewer_hud,
+                    on_open_supplies=self._open_supplies_from_reviewer_hud,
+                    on_position_changed=self._save_reviewer_hud_position,
                     on_open_collection=self._open_collection_from_reviewer_hud,
                     on_select_plant=self._select_another_plant_from_reviewer_hud,
                     on_choose_plant=self._choose_plant_from_reviewer_hud,
@@ -3173,6 +3178,8 @@ class ReviewerHookHandler:
                     set_callbacks(
                         on_open_garden=self._open_garden_from_reviewer_hud,
                         on_open_plant=self._open_active_plant_from_reviewer_hud,
+                        on_open_supplies=self._open_supplies_from_reviewer_hud,
+                        on_position_changed=self._save_reviewer_hud_position,
                         on_open_collection=self._open_collection_from_reviewer_hud,
                         on_select_plant=self._select_another_plant_from_reviewer_hud,
                         on_choose_plant=self._choose_plant_from_reviewer_hud,
@@ -4236,6 +4243,7 @@ class ReviewerHookHandler:
             )
             return None
 
+    @timed("review.local-proof")
     def _proven_local_answer(
         self,
         card: Any,
@@ -4328,6 +4336,23 @@ class ReviewerHookHandler:
             RUNTIME_PERFORMANCE.finish("review.answer", started)
 
     def _process_answer(self, reviewer: Any, card: Any, ease: int) -> None:
+        invalidator = getattr(self.storage, "invalidate_due_snapshot", None)
+        if callable(invalidator):
+            invalidator()
+        runtime = getattr(self.storage, "runtime_coordinator", None)
+        if runtime is not None:
+            runtime.request("review answer")
+            runtime.note_local_answer(reviewer)
+            if getattr(self.storage, "runtime_pending", False):
+                if not self._review_window_token:
+                    self._start_reviewer_session_totals(today_cards_available=False)
+                try:
+                    revlog_id = runtime.defer_answer(card, ease, self._review_window_token)
+                    if revlog_id:
+                        self._review_window_answer_revlog_ids.add(revlog_id)
+                except Exception:
+                    logger.exception("Anki Garden: local review attribution could not be saved")
+                return
         if self._session_summary_accumulator is None:
             # The first-question hook is the authoritative pre-answer
             # baseline. If it was unavailable, retain session rewards but do
@@ -4386,6 +4411,15 @@ class ReviewerHookHandler:
         local_history = self._proven_local_answer(card, ease, last_processed)
         proven_local_commit = local_history is not None
         if local_history is None:
+            if runtime is not None:
+                self._report_history_invalidation("local answer was ambiguous")
+                try:
+                    revlog_id = runtime.defer_answer(card, ease, self._review_window_token)
+                    if revlog_id:
+                        self._review_window_answer_revlog_ids.add(revlog_id)
+                except Exception:
+                    logger.exception("Anki Garden: local review attribution could not be saved")
+                return
             if bool(getattr(self, "_local_answer_fast_path_ready", False)):
                 self._report_history_invalidation("local answer was ambiguous")
             try:
@@ -4588,6 +4622,9 @@ class ReviewerHookHandler:
                     logger.debug("Anki Garden: unable to show review-save notice", exc_info=True)
             return
 
+        if runtime is not None:
+            for row in rows:
+                runtime.answer_committed(tuple(row), scheduler_day)
         self.mark_history_reconciled()
         USER_NOTICES.clear(key="review_history")
 
@@ -4665,14 +4702,43 @@ class ReviewerHookHandler:
             except Exception:
                 logger.debug("Anki Garden: unable to publish review state change", exc_info=True)
         self._pending_reviewer_results.extend(accepted_results)
-        self._ensure_reviewer_hud()
-        self._flush_pending_reviewer_results()
+        if runtime is not None:
+            self._queue_committed_hud_refresh()
+        else:
+            self._ensure_reviewer_hud()
+            if self._pending_reviewer_results:
+                self._flush_pending_reviewer_results()
         if not committed_results:
             self._show_committed_growth_feedback(
                 committed_before,
                 committed_awards[0] if len(committed_awards) == 1 else projected_award,
                 legacy_total_growth=max(0, int(committed_growth or 0)),
             )
+
+    def _queue_committed_hud_refresh(self) -> None:
+        """Let Anki finish the answer before drawing its committed feedback.
+
+        A question hook may draw first; in that case it consumes this request.
+        Results remain queued until the mounted HUD accepts them, and the
+        Session Summary already owns the committed events when leaving review.
+        """
+        if getattr(self, "_reviewer_hud_refresh_queued", False):
+            return
+        self._reviewer_hud_refresh_queued = True
+
+        def refresh() -> None:
+            if not getattr(self, "_reviewer_hud_refresh_queued", False):
+                return
+            self._reviewer_hud_refresh_queued = False
+            self._ensure_reviewer_hud()
+            if self._pending_reviewer_results:
+                self._flush_pending_reviewer_results()
+
+        try:
+            from aqt.qt import QTimer
+            QTimer.singleShot(0, refresh)
+        except ImportError:
+            refresh()
 
     @staticmethod
     def _show_deferred_history_notice() -> None:

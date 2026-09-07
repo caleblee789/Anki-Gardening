@@ -9,176 +9,120 @@ import pytest
 from ankigarden.asset_manager import AssetManager
 from ankigarden.ui.landmarks import (
     DEFAULT_LANDMARK_ACTIONS,
+    GARDEN_BACKGROUND_FOCAL,
     LandmarkAction,
+    background_cover_rect,
     normalized_landmark_action,
     project_landmark_bounds,
     project_landmark_outline_paths,
+    project_landmark_point,
     project_landmark_polygon,
     resolve_scene_landmarks,
 )
+from ankigarden.ui.plant_display import contained_canvas_rect
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _placement() -> dict[str, object]:
-    profile = json.loads(
-        (Path(__file__).parent / "fixtures/verdant_twilight_surface_v6.json").read_text()
-    )
-    return {"surface_profile": profile}
+    return {"surface_profile": json.loads(
+        (ROOT / "tests/fixtures/verdant_twilight_surface_v6.json").read_text()
+    )}
 
 
-def test_nursery_uses_registered_copy_and_manifest_geometry() -> None:
-    landmarks = resolve_scene_landmarks(
-        _placement(), width=800, height=600, interactive=True
-    )
-
-    assert len(landmarks) == 2
-    nursery = landmarks[0]
-    assert nursery.landmark_id == "nursery_entrance"
-    assert nursery.action_id == "garden.nursery.open"
-    assert nursery.accessible_name == "Shop"
-    assert nursery.tooltip == "Open shop"
-    assert nursery.bounds == (0.076, 0.142, 0.146, 0.178)
-    assert len(nursery.polygon) == 13
-    house = landmarks[1]
-    assert house.landmark_id == "garden_house"
-    assert house.action_id == "garden.trophies.open"
-    assert house.accessible_name == "Trophy Room"
-    assert house.tooltip == "Open Trophy Room"
-    assert len(house.polygon) == 17
-    assert tuple(len(path) for path in house.outline_paths) == (7, 2, 2)
-
-
-def test_every_responsive_landmark_uses_a_detailed_building_contour() -> None:
-    placement = _placement()
-
-    for width, height in ((800, 600), (1280, 720), (1920, 700)):
-        landmarks = resolve_scene_landmarks(
-            placement, width=width, height=height, interactive=True
-        )
-        assert {item.landmark_id for item in landmarks} == {
-            "nursery_entrance",
-            "garden_house",
-        }
-        assert all(len(item.polygon) >= 13 for item in landmarks)
-
-        house = next(item for item in landmarks if item.landmark_id == "garden_house")
-        # The first six points step around the roof and chimney instead of
-        # replacing the cottage with one broad convex hull.
-        roof_steps = house.polygon[:6]
-        assert len({point[0] for point in roof_steps}) >= 4
-        assert len({point[1] for point in roof_steps}) >= 4
-        assert len(house.polygon) >= 15
-        assert len(house.outline_paths) == 3
-
-
-def test_house_outline_is_open_and_occlusion_aware() -> None:
-    placement = _placement()
-    profile = placement["surface_profile"]
-
-    for width, height in ((800, 600), (1280, 720), (1920, 700)):
-        house = next(
-            item
-            for item in resolve_scene_landmarks(
-                placement, width=width, height=height, interactive=True
-            )
-            if item.landmark_id == "garden_house"
-        )
-        variant_name = (
-            "home" if width / height >= 2.05
-            else "4:3" if width / height <= 1.42
-            else "16:9"
-        )
-        variant = profile["variants"][variant_name]
-        projected = project_landmark_outline_paths(
-            house,
-            width=width,
-            height=height,
-            source_aspect=variant["width"] / variant["height"],
-            focal=tuple(variant["focal_point"]),
-        )
-
-        assert tuple(len(path) for path in projected) == (7, 2, 2)
-        assert all(path[0] != path[-1] for path in projected)
-
-
-@pytest.mark.skip(reason="16:9 is retained compatibility art, not an active presentation")
-def test_autumn_house_override_projects_the_measured_16x9_edges() -> None:
-    manifest = json.loads(
-        (
-            Path(__file__).resolve().parents[1]
-            / "ankigarden/assets/manifest.json"
-        ).read_text(encoding="utf-8")
-    )
+def _sceneries():
     rows = {
         row["asset_id"]: row
-        for row in manifest["assets"]
+        for row in json.loads((ROOT / "ankigarden/assets/manifest.json").read_text())["assets"]
         if row.get("category") == "backgrounds"
     }
     manager = object.__new__(AssetManager)
-    manager._catalog_by_asset_id = {
-        ("backgrounds", asset_id): row for asset_id, row in rows.items()
-    }
-    placement = manager._placement_for_entry(
-        rows["bg_autumn_any_soil_master_v6"], "backgrounds"
+    manager._catalog_by_asset_id = {("backgrounds", key): row for key, row in rows.items()}
+    return [
+        (key, manager._placement_for_entry(row, "backgrounds"))
+        for key, row in rows.items() if "soil_master" in key
+    ]
+
+
+def test_nursery_uses_registered_copy_and_manifest_geometry() -> None:
+    landmarks = resolve_scene_landmarks(_placement(), width=800, height=600, interactive=True)
+    assert [(item.landmark_id, item.action_id, item.accessible_name, item.tooltip) for item in landmarks] == [
+        ("nursery_entrance", "garden.nursery.open", "Shop", "Open shop"),
+        ("garden_house", "garden.trophies.open", "Trophy Room", "Open Trophy Room"),
+    ]
+    for item in landmarks:
+        left, top, width, height = item.bounds
+        assert all(left <= x <= left + width and top <= y <= top + height for x, y in item.polygon)
+        assert item.label_anchor[1] > max(y for _, y in item.polygon)
+
+
+@pytest.mark.parametrize("width,height", [(540, 360), (828, 552), (1200, 800)])
+def test_building_projection_matches_the_painted_background_crop(width, height) -> None:
+    # The 4:3 painting fills a 3:2 canvas: 12.5% extra height, cropped at 48%.
+    # These expected positions are independent of the landmark implementation.
+    expected = [(0, -.06 * height), (.25 * width, .22125 * height),
+                (width, 1.065 * height)]
+    points = [(0, 0), (.25, .25), (1, 1)]
+    for point, target in zip(points, expected):
+        assert project_landmark_point(
+            point, width=width, height=height, source_aspect=4 / 3,
+            focal=GARDEN_BACKGROUND_FOCAL,
+        ) == pytest.approx(target)
+    assert background_cover_rect(width, height, 1448, 1086, GARDEN_BACKGROUND_FOCAL) == pytest.approx(
+        (0, -.06 * height, width, 1.125 * height)
     )
-    house = next(
-        landmark
-        for landmark in resolve_scene_landmarks(
-            placement,
-            width=1672,
-            height=941,
-            interactive=True,
-        )
-        if landmark.landmark_id == "garden_house"
-    )
-
-    assert house.bounds == (0.711, 0.131, 0.132, 0.249)
-    assert tuple(len(path) for path in house.outline_paths) == (11, 2, 2)
-    assert house.outline_paths[0][0] == (0.711, 0.245)
-    assert house.outline_paths[0][6] == (0.751, 0.134)
-    assert house.outline_paths[1][-1] == (0.807, 0.245)
 
 
-def test_landmark_highlight_draws_only_the_building_outline() -> None:
-    scene_source = (
-        Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py"
-    ).read_text(encoding="utf-8")
-    affordance_source = scene_source.split(
-        "def _draw_landmark_affordances", 1
-    )[1].split("def _draw_card_connector", 1)[0]
+def test_every_scenery_has_separate_building_shapes_and_visible_edge_strokes() -> None:
+    sceneries = _sceneries()
+    assert len(sceneries) == 9
+    contours = {key: set() for key in ("nursery_entrance", "garden_house")}
+    for _, placement in sceneries:
+        for width, height in ((540, 360), (1040, 720), (1920, 900)):
+            canvas = contained_canvas_rect(width, height)
+            args = dict(width=canvas.width, height=canvas.height,
+                        source_aspect=4 / 3, focal=GARDEN_BACKGROUND_FOCAL)
+            landmarks = resolve_scene_landmarks(
+                placement, width=canvas.width, height=canvas.height, interactive=True,
+            )
+            assert {item.landmark_id for item in landmarks} == set(contours)
+            for item in landmarks:
+                contours[item.landmark_id].add(item.polygon)
+                hit = project_landmark_bounds(item, **args)
+                assert hit is not None
+                left, top, hit_width, hit_height = hit
+                assert hit_width >= 44 and hit_height >= 44
+                assert left >= 0 and top >= 0
+                assert left + hit_width <= round(canvas.width)
+                assert top + hit_height <= round(canvas.height)
+                points = project_landmark_polygon(item, **args)
+                assert all(left - 1 <= x <= left + hit_width + 1
+                           and top - 1 <= y <= top + hit_height + 1 for x, y in points)
+                strokes = project_landmark_outline_paths(item, **args)
+                assert strokes and all(path[0] != path[-1] for path in strokes)
+        assert resolve_scene_landmarks(placement, width=1200, height=400, interactive=False) == ()
+    assert all(len(shapes) == 9 for shapes in contours.values())
 
-    assert "painter.setBrush(Qt.BrushStyle.NoBrush)" in affordance_source
-    assert "QColor(244, 198, 103, 34)" not in affordance_source
-    assert "if outline_paths:" in affordance_source
-    assert "for outline in outline_paths:" in affordance_source
-    assert "Qt.PenCapStyle.RoundCap" in affordance_source
-    assert "Qt.PenJoinStyle.RoundJoin" in affordance_source
 
-
-@pytest.mark.skip(reason="preview routing now has explicit Home and native 3:2 contexts")
-def test_preview_is_inert_even_when_manifest_supports_home_variant() -> None:
-    placement = _placement()
-
-    assert resolve_scene_landmarks(
-        placement, width=1200, height=400, interactive=False
-    ) == ()
-    full_garden = resolve_scene_landmarks(
-        placement, width=1200, height=400, interactive=True
-    )
-    assert full_garden[0].bounds == (0.222, 0.169, 0.082, 0.173)
-
-
-def test_unknown_or_malformed_actions_fail_closed() -> None:
+@pytest.mark.parametrize("defect", ["unknown_action", "bounds", "missing_polygon", "bad_point", "flat_polygon", "bad_stroke"])
+def test_unknown_or_malformed_landmarks_fail_closed(defect) -> None:
     placement = deepcopy(_placement())
     landmark = placement["surface_profile"]["landmarks"][0]
-    landmark["action_id"] = "garden.unknown.open"
+    geometry = landmark["variants"]["4:3"]
+    if defect == "unknown_action":
+        landmark["action_id"] = "garden.unknown.open"
+    elif defect == "bounds":
+        geometry["bounds"] = [0.9, 0.9, 0.2, 0.2]
+    elif defect == "missing_polygon":
+        geometry.pop("polygon")
+    elif defect == "bad_point":
+        geometry["polygon"][1] = [2, 3]
+    elif defect == "flat_polygon":
+        geometry["polygon"] = [[.1, .1], [.2, .2], [.3, .3]]
+    else:
+        geometry["outline_paths"][0][1] = [None, .2]
     assert [item.action_id for item in resolve_scene_landmarks(
-        placement, width=800, height=600, interactive=True
-    )] == ["garden.trophies.open"]
-
-    landmark["action_id"] = "garden.nursery.open"
-    landmark["variants"]["4:3"]["bounds"] = [0.9, 0.9, 0.2, 0.2]
-    assert [item.action_id for item in resolve_scene_landmarks(
-        placement, width=800, height=600, interactive=True
+        placement, width=800, height=600, interactive=True,
     )] == ["garden.trophies.open"]
 
 
@@ -189,74 +133,9 @@ def test_registered_future_action_is_generic_and_tooltip_is_one_line() -> None:
     landmark["action_id"] = "garden.tools.open"
     action = normalized_landmark_action("Tool shed", "Open\n tool shed")
     assert action == LandmarkAction("Tool shed", "Open tool shed")
-
     actions = {**DEFAULT_LANDMARK_ACTIONS, "garden.tools.open": action}
-    resolved = resolve_scene_landmarks(
-        placement, width=800, height=600, interactive=True, actions=actions
-    )
+    resolved = resolve_scene_landmarks(placement, width=800, height=600, interactive=True, actions=actions)
     assert [(item.landmark_id, item.action_id, item.tooltip) for item in resolved] == [
         ("tool_shed", "garden.tools.open", "Open tool shed"),
         ("garden_house", "garden.trophies.open", "Open Trophy Room"),
     ]
-
-
-def test_projected_hotspot_stays_inside_scene_and_meets_touch_target() -> None:
-    landmark = resolve_scene_landmarks(
-        _placement(), width=1920, height=700, interactive=True
-    )[0]
-    geometry = project_landmark_bounds(
-        landmark,
-        width=1920,
-        height=700,
-        source_aspect=12 / 5,
-        focal=(0.5, 0.5),
-    )
-
-    assert geometry is not None
-    x, y, width, height = geometry
-    assert x >= 0 and y >= 0
-    assert width >= 44 and height >= 44
-    assert x + width <= 1920
-    assert y + height <= 700
-
-
-def test_projected_building_contours_stay_inside_their_forgiving_hit_targets() -> None:
-    placement = _placement()
-    profile = placement["surface_profile"]
-
-    for width, height in ((800, 600), (1280, 720), (1920, 700)):
-        landmarks = resolve_scene_landmarks(
-            placement, width=width, height=height, interactive=True
-        )
-        variant_name = (
-            "home" if width / height >= 2.05
-            else "4:3" if width / height <= 1.42
-            else "16:9"
-        )
-        variant = profile["variants"][variant_name]
-        source_aspect = variant["width"] / variant["height"]
-        focal = tuple(variant["focal_point"])
-
-        for landmark in landmarks:
-            hit = project_landmark_bounds(
-                landmark,
-                width=width,
-                height=height,
-                source_aspect=source_aspect,
-                focal=focal,
-            )
-            points = project_landmark_polygon(
-                landmark,
-                width=width,
-                height=height,
-                source_aspect=source_aspect,
-                focal=focal,
-            )
-            assert hit is not None
-            left, top, hit_width, hit_height = hit
-            tolerance = 3.0
-            assert all(
-                left - tolerance <= x <= left + hit_width + tolerance
-                and top - tolerance <= y <= top + hit_height + tolerance
-                for x, y in points
-            )

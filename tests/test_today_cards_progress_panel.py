@@ -137,7 +137,8 @@ def test_today_cards_is_a_lazy_garden_progress_page() -> None:
     refresh_source = _method_source("GardenDetailsDialog", "_refresh_metric_page")
 
     assert ("today", "Today’s Cards") in metric_tabs
-    assert ("today", "Today") in page_labels
+    assert ("today", "Activity") in page_labels
+    assert not any(key == "currency" for key, _label in page_labels)
     assert 'normalized == "today"' in refresh_source
     assert "self._refresh_today(layout)" in refresh_source
 

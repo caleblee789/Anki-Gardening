@@ -17,14 +17,18 @@ GARDEN_ICON_ASSETS: dict[str, str] = {
     "coin": "garden_coin",
     "currency": "garden_coin",
     "growth": "growth_resource",
+    "stored_growth": "stored_growth",
+    "checkpoint": "checkpoint_badge",
     "environment-discovery": "garden_discovery",
     "fertilizer": "fertilizer_basic",
     "booster": "booster_potion",
     "reviews": "sync_review_cards",
+    "garden-reward": "garden_reward",
 }
 
 # Control paths share round caps/joins and the same 24 px grid.
 GARDEN_ICON_PATHS: dict[str, str] = {
+    "garden-reward": '<path d="M4 14h16l-2 7H6l-2-7ZM12 14V8M12 11c-4 0-6-2-6-6 4 0 6 2 6 6Zm0-3c4 0 6-2 6-6-4 0-6 2-6 6Z"/>',
     # Keep the close mark as two independent strokes. QtSvg has historically
     # dropped the second sub-path of a compound, open path at some DPRs.
     "close": '<path d="M6 6L18 18"/><path d="M18 6L6 18"/>',
@@ -38,9 +42,11 @@ GARDEN_ICON_PATHS: dict[str, str] = {
     "rename": '<path d="m4 20 4.2-1 10.3-10.3a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m13.8 7.4 3 3M4 20h6"/>',
     "coin": '<circle cx="12" cy="12" r="8"/><path d="M9 10.2c0-1.3 1.2-2.2 3-2.2s3 .8 3 2-1.2 1.7-3 2-3 .8-3 2 1.2 2 3 2 3-.9 3-2.2M12 6v12"/>',
     "growth": '<path d="M12 20V9M12 14c-4.8 0-7-2.6-7-7 4.7 0 7 2.4 7 7Zm0-2c4.8 0 7-2.6 7-7-4.7 0-7 2.4-7 7Z"/>',
+    "stored_growth": '<path d="M9 3h6v5l3 3v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8l3-3V3ZM9 6h6"/><path d="M12 18v-4m0 2c-2.5 0-3.5-1.3-3.5-3.5C11 12.5 12 14 12 16Zm0-1c2.5 0 3.5-1.3 3.5-3.5C13 11.5 12 13 12 15Z"/>',
     "sync-sprout": '<path d="M6.2 8.2A7.5 7.5 0 0 1 19 7l1-3v5h-5"/><path d="M17.8 15.8A7.5 7.5 0 0 1 5 17l-1 3v-5h5"/><path d="M12 17v-6M12 13c-2.8 0-4.2-1.5-4.2-4.2 2.8 0 4.2 1.4 4.2 4.2Zm0-2c2.8 0 4.2-1.5 4.2-4.2-2.8 0-4.2 1.4-4.2 4.2Z"/>',
     "streak": '<path d="M13.5 3.5c.5 3-1 4.2-2.3 5.6C9.8 10.5 9 12 10 14c-2.2-.7-3-2.5-2.7-4.4C5.3 11.2 4 13.3 4 15.5A8 8 0 0 0 20 15c0-4.5-3-8.2-6.5-11.5ZM12 20c-1.8 0-3.2-1.3-3.2-3 0-1.3.8-2.3 2.1-3.5-.1 1.6.8 2.2 1.5 2.8.7-.9 1.1-1.8.8-3.2 1.4 1.2 2 2.5 2 3.7 0 1.8-1.4 3.2-3.2 3.2Z"/>',
     "stage": '<path d="M12 3l2.3 4.7 5.2.8-3.8 3.7.9 5.2-4.6-2.5-4.6 2.5.9-5.2-3.8-3.7 5.2-.8L12 3Z"/>',
+    "checkpoint": '<path d="m12 3 7 7-7 7-7-7 7-7ZM12 17v5"/><path d="M12 13V8m0 3-3-2m3 1 3-2"/>',
     "collection": '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8M8 13h5"/>',
     "storage": '<path d="M5 8h14v11H5z"/><path d="M4 5h16v3H4zM9 12h6"/>',
     "find": '<circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4M10.5 13V9M10.5 10.5c-2.3 0-3.5-1.2-3.5-3.5 2.3 0 3.5 1.2 3.5 3.5Zm0-1.5c2.3 0 3.5-1.2 3.5-3.5-2.3 0-3.5 1.2-3.5 3.5Z"/>',

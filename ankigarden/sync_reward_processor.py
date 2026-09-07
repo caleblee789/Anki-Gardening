@@ -316,6 +316,12 @@ def build_sync_reward_summary(
     shared_growth_units = sum(max(0, int(result.award.shared_growth_units)) for result in results)
 
     receipts = _new_receipts(engine, results, before_facts)
+    progression_coins: dict[str, int] = defaultdict(int)
+    for receipt in receipts:
+        if (str(getattr(receipt, "reward_type", "")) == "coins"
+                and str(getattr(receipt, "source", "")) in {"plant_milestone", "autumn_hearth"}
+                and bool(getattr(receipt, "included_in_total", True))):
+            progression_coins[str(getattr(receipt, "plant_id", "") or "")] += max(0, int(getattr(receipt, "amount", 0) or 0))
     if "garden_coin_balance" in before_facts and "garden_coin_balance" in after_facts:
         coins = max(
             0,
@@ -362,12 +368,14 @@ def build_sync_reward_summary(
                     outcome.item_id or reward_id,
                 ),
                 "reward_type": str(outcome.reward_type or ""),
+                "reward_amount_total": 0,
             })
             quantity = (
                 max(1, int(outcome.amount or 1))
                 if str(outcome.reward_type) == "inventory_item" else 1
             )
             row["quantity"] = int(row["quantity"]) + quantity
+            row["reward_amount_total"] = int(row["reward_amount_total"]) + max(0, int(outcome.amount or 0))
             if str(outcome.reward_type) == "inventory_item" and outcome.item_id:
                 represented_find_inventory[str(outcome.item_id)] += quantity
 
@@ -612,6 +620,7 @@ def build_sync_reward_summary(
             stage_progress_before=max(0, min(100, int(row.get("stage_progress_before", 0) or 0))),
             stage_progress_after=max(0, min(100, int(row.get("stage_progress_after", 0) or 0))),
             growth_after_units=int(row["growth_after_units"]) if row.get("growth_after_units") is not None else None,
+            progression_coins=progression_coins.get(plant_id, 0),
             next_stage=str(row.get("next_stage", "") or ""),
             fully_grown=bool(row.get("fully_grown", False)),
             active=bool(row.get("active", False)),
@@ -687,6 +696,7 @@ class SyncRewardProcessor:
         snapshot: SyncAttemptSnapshot | None,
         *,
         presentation_enabled: bool = True,
+        raise_on_failure: bool = False,
     ) -> SyncRewardSummary | None:
         if snapshot is None:
             return None
@@ -724,6 +734,8 @@ class SyncRewardProcessor:
             pending_summary_factory=factory if presentation_enabled else None,
             emit_feedback=False,
         )
+        if not ok and raise_on_failure:
+            raise RuntimeError(_message)
         if not ok or not presentation_enabled or not created:
             return None
         pending = SyncRewardSummary.from_dict(self.engine.state.pending_sync_reward_summary)

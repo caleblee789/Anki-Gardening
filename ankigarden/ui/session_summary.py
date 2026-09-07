@@ -496,6 +496,61 @@ class CoinAward:
         object.__setattr__(self, "included_in_total", bool(self.included_in_total))
 
 
+def session_coin_groups(summary: Any, *, represented_find_ids: set[str] | None = None) -> tuple[tuple[str, str, int], ...]:
+    """Keep plant identity while grouping committed coin causes."""
+    plants = {row.plant_id: row.species_name or row.plant_name
+              for row in (*summary.plant_growth_by_plant, *summary.shared_growth_by_plant)}
+    linked = {}
+    for milestone in summary.milestones:
+        name = milestone.plant_class or plants.get(milestone.plant_id) or milestone.plant_name
+        plants[milestone.plant_id] = name
+        for event_id in (*milestone.coin_award_event_ids,
+                         *getattr(milestone.reward, "source_event_ids", ())):
+            linked[event_id] = milestone.plant_id
+    grouped = {}
+    for award in summary.coin_sources:
+        if not award.included_in_total:
+            continue
+        if (award.source_type == "standard_find"
+                and award.source_id in (represented_find_ids or ())):
+            continue
+        plant_id = linked.get(award.event_id, "")
+        if not plant_id:
+            plant_id = next((plant_id for plant_id in sorted(plants, key=len, reverse=True)
+                         if any(award.event_key.startswith(f"{kind}:{plant_id}:")
+                                for kind in ("stage_checkpoint", "stage", "full_bloom"))), "")
+        name = plants.get(plant_id)
+        label = (f"{str(name).replace('_', ' ').title()} progression" if name
+                 else award.source_label or "Card rewards")
+        key = (plant_id, label)
+        grouped[key] = grouped.get(key, 0) + award.amount
+    return tuple((plant_id, label, amount) for (plant_id, label), amount in grouped.items())
+
+
+def session_coin_breakdown(summary: Any) -> tuple[tuple[str, int], ...]:
+    """Group recorded awards by plant progression or their named source."""
+    grouped = {}
+    for _plant_id, label, amount in session_coin_groups(summary):
+        grouped[label] = grouped.get(label, 0) + amount
+    return tuple(grouped.items())
+
+
+def plant_growth_journey(name: str, before_units: int | None, gained_units: int) -> str:
+    """Describe recorded start-to-end progress without inventing legacy baselines."""
+    from ..growth import stage_progress
+
+    if before_units is None:
+        return f"{name} gained {format_growth_units(gained_units, signed=True)} Growth."
+    before = stage_progress(before_units // 100)
+    after_units = before_units + gained_units
+    after = stage_progress(after_units // 100)
+    stage_name = lambda value: "Full Bloom" if value == "rare" else str(value).replace("_", " ").title()
+    start = f"{stage_name(before.stage)} ({format_growth_units(before_units - before.stage_start * 100)} Growth)"
+    end = ("Full Bloom" if after.fully_grown else
+           f"{stage_name(after.stage)} ({format_growth_units(after_units - after.stage_start * 100)}/{after.stage_goal:,} Growth)")
+    return f"You grew {name} from {start} to {end}."
+
+
 @dataclass(frozen=True)
 class StandardFind:
     event_id: str
@@ -1148,6 +1203,7 @@ class SessionDaySummary:
     find_items_reconciled: bool = field(default=True, init=False)
     direct_growth_total_units: int | None = None
     growth_applied_total_units: int | None = None
+    plants_at_start: tuple[PlantStateSnapshot, ...] = ()
 
     def __post_init__(self) -> None:
         authoritative_coins = _nonnegative(
@@ -2270,6 +2326,7 @@ class SessionSummaryAccumulator:
             landmark_growth_delta_units=landmark_growth_delta_units,
             direct_growth_total_units=plant_total,
             growth_applied_total_units=plant_total + shared_total,
+            plants_at_start=segment.start.plants,
         )
 
     def _project_segments(

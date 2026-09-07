@@ -17,6 +17,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "show_rewards_after_syncing": True,
     "reviewer_hud_collapsed": False,
     "reviewer_hud_dock": "right",
+    "reviewer_hud_position": {"custom": False, "x": 1.0, "y": 0.0},
     "onboarding_version": 0,
     "seasonal_visuals": True,
     "assets": {
@@ -47,6 +48,8 @@ _INT_RANGES = {
 }
 _FLOAT_RANGES: dict[str, tuple[float, float]] = {}
 _NESTED_FLOAT_RANGES: dict[tuple[str, ...], tuple[float, float]] = {
+    ("reviewer_hud_position", "x"): (0.0, 1.0),
+    ("reviewer_hud_position", "y"): (0.0, 1.0),
     ("theme_overrides", "animation_intensity"): (0.0, 1.0),
 }
 

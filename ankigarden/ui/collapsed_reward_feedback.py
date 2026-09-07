@@ -175,7 +175,7 @@ class CollapsedRewardFeedback(QWidget):
         self._fit_labels()
         self._sync_content_height()
         self.setProperty("feedbackCopy", tooltip)
-        self.hud._collapsed_tab.setToolTip(f"{tooltip}\nOpen Anki Garden")
+        self.hud._collapsed_tab.setToolTip("Click to expand · Drag to move")
         if animate and self.hud._animations_enabled:
             self._fade_in()
             self.hud.pulse_collapsed_plant(color, artwork=self.art if treatment.notable else None)
@@ -214,14 +214,15 @@ class CollapsedRewardFeedback(QWidget):
         self.metric_row.setFixedHeight(amount_height)
 
     def _sync_content_height(self):
-        """Hug the visible frame instead of reserving empty milestone space."""
+        """Reserve one small Growth line; taller finds borrow space only while shown."""
         visible = [widget for widget in (self.art, self.metric_row, self.caption)
                    if not widget.isHidden()]
         height = sum(widget.height() for widget in visible)
         height += self.layout().spacing() * max(0, len(visible) - 1)
-        changed = self.height() != height or self.isHidden() != (height == 0)
+        height = max(18, height)
+        changed = self.height() != height or self.isHidden()
         self.setFixedHeight(height)
-        self.setVisible(height > 0)
+        self.show()
         if changed and self.hud._collapsed:
             QTimer.singleShot(0, lambda: self.hud.reposition() if not self.hud._disposed else None)
 

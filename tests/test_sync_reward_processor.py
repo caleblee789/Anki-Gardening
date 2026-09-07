@@ -144,12 +144,15 @@ def _snapshot(**changes):
 
 
 def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id() -> None:
+    stage_coin = RewardReceipt("stage:bluebell:mature", "coins", "plant_milestone", "bluebell",
+                               "2026-08-27", "answer:200", "2026-08-27T12:00:00Z", amount=2, plant_id="bluebell")
     results = (
         replace(_result(
             event_id="answer:200",
             scheduler_day="2026-08-27",
             before_units=0,
             after_units=1_000,
+            receipts=(stage_coin, stage_coin),
         ),
             mastery_growth_before_units=0,
             mastery_growth_after_units=100,
@@ -171,6 +174,7 @@ def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id(
             scheduler_day=CURRENT_DAY,
             before_units=1_000,
             after_units=2_000,
+            receipts=(replace(stage_coin, event_key="stage:bluebell:flowering", amount=3, correlation_id="answer:100"),),
         ),
             mastery_growth_before_units=100,
             mastery_growth_after_units=150,
@@ -186,8 +190,8 @@ def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id(
     summary = build_sync_reward_summary(
         "sync-batch",
         results,
-        baseline={},
-        engine=SimpleNamespace(_scheduler_day=lambda: CURRENT_DAY),
+        baseline={"garden_coin_balance": 0},
+        engine=SimpleNamespace(_scheduler_day=lambda: CURRENT_DAY, sync_reward_baseline=lambda: {"garden_coin_balance": 5}),
     )
 
     assert summary is not None
@@ -197,6 +201,7 @@ def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id(
     assert summary.plant_growth[0]["growth_delta_units"] == 2_000
     assert summary.plant_results[0].plant_id == "bluebell"
     assert summary.plant_results[0].growth_delta_units == 2_000
+    assert summary.garden_coin_delta == summary.plant_results[0].progression_coins == 5
     assert summary.plant_results[0].transition_source == "shared_growth"
     assert tuple(
         (row.target_type, row.target_id, row.units)

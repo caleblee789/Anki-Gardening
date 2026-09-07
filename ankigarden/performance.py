@@ -16,6 +16,7 @@ import os
 import time
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
+from functools import wraps
 from pathlib import Path
 from threading import RLock
 from typing import Callable, Deque, Iterable
@@ -65,6 +66,8 @@ class RuntimePerformanceRecorder:
             lambda: deque(maxlen=self.max_samples)
         )
         self._lock = RLock()
+        self._counters: dict[str, int] = defaultdict(int)
+        self._lifetime: dict[str, dict[str, float | int]] = {}
 
     def begin(self) -> float | None:
         """Return a start marker, or ``None`` when diagnostics are disabled."""
@@ -85,10 +88,24 @@ class RuntimePerformanceRecorder:
         value = max(0.0, float(elapsed_ms))
         with self._lock:
             self._samples[normalized].append(value)
+            totals = self._lifetime.setdefault(normalized, {
+                "count": 0, "maximum_ms": 0.0, "total_ms": 0.0,
+                "over_50_ms": 0, "over_250_ms": 0,
+            })
+            totals["count"] += 1
+            totals["maximum_ms"] = max(totals["maximum_ms"], value)
+            totals["total_ms"] += value
+            totals["over_50_ms"] += int(value > 50)
+            totals["over_250_ms"] += int(value > 250)
 
     def samples(self, name: str) -> tuple[float, ...]:
         with self._lock:
             return tuple(self._samples.get(str(name), ()))
+
+    def count(self, name: str, amount: int = 1) -> None:
+        if self.enabled:
+            with self._lock:
+                self._counters[str(name)] += int(amount)
 
     @staticmethod
     def _percentile(sorted_values: Iterable[float], fraction: float) -> float:
@@ -125,11 +142,14 @@ class RuntimePerformanceRecorder:
         return tuple(self.summary(name) for name in names)
 
     def payload(self) -> dict[str, object]:
-        return {
-            "schema_version": 1,
-            "sample_limit_per_operation": self.max_samples,
-            "operations": [asdict(summary) for summary in self.summaries()],
-        }
+        with self._lock:
+            return {
+                "schema_version": 1,
+                "sample_limit_per_operation": self.max_samples,
+                "operations": [asdict(summary) for summary in self.summaries()],
+                "counters": dict(self._counters),
+                "lifetime": {name: dict(values) for name, values in self._lifetime.items()},
+            }
 
     def write_json(self, destination: str | Path) -> Path:
         target = Path(destination)
@@ -146,6 +166,37 @@ class RuntimePerformanceRecorder:
 
 
 RUNTIME_PERFORMANCE = RuntimePerformanceRecorder()
+
+
+def timed(name: str):
+    """Keep tracing opt-in without changing the wrapped API."""
+    def decorate(function):
+        @wraps(function)
+        def measured(*args, **kwargs):
+            started = RUNTIME_PERFORMANCE.begin()
+            try:
+                return function(*args, **kwargs)
+            finally:
+                RUNTIME_PERFORMANCE.finish(name, started)
+        return measured
+    return decorate
+
+
+def watch_event_loop(parent) -> None:
+    if not RUNTIME_PERFORMANCE.enabled:
+        return
+    from aqt.qt import QTimer
+    timer = QTimer(parent)
+    timer.setInterval(25)
+    previous = time.perf_counter()
+    def tick():
+        nonlocal previous
+        now = time.perf_counter()
+        RUNTIME_PERFORMANCE.record("event-loop.delay", max(0.0, (now - previous) * 1000 - 25))
+        previous = now
+    timer.timeout.connect(tick)
+    timer.start()
+    parent._garden_performance_timer = timer
 
 
 def _export_enabled_samples() -> None:

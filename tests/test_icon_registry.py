@@ -23,6 +23,7 @@ from ankigarden.ui.icons import (
 def test_release_icons_share_one_grid_and_stroke_contract() -> None:
     assert ICON_VIEWBOX == 24
     assert ICON_STROKE_WIDTH == 1.8
+    assert icons.GARDEN_ICON_ASSETS.keys() <= GARDEN_ICON_PATHS.keys()
     assert {
         "close",
         "open-garden",
@@ -36,6 +37,7 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
         "coin",
         "currency",
         "growth",
+        "stored_growth",
         "environment-discovery",
         "streak",
         "stage",

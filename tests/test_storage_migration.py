@@ -828,7 +828,8 @@ def test_established_state_keeps_saved_scheduler_day_when_cutoff_is_unavailable(
 
     assert storage.state.daily_stats.day == "2026-03-07"
     assert {period.day for period in storage.state.active_plant_periods} == {"2026-03-07"}
-    assert saved_days == ["2026-03-07"]
+    # An unchanged saved state needs no write while the scheduler opens.
+    assert saved_days == []
 
 
 def test_startup_day_repair_uses_authoritative_start_not_future_scalar_cursor(tmp_path):

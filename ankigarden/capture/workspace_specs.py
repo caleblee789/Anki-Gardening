@@ -43,7 +43,7 @@ GROUPS = (
         ("shop-purchase-receipt", "GardenDashboard", "purchase-receipt", False),
     )),
     ("Progress and Settings", (
-        ("progress-today-page", "GardenDashboard", "progress/today", True),
+        ("progress-today-page", "GardenDashboard", "progress/activity", True),
         ("progress-today-details", "GardenDashboard", "today-details", False),
         ("progress-achievements-page", "GardenDashboard", "progress/achievements", False),
         ("progress-coins-page", "GardenDashboard", "progress/currency", False),
@@ -178,6 +178,24 @@ def workspace_surface_rows():
         if route.startswith("reviewer-"):
             row["state_contract"]["reviewable_native_ui_issues"] = ("reviewer-collapsed-status-width",)
         rows.append(row)
+    for row in rows:
+        if row.get("active") and row["id"] in {
+            "progress-today-page", "progress-today-details", "progress-coins-page",
+        }:
+            row["owned_module_dependencies"] += ("ui/activity_page.py", "activity.py", "reward_ledger.py")
+            row["workflow_revision"] = "Activity combines study, daily and streak rewards, and saved review sessions."
+        if row.get("active") and row["id"] == "active-deck-browser-home-after-nurture":
+            row["owned_module_dependencies"] += ("capture/reviewer_feedback.py",)
+        if row.get("active") and row["id"] in {
+            "reviewer-hud-expanded", "reviewer-reward-dock-bundle",
+            "workspace-reviewer-collapsed", "workspace-reviewer-rewards-list",
+            "session-summary-after-review", "sync-rewards-summary",
+        }:
+            row["owned_module_dependencies"] += (
+                "ui/reward_feed.py", "ui/active_consumables.py", "ui/reward_rarity.py",
+                "ui/reward_receipt.py", "reward_presentation.py", "capture/reviewer_feedback.py",
+                "garden_finds.py", "ui/session_summary.py",
+            )
     return tuple(rows)
 
 

@@ -4073,7 +4073,7 @@ def growth_charge_rendered_value_issue_codes(
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Coins earned" if label == "growth-charge-success-stage-reward" else "Reach Sprout",
+        "reward_label": "Reward earned for reaching Sprout" if label == "growth-charge-success-stage-reward" else "Reward for reaching Sprout",
         "reward_value": "+2 Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,

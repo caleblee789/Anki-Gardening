@@ -203,6 +203,7 @@ class SyncPlantResult:
     transition_source: str = ""
 
     growth_after_units: int | None = None
+    progression_coins: int = 0
 
     @property
     def stage_changed(self) -> bool:
@@ -318,6 +319,7 @@ class SyncPlantResult:
             "stage_progress_before": max(0, min(100, _nonnegative(self.stage_progress_before))),
             "stage_progress_after": max(0, min(100, _nonnegative(self.stage_progress_after))),
             "growth_after_units": _nonnegative(self.growth_after_units) if self.growth_after_units is not None else None,
+            "progression_coins": _nonnegative(self.progression_coins),
             "next_stage": _text(self.next_stage, limit=64),
             "fully_grown": bool(self.fully_grown),
             "active": bool(self.active),
@@ -368,6 +370,7 @@ class SyncPlantResult:
                 0, min(100, _nonnegative(raw.get("stage_progress_after")))
             ),
             growth_after_units=_nonnegative(raw.get("growth_after_units")) if raw.get("growth_after_units") is not None else None,
+            progression_coins=_nonnegative(raw.get("progression_coins")),
             next_stage=_text(raw.get("next_stage"), limit=64),
             fully_grown=bool(raw.get("fully_grown", False)),
             active=bool(raw.get("active", False)),
@@ -778,6 +781,7 @@ def _group_legacy_plant_results(
                 0, min(100, _nonnegative(item.get("stage_progress_after")))
             ),
             "growth_after_units": _nonnegative(item.get("growth_after_units")) if item.get("growth_after_units") is not None else None,
+            "progression_coins": _nonnegative(item.get("progression_coins")),
             "next_stage": _text(item.get("next_stage"), limit=64),
             "fully_grown": bool(item.get("fully_grown", False)),
             "active": bool(item.get("active", False)),
@@ -880,6 +884,7 @@ def _merge_plant_results(
             growth_delta_units=(
                 current.growth_delta_units + item.growth_delta_units
             ),
+            progression_coins=current.progression_coins + item.progression_coins,
             stage_after=item.stage_after or current.stage_after,
             stage_progress_after=item.stage_progress_after,
             growth_after_units=item.growth_after_units,
@@ -933,6 +938,10 @@ def _merge_quantity_rows(
             result[identity]["quantity"] = _nonnegative(
                 result[identity].get("quantity")
             ) + (_nonnegative(item.get("quantity")) or 1)
+            if "reward_amount_total" in result[identity] and "reward_amount_total" in item:
+                result[identity]["reward_amount_total"] = _nonnegative(result[identity]["reward_amount_total"]) + _nonnegative(item["reward_amount_total"])
+            else:
+                result[identity].pop("reward_amount_total", None)
     return tuple(result[key] for key in order[:MAX_SYNC_SUMMARY_ROWS])
 
 

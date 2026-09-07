@@ -763,36 +763,13 @@ def test_every_scenery_resolves_its_own_art_with_shared_surface_geometry():
         placement = asset.placement.to_dict()
         profile = placement["surface_profile"]
         assert profile["geometry_version"] == 6
-        if item_id == "autumn":
-            base_house = next(
-                landmark
-                for landmark in base_profile["landmarks"]
-                if landmark["landmark_id"] == "garden_house"
-            )
-            house = next(
-                landmark
-                for landmark in profile["landmarks"]
-                if landmark["landmark_id"] == "garden_house"
-            )
-            nursery = next(
-                landmark
-                for landmark in profile["landmarks"]
-                if landmark["landmark_id"] == "nursery_entrance"
-            )
-            base_nursery = next(
-                landmark
-                for landmark in base_profile["landmarks"]
-                if landmark["landmark_id"] == "nursery_entrance"
-            )
-            assert nursery == base_nursery
-            assert house["action_id"] == base_house["action_id"]
-            assert set(house["variants"]) == {"4:3", "16:9", "home"}
-            assert all(
-                len(geometry["outline_paths"][0]) == 11
-                for geometry in house["variants"].values()
-            )
-        else:
-            assert profile["landmarks"] == base_profile["landmarks"]
+        for landmark, base_landmark in zip(profile["landmarks"], base_profile["landmarks"]):
+            assert landmark["landmark_id"] == base_landmark["landmark_id"]
+            assert landmark["action_id"] == base_landmark["action_id"]
+            geometry = landmark["variants"]["4:3"]
+            assert geometry["polygon"] and geometry["outline_paths"]
+            if item_id != "default":
+                assert geometry != base_landmark["variants"]["4:3"]
         for variant_name, variant in profile["variants"].items():
             base_variant = base_profile["variants"][variant_name]
             assert variant["surfaces"] == base_variant["surfaces"]

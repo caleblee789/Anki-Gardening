@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import errno
 import sqlite3
 
@@ -454,3 +455,57 @@ def test_item_acquisition_date_uses_first_committed_purchase_or_discovery(tmp_pa
     with RewardLedger(database) as reopened:
         assert reopened.first_item_acquisition_at("firefly_lantern") == OCCURRED_AT
         assert reopened.first_item_acquisition_at("wind_chime") == OCCURRED_AT
+
+
+def test_activity_groups_exact_rewards_and_survives_rollback_and_restart(tmp_path):
+    from ankigarden.activity import ActivityEvent, ActivitySession
+    from ankigarden.reward_ledger import RewardLedger
+
+    path = tmp_path / "activity.sqlite3"
+    with RewardLedger(path) as ledger:
+        day, time = "2026-09-06", "2026-09-06T20:24:00+00:00"
+        session = "review-session:one"
+        ledger.stage_activity_session(ActivitySession(session, started_at=time))
+        records = (
+            ActivityEvent("answer", session, day, time, "card_answer", card_answers=2),
+            ActivityEvent("growth", session, day, time, "answer_growth", growth_units=2200),
+            ActivityEvent("daily", session, day, time, "first_eligible_answer", coins=4),
+            ActivityEvent("achievement:streak_7", session, day, time, "achievement", coins=10,
+                          payload={"source_id": "streak_7"}),
+            ActivityEvent("purchase", "purchase", day, time, "purchase", coins=-30),
+            ActivityEvent("refund", "refund", day, time, "refund", coins=30, adjustment=True),
+        )
+        for record in records:
+            ledger.stage_activity_event(record)
+            ledger.stage_activity_event(record)
+        checkpoint = ledger.checkpoint()
+        ledger.stage_activity_event(ActivityEvent("failed", session, day, time, "welcome", coins=100))
+        ledger.rollback(checkpoint)
+        ledger.stage_activity_session(ActivitySession(session, ended_at=time, status="ended"))
+        ledger.commit_state({}, schema_version=30, expected_revision=0)
+    with RewardLedger(path) as ledger:
+        entry, = ledger.activity_entries(filter_key="study")
+        assert (entry.card_answers, entry.earned, entry.growth_units, entry.status) == (2, 14, 2200, "ended")
+        assert entry.started_at == time
+        assert sum(event.coins for event in ledger.activity_details(session)) == entry.earned
+        assert ledger.activity_streak_rewards(day) == {"daily": 4, "streak": 10, "achievements": 0}
+        assert [row.group_id for row in ledger.activity_entries(filter_key="earned")] == [session]
+        assert [row.group_id for row in ledger.activity_entries(filter_key="spent")] == ["purchase"]
+        assert ledger.activity_event("failed") is None
+
+
+def test_activity_pagination_retains_more_than_500_transactions(tmp_path):
+    from ankigarden.activity import ActivityEvent
+    from ankigarden.reward_ledger import RewardLedger
+
+    with RewardLedger(tmp_path / "history.sqlite3") as ledger:
+        for index in range(525):
+            identity = f"reward:{index:04}"
+            ledger.stage_activity_event(ActivityEvent(identity, identity, "2026-09-06",
+                "2026-09-06T20:00:00+00:00", "standard_find", coins=1))
+        ledger.commit_state({}, schema_version=30, expected_revision=0)
+        seen, cursor = [], None
+        while entries := ledger.activity_entries(limit=20, before=cursor):
+            seen.extend(entry.group_id for entry in entries)
+            cursor = (entries[-1].sort_ms, entries[-1].group_id)
+        assert len(seen) == len(set(seen)) == 525

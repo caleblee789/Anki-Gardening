@@ -199,6 +199,8 @@ class ReviewerHudProjection:
     collapsed: bool
     dock: str
     plant_choices: tuple[PlantChoiceProjection, ...] = ()
+    position: tuple[float, float] | None = None
+    active_consumables: tuple[Any, ...] = ()
 
 
 def format_growth_units(units: Any, *, signed: bool = False) -> str:
@@ -743,6 +745,7 @@ def _growth_destination_projection(
             "All planted plants are at Full Bloom. Future Growth will be stored."
         ),
         stored_growth_units=stored,
+        artwork_id="stored_growth",
     )
 
 
@@ -829,24 +832,18 @@ def project_nurture(
     all_plants_full_bloom = bool(
         planted_plants and all(_plant_is_full_bloom(plant) for plant in planted_plants)
     )
+    target = _active_target(engine, state)
     full_bloom_destination = (
         _growth_destination_projection(
             engine,
             stored_growth_units=stored_units,
         )
-        if all_plants_full_bloom
+        if all_plants_full_bloom or target is None
         else None
     )
-    target = _active_target(engine, state)
     if target is None:
-        stored_line = (
-            f"{format_growth_units(stored_units)} Stored Growth in reserve"
-            if stored_units and not all_plants_full_bloom
-            else ""
-        )
         return NurtureProjection(
             False,
-            stored_growth_line=stored_line,
             empty_heading=(
                 "All plants are at Full Bloom"
                 if all_plants_full_bloom
@@ -854,7 +851,7 @@ def project_nurture(
             ),
             empty_message=(
                 full_bloom_destination.route_copy
-                if full_bloom_destination is not None
+                if all_plants_full_bloom and full_bloom_destination is not None
                 else "Growth earned during review will be stored."
             ),
             all_plants_full_bloom=all_plants_full_bloom,
@@ -1001,6 +998,7 @@ def project_reviewer_hud(
     *,
     collapsed: bool = False,
     dock: str = "right",
+    position: Any = None,
     now_ms: int | None = None,
 ) -> ReviewerHudProjection:
     reward_coins = max(0, int(getattr(engine, "ALL_DUE_BASE_COINS", 10) or 0))
@@ -1010,6 +1008,15 @@ def project_reviewer_hud(
             resolved_coins, _resolved_growth = reward_resolver()
             reward_coins = max(0, int(resolved_coins or 0))
         except Exception:
+            pass
+    from .active_consumables import project_active_consumables
+    saved_position = None
+    if isinstance(position, dict) and position.get("custom"):
+        try:
+            x, y = float(position["x"]), float(position["y"])
+            if math.isfinite(x) and math.isfinite(y):
+                saved_position = (max(0.0, min(1.0, x)), max(0.0, min(1.0, y)))
+        except (KeyError, TypeError, ValueError, OverflowError):
             pass
     return ReviewerHudProjection(
         coins=max(0, int(getattr(state, "currency_balance", 0) or 0)),
@@ -1022,6 +1029,8 @@ def project_reviewer_hud(
         collapsed=bool(collapsed),
         dock="left" if str(dock) == "left" else "right",
         plant_choices=project_plant_choices(engine, state),
+        position=saved_position,
+        active_consumables=project_active_consumables(engine, now_ms=now_ms),
     )
 
 
@@ -1078,6 +1087,7 @@ def reviewer_hud_geometry(
     dock: str,
     content_height: int | None = None,
     answer_controls_top: int | None = None,
+    position: tuple[float, float] | None = None,
 ) -> tuple[int, int, int, int]:
     """Return content-hugging, answer-bar-safe ``(x, y, width, height)``.
 
@@ -1112,7 +1122,12 @@ def reviewer_hud_geometry(
         if str(dock) == "left"
         else max(0, viewport_width - width - HUD_EDGE_MARGIN)
     )
-    return x, HUD_TOP_MARGIN, width, height
+    y = HUD_TOP_MARGIN
+    if position is not None:
+        right = HUD_EDGE_MARGIN + round(position[0] * max(1, viewport_width - 2 * HUD_EDGE_MARGIN))
+        x = max(HUD_EDGE_MARGIN, min(viewport_width - width - HUD_EDGE_MARGIN, right - width))
+        y = max(HUD_TOP_MARGIN, min(safe_bottom - height, HUD_TOP_MARGIN + round(position[1] * available_height)))
+    return x, y, width, height
 
 
 def should_start_collapsed(viewport_width: int, saved_collapsed: bool) -> bool:

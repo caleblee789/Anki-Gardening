@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+STORED_GROWTH_TOOLTIP = (
+    "Stored Growth\nOverflow Growth is saved here. It cannot be spent in this version."
+)
+
 import re
 from html import escape
 

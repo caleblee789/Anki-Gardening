@@ -52,11 +52,13 @@ def test_reviewer_hud_defaults_on_and_persists_layout_preferences() -> None:
     assert config.value("reviewer_hud_collapsed") is True
     assert config.value("reviewer_hud_dock") == "left"
 
-    config.update({"show_reviewer_hud": True, "reviewer_hud_dock": "right"})
+    config.update({"show_reviewer_hud": True, "reviewer_hud_dock": "right", "reviewer_hud_position": {"custom": True, "x": .65, "y": .2}})
 
     assert addon_manager.writes[-1]["show_reviewer_hud"] is True
     assert addon_manager.writes[-1]["reviewer_hud_collapsed"] is True
     assert addon_manager.writes[-1]["reviewer_hud_dock"] == "right"
+    config.reload()
+    assert config.value("reviewer_hud_position") == {"custom": True, "x": .65, "y": .2}
 
 
 

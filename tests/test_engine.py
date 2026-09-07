@@ -2031,6 +2031,16 @@ def test_garden_cycle_cadence_is_visible_nonconsecutive_and_idempotent():
     assert by_source["todays_cards"] == 5 * 8
     assert by_source["completion_cycle_5"] == 30
     assert storage.state.garden_cycle_remainder == 0
+    reward = engine.today_cards_reward_summary()
+    assert reward["completion_coins"] == 8
+    assert reward["cycle_coins"] == 30
+    assert reward["cycle_earned"] is True
+    assert reward["cycle_progress"] == reward["cycle_goal"] == 5
+    balance = storage.state.currency_balance
+    engine.today_cards_status(DueObligationStatus(review_count=3))
+    assert engine.today_cards_reward_summary()["earned"] is True
+    assert engine.today_cards_reward_summary()["completion_coins"] == 8
+    assert storage.state.currency_balance == balance
     cycle = next(
         receipt for receipt in storage.state.recent_reward_receipts
         if receipt.source == "completion_cycle_5"
@@ -3366,8 +3376,11 @@ def completed_collection_engine(*, displayed=True):
 
 @pytest.mark.parametrize("displayed", [False, True])
 @pytest.mark.parametrize("charge_id,amount", [("growth_charge_small", 100), ("growth_charge_standard", 500), ("growth_charge_grand", 2000)])
-def test_completed_collection_charge_receipt_conserves_mastery_and_storage(displayed, charge_id, amount):
+@pytest.mark.parametrize("enabled", [False, True])
+def test_completed_collection_charge_receipt_conserves_mastery_and_storage(monkeypatch, displayed, charge_id, amount, enabled):
+    from ankigarden import feature_availability
     from ankigarden.economy_progression import MASTERY_MAX_GROWTH_UNITS
+    monkeypatch.setattr(feature_availability, "MASTERY_ENABLED", enabled)
 
     engine, storage = completed_collection_engine(displayed=displayed)
     state = storage.state
@@ -3380,8 +3393,9 @@ def test_completed_collection_charge_receipt_conserves_mastery_and_storage(displ
     quote = engine.quote_growth_charge(charge_id)
     assert quote.ready and quote.destination_kind == "garden"
     assert quote.target_state is GrowthChargeTargetState.GARDEN
-    assert sum(row.units for row in quote.project_allocations) == 5_000
-    assert quote.stored_growth_units == amount * 100 - 5_000
+    project_units = 5_000 if enabled else 0
+    assert sum(row.units for row in quote.project_allocations) == project_units
+    assert quote.stored_growth_units == amount * 100 - project_units
     for invalid in ("", "missing", state.plants[0].plant_id):
         assert not engine.quote_growth_charge(charge_id, invalid).ready
     request = GrowthChargeRequest.from_quote(quote)
@@ -3393,12 +3407,13 @@ def test_completed_collection_charge_receipt_conserves_mastery_and_storage(displ
     outcome = engine.confirm_growth_charge(request)
     assert outcome.success and outcome.destination_kind == "garden"
     assert outcome.stored_growth_units + sum(row.units for row in outcome.project_allocations) == amount * 100
-    assert storage.state.stored_growth_units == amount * 100 - 5_000
+    assert storage.state.stored_growth_units == amount * 100 - project_units
     assert storage.state.consumables[charge_id] == 0
     storage.state = GardenState.from_dict(storage.state.to_dict())
     engine = GardenGameEngine(FakeConfig(), storage)
     assert engine.confirm_growth_charge(request) == outcome
-    assert "Mastery" in outcome.message and "Stored Growth" in outcome.message
+    assert ("Mastery" in outcome.message) == enabled
+    assert "Stored Growth" in outcome.message
 
 
 @pytest.mark.parametrize("displayed", [False, True])

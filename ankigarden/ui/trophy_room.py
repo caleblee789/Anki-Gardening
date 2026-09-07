@@ -103,7 +103,7 @@ class TrophyCase(QWidget):
                 p.setBrush(shadow)
                 p.drawEllipse(QRectF(-1, -1, 2, 2))
                 p.restore()
-                p.setOpacity(1 if trophy.unlocked else .60)
+                p.setOpacity(1 if trophy.unlocked else .38)
                 p.drawPixmap(target, pixmap, source)
                 p.setOpacity(1)
             if i:
@@ -172,7 +172,7 @@ class TrophyShowcase(QFrame):
                 else:
                     apply_text_role(label, TextRole.METADATA if row_index == 4 else TextRole.SECONDARY)
                     label.setStyleSheet(f"color:{GARDEN_THEME['text_muted' if row_index == 4 else 'text_secondary']};")
-                label.setTextFormat(Qt.TextFormat.RichText if row_index == 3 else Qt.TextFormat.PlainText)
+                label.setTextFormat(Qt.TextFormat.RichText if row_index in {2, 3} else Qt.TextFormat.PlainText)
                 panel_layout.addWidget(label)
                 labels.append(label)
             self._panels.append(panel)
@@ -226,7 +226,7 @@ class TrophyShowcase(QFrame):
             active = trophy.unlocked and bool(getattr(self.engine.state, "trophy_activation_ms", {}).get(trophy.trophy_id))
             status.setText("Active" if active else "Unlocked" if trophy.unlocked else f"Locked · {trophy.progress_text}")
             status.setStyleSheet(f"color:{GARDEN_THEME['action_accent' if active else 'text_secondary']};")
-            requirement.setText(trophy.requirement.replace("eligible answers", "study answers"))
+            requirement.setText(inline_detail_copy("Unlock requirement", trophy.requirement.replace("eligible answers", "study answers")))
             bonus_label = "Permanent bonus" if trophy.unlocked else "Bonus when unlocked"
             buff.setText(inline_detail_copy(bonus_label, learner_card_copy(trophy.buff)))
             buff.setAccessibleDescription(bonus_label + ". " + trophy.buff)

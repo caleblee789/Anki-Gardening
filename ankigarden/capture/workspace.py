@@ -102,7 +102,8 @@ def workspace_postcondition(runner, widget, route):
                 issues.append("shop-tab")
         elif section == "progress":
             navigation = dashboard.progress_dialog.navigation
-            if navigation.stack.currentIndex() != navigation.keys.index(subsection):
+            page = dashboard.progress_dialog._normalized_page(subsection, "today")
+            if navigation.stack.currentIndex() != navigation.keys.index(page):
                 issues.append("progress-tab")
     if route in {"starter", "starter-selected", "starter-placement"}:
         if state.plants or state.starter_selection_complete:
@@ -567,7 +568,8 @@ def compact_reward_audit(runner, card):
         "bounded_height": 100 <= card.height() <= (parent.height() if is_hud else 520),
         "single_scroll_owner": sum(row["vertical"] > 0 for row in ranges) <= 1,
         "no_horizontal_overflow": all(row["horizontal"] == 0 for row in ranges),
-        "collapsed_content_fits": expanded or all(row["vertical"] == 0 for row in ranges),
+        "scrollable_rewards": is_hud or (len(scrolls) == 1
+            and scrolls[0].verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded),
         "nonmodal": not card.isWindow() and card.focusPolicy() == Qt.FocusPolicy.NoFocus,
     }
     checks["plant_naming"] = plant_naming_audit(runner, card)["passed"]
@@ -575,6 +577,28 @@ def compact_reward_audit(runner, card):
         empty_effects = [chip for chip in getattr(card, "_effect_chips", ())
                          if visible(chip) and not any(label.text().strip() for label in chip.findChildren(QLabel))]
         checks["no_empty_effect_rows"] = not empty_effects
+    pinned = getattr(card, "_summary_fixed", None)
+    if pinned is not None and scrolls:
+        scroll = scrolls[0]
+        origin = pinned.mapTo(card, pinned.rect().topLeft())
+        footer = card._footer
+        footer_origin = footer.mapTo(card, footer.rect().topLeft())
+        bar = scroll.verticalScrollBar()
+        previous = bar.value()
+        bar.setValue(bar.maximum())
+        _settle()
+        checks["totals_and_studied_count_pinned"] = (
+            pinned.isVisibleTo(card) and not scroll.isAncestorOf(pinned)
+            and pinned.mapTo(card, pinned.rect().topLeft()) == origin
+        )
+        checks["footer_actions_pinned"] = (footer.isVisibleTo(card)
+            and not scroll.isAncestorOf(footer)
+            and footer.mapTo(card, footer.rect().topLeft()) == footer_origin)
+        bar.setValue(previous)
+        _settle()
+        checks["growth_breakdown_removed"] = not any(
+            phrase in text for phrase in ("Growth distribution", "Plants affected", "Plant growth")
+        )
     return {**geometry, "scope": "current compact card", "checks": checks,
             "copy": " ".join(text.split()), "expanded": expanded, "scroll_ranges": ranges,
             "copy_passed": checks["visible"], "content_passed": checks["visible"],

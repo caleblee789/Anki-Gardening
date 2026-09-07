@@ -12,20 +12,27 @@ Every read merges committed and staged rows, allowing a multi-answer sync batch
 to observe the answers staged earlier in the same Garden transaction.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 import errno
+import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import sqlite3
 import time
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple, Union
 import uuid
 
+from .activity import (
+    ACTIVITY_SCHEMA, ActivityEvent, ActivitySession, read_day_totals,
+    read_entries, read_events, read_streak_rewards, write_activity,
+)
 
-LEDGER_SCHEMA_VERSION = 3
+
+LEDGER_SCHEMA_VERSION = 4
 GROWTH_FLOW_KINDS = frozenset({
     "",
     "generated",
@@ -552,6 +559,27 @@ _V1_REQUIRED_NAMED_INDEXES = frozenset({
 })
 
 
+_V3_REQUIRED_TABLES = _REQUIRED_TABLES
+_V3_EXPECTED_COLUMNS = _EXPECTED_COLUMNS
+_V3_REQUIRED_NAMED_INDEXES = _REQUIRED_NAMED_INDEXES
+_REQUIRED_TABLES = _REQUIRED_TABLES | {"activity_event", "activity_group"}
+_EXPECTED_COLUMNS = {
+    **_EXPECTED_COLUMNS,
+    "activity_event": ("event_key", "group_id", "scheduler_day", "occurred_at",
+        "occurred_ms", "source", "correlation_id", "coins", "growth_units",
+        "card_answers", "finds", "adjustment", "payload_json"),
+    "activity_group": ("group_id", "kind", "started_at", "ended_at", "status",
+        "scheduler_day", "sort_ms", "card_answers", "earned", "spent",
+        "adjustments", "growth_units", "finds"),
+}
+_EXPECTED_PRIMARY_KEYS = {**_EXPECTED_PRIMARY_KEYS,
+    "activity_event": ("event_key",), "activity_group": ("group_id",)}
+_REQUIRED_NAMED_INDEXES = _REQUIRED_NAMED_INDEXES | {
+    "activity_event_group_idx", "activity_event_day_idx", "activity_event_source_idx",
+    "activity_group_recent_idx"}
+_SCHEMA_STATEMENTS = (*_SCHEMA_STATEMENTS, *ACTIVITY_SCHEMA)
+
+
 class RewardLedger:
     """One SQLite connection owning Garden reward and answer authority.
 
@@ -576,6 +604,9 @@ class RewardLedger:
         )
         self._connection.row_factory = sqlite3.Row
         self._closed = False
+        self._economy_projections: dict[str, tuple[int, dict[str, Any]]] = {}
+        self._projection_reducers: dict[str, Callable[..., None]] = {}
+        self._projection_data_version = 0
         self._checkpoint_owner = uuid.uuid4().hex
         self._generation = 0
         self._next_operation_id = 1
@@ -595,12 +626,30 @@ class RewardLedger:
             Tuple[str, str], IdempotencyRecord
         ] = {}
         self._pending_economy_events: Dict[str, EconomyEventRecord] = {}
+        self._pending_activity_events: dict[str, ActivityEvent] = {}
+        self._pending_activity_sessions: dict[str, ActivitySession] = {}
         self._pending_daily_economy_snapshots: Dict[
             str, DailyEconomySnapshotRecord
         ] = {}
         try:
             self._configure_connection()
             self._initialize_or_validate_schema()
+            # Disposable projections are additive: older schema-3 runtimes can
+            # still open every authoritative table and ignore this cache.
+            self._connection.execute(
+                "CREATE TABLE IF NOT EXISTS runtime_projection ("
+                "name TEXT PRIMARY KEY, event_cursor INTEGER NOT NULL, "
+                "payload_json TEXT NOT NULL)"
+            )
+            self._connection.execute(
+                "CREATE TABLE IF NOT EXISTS deferred_review_context ("
+                "revlog_id INTEGER PRIMARY KEY, payload_json TEXT NOT NULL)"
+            )
+            self._connection.execute(
+                "CREATE TABLE IF NOT EXISTS deferred_review_undo ("
+                "undo_id INTEGER PRIMARY KEY, occurred_at_ms INTEGER NOT NULL)"
+            )
+            self._projection_data_version = self._data_version()
         except Exception:
             self._connection.close()
             self._closed = True
@@ -1466,7 +1515,6 @@ class RewardLedger:
     def lifetime_economy_aggregates(self) -> Mapping[str, Any]:
         """Rebuild exact lifetime aggregates from permanent event deltas."""
 
-        events = self.economy_events()
         result: Dict[str, Any] = {
             "coins_earned_by_source": {},
             "coins_spent_by_sink": {},
@@ -1489,7 +1537,7 @@ class RewardLedger:
             "plants_completed": 0,
             "today_cards_completions": 0,
         }
-        for event in events:
+        def accumulate(result: dict[str, Any], event: EconomyEventRecord) -> None:
             if event.coins_earned:
                 _increment_count(
                     result["coins_earned_by_source"],
@@ -1556,7 +1604,7 @@ class RewardLedger:
                     # state separately; the category totals above remain the
                     # public lifetime aggregate.
                     continue
-        return result
+        return self.project_economy("lifetime-v1", result, accumulate)
 
     def economy_events(self) -> Tuple[EconomyEventRecord, ...]:
         """Return committed and staged economy events in durable order."""
@@ -1585,23 +1633,120 @@ class RewardLedger:
         return tuple(events)
 
     def stored_growth_balance_net_delta_units(self) -> int:
-        """Return the exact signed Stored Growth delta across durable events."""
+        """Read the exact committed balance plus this transaction's deltas."""
 
-        rows = self._connection.execute(
-            "SELECT event_key, stored_growth_balance_delta_units "
-            "FROM economy_event ORDER BY rowid"
-        ).fetchall()
-        pending_keys = set(self._pending_economy_events)
-        total = sum(
-            int(row["stored_growth_balance_delta_units"])
-            for row in rows
-            if str(row["event_key"]) not in pending_keys
+        def accumulate(result: dict[str, Any], event: EconomyEventRecord) -> None:
+            result["units"] += event.stored_growth_balance_delta_units
+
+        return int(self.project_economy("stored-growth-v1", {"units": 0}, accumulate)["units"])
+
+    def _data_version(self) -> int:
+        return int(self._connection.execute("PRAGMA data_version").fetchone()[0])
+
+    def remember_deferred_review(self, revlog_id: int, *, review_window_token: str) -> None:
+        """Durably retain local attribution while rewards wait for verification."""
+        self._connection.execute(
+            "INSERT OR IGNORE INTO deferred_review_context VALUES (?, ?)",
+            (int(revlog_id), json.dumps({"origin": "local_recovery", "review_window_token": str(review_window_token)})),
         )
-        total += sum(
-            int(event.stored_growth_balance_delta_units)
-            for event in self._pending_economy_events.values()
+
+    def deferred_review_context(self, revlog_id: int) -> Mapping[str, Any]:
+        row = self._connection.execute(
+            "SELECT payload_json FROM deferred_review_context WHERE revlog_id = ?", (int(revlog_id),),
+        ).fetchone()
+        return json.loads(row[0]) if row is not None else {}
+
+    def prune_deferred_reviews(self) -> None:
+        self._connection.execute(
+            "DELETE FROM deferred_review_context WHERE revlog_id IN ("
+            "SELECT d.revlog_id FROM deferred_review_context d "
+            "JOIN revlog_alias a ON a.revlog_id=d.revlog_id "
+            "JOIN answer_consumption c ON c.lineage_key=a.lineage_key)"
         )
-        return total
+
+    def remember_review_undo(self, occurred_at_ms: int) -> None:
+        self._connection.execute("INSERT INTO deferred_review_undo(occurred_at_ms) VALUES (?)", (int(occurred_at_ms),))
+
+    def resolve_review_undo(self, undo_id: int, lineage: str, floor: int) -> None:
+        """Commit an undo hint and its journal acknowledgement together."""
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            if lineage:
+                self._connection.execute(
+                    "UPDATE answer_lineage SET reanswer_floor=? WHERE lineage_key=? AND reanswer_floor=0",
+                    (int(floor), str(lineage)),
+                )
+            self._connection.execute("DELETE FROM deferred_review_undo WHERE undo_id=?", (int(undo_id),))
+            self._connection.execute("COMMIT")
+        except Exception:
+            self._rollback_sql_transaction()
+            raise
+
+    def reset_economy_projections(self) -> None:
+        """Rebuild projections from permanent rows at an explicit audit boundary."""
+        self._economy_projections.clear()
+        self._projection_reducers.clear()
+        self._connection.execute("DELETE FROM runtime_projection")
+        self._projection_data_version = self._data_version()
+
+    def iter_economy_events(self, *, after_rowid: int = 0) -> Iterator[tuple[int, EconomyEventRecord]]:
+        """Stream permanent events without constructing a lifetime-sized tuple."""
+        self._ensure_open()
+        cursor = self._connection.execute(
+            "SELECT rowid AS event_rowid, * FROM economy_event WHERE rowid > ? ORDER BY rowid",
+            (max(0, int(after_rowid)),),
+        )
+        for row in cursor:
+            yield int(row["event_rowid"]), _economy_event_from_row(row)
+
+    def project_economy(
+        self,
+        name: str,
+        initial: Mapping[str, Any],
+        accumulate: Callable[[dict[str, Any], EconomyEventRecord], None],
+    ) -> dict[str, Any]:
+        """Fold only new events over a versioned, atomically persisted checkpoint.
+
+        The seed is part of the key, so a changed migration baseline cannot
+        reuse an older projection. Staged events are applied to a copy; a
+        failed save or rollback never advances the committed checkpoint.
+        """
+        self._ensure_open()
+        data_version = self._data_version()
+        if data_version != self._projection_data_version:
+            # Another connection changed the authority. Recompute even when
+            # it edited/deleted rows below the last event cursor.
+            self.reset_economy_projections()
+        seed = json.dumps(dict(initial), sort_keys=True, separators=(",", ":"))
+        key = str(name) + ":" + hashlib.sha256(seed.encode()).hexdigest()
+        self._projection_reducers[key] = accumulate
+        cached = self._economy_projections.get(key)
+        if cached is None:
+            row = self._connection.execute(
+                "SELECT event_cursor, payload_json FROM runtime_projection WHERE name = ?",
+                (key,),
+            ).fetchone()
+            try:
+                payload = json.loads(row["payload_json"]) if row is not None else None
+                if not isinstance(payload, dict) or set(payload) != set(initial) or any(
+                    type(payload[key]) is not type(value) for key, value in initial.items()
+                ):
+                    raise ValueError("invalid projection shape")
+                cached = max(0, int(row["event_cursor"])), payload
+            except (ValueError, TypeError, KeyError):
+                cached = 0, deepcopy(dict(initial))
+        event_cursor, committed = cached
+        # Always check the indexed tail, including commits made by this
+        # connection since the projection was last requested.
+        committed = deepcopy(committed)
+        for rowid, event in self.iter_economy_events(after_rowid=event_cursor):
+            accumulate(committed, event)
+            event_cursor = rowid
+        self._economy_projections[key] = event_cursor, committed
+        result = deepcopy(committed)
+        for event in self._pending_economy_events.values():
+            accumulate(result, event)
+        return result
 
     def commit_state(
         self,
@@ -1675,6 +1820,21 @@ class RewardLedger:
                     "payload_json = ? WHERE singleton = 1",
                     (normalized_schema, next_revision, encoded_state),
                 )
+            next_projections = {}
+            for name, (event_cursor, projection) in self._economy_projections.items():
+                projection = deepcopy(projection)
+                reducer = self._projection_reducers.get(name)
+                if reducer is not None:
+                    for rowid, event in self.iter_economy_events(after_rowid=event_cursor):
+                        reducer(projection, event)
+                        event_cursor = rowid
+                next_projections[name] = event_cursor, projection
+                self._connection.execute(
+                    "INSERT INTO runtime_projection (name, event_cursor, payload_json) VALUES (?, ?, ?) "
+                    "ON CONFLICT(name) DO UPDATE SET event_cursor = excluded.event_cursor, "
+                    "payload_json = excluded.payload_json",
+                    (name, event_cursor, json.dumps(projection, sort_keys=True, separators=(",", ":"))),
+                )
             self._connection.execute("COMMIT")
         except RewardLedgerRevisionConflict:
             self._rollback_sql_transaction()
@@ -1694,6 +1854,7 @@ class RewardLedger:
             raise
 
         result = StateSnapshot(normalized_schema, next_revision, payload_copy)
+        self._economy_projections = next_projections
         self._clear_pending(increment_generation=True)
         return result
 
@@ -1702,6 +1863,68 @@ class RewardLedger:
         self._connection.execute("PRAGMA busy_timeout = 5000")
         self._connection.execute("PRAGMA synchronous = FULL")
         self._connection.execute("PRAGMA journal_mode = WAL")
+
+    def activity_event(self, event_key: str) -> ActivityEvent | None:
+        if event_key in self._pending_activity_events:
+            return self._pending_activity_events[event_key]
+        # Look up the individual event, without loading the containing session.
+        raw = self._connection.execute("SELECT * FROM activity_event WHERE event_key=?",
+                                       (event_key,)).fetchone()
+        if raw is None:
+            return None
+        return ActivityEvent(raw['event_key'], raw['group_id'], raw['scheduler_day'],
+            raw['occurred_at'], raw['source'], raw['correlation_id'], raw['coins'],
+            raw['growth_units'], raw['card_answers'], raw['finds'], bool(raw['adjustment']),
+            json.loads(raw['payload_json']))
+
+    def pending_activity_events(self) -> tuple[ActivityEvent, ...]:
+        return tuple(self._pending_activity_events.values())
+
+    def stage_activity_event(self, event: ActivityEvent) -> None:
+        if not event.event_key or not event.group_id:
+            raise ValueError("Activity identity is required")
+        previous = self.activity_event(event.event_key)
+        if previous == event:
+            return
+        if previous is not None and (
+            previous.coins, previous.growth_units, previous.card_answers
+        ) != (event.coins, event.growth_units, event.card_answers):
+            raise RewardLedgerConflictError("Activity must preserve its committed reward amounts")
+        self._append_operation("activity_event", event)
+
+    def stage_activity_session(self, session: ActivitySession) -> None:
+        previous = self._pending_activity_sessions.get(session.group_id)
+        if previous is not None:
+            session = replace(session, started_at=session.started_at or previous.started_at,
+                ended_at=session.ended_at or previous.ended_at,
+                status=previous.status if previous.status in {"ended", "interrupted"}
+                    and session.status == "open" else session.status)
+            if session == previous:
+                return
+        self._append_operation("activity_session", session)
+
+    def interrupt_activity_sessions(self) -> bool:
+        rows = self._connection.execute("SELECT group_id FROM activity_group WHERE kind='session' AND status='open'").fetchall()
+        for row in rows:
+            self.stage_activity_session(ActivitySession(row[0], status="interrupted"))
+        return bool(rows)
+
+    def activity_entries(self, **kwargs: Any) -> tuple[Any, ...]:
+        return read_entries(self._connection, **kwargs)
+
+    def activity_details(self, group_id: str) -> tuple[ActivityEvent, ...]:
+        return read_events(self._connection, group_id)
+
+    def activity_day_totals(self, day: str) -> dict[str, int]:
+        result = read_day_totals(self._connection, day)
+        # Permanent generated-flow facts also cover days predating Activity.
+        row = self._connection.execute("SELECT COALESCE(SUM(growth_generated_units),0) "
+            "FROM economy_event WHERE scheduler_day=?", (day,)).fetchone()
+        result['growth_units'] = int(row[0])
+        return result
+
+    def activity_streak_rewards(self, day: str = "") -> dict[str, int]:
+        return read_streak_rewards(self._connection, day)
 
     def _backup_before_schema_upgrade(self, version: int) -> Optional[Path]:
         """Preserve the complete pre-upgrade database before any DDL."""
@@ -1773,7 +1996,7 @@ class RewardLedger:
                 self._connection.execute("BEGIN IMMEDIATE")
                 for statement in _V2_SCHEMA_STATEMENTS:
                     self._connection.execute(statement)
-                for statement in _V3_SCHEMA_STATEMENTS:
+                for statement in (*_V3_SCHEMA_STATEMENTS, *ACTIVITY_SCHEMA):
                     self._connection.execute(statement)
                 self._connection.execute(
                     "PRAGMA user_version = " + str(LEDGER_SCHEMA_VERSION)
@@ -1787,17 +2010,18 @@ class RewardLedger:
             self._validate_schema_shape()
             return
         if version == 2:
-            missing = _REQUIRED_TABLES - tables
+            missing = _V3_REQUIRED_TABLES - tables
             if missing:
                 raise RewardLedgerSchemaError(
                     "The schema-2 reward ledger is incomplete: "
                     + ", ".join(sorted(missing))
                 )
-            self._validate_schema_shape(expected_columns=_V2_EXPECTED_COLUMNS)
+            self._validate_schema_shape(expected_columns=_V2_EXPECTED_COLUMNS,
+                required_named_indexes=_V3_REQUIRED_NAMED_INDEXES)
             self._backup_before_schema_upgrade(2)
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
-                for statement in _V3_SCHEMA_STATEMENTS:
+                for statement in (*_V3_SCHEMA_STATEMENTS, *ACTIVITY_SCHEMA):
                     self._connection.execute(statement)
                 self._connection.execute(
                     "PRAGMA user_version = " + str(LEDGER_SCHEMA_VERSION)
@@ -1808,6 +2032,21 @@ class RewardLedger:
                 raise RewardLedgerSchemaError(
                     "The reward-ledger schema-3 upgrade could not complete."
                 ) from error
+            self._validate_schema_shape()
+            return
+        if version == 3:
+            self._validate_schema_shape(expected_columns=_V3_EXPECTED_COLUMNS,
+                required_named_indexes=_V3_REQUIRED_NAMED_INDEXES)
+            self._backup_before_schema_upgrade(3)
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                for statement in ACTIVITY_SCHEMA:
+                    self._connection.execute(statement)
+                self._connection.execute("PRAGMA user_version = " + str(LEDGER_SCHEMA_VERSION))
+                self._connection.execute("COMMIT")
+            except sqlite3.DatabaseError as error:
+                self._rollback_sql_transaction()
+                raise RewardLedgerSchemaError("Activity history could not be initialized") from error
             self._validate_schema_shape()
             return
         if version != LEDGER_SCHEMA_VERSION:
@@ -1938,6 +2177,10 @@ class RewardLedger:
             ] = record
         elif kind == "economy_event":
             self._pending_economy_events[record.event_key] = record
+        elif kind == "activity_event":
+            self._pending_activity_events[record.event_key] = record
+        elif kind == "activity_session":
+            self._pending_activity_sessions[record.group_id] = record
         elif kind == "daily_economy_snapshot":
             self._pending_daily_economy_snapshots[record.anki_day] = record
         else:  # pragma: no cover - internal programming error
@@ -1956,6 +2199,8 @@ class RewardLedger:
         self._pending_finalized_days.clear()
         self._pending_idempotency_records.clear()
         self._pending_economy_events.clear()
+        self._pending_activity_events.clear()
+        self._pending_activity_sessions.clear()
         self._pending_daily_economy_snapshots.clear()
         for _operation_id, kind, record in operations:
             self._index_operation(kind, record)
@@ -1973,11 +2218,15 @@ class RewardLedger:
         self._pending_finalized_days.clear()
         self._pending_idempotency_records.clear()
         self._pending_economy_events.clear()
+        self._pending_activity_events.clear()
+        self._pending_activity_sessions.clear()
         self._pending_daily_economy_snapshots.clear()
         if increment_generation:
             self._generation += 1
 
     def _insert_pending_rows(self) -> None:
+        write_activity(self._connection, self._pending_activity_events.values(),
+                       self._pending_activity_sessions.values())
         for record in self._pending_lineages.values():
             self._connection.execute(
                 "INSERT INTO answer_lineage "

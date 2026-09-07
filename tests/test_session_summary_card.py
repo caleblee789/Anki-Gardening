@@ -134,7 +134,7 @@ def test_card_keeps_header_footer_fixed_and_only_body_scrollable():
 
 
 
-def test_session_receipt_shows_all_details_without_a_daily_card_or_disclosure():
+def test_session_receipt_keeps_totals_above_progress_and_optional_details():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     page = _method_source("_rebuild_page", "_add_pager")
     assert "_add_today_cards" not in source
@@ -142,7 +142,9 @@ def test_session_receipt_shows_all_details_without_a_daily_card_or_disclosure():
     assert "ankiGardenSessionPlantsAffectedToggle" not in source
     assert 'self._details_expanded = False' not in source
     assert page.index("self._add_reward_strip") < page.index("self._add_highlights")
-    assert '"summaryDetailsAlwaysVisible", True' in page
+    assert page.index("self._add_plant_progress") < page.index("self._add_breakdown")
+    assert 'self._progress_details_expanded = False' in source
+    assert '"summaryDetailsAlwaysVisible", False' in page
     summary = SimpleNamespace(garden_coins_total=14, plant_growth_total_units=4000,
                               shared_growth_total_units=0, stored_growth=SimpleNamespace(added_units=0),
                               total_finds=2, environment_discoveries=(object(),))
@@ -292,7 +294,6 @@ def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
     assert '"growth": "growth_resource"' in reward_art
     assert 'bundled_ui_asset_path(item_key)' in reward_art
     assert 'getattr(self._engine, "resolve_item_asset", None)' in reward_art
-    assert "self._reward_art_label(art, 32)" in source
 
 
 def test_canonical_garden_feature_art_uses_the_dedicated_asset_catalog():

@@ -22,7 +22,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
 
-from ankigarden.feature_availability import landmarks_enabled
+from ankigarden.feature_availability import landmarks_enabled, mastery_enabled
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.balance_catalog import (
     CONSUMABLES,
@@ -645,7 +645,7 @@ def _scenario_storage(scenario) -> _ParityStorage:
         # so it must not be fabricated into the lifetime event counters.
         # The accelerated kernel records this separately as opening plant
         # Growth; production parity compares committed-event totals here.
-        if scenario.landmark_mastery_spending:
+        if scenario.landmark_mastery_spending and (landmarks_enabled() or mastery_enabled()):
             storage.state.active_growth_target_type = "landmark" if landmarks_enabled() else "mastery"
             storage.state.active_growth_target_id = "garden_landmark" if landmarks_enabled() else facts.species_ids[0]
             storage.state.active_growth_target_activation_identity = (
@@ -1579,54 +1579,55 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                     ),
                 )
 
-            mastery = GrowthTargetRef(GrowthTargetType.MASTERY, "bonsai")
-            apply_project(
-                GrowthProjectRequest(
-                    str(uuid.UUID(int=104)),
-                    oracle.state_revision,
-                    GrowthProjectAction.ACTIVATE,
-                    mastery,
-                ),
-                behavior="mastery_contribution_and_claim",
-                event_identity="focused:mastery:activate",
-                state_fields=("state_revision",),
-            )
-            apply_project(
-                GrowthProjectRequest(
-                    str(uuid.UUID(int=105)),
-                    oracle.state_revision,
-                    GrowthProjectAction.CONTRIBUTE,
-                    mastery,
-                    ContributionMode.SPECIFIED,
-                    2_500_000,
-                ),
-                behavior="mastery_contribution_and_claim",
-                event_identity="focused:mastery:fund-bronze",
-                state_fields=(
-                    "stored_growth_balance",
-                    "mastery_funding_by_species",
-                    "state_revision",
-                ),
-            )
-            apply_project(
-                GrowthProjectRequest(
-                    str(uuid.UUID(int=106)),
-                    oracle.state_revision,
-                    GrowthProjectAction.CLAIM,
-                    mastery,
-                    claim_id="bronze",
-                ),
-                behavior="mastery_contribution_and_claim",
-                event_identity="focused:mastery:claim-bronze",
-                state_fields=(
-                    "garden_coin_wallet",
-                    "coin_ledger_entries",
-                    "coin_source_ids",
-                    "mastery_funding_by_species",
-                    "mastery_claims",
-                    "state_revision",
-                ),
-            )
+            with patch("ankigarden.feature_availability.MASTERY_ENABLED", True):
+                mastery = GrowthTargetRef(GrowthTargetType.MASTERY, "bonsai")
+                apply_project(
+                    GrowthProjectRequest(
+                        str(uuid.UUID(int=104)),
+                        oracle.state_revision,
+                        GrowthProjectAction.ACTIVATE,
+                        mastery,
+                    ),
+                    behavior="mastery_contribution_and_claim",
+                    event_identity="focused:mastery:activate",
+                    state_fields=("state_revision",),
+                )
+                apply_project(
+                    GrowthProjectRequest(
+                        str(uuid.UUID(int=105)),
+                        oracle.state_revision,
+                        GrowthProjectAction.CONTRIBUTE,
+                        mastery,
+                        ContributionMode.SPECIFIED,
+                        2_500_000,
+                    ),
+                    behavior="mastery_contribution_and_claim",
+                    event_identity="focused:mastery:fund-bronze",
+                    state_fields=(
+                        "stored_growth_balance",
+                        "mastery_funding_by_species",
+                        "state_revision",
+                    ),
+                )
+                apply_project(
+                    GrowthProjectRequest(
+                        str(uuid.UUID(int=106)),
+                        oracle.state_revision,
+                        GrowthProjectAction.CLAIM,
+                        mastery,
+                        claim_id="bronze",
+                    ),
+                    behavior="mastery_contribution_and_claim",
+                    event_identity="focused:mastery:claim-bronze",
+                    state_fields=(
+                        "garden_coin_wallet",
+                        "coin_ledger_entries",
+                        "coin_source_ids",
+                        "mastery_funding_by_species",
+                        "mastery_claims",
+                        "state_revision",
+                    ),
+                )
         finally:
             project_session.close()
 
@@ -2053,10 +2054,13 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                 expected_outcome = project_growth_project_request(
                     oracle, request
                 )
-                quote = engine.quote_growth_project(request)
-                actual_outcome = engine.confirm_growth_project(
-                    request, GrowthProjectConfirmation.from_quote(quote)
-                )
+                # Exercise retained Legacy transactions explicitly; production
+                # traces and overflow routing keep the release policy disabled.
+                with patch("ankigarden.feature_availability.GARDEN_LEGACY_ENABLED", True):
+                    quote = engine.quote_growth_project(request)
+                    actual_outcome = engine.confirm_growth_project(
+                        request, GrowthProjectConfirmation.from_quote(quote)
+                    )
                 oracle = expected_outcome.snapshot
                 event = legacy_session.storage._reward_ledger.economy_event(
                     expected_outcome.ledger_identity

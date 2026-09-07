@@ -1,5 +1,5 @@
 from __future__ import annotations
-from ankigarden.feature_availability import landmarks_enabled
+from ankigarden.feature_availability import garden_legacy_enabled, growth_target_enabled, landmarks_enabled, mastery_enabled
 
 from bisect import bisect_left, bisect_right
 from array import array
@@ -767,7 +767,7 @@ def _permanent_priority(
         option for option in options
         if option.permanent
         and option.available
-        and (option.category != "landmark" or landmarks_enabled())
+        and growth_target_enabled(option.category)
         and option.price_coins > 0
         and (
             allowed_endgame
@@ -988,9 +988,13 @@ def _initial_state(facts: CatalogFacts, scenario: ScenarioSpec) -> RunState:
                 ),
             )
         ),
-        auto_fund_endgame=scenario.landmark_mastery_spending,
+        auto_fund_endgame=scenario.landmark_mastery_spending and any(
+            growth_target_enabled(kind) for kind in ("landmark", "mastery", "legacy")
+        ),
         endgame_active_target_index=(
-            0 if scenario.landmark_mastery_spending else -1
+            0 if scenario.landmark_mastery_spending and any(
+                growth_target_enabled(kind) for kind in ("landmark", "mastery", "legacy")
+            ) else -1
         ),
         garden_legacy_level=0,
         garden_legacy_progress_units=0,
@@ -1137,7 +1141,7 @@ def _endgame_target_plan(
         targets.append(("landmark", "garden_landmark", landmark_ids))
     for species_id in facts.species_ids:
         item_ids = mastery_by_species.get(species_id, ())
-        if not item_ids:
+        if not item_ids or not mastery_enabled():
             continue
         targets.append((
             "mastery",
@@ -1210,7 +1214,7 @@ def _fund_endgame_projects(
     while remaining > 0:
         target_index = max(0, int(state.endgame_active_target_index))
         if target_index >= len(targets):
-            if not _finite_endgame_fully_funded(state, options_by_id):
+            if not garden_legacy_enabled() or not _finite_endgame_fully_funded(state, options_by_id):
                 break
             state.growth_contributed_to_legacy_units += remaining
             state.growth_spent_units += remaining
@@ -1728,7 +1732,7 @@ def _purchase_day(
                 ),
             ))
             for species_id in facts.species_ids
-            if mastery_by_species.get(species_id)
+            if mastery_by_species.get(species_id) and mastery_enabled()
         )]
         for sequence in claim_sequences:
             for item_id in sequence:
@@ -2637,7 +2641,12 @@ def _checkpoint_metrics(state: RunState, facts: CatalogFacts) -> Mapping[str, Op
         for option in endgame_options
         if option.item_id not in state.permanent_owned
     )
-    active_project_selected = state.auto_fund_endgame
+    active_project_selected = state.auto_fund_endgame and bool(
+        _endgame_target_plan(state, facts) or (
+            garden_legacy_enabled()
+            and _finite_endgame_fully_funded(state, _endgame_option_by_id(facts))
+        )
+    )
     no_project_preservation_delta_units = (
         state.routed_to_storage_units_lifetime - state.stored_growth_units
     )
@@ -4579,7 +4588,9 @@ def simulate_balance(
             "release_target": "2.2.0",
             "report_schema_version": 2,
             "model": "catalog-ledger-v2",
-            "feature_availability": {"landmarks_enabled": landmarks_enabled()},
+            "feature_availability": {"landmarks_enabled": landmarks_enabled(),
+                                     "mastery_enabled": mastery_enabled(),
+                                     "garden_legacy_enabled": garden_legacy_enabled()},
             "days": config.days,
             "seed_count": config.seeds,
             "seed_root_sha256": config.seed_root_sha256,

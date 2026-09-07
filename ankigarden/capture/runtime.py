@@ -2852,32 +2852,34 @@ def session_summary_capture_issue_codes(
 def reviewer_hud_growth_destination_issue_codes(
     evidence: Any,
 ) -> tuple[str, ...]:
-    """Require the Full Bloom HUD to expose one typed Mastery destination."""
+    """Require one Stored Growth reserve despite a saved deferred target."""
 
     if not isinstance(evidence, dict):
         return ("reviewer-hud-project-destination-missing",)
     expected = {
         "visible": True,
-        "kind": "active_project",
-        "target_type": "mastery",
-        "target_id": "bonsai",
-        "artwork_id": "mastery_bronze",
-        "heading": "Bonsai Cultivation Mastery",
-        "status": "In progress",
+        "kind": "stored_growth",
+        "target_type": "",
+        "target_id": "",
+        "artwork_id": "stored_growth",
+        "heading": "Stored Growth",
+        "status": "",
         "next_action": "growth_destination",
         "stored_growth_units": 1_250,
-        "frame_kind": "active_project",
-        "frame_target_type": "mastery",
-        "frame_target_id": "bonsai",
-        "frame_artwork_id": "mastery_bronze",
+        "frame_kind": "stored_growth",
+        "frame_target_type": "",
+        "frame_target_id": "",
+        "frame_artwork_id": "stored_growth",
     }
     issues = [
         f"reviewer-hud-project-destination:{key}"
         for key, value in expected.items()
         if evidence.get(key) != value
     ]
-    if "Open Collection" not in str(evidence.get("accessible_name", "")):
-        issues.append("reviewer-hud-project-destination:collection-route")
+    if "Stored Growth" not in str(evidence.get("accessible_name", "")):
+        issues.append("reviewer-hud-project-destination:stored-growth-label")
+    if "Open Collection" in str(evidence.get("accessible_name", "")):
+        issues.append("reviewer-hud-project-destination:deferred-collection-route")
     return tuple(issues)
 
 
@@ -12591,7 +12593,7 @@ class _UiFaceCaptureRunner:
                 metrics = [widget for widget in card.findChildren(QWidget) if widget.property("summaryMetric") is True]
                 audit["checks"].update({
                     "daily_cards_removed": card.findChild(QWidget, "ankiGardenSessionToday") is None,
-                    "details_always_visible": bool(card.property("summaryDetailsAlwaysVisible")),
+                    "details_collapsed_by_default": card.property("summaryDetailsAlwaysVisible") is False,
                     "details_toggle_removed": card.findChild(QWidget, "ankiGardenSessionBreakdownToggle") is None,
                     "three_summary_boxes": [str(widget.property("summaryMetricKey")) for widget in metrics] == ["garden_coins", "growth_applied", "discoveries"],
                     "summary_boxes_aligned": len({widget.y() for widget in metrics}) == 1,
@@ -17660,6 +17662,7 @@ class _UiFaceCaptureRunner:
         if canonical_hud_projection is not None:
             all_full_destination = GrowthDestinationProjection(
                 kind="stored_growth",
+                artwork_id="stored_growth",
                 heading="Stored Growth",
                 detail=(
                     f"{format_growth_units(stored_units)} Growth in reserve"
@@ -17713,7 +17716,7 @@ class _UiFaceCaptureRunner:
                 hud.property("hudStoredGrowthUnits") or 0
             ),
             "next_action": str(hud.property("hudFullBloomNextAction") or ""),
-            "active_mastery_destination": typed_destination_evidence,
+            "stored_growth_destination": typed_destination_evidence,
             "art_scale": float(
                 hud._art_region.property("artScale") or 1.0
             ),
@@ -17736,7 +17739,7 @@ class _UiFaceCaptureRunner:
             and all_full_settled["destination_stored_growth_units"]
             == stored_units
             and all_full_settled["next_action"] == "growth_destination"
-            and all_full_settled["active_mastery_destination"].get("passed")
+            and all_full_settled["stored_growth_destination"].get("passed")
             is True
             and all_full_settled["art_scale"] == 1.0
             and not all_full_settled["particles_active"]
@@ -30430,12 +30433,13 @@ class _UiFaceCaptureRunner:
 
         def enter_deck_browser() -> None:
             self._switch_surface("deckBrowser")
-            self._capture_home_surface_fullscreen(
-                "deckBrowser",
-                label,
-            )
+            from .reviewer_feedback import capture_home_button
+            QTimer.singleShot(300, lambda: capture_home_button(
+                self, "deckBrowser", lambda: self._capture_home_surface_fullscreen("deckBrowser", label),
+            ))
 
-        QTimer.singleShot(500, enter_deck_browser)
+        from .reviewer_feedback import capture_home_button
+        QTimer.singleShot(500, lambda: capture_home_button(self, "overview", enter_deck_browser))
 
     def _capture_active_overview_after_nurture(self) -> None:
         label = "active-overview-home-after-nurture"
@@ -35431,7 +35435,7 @@ class _UiFaceCaptureRunner:
             and rendered_values["progress_minimum"] == 0
             and rendered_values["progress_maximum"] == 1_600
             and rendered_values["progress_value"] == 50
-            and rendered_values["reward_label"] == ("Coins earned" if variant == "success" else "Reach Sprout")
+            and rendered_values["reward_label"] == ("Reward earned for reaching Sprout" if variant == "success" else "Reward for reaching Sprout")
             and rendered_values["reward_value"] == "+2 Coins"
             and rendered_values["reward_visible"] is True
             and rendered_values["charge_artwork_fallback"] is False
@@ -43288,7 +43292,7 @@ class _UiFaceCaptureRunner:
                     progress_finished = bool(
                         "ankiGardenSessionTodayProgress" not in names
                         and "ankiGardenSessionBreakdownToggle" not in names
-                        and card.property("summaryDetailsAlwaysVisible") is True
+                        and card.property("summaryDetailsAlwaysVisible") is False
                     )
                     animations_finished = True
                     for animation in tuple(
@@ -44769,6 +44773,15 @@ class _UiFaceCaptureRunner:
                 })
                 cleanup()
                 self._next_after(180)
+                return
+            if hasattr(hud, "_reward_feed"):
+                from .reviewer_feedback import capture_reward_feed
+                capture_reward_feed(
+                    self, label, handler, bundle, live_session, cleanup,
+                    lambda: bool(restored and str(mw.state) == "deckBrowser"
+                                 and reviewer_left_at > 0.0
+                                 and time.perf_counter() - reviewer_left_at >= 1.2),
+                )
                 return
             (
                 hud,

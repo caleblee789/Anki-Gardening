@@ -141,7 +141,7 @@ def test_metric_plan_matches_session_totals_and_preserves_source_rewards() -> No
     ) == ("garden-discovery:event-1", "garden-discovery:event-2")
 
 
-def test_visibility_uses_one_disclosure_and_keeps_full_bloom_visible() -> None:
+def test_visibility_keeps_all_rewards_and_plant_progress_visible() -> None:
     plants = tuple({
         "plant_id": f"plant-{index}",
         "plant_name": f"Plant {index}",
@@ -169,12 +169,12 @@ def test_visibility_uses_one_disclosure_and_keeps_full_bloom_visible() -> None:
     )
 
     collapsed = sync_reward_visibility_plan(summary)
-    assert len(collapsed.plant_growth) == 1
-    assert len(collapsed.environment_discoveries) == 1
-    assert collapsed.finds == ()
+    assert len(collapsed.plant_growth) == 5
+    assert len(collapsed.environment_discoveries) == 3
+    assert len(collapsed.finds) == 5
     assert any(row.get("full_bloom") for row in collapsed.plant_growth)
     assert collapsed.progression_events == ()
-    assert collapsed.hidden_count == 11
+    assert collapsed.hidden_count == 0
 
     expanded = sync_reward_visibility_plan(summary, expanded=True)
     assert expanded.hidden_count == 0
@@ -231,7 +231,7 @@ def test_current_boost_projection_keeps_names_and_art_references_aligned() -> No
 def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch, text_scale: float) -> None:
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
-        from aqt.qt import QApplication, QLabel, QPushButton, QScrollArea, QWidget, Qt
+        from aqt.qt import QApplication, QLabel, QPoint, QPushButton, QScrollArea, QWidget, Qt
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is unavailable")
 
@@ -253,6 +253,12 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch,
     card = SyncRewardSummaryCard(
         parent,
         _summary(
+            plant_growth=(*_summary().plant_growth, {
+                "plant_id": "wisteria", "species": "wisteria", "stage_after": "rare",
+                "full_bloom": True, "growth_delta_units": 100,
+            }),
+            environment_discoveries=({"environment_id": "firefly_lantern", "display_name": "Firefly Lantern", "tier": "rare"},),
+            progression_events=({"event_id": "bloom", "plant_id": "wisteria", "event_type": "full_bloom"},),
             landmark_growth_delta_units=300,
             project_allocations=(
                 SyncProjectGrowthAllocation("landmark", "garden_landmark", 250),
@@ -300,6 +306,7 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch,
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "Rewards after syncing" in texts
     assert "From 42 synced reviews" in texts
+    assert {"GROWTH MILESTONE", "Full Bloom", "NEW DISCOVERY"} <= texts
     for label in card.findChildren(QLabel):
         if label.property("receiptMetricLabel") or label.property("receiptMetricValue"):
             assert label.fontMetrics().horizontalAdvance(label.text()) <= label.contentsRect().width()
@@ -310,24 +317,22 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch,
         assert card._footer.rect().contains(button.geometry())
     card._toggle_expanded()
     application.processEvents()
+    assert not card._body_scroll.isAncestorOf(card._summary_fixed)
+    pinned_position = card._summary_fixed.mapTo(card, QPoint(0, 0))
+    card._body_scroll.verticalScrollBar().setValue(card._body_scroll.verticalScrollBar().maximum())
+    application.processEvents()
+    assert card._summary_fixed.mapTo(card, QPoint(0, 0)) == pinned_position
+    assert card._summary_fixed.isVisibleTo(card)
     texts = {label.text() for label in card.findChildren(QLabel)}
-    assert "Stored Growth added to Rose Cultivation Mastery" in texts
-    assert not any("landmark" in text.casefold() for text in texts)
+    assert {"GROWTH MILESTONE", "Full Bloom", "NEW DISCOVERY"} <= texts
+    assert "Stored Growth added" in texts
+    assert not any("landmark" in text.casefold() or "mastery" in text.casefold() for text in texts)
     project_rows = [
         widget
         for widget in card.findChildren(QWidget)
         if widget.property("syncProjectTargetType")
     ]
-    assert [
-        (
-            row.property("syncProjectTargetType"),
-            row.property("syncProjectTargetId"),
-            row.property("syncProjectGrowthUnits"),
-        )
-        for row in project_rows
-    ] == [
-        ("mastery", "rose", 100),
-    ]
+    assert project_rows == []
     buttons = {button.text(): button for button in card.findChildren(QPushButton)}
     assert {"Close", "Open garden"} <= set(buttons)
 
@@ -450,8 +455,9 @@ def test_merge_aggregates_batches_while_preserving_progress_boundaries() -> None
             "stage_after": "mature",
             "stage_progress_before": 80,
             "stage_progress_after": 5,
+            "progression_coins": 1,
         },),
-        finds=({"reward_id": "small_charge", "quantity": 1},),
+        finds=({"reward_id": "find_growth_burst", "quantity": 1, "reward_amount_total": 100},),
         fertilizer_remaining_seconds=900,
         fertilizer_state_changed=True,
         fertilizer_item_id="fertilizer_quality",
@@ -476,10 +482,11 @@ def test_merge_aggregates_batches_while_preserving_progress_boundaries() -> None
             "stage_after": "flowering",
             "stage_progress_before": 5,
             "stage_progress_after": 40,
+            "progression_coins": 2,
         },),
-        finds=({"reward_id": "small_charge", "quantity": 2},),
+        finds=({"reward_id": "find_growth_burst", "quantity": 2, "reward_amount_total": 200},),
         all_clear_earned=True,
-        all_clear_coin_reward=10,
+        all_clear_coin_reward=8,
         source_batch_ids=("batch-b",),
     )
 
@@ -493,11 +500,14 @@ def test_merge_aggregates_batches_while_preserving_progress_boundaries() -> None
     assert merged.growth_total_units == 3_000
     assert merged.garden_coin_delta == 11
     assert merged.finds[0]["quantity"] == 3
+    assert merged.finds[0]["reward_amount_total"] == 300
     assert merged.plant_growth[0]["growth_delta_units"] == 3_000
     assert merged.plant_growth[0]["stage_before"] == "young"
     assert merged.plant_growth[0]["stage_after"] == "flowering"
+    assert merged.grouped_plant_results[0].progression_coins == 3
+    assert SyncRewardSummary.from_dict(merged.to_dict()).grouped_plant_results[0].progression_coins == 3
     assert merged.all_clear_earned
-    assert merged.all_clear_coin_reward == 10
+    assert merged.all_clear_coin_reward == 8
     assert merged.fertilizer_remaining_seconds == 900
     assert merged.fertilizer_state_changed
     assert merged.fertilizer_item_id == "fertilizer_quality"

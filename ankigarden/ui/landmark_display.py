@@ -53,6 +53,10 @@ def landmark_asset_identity_matches(value: Any, landmark_id: str) -> bool:
 def mastery_asset_identity_matches(value: Any, rank_id: str) -> bool:
     """Return whether artwork is the exact claimed Mastery rank requested."""
 
+    from ..feature_availability import mastery_enabled
+
+    if not mastery_enabled():
+        return False
     normalized = str(rank_id or "")
     definition = MASTERY_RANK_BY_ID.get(normalized)
     return bool(

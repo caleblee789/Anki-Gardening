@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -473,3 +474,58 @@ def test_find_count_fallback_preserves_uncapped_totals_and_repairs_old_clamps() 
     restored = GardenState.from_dict(payload)
     assert restored.garden_find_daily_counts[day] == 12
     assert restored.garden_find_reward_daily_counts[day]["find_coin_sprout"] == 12
+
+
+def test_activity_groups_sync_by_day_and_attaches_late_local_answers(tmp_path):
+    from types import SimpleNamespace
+    from ankigarden.activity import ActivityEvent, ActivitySession
+    from ankigarden.reward_ledger import RewardLedger
+    from ankigarden.storage import GardenStorage
+
+    storage = object.__new__(GardenStorage)
+    with RewardLedger(tmp_path / "activity.sqlite3") as ledger:
+        storage._reward_ledger = ledger
+        for day, number in (("2026-09-05", 1), ("2026-09-06", 2)):
+            event = ActivityEvent(f"reward:{number}", f"reward:{number}", day,
+                f"{day}T20:00:00+00:00", "first_eligible_answer", "sync:batch", coins=4)
+            ledger.stage_activity_event(event)
+            result = SimpleNamespace(event_id="sync:batch", correlation_id="sync:batch",
+                scheduler_day=day, occurred_at_ms=1788724800000 + number,
+                origin="historical_sync", cards_completed=1, currency_transactions=(), reward_receipts=())
+            storage.stage_activity_answer(result, answer_key=f"answer:{number}", batch_id="batch")
+        ledger.stage_activity_session(ActivitySession("review-session:late", ended_at="2026-09-06T20:01:00+00:00", status="ended"))
+        ledger.commit_state({}, schema_version=30, expected_revision=0)
+        result.origin = "local_recovery"
+        storage.stage_activity_answer(result, answer_key="answer:late", window_token="late")
+        ledger.commit_state({}, schema_version=30, expected_revision=1)
+        rows = ledger.activity_entries(filter_key="study")
+        assert len(rows) == 3
+        assert {row.scheduler_day: row.earned for row in rows if row.kind == "sync"} == {
+            "2026-09-05": 4, "2026-09-06": 4}
+        assert next(row for row in rows if row.kind == "session").status == "ended"
+
+
+def test_activity_import_keeps_one_purchase_for_transaction_and_economy_receipt(tmp_path):
+    from ankigarden.reward_ledger import EconomyEventRecord, RewardLedger
+
+    day, stamp = '2026-09-06', '2026-09-06T20:00:00+00:00'
+    storage = object.__new__(GardenStorage)
+    storage.state = GardenState(currency_balance=70, currency_transactions=[CurrencyTransaction(
+        transaction_id='tx-purchase', event_key='purchase-request:one',
+        reason='Small Growth Charge', delta=-30, balance=70, occurred_at=stamp,
+        source='purchase', scheduler_day=day,
+    )])
+    with RewardLedger(tmp_path / 'activity.sqlite3') as ledger:
+        storage._reward_ledger = ledger
+        ledger.stage_economy_event(EconomyEventRecord('purchase:one', 'purchase',
+            sink_id='growth_charge:small', scheduler_day=day, occurred_at=stamp,
+            coins_spent=30, item_id='growth_charge_small', quantity=1))
+        saved = ledger.commit_state(storage._bounded_state_payload(storage.state), schema_version=STATE_VERSION, expected_revision=0)
+        storage._ledger_revision = saved.revision
+        storage._initialize_activity_history()
+        storage._initialize_activity_history()
+        purchase, = storage.activity_entries(filter_key='spent')
+        assert purchase.spent == 30
+        receipt, = storage.activity_details(purchase.group_id)
+        assert receipt.payload['reason'] == 'Small Growth Charge'
+        assert storage.state.currency_balance == 70

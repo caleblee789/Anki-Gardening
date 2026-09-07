@@ -18,6 +18,7 @@ from ankigarden.ui.session_summary import (
     LiveSessionSnapshot,
     PlantGrowthDelta,
     PlantMilestone,
+    PlantStateSnapshot,
     ReviewContinuationTarget,
     RewardComponent,
     SessionEndSnapshot,
@@ -27,6 +28,8 @@ from ankigarden.ui.session_summary import (
     StandardFind,
     TodayCardsSnapshot,
     format_growth_units,
+    plant_growth_journey,
+    session_coin_breakdown,
     project_session_day,
     project_today_cards,
     unlock_category_copy,
@@ -225,6 +228,27 @@ def test_accumulator_uses_exact_committed_deltas_and_deduplicates_transactions()
     assert summary.garden_coins_earned == 10
     assert [item.find_id for item in summary.standard_finds] == ["morning_dew"]
     assert summary.growth_applied_total_units == 112_450
+
+
+def test_progress_receipt_preserves_baseline_and_combines_coin_causes():
+    baseline = PlantStateSnapshot("plant:bonsai", 12_000, "seed")
+    accumulator = _accumulator(start=replace(_start(), plants=(baseline,)))
+    accumulator.accept_committed(_event(
+        "review",
+        plant_growth=(PlantGrowthDelta("plant:bonsai", "Bonsai", 72_000, "Bonsai"),),
+        shared_growth=(PlantGrowthDelta("plant:bonsai", "Bonsai", 10_000, "Bonsai"),),
+        coins=tuple(CoinAward(f"coin:{i}", "progression", f"Checkpoint {i}", amount,
+                              event_key=f"stage_checkpoint:plant:bonsai:{i}")
+                    for i, amount in enumerate((1, 1, 2, 2))),
+    ))
+    summary = _finish(accumulator).segments[0]
+    assert summary.plants_at_start == (baseline,)
+    assert session_coin_breakdown(summary) == (("Bonsai progression", 6),)
+    assert sum(amount for _, amount in session_coin_breakdown(summary)) == summary.garden_coins_total
+    assert plant_growth_journey("Bonsai", baseline.growth_units, summary.growth_applied_total_units) == (
+        "You grew Bonsai from Seed (120 Growth) to Sprout (540/1,600 Growth)."
+    )
+    assert plant_growth_journey("Bonsai", None, 10_050) == "Bonsai gained +100.5 Growth."
 
 
 def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
