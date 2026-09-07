@@ -41,7 +41,7 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
             item_id="growth_charge_small",
         ),
         RewardReceipt(
-            "garden_find:answer:1:standard", "inventory_item", "garden_find",
+            "garden_find:answer:1:standard", "inventory_item", "standard_find",
             "find_fertilizer", "2026-08-20", "answer:1",
             "2026-08-20T12:00:00+00:00", amount=1,
             item_id="fertilizer_basic", title="Rich Compost",
@@ -71,6 +71,7 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
         "growth": 5,
     }
     assert summaries[0].coins_total == 100
+    assert summaries[0].garden_find_ids == ("find_fertilizer",)
     assert summaries[0].inventory_totals == (
         ("fertilizer_basic", 1),
         ("growth_charge_small", 1),

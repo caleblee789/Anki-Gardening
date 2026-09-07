@@ -55,6 +55,10 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
             40,
             "morning_dew.webp",
         ),),
+        reward_receipts=(RewardReceipt(
+            "garden_find:common:standard", "growth", "standard_find", "morning_dew",
+            "2026-08-28", "answer:stable-1", "2026-08-28T10:00:00Z", amount=40,
+        ),),
         milestones=(
             PlantMilestone(
                 "stage:rose:mature",
@@ -379,6 +383,11 @@ def test_standard_find_inventory_keeps_its_engine_item_identity():
             "bottled_rain.webp",
             item_id="booster_potion",
         ),),
+        reward_receipts=(RewardReceipt(
+            "garden_find:booster:standard", "inventory_item", "standard_find", "find_booster",
+            "2026-08-28", "answer:stable-1", "2026-08-28T10:00:00Z",
+            amount=1, item_id="booster_potion",
+        ),),
     )
 
     bundle = project_committed_reward_bundle(event)
@@ -386,6 +395,7 @@ def test_standard_find_inventory_keeps_its_engine_item_identity():
     assert bundle is not None
     assert bundle.hero.inventory_items == (("booster_potion", 1),)
     assert bundle.hero.learner_inventory_labels == ("+1 Booster Potion",)
+    assert len(bundle.all_items) == 1
 
 
 def test_answer_without_reward_facts_has_no_bundle():
@@ -1135,7 +1145,7 @@ def test_small_receipt_only_coin_reward_is_routine_but_inventory_is_major() -> N
     ) == (
         "Garden Cycle complete",
         "5 completed review days",
-        "ui_garden_coin",
+        "garden_reward",
         30,
     )
     assert cycle_bundle.routine_only is False

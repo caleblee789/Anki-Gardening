@@ -21,10 +21,12 @@ from .environment import (
 )
 from .garden_finds import (
     ENVIRONMENT_POOL_ID,
+    GARDEN_FIND_RECEIPT_SOURCES,
     SPECIAL_ENVIRONMENT_POOL,
     STANDARD_POOL_ID,
     STANDARD_POOL_VERSION,
     STANDARD_FIND_REGISTRY,
+    STANDARD_FIND_RECEIPT_SOURCES,
     GardenFindReward,
     PreparedRewardRegistry,
     standard_find_artwork_ref,
@@ -763,7 +765,7 @@ class RewardSummary:
         return tuple(dict.fromkeys(
             receipt.source_id
             for receipt in self.receipts
-            if receipt.source in {"garden_find", "garden_find_environment"}
+            if receipt.source in GARDEN_FIND_RECEIPT_SOURCES
             and receipt.source_id
         ))
 
@@ -1000,6 +1002,7 @@ _MAJOR_COIN_SOURCE_MARKERS = (
     "completion",
     "full_bloom",
     "garden_find",
+    "standard_find",
     "milestone",
     "stage",
     "streak",
@@ -1738,7 +1741,7 @@ def project_committed_reward_bundle(
         sources = {str(receipt.source) for receipt in group}
         source_ids = {str(receipt.source_id) for receipt in group if receipt.source_id}
         if (
-            sources.intersection({"garden_find", "garden_find_environment"})
+            sources.intersection(GARDEN_FIND_RECEIPT_SOURCES)
             and (source_ids.intersection(find_ids) or source_ids.intersection(environment_ids))
         ):
             # The committed Find/discovery carries richer persisted metadata.
@@ -1783,7 +1786,7 @@ def project_committed_reward_bundle(
         elif sources.intersection({"garden_find_environment", "environment_discovery"}) or environment_items:
             kind = RewardHero.ENVIRONMENT_DISCOVERY
             category = "Garden discovery"
-        elif "garden_find" in sources:
+        elif sources.intersection(STANDARD_FIND_RECEIPT_SOURCES):
             kind = RewardHero.GARDEN_FIND
             category = "Garden Find"
         elif event_key in milestone_event_ids:
@@ -2329,7 +2332,7 @@ def recent_garden_finds(
     seen_events: set[str] = set()
     for receipt in state.recent_reward_receipts:
         if (
-            receipt.source not in {"garden_find", "garden_find_environment"}
+            receipt.source not in GARDEN_FIND_RECEIPT_SOURCES
             or receipt.event_key in seen_events
         ):
             continue

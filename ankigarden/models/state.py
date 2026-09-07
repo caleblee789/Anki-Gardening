@@ -25,6 +25,7 @@ from ..growth import (
     stage_progress,
 )
 from ..purchases import CompletedPurchaseRequest
+from ..garden_finds import GARDEN_FIND_RECEIPT_SOURCES
 from .sync_reward import SyncRewardSummary
 from .welcome import WelcomeReceipt
 
@@ -1050,7 +1051,7 @@ def _compact_reward_receipt_group(
     reference_order: List[str] = []
     for receipt in receipts:
         if (
-            receipt.source not in {"garden_find", "garden_find_environment"}
+            receipt.source not in GARDEN_FIND_RECEIPT_SOURCES
             or not receipt.event_key.startswith("garden_find:")
         ):
             continue

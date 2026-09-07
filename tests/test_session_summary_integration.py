@@ -711,6 +711,9 @@ def test_reviewer_hud_is_mounted_once_and_updated_in_place(monkeypatch):
         def open_collection(self):
             routes.append("collection")
 
+        def open_activity(self):
+            routes.append("activity")
+
     app = _App()
     handler = reviewer_module.ReviewerHookHandler(
         SimpleNamespace(),
@@ -774,7 +777,9 @@ def test_reviewer_hud_is_mounted_once_and_updated_in_place(monkeypatch):
     assert "on_effects_overflow" not in created[0]
     assert "on_open_reward" not in created[0]
     created[0]["on_open_collection"]()
-    assert routes == ["collection"]
+    created[0]["on_open_activity"]()
+    panel.callback_updates[-1]["on_open_activity"]()
+    assert routes == ["collection", "activity", "activity"]
     assert handler._reviewer_hud is panel
     assert panel.updates == [(first, False), (second, False)]
     assert panel.positions == [(1_600, 1_000), (1_280, 800)]

@@ -388,6 +388,7 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
     )
 
     find_event_id = "find:small-charge"
+    receipt_event_id = "garden_find:small-charge:standard"
     plan = session_earned_item_plan(SimpleNamespace(
         find_items_reconciled=True,
         standard_finds=(SimpleNamespace(
@@ -404,12 +405,12 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
         ),),
         reward_receipts=(
             RewardReceipt(
-                event_key=find_event_id,
+                event_key=receipt_event_id,
                 reward_type="inventory_item",
-                source="garden_find",
+                source="standard_find",
                 source_id="small_charge",
                 scheduler_day="2026-08-28",
-                correlation_id=find_event_id,
+                correlation_id="answer:small-charge",
                 occurred_at="2026-08-28T10:00:00Z",
                 amount=1,
                 item_id="growth_charge_small",
@@ -429,12 +430,12 @@ def test_inventory_receipts_use_the_shared_typed_reward_copy():
         standard_finds=(),
         find_items=(),
         reward_receipts=(RewardReceipt(
-            event_key=find_event_id,
+            event_key=receipt_event_id,
             reward_type="inventory_item",
-            source="garden_find",
+            source="standard_find",
             source_id="small_charge",
             scheduler_day="2026-08-28",
-            correlation_id=find_event_id,
+            correlation_id="answer:small-charge",
             occurred_at="2026-08-28T10:00:00Z",
             amount=1,
             item_id="growth_charge_small",

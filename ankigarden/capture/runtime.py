@@ -72,6 +72,8 @@ from aqt.qt import (
     QPushButton,
     QRect,
     QScrollArea,
+    QStyle,
+    QStyleOptionButton,
     QStyleOptionProgressBar,
     QTabBar,
     QTabWidget,
@@ -9389,6 +9391,17 @@ class _UiFaceCaptureRunner:
                 if button.property("disclosureRow")
                 else 28
             )
+            if button.property("activityFilter"):
+                # Segmented filters use their own stylesheet padding. Read
+                # Qt's painted content box instead of the generic action inset.
+                option = QStyleOptionButton()
+                option.initFrom(button)
+                content = button.style().subElementRect(
+                    QStyle.SubElement.SE_PushButtonContents, option, button,
+                )
+                horizontal_padding = max(
+                    0, int(button.contentsRect().width()) - int(content.width()),
+                )
             available_text_width = max(
                 0,
                 int(button.contentsRect().width())

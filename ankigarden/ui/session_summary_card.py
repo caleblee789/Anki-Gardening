@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from ..asset_manager import bundled_ui_asset_path
+from ..garden_finds import STANDARD_FIND_RECEIPT_SOURCES
 from ..environment import (
     DEFAULT_SCENERY_ID,
     GARDEN_FEATURE_CATALOG,
@@ -291,7 +292,7 @@ class SessionEarnedItem:
 
 def _session_item_source_label(source: Any) -> str:
     normalized = str(source or "").replace("-", "_").casefold()
-    if normalized.startswith("garden_find"):
+    if normalized in STANDARD_FIND_RECEIPT_SOURCES or normalized.startswith("garden_find"):
         return "Garden Find"
     if "full_bloom" in normalized:
         return "Full Bloom"
@@ -403,7 +404,8 @@ def session_earned_item_plan(summary: Any) -> tuple[SessionEarnedItem, ...]:
             continue
         seen_receipts.add(receipt_identity)
         if (
-            source.replace("-", "_").casefold().startswith("garden_find")
+            (source in STANDARD_FIND_RECEIPT_SOURCES
+             or source.replace("-", "_").casefold().startswith("garden_find"))
             and item_id in represented_find_item_ids
         ):
             continue

@@ -2432,6 +2432,12 @@ class ReviewerHookHandler:
         if callable(callback):
             callback(group)
 
+    def _open_activity_from_reviewer_hud(self) -> None:
+        owner = getattr(self.open_garden, "__self__", None)
+        callback = getattr(owner, "open_activity", None)
+        if callable(callback):
+            callback()
+
     def _save_reviewer_hud_position(self, position: dict[str, Any]) -> None:
         self._persist_hud_preferences(reviewer_hud_position=position)
 
@@ -3149,6 +3155,7 @@ class ReviewerHookHandler:
                     parent,
                     on_open_garden=self._open_garden_from_reviewer_hud,
                     on_open_plant=self._open_active_plant_from_reviewer_hud,
+                    on_open_activity=self._open_activity_from_reviewer_hud,
                     on_open_supplies=self._open_supplies_from_reviewer_hud,
                     on_position_changed=self._save_reviewer_hud_position,
                     on_open_collection=self._open_collection_from_reviewer_hud,
@@ -3181,6 +3188,7 @@ class ReviewerHookHandler:
                     set_callbacks(
                         on_open_garden=self._open_garden_from_reviewer_hud,
                         on_open_plant=self._open_active_plant_from_reviewer_hud,
+                        on_open_activity=self._open_activity_from_reviewer_hud,
                         on_open_supplies=self._open_supplies_from_reviewer_hud,
                         on_position_changed=self._save_reviewer_hud_position,
                         on_open_collection=self._open_collection_from_reviewer_hud,
