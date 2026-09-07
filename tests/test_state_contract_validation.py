@@ -496,6 +496,7 @@ def test_claimed_streak_rewards_keep_only_supported_once_ever_milestones():
 def test_to_dict_returns_a_detached_payload():
     state = GardenState(plants=[Plant("p", "rose", "Briar", 0)])
     payload = state.to_dict()
-    changed = deepcopy(payload)
-    changed["plants"][0]["name"] = "Changed"
+    payload["plants"][0]["name"] = "Changed"
+    payload["daily_stats"]["plant_growth"]["p"] = 123
     assert state.plants[0].name == "Briar"
+    assert state.daily_stats.plant_growth == {}

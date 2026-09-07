@@ -2163,7 +2163,7 @@ class GardenStorage:
             return
         checkpoint = ledger.checkpoint()
         try:
-            for _rowid, record in ledger.iter_economy_events():
+            for _rowid, record in ledger.iter_economy_events(legacy_activity_only=True):
                 if record.coins_earned or record.coins_spent or (
                     record.event_kind != "answer_growth" and
                     (record.growth_generated_units or record.quantity)
@@ -4700,6 +4700,19 @@ class GardenStorage:
     def invalidate_due_snapshot(self) -> None:
         self._due_snapshot = None
         self._due_snapshot_collection = None
+        self._due_tree_snapshot = None
+
+    def due_tree(self) -> Any | None:
+        """Share the exact scheduler tree used for the current due snapshot.
+
+        The snapshot expires on collection changes, review operations, learning
+        deadlines, and day rollover, so presentation never extends its lifetime.
+        """
+
+        status = self.due_obligations()
+        if not status.available or status.error:
+            return None
+        return getattr(self, "_due_tree_snapshot", None)
 
     def due_obligations(self, *, committed_card_ids: Iterable[int] = ()) -> DueObligationStatus:
         if getattr(self, "runtime_pending", False) and not getattr(self, "_allow_runtime_commit", False):
@@ -4740,6 +4753,7 @@ class GardenStorage:
         cutoff even when an intraday step is not available at this exact second.
         Negative queue values (suspended/buried) are deliberately excluded.
         """
+        self.invalidate_due_snapshot()
         collection = getattr(self.mw, "col", None)
         if collection is None or getattr(collection, "db", None) is None or getattr(collection, "sched", None) is None:
             return DueObligationStatus(
@@ -4751,6 +4765,7 @@ class GardenStorage:
             )
         try:
             tree = collection.sched.deck_due_tree()
+            self._due_tree_snapshot = tree
             new_count, tree_learning, review_count = self._due_tree_totals(tree)
             end_ms = self.current_day_end_ms()
             today_index = self.scheduler_day_index()

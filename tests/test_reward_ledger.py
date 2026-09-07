@@ -492,6 +492,16 @@ def test_activity_groups_exact_rewards_and_survives_rollback_and_restart(tmp_pat
         assert [row.group_id for row in ledger.activity_entries(filter_key="earned")] == [session]
         assert [row.group_id for row in ledger.activity_entries(filter_key="spent")] == ["purchase"]
         assert ledger.activity_event("failed") is None
+        # Replay and regrouping replace an event's contribution atomically;
+        # they must not double-count the saved session after a restart.
+        from dataclasses import replace
+        ledger.stage_activity_event(records[1])
+        ledger.stage_activity_event(replace(records[2], group_id="daily"))
+        ledger.commit_state({}, schema_version=30, expected_revision=1)
+    with RewardLedger(path) as ledger:
+        entry, = ledger.activity_entries(filter_key="study")
+        assert (entry.earned, entry.growth_units, entry.status) == (10, 2200, "ended")
+        assert ledger.activity_day_totals(day)["coins"] == 14
 
 
 def test_activity_pagination_retains_more_than_500_transactions(tmp_path):

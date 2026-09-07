@@ -13,6 +13,7 @@ from enum import Enum
 from html import escape
 from math import ceil, cos, isfinite, pi, sin
 from pathlib import Path
+from textwrap import shorten
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -7012,7 +7013,7 @@ GrowthChargeDialog = GrowthChargeConfirmationDialog
 
 
 class ToastRegion(QFrame):
-    """Accessible, replace-in-place feedback with an optional undo action."""
+    """Brief, bounded feedback that replaces the previous update in place."""
 
     shown = pyqtSignal()
     cleared = pyqtSignal()
@@ -7051,8 +7052,9 @@ class ToastRegion(QFrame):
                 color=GARDEN_THEME["action_text"],
             ).pixmap(16, 16)
         )
-        self.message = QLabel("")
-        self.message.setWordWrap(True)
+        self.message = ElidingLabel("", max_lines=2)
+        self.message.setTextFormat(Qt.TextFormat.PlainText)
+        self.message.setMinimumWidth(0)
         self.action = QPushButton("")
         _set_button_variant(self.action, BUTTON_VARIANT_SECONDARY)
         self._apply_action_geometry(self.action)
@@ -7067,12 +7069,26 @@ class ToastRegion(QFrame):
         layout.addWidget(self.action)
         layout.addWidget(self.dismiss)
         self.dismiss.hide()
-        # A compact 36 px action plus vertical margins keeps routine feedback
-        # aligned with the shared control baseline. Wrapped or actionable
-        # errors may grow without resizing their parent layout.
+        # Copy is limited to two lines, including errors and action receipts.
         self.setMinimumHeight(44)
         self.setMaximumHeight(84)
         self.hide()
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        if hasattr(self, "message"):
+            # Fit the brief summary before elision, rather than locking the
+            # next update to the previous message's shorter rendered width.
+            metrics = self.message.fontMetrics()
+            text_width = metrics.horizontalAdvance(
+                str(self.message.property("fullText") or "")
+            )
+            visible_width = max(
+                (metrics.horizontalAdvance(line) for line in self.message.text().splitlines()),
+                default=0,
+            )
+            hint.setWidth(hint.width() + max(0, text_width - visible_width))
+        return hint
 
     def _apply_action_geometry(self, action: QPushButton) -> None:
         """Fit ordinary toasts or the tighter normal-flow receipt band."""
@@ -7091,8 +7107,8 @@ class ToastRegion(QFrame):
         action_text: str = "",
         callback: Callable[[], None] | None = None,
         duration_ms: int | None = None,
-        fade_ms: int = 0,
-        motion_enabled: bool = True,
+        fade_ms: int | None = None,
+        motion_enabled: bool | None = None,
         error: bool = False,
         dismissible: bool | None = None,
         dismiss_text: str = "",
@@ -7104,7 +7120,8 @@ class ToastRegion(QFrame):
         self._stop_fade()
         self._generation += 1
         generation = self._generation
-        text = _learner_text(message)
+        lines = _learner_text(message).splitlines()
+        text = shorten(lines[0] if lines else "", width=96, placeholder="…")
         self._callback = callback
         self._dismiss_callback = dismiss_callback
         self.message.setText(text)
@@ -7182,7 +7199,15 @@ class ToastRegion(QFrame):
         )
         self.shown.emit()
         if duration_ms is None:
-            duration_ms = 6000 if callback is not None else 3000
+            duration_ms = 6000 if callback is not None else 3000 if error else 1500
+        if fade_ms is None:
+            fade_ms = 0 if error or callback is not None else 200
+        if motion_enabled is None:
+            config = getattr(self.window(), "config", None)
+            motion_enabled = effective_motion_enabled(
+                bool(config.value("enable_animations", True)) if config else True,
+                bool(config.value("reduced_motion", False)) if config else False,
+            )
         self._fade_duration_ms = max(0, int(fade_ms)) if motion_enabled else 0
         if duration_ms > 0:
             self._scheduled_generation = generation
@@ -7278,6 +7303,20 @@ def _learner_text(value: Any) -> str:
     )
     normalizer = globals().get("learner_card_copy")
     return normalizer(normalized) if callable(normalizer) else normalized
+
+
+def _garden_update_message(transitions: list[Any], feedback: list[Any]) -> str:
+    """Summarize a committed batch without replaying its intermediate rewards."""
+
+    latest_by_plant = {item.plant_id: item for item in transitions}
+    if len(latest_by_plant) == 1:
+        item = next(iter(latest_by_plant.values()))
+        return plant_stage_event(item.species, item.new_stage)
+    if latest_by_plant:
+        return f"{len(latest_by_plant):,} plants reached new stages"
+    if len(feedback) == 1:
+        return feedback[0].title or feedback[0].message
+    return "Garden updated" if feedback else ""
 
 
 def _environment_kind_label(kind: object) -> str:
@@ -22209,7 +22248,7 @@ class GardenDashboard(DialogShell):
         self._move_focus_plant_id = ""
         self._starter_placement_active = False
         self._collection_placement_plant_id = ""
-        self._stage_message_generation = 0
+        self._last_progress_feedback: tuple[Any, ...] = ()
         self._pending_feedback_ack_ids: tuple[str, ...] = ()
         self._pending_transition_ack: tuple[Any, ...] = ()
         self._onboarding_just_completed = False
@@ -23174,21 +23213,19 @@ class GardenDashboard(DialogShell):
         self._refresh_onboarding()
 
         transitions = self.engine.peek_stage_transitions()
-        transition_message = self.engine.stage_transition_message(transitions)
-        feedback = self.engine.peek_feedback()[:3]
-        feedback_message = "\n".join(_learner_text(event.message) for event in feedback)
-        progress_message = "\n".join(
-            filter(None, (_learner_text(transition_message), feedback_message))
-        )
-        self._stage_message_generation += 1
-        stage_generation = self._stage_message_generation
+        feedback = self.engine.peek_feedback()
+        progress_message = _garden_update_message(transitions, feedback)
+        progress_key = (tuple(transitions), tuple(event.event_id for event in feedback))
         self.stage_transition_note.setText(progress_message)
         self.stage_transition_note.hide()
         self.stage_transition_note.setAccessibleDescription(progress_message)
         self._sync_feedback_panel_visibility()
-        if progress_message:
-            self.toast_region.show_message(progress_message, duration_ms=0)
-            QTimer.singleShot(4200, lambda: self._clear_stage_message(stage_generation))
+        if progress_message and progress_key != self._last_progress_feedback:
+            self.toast_region.show_message(
+                progress_message,
+                motion_enabled=self._plant_popover_motion_enabled(),
+            )
+            self._last_progress_feedback = progress_key
 
         plant_snapshots_by_id = {
             str(plant.plant_id): plant for plant in snapshot.plants
@@ -23683,18 +23720,6 @@ class GardenDashboard(DialogShell):
             else:
                 self._pending_transition_ack = ()
 
-    def _clear_stage_message(self, generation: int) -> None:
-        if generation != self._stage_message_generation:
-            return
-        try:
-            self.stage_transition_note.setText("")
-            self.stage_transition_note.setAccessibleDescription("")
-            self.stage_transition_note.hide()
-            self._sync_feedback_panel_visibility()
-        except RuntimeError:
-            # A delayed capture/restart timer may outlive a replaced Qt tree.
-            return
-
     def _local_date(self, value: str) -> str:
         return self.date_service.format_date(
             value,
@@ -23974,7 +23999,7 @@ class GardenDashboard(DialogShell):
         if self.toast_region.isVisible():
             self.toast_region.setMinimumWidth(0)
             self.toast_region.setMaximumWidth(min(420, available_width))
-            toast_width = min(available_width, max(180, self.toast_region.sizeHint().width()))
+            toast_width = min(420, available_width, max(180, self.toast_region.sizeHint().width()))
             self.toast_region.setFixedWidth(toast_width)
             self.toast_region.adjustSize()
             toast_height = min(available_height, max(44, self.toast_region.sizeHint().height()))

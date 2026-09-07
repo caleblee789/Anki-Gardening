@@ -231,13 +231,23 @@ def event_from_transaction(tx: Any, *, earlier: bool = True) -> ActivityEvent:
 def write_activity(connection: Any, events: Iterable[ActivityEvent],
                    sessions: Iterable[ActivitySession]) -> None:
     """Called only inside RewardLedger's atomic commit."""
-    touched: set[str] = set()
+    deltas: dict[str, list[int]] = {}
+
+    def accumulate(group_id, coins, growth, answers, finds, adjustment, sign=1):
+        values = (answers, max(0, coins) if not adjustment else 0,
+                  max(0, -coins), max(0, coins) if adjustment else 0, growth, finds)
+        delta = deltas.setdefault(group_id, [0] * 6)
+        for index, value in enumerate(values):
+            delta[index] += sign * value
+
     for event in events:
-        old = connection.execute("SELECT group_id FROM activity_event WHERE event_key=?",
+        old = connection.execute("""SELECT group_id, coins, growth_units,
+            card_answers, finds, adjustment FROM activity_event WHERE event_key=?""",
                                  (event.event_key,)).fetchone()
         if old:
-            touched.add(str(old[0]))
-        touched.add(event.group_id)
+            accumulate(*old, sign=-1)
+        accumulate(event.group_id, event.coins, event.growth_units,
+                   event.card_answers, event.finds, event.adjustment)
         values = (event.event_key, event.group_id, event.scheduler_day, event.occurred_at,
                   timestamp_ms(event.occurred_at), event.source, event.correlation_id,
                   event.coins, event.growth_units, event.card_answers, event.finds,
@@ -255,7 +265,7 @@ def write_activity(connection: Any, events: Iterable[ActivityEvent],
             (group_id,kind,started_at,ended_at,status) VALUES (?,?,?,?,?)""",
             (event.group_id, kind, event.occurred_at, event.occurred_at, "recorded"))
     for session in sessions:
-        touched.add(session.group_id)
+        deltas.setdefault(session.group_id, [0] * 6)
         connection.execute("""INSERT INTO activity_group
             (group_id,kind,started_at,ended_at,status) VALUES (?,?,?,?,?)
             ON CONFLICT(group_id) DO UPDATE SET kind=excluded.kind,
@@ -267,21 +277,22 @@ def write_activity(connection: Any, events: Iterable[ActivityEvent],
             status=CASE WHEN activity_group.status IN ('ended','interrupted') AND excluded.status='open'
                 THEN activity_group.status ELSE excluded.status END""",
             (session.group_id, session.kind, session.started_at, session.ended_at, session.status))
-    for group_id in touched:
+    for group_id, delta in deltas.items():
+        # Subtract the previous event before adding its replacement. This keeps
+        # upserts and group moves exact without re-summing a growing session on
+        # every answer. The event and these totals share the ledger transaction.
+        connection.execute("""UPDATE activity_group SET card_answers=card_answers+?,
+            earned=earned+?, spent=spent+?, adjustments=adjustments+?,
+            growth_units=growth_units+?, finds=finds+? WHERE group_id=?""",
+            (*delta, group_id))
         latest = connection.execute("""SELECT scheduler_day, occurred_ms FROM activity_event
             WHERE group_id=? ORDER BY occurred_ms DESC, event_key DESC LIMIT 1""", (group_id,)).fetchone()
         if latest is None:
             connection.execute("DELETE FROM activity_group WHERE group_id=? AND kind NOT IN ('session','sync','study')", (group_id,))
             continue
-        totals = connection.execute("""SELECT SUM(card_answers),
-            SUM(CASE WHEN coins>0 AND adjustment=0 THEN coins ELSE 0 END),
-            SUM(CASE WHEN coins<0 THEN -coins ELSE 0 END),
-            SUM(CASE WHEN adjustment=1 AND coins>0 THEN coins ELSE 0 END),
-            SUM(growth_units), SUM(finds) FROM activity_event WHERE group_id=?""", (group_id,)).fetchone()
         end = connection.execute("SELECT ended_at FROM activity_group WHERE group_id=?", (group_id,)).fetchone()
-        connection.execute("""UPDATE activity_group SET scheduler_day=?, sort_ms=?,
-            card_answers=?, earned=?, spent=?, adjustments=?, growth_units=?, finds=? WHERE group_id=?""",
-            (latest[0], max(int(latest[1]), timestamp_ms(end[0])), *totals, group_id))
+        connection.execute("UPDATE activity_group SET scheduler_day=?, sort_ms=? WHERE group_id=?",
+            (latest[0], max(int(latest[1]), timestamp_ms(end[0])), group_id))
 
 
 def read_entries(connection: Any, *, filter_key: str = "all", limit: int = 20,

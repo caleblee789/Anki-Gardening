@@ -737,6 +737,9 @@ class ReviewerHookHandler:
         return max(1 if deck_id > 0 else 0, direct + child_count)
 
     def _due_tree(self) -> Any | None:
+        shared_tree = getattr(self.storage, "due_tree", None)
+        if callable(shared_tree):
+            return shared_tree()
         collection = getattr(getattr(self.storage, "mw", None), "col", None)
         if collection is None:
             collection = getattr(mw, "col", None)

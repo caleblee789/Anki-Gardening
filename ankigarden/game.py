@@ -735,7 +735,8 @@ class GardenGameEngine:
         checkpoint = (
             checkpoint_resolver() if callable(checkpoint_resolver) else None
         )
-        return _StateSnapshot(deepcopy(self.state.to_dict()), checkpoint)
+        # to_dict() already detaches every mutable value for rollback.
+        return _StateSnapshot(self.state.to_dict(), checkpoint)
 
     def _restore_state(self, snapshot: dict[str, Any]) -> None:
         rollback = getattr(self.storage, "rollback_reward_ledger", None)
@@ -9563,7 +9564,7 @@ class GardenGameEngine:
             # intentionally stale, so the durable Undo is a new bounded-state
             # commit rather than a rollback of already-committed ledger work.
             _before=_StateSnapshot(deepcopy(snapshot), None),
-            _after=deepcopy(self.state.to_dict()),
+            _after=self.state.to_dict(),
         )
         return (
             True,

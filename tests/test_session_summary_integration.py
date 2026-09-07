@@ -316,6 +316,7 @@ def test_typed_committed_result_carries_generic_project_allocations(monkeypatch)
 
 def test_engine_committed_result_owns_standard_find_count():
     from ankigarden.garden_finds import STANDARD_FIND_REGISTRY, PreparedRewardRegistry
+    from ankigarden.models.state import GROWTH_THRESHOLDS
 
     engine, storage = _engine()
     # Durable storage owns outcomes outside the renderer's bounded state cache.
@@ -326,7 +327,7 @@ def test_engine_committed_result_owns_standard_find_count():
     state.starter_selection_complete = True
     state.progression_activation_ms = storage.day_start_ms - 1
     for plant in state.plants:
-        plant.growth_points = 35_000
+        plant.growth_points = GROWTH_THRESHOLDS[-1]
     state.active_plant_id = None
     state.active_growth_target_type = "mastery"
     state.active_growth_target_id = "bonsai"
@@ -347,9 +348,11 @@ def test_engine_committed_result_owns_standard_find_count():
     assert result.standard_find_count == 1
     assert [item.reward_id for item in result.garden_find_outcomes if item.status == "hit"] == ["find_growth_burst"]
     assert not state.garden_find_outcomes
-    # The receipt includes ordinary Growth, its 100-Growth Find, and Prism's 100 Growth.
+    # The current build disables Mastery. A saved selection must preserve all
+    # Growth in storage, including the 100-Growth Find and Prism's 100 Growth.
     assert sum(row.units for row in result.project_allocations) == result.mastery_growth_delta_units
-    assert result.mastery_growth_delta_units == result.award.mastery_growth_units + 20_000
+    assert result.mastery_growth_delta_units == 0
+    assert result.stored_growth_delta_units == result.award.stored_growth_units + 20_000
 
 
 def test_reviewer_find_details_fail_closed_against_engine_count(

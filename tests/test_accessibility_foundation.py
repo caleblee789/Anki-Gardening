@@ -533,7 +533,7 @@ def test_macos_reader_parses_defaults_output(output: str, expected: bool) -> Non
     assert calls[0][1]["timeout"] == 0.5
 
 
-def test_macos_reader_has_safe_platform_command_and_parse_fallbacks() -> None:
+def test_macos_reader_has_safe_platform_command_and_parse_fallbacks(monkeypatch) -> None:
     called = False
 
     def runner(*_args: object, **_kwargs: object) -> object:
@@ -548,6 +548,13 @@ def test_macos_reader_has_safe_platform_command_and_parse_fallbacks() -> None:
         system_name="Darwin",
         runner=lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="maybe"),
     ) is None
+    # Resolving the native API may be cached; the accessibility preference must
+    # still reflect changes while Anki is open, without restarting the add-on.
+    settings = iter((False, True))
+    monkeypatch.setattr(accessibility, "_macos_motion_reader", lambda: lambda: next(settings))
+    assert read_macos_reduced_motion(system_name="Darwin") is False
+    assert read_macos_reduced_motion(system_name="Darwin") is True
+    assert read_macos_reduced_motion(system_name="Darwin") is None
 
 
 @pytest.mark.parametrize(

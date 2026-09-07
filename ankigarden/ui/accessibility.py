@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import platform
-import subprocess
 import threading
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from types import SimpleNamespace
 from typing import Any, Callable, Optional
 
@@ -113,6 +113,46 @@ def _parse_boolean_output(value: Any) -> Optional[bool]:
     return None
 
 
+@lru_cache(maxsize=1)
+def _macos_motion_reader() -> Callable[[], bool]:
+    """Bind AppKit once; read the live setting on every policy request."""
+
+    import ctypes
+
+    appkit = ctypes.CDLL("/System/Library/Frameworks/AppKit.framework/AppKit")
+    objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+    objc.objc_getClass.argtypes = [ctypes.c_char_p]
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.sel_registerName.argtypes = [ctypes.c_char_p]
+    objc.sel_registerName.restype = ctypes.c_void_p
+    # Separate signatures avoid changing the shared objc_msgSend binding's ABI.
+    object_message = ctypes.CFUNCTYPE(
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
+    )(("objc_msgSend", objc))
+    bool_message = ctypes.CFUNCTYPE(
+        ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p
+    )(("objc_msgSend", objc))
+    responds = ctypes.CFUNCTYPE(
+        ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
+    )(("objc_msgSend", objc))
+    workspace_class = objc.objc_getClass(b"NSWorkspace")
+    workspace = object_message(
+        workspace_class, objc.sel_registerName(b"sharedWorkspace")
+    ) if workspace_class else None
+    selector = objc.sel_registerName(b"accessibilityDisplayShouldReduceMotion")
+    if not workspace or not responds(
+        workspace, objc.sel_registerName(b"respondsToSelector:"), selector
+    ):
+        raise RuntimeError("macOS motion preference is unavailable")
+
+    def read() -> bool:
+        # Keep the framework and runtime bindings alive with the reader.
+        _ = appkit, objc
+        return bool(bool_message(workspace, selector))
+
+    return read
+
+
 def read_macos_reduced_motion(
     *,
     system_name: Optional[str] = None,
@@ -120,13 +160,19 @@ def read_macos_reduced_motion(
 ) -> Optional[bool]:
     """Read the macOS Reduce Motion preference, or ``None`` when unavailable.
 
-    The reader uses only the macOS ``defaults`` utility and fails open. Callers
-    should treat ``None`` as an unknown OS preference, not as an enabled one.
+    AppKit avoids spawning a process on every card and observes live preference
+    changes. An explicitly supplied command runner remains available for older
+    integrations. ``None`` means an unknown OS preference.
     """
 
     if (system_name or platform.system()) != "Darwin":
         return None
-    command_runner = runner or subprocess.run
+    if runner is None:
+        try:
+            return _optional_bool(_macos_motion_reader()())
+        except Exception:
+            return None
+    command_runner = runner
     try:
         result = command_runner(
             ["defaults", "read", "com.apple.universalaccess", "reduceMotion"],

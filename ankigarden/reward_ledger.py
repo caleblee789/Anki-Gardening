@@ -1689,11 +1689,22 @@ class RewardLedger:
         self._connection.execute("DELETE FROM runtime_projection")
         self._projection_data_version = self._data_version()
 
-    def iter_economy_events(self, *, after_rowid: int = 0) -> Iterator[tuple[int, EconomyEventRecord]]:
+    def iter_economy_events(
+        self, *, after_rowid: int = 0, legacy_activity_only: bool = False,
+    ) -> Iterator[tuple[int, EconomyEventRecord]]:
         """Stream permanent events without constructing a lifetime-sized tuple."""
         self._ensure_open()
+        # Legacy Activity never displayed ordinary answer Growth. Exclude it
+        # before decoding records so an upgrade does not materialize hundreds
+        # of thousands of irrelevant historical answers on the UI thread.
+        condition = (
+            " AND (coins_earned > 0 OR coins_spent > 0 OR "
+            "(event_kind != 'answer_growth' AND (growth_generated_units > 0 OR quantity > 0)))"
+            if legacy_activity_only else ""
+        )
         cursor = self._connection.execute(
-            "SELECT rowid AS event_rowid, * FROM economy_event WHERE rowid > ? ORDER BY rowid",
+            "SELECT rowid AS event_rowid, * FROM economy_event WHERE rowid > ?"
+            + condition + " ORDER BY rowid",
             (max(0, int(after_rowid)),),
         )
         for row in cursor:

@@ -520,6 +520,10 @@ def test_activity_import_keeps_one_purchase_for_transaction_and_economy_receipt(
         ledger.stage_economy_event(EconomyEventRecord('purchase:one', 'purchase',
             sink_id='growth_charge:small', scheduler_day=day, occurred_at=stamp,
             coins_spent=30, item_id='growth_charge_small', quantity=1))
+        ledger.stage_economy_event(EconomyEventRecord('old-answer', 'answer_growth',
+            source_id='base_answer',
+            scheduler_day=day, occurred_at=stamp, growth_generated_units=1000,
+            growth_applied_to_plants_units=1000, growth_flow_kind='generated'))
         saved = ledger.commit_state(storage._bounded_state_payload(storage.state), schema_version=STATE_VERSION, expected_revision=0)
         storage._ledger_revision = saved.revision
         storage._initialize_activity_history()
@@ -529,3 +533,4 @@ def test_activity_import_keeps_one_purchase_for_transaction_and_economy_receipt(
         receipt, = storage.activity_details(purchase.group_id)
         assert receipt.payload['reason'] == 'Small Growth Charge'
         assert storage.state.currency_balance == 70
+        assert ledger.activity_event('old-answer') is None

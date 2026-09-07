@@ -45,6 +45,7 @@ try:  # Source-contract and projection tests run without Anki/Qt installed.
         QGridLayout,
         QHBoxLayout,
         QIcon,
+        QImage,
         QLabel,
         QLinearGradient,
         QMenu,
@@ -76,6 +77,7 @@ except Exception as exc:  # pragma: no cover - only outside Anki.
     QGridLayout = object  # type: ignore[assignment,misc]
     QHBoxLayout = object  # type: ignore[assignment,misc]
     QIcon = object  # type: ignore[assignment,misc]
+    QImage = object  # type: ignore[assignment,misc]
     QLabel = object  # type: ignore[assignment,misc]
     QLinearGradient = object  # type: ignore[assignment,misc]
     QMenu = object  # type: ignore[assignment,misc]
@@ -521,9 +523,30 @@ def _pixmap_visible_geometry(pixmap: Any) -> tuple[float, float]:
         return (0.0, 0.0)
     if width <= 0 or height <= 0:
         return (0.0, 0.0)
+    try:
+        # Convert in Qt, then threshold bytes in C instead of constructing a
+        # QColor for every pixel. Preserve the exact >8 alpha rule and exclude
+        # scanline padding, including at fractional/retina device scales.
+        alpha = image.convertToFormat(QImage.Format.Format_Alpha8)
+        stride = int(alpha.bytesPerLine())
+        pixels = alpha.constBits().asstring(alpha.sizeInBytes()).translate(
+            bytes([0] * 9 + [1] * 247)
+        )
+        left, right, bottom = width, -1, -1
+        for y in range(height):
+            row = pixels[y * stride:y * stride + width]
+            first = row.find(b"\x01")
+            if first >= 0:
+                left = min(left, first)
+                right = max(right, row.rfind(b"\x01"))
+                bottom = y
+        if bottom < 0:
+            return (0.0, 0.0)
+        return ((right - left + 1) / ratio, (bottom + 1) / ratio)
+    except (AttributeError, TypeError, RuntimeError):
+        pass
     left, right, bottom = width, -1, -1
-    # Artwork changes at most once per projected stage, so an alpha scan here
-    # is cheaper and more accurate than carrying stage-specific shadow assets.
+    # Keep the exact pixel reader for Qt bindings without direct buffer access.
     for y in range(height):
         row_has_alpha = False
         for x in range(width):
@@ -1515,6 +1538,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             tuple[Any, ...], tuple[float, float]
         ] = BoundedLruCache(8)
         self._disposed = False
+        # Closing Anki can destroy the parent without the usual review-state
+        # transition. Reject pending timers before its child labels disappear.
+        self.destroyed.connect(lambda: setattr(self, "_disposed", True))
         self._layout_reposition_pending = False
         self._collapsed = False
         self._body_compact_level = 0
@@ -3261,7 +3287,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             else:
                 self._flush_deferred_checkpoint_feedback()
 
-        self.set_collapsed(projection.collapsed)
+        if previous is None or self._collapsed != projection.collapsed:
+            self.set_collapsed(projection.collapsed)
         self._update_consumables(projection.active_consumables)
         self.show()
         self.raise_()
@@ -3427,12 +3454,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self.setProperty("hudCoinBalanceCompacted", rendered != exact)
 
     def _clear_coin_delta(self, revision: int | None = None) -> None:
-        if revision is not None and revision != self._coin_feedback_revision:
+        if self._disposed or (revision is not None and revision != self._coin_feedback_revision):
             return
         self._coin_delta.hide()
 
     def _clear_coin_icon_pulse(self, revision: int | None = None) -> None:
-        if revision is not None and revision != self._coin_feedback_revision:
+        if self._disposed or (revision is not None and revision != self._coin_feedback_revision):
             return
         self._coin_icon.setProperty("coinPulse", False)
         _repolish(self._coin_icon)

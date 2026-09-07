@@ -1002,7 +1002,9 @@ def test_all_due_status_uses_live_review_limits_and_full_day_learning_obligation
     assert args == (FakeScheduler.day_cutoff, FakeScheduler.today)
 
 
-def test_all_due_is_recomputed_live_and_includes_filtered_deck_tree_counts():
+def test_all_due_is_recomputed_live_and_includes_filtered_deck_tree_counts(monkeypatch):
+    now = [FakeScheduler.day_cutoff - 100]
+    monkeypatch.setattr("ankigarden.storage.time.time", lambda: now[0])
     filtered = Tree(99, new=1, review=2, learn=1)
     regular = Tree(1, new=0, review=3, learn=0)
     storage, _db = due_storage(tree=Tree(0, children=[regular, filtered]), intraday=1)
@@ -1013,13 +1015,20 @@ def test_all_due_is_recomputed_live_and_includes_filtered_deck_tree_counts():
     assert status.learning_count == 1
     assert status.future_learning_count == 0
     assert status.cutoff_at_ms == FakeScheduler.day_cutoff * 1_000
+    assert storage.due_tree() is storage.mw.col.sched.tree
 
-    regular.review_count = 0
-    filtered.new_count = 0
-    filtered.review_count = 0
-    filtered.learn_count = 0
+    storage.mw.col.sched.tree = Tree(0)
     storage.mw.col.db.intraday = 0
+    # Presentation reuses the same verified obligations until an operation or
+    # scheduler deadline invalidates them, then immediately observes new work.
+    assert storage.due_obligations().remaining == status.remaining
+    storage.invalidate_due_snapshot()
     assert storage.due_obligations().complete
+    assert storage.due_tree() is storage.mw.col.sched.tree
+    storage.mw.col.sched.tree = Tree(1, review=2)
+    now[0] = FakeScheduler.day_cutoff + 1
+    assert storage.due_obligations().remaining == 2
+    assert storage.due_tree() is storage.mw.col.sched.tree
 
 
 def test_all_due_scheduler_query_failure_fails_closed():
