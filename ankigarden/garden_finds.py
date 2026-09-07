@@ -51,6 +51,11 @@ STANDARD_DAILY_CAP: Optional[int] = None
 STANDARD_GUARANTEE_ANSWER = CATALOG_STANDARD_GUARANTEE_ANSWER
 FALLBACK_REWARD_ID = CATALOG_FALLBACK_REWARD_ID
 
+# Receipts now use standard_find; persisted garden_find receipts remain valid.
+# Share this identity check across history, feedback, and reward projections.
+STANDARD_FIND_RECEIPT_SOURCES = frozenset({"standard_find", "garden_find"})
+GARDEN_FIND_RECEIPT_SOURCES = STANDARD_FIND_RECEIPT_SOURCES | {"garden_find_environment"}
+
 # These identifiers route to existing inventory handlers.  Garden Finds never
 # implements the item effects itself.
 KNOWN_INVENTORY_ITEM_IDS = frozenset({

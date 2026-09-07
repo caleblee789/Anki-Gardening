@@ -256,7 +256,7 @@ def test_oversized_sync_receipts_compact_without_losing_atomic_totals() -> None:
         RewardReceipt(
             f"garden_find:answer-{index}:standard",
             "coins",
-            "garden_find",
+            "standard_find",
             "find_coin_sprout",
             "2026-08-20",
             "sync:large",

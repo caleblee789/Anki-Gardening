@@ -104,6 +104,8 @@ from .achievements import (
     analyze_history,
 )
 from .garden_finds import (
+    GARDEN_FIND_RECEIPT_SOURCES,
+    STANDARD_FIND_RECEIPT_SOURCES,
     ENVIRONMENT_POOL_ID,
     ENVIRONMENT_POOL_VERSION,
     ENVIRONMENT_TIER_DENOMINATORS,
@@ -1300,7 +1302,7 @@ class GardenGameEngine:
             ))
 
         metric_deltas: dict[str, Any] = {}
-        if source in {"garden_find", "standard_find"}:
+        if source in STANDARD_FIND_RECEIPT_SOURCES:
             metric_deltas["finds_by_outcome"] = {str(source_id): 1}
         if source == "full_bloom":
             metric_deltas["plants_completed"] = 1
@@ -5545,7 +5547,7 @@ class GardenGameEngine:
         find_receipts = tuple(
             receipt
             for receipt in receipts
-            if receipt.source in {"garden_find", "garden_find_environment"}
+            if receipt.source in GARDEN_FIND_RECEIPT_SOURCES
         )
         projected_achievement_ids: tuple[str, ...] = ()
         try:

@@ -184,6 +184,10 @@ def workspace_surface_rows():
         }:
             row["owned_module_dependencies"] += ("ui/activity_page.py", "activity.py", "reward_ledger.py")
             row["workflow_revision"] = "Activity combines study, daily and streak rewards, and saved review sessions."
+        if row.get("active") and row["id"] in {"progress-today-page", "progress-today-details"}:
+            row["workflow_revision"] += " Capture both Today and streak reward details expanded at 100 percent."
+            row["state_contract"]["required_facts"] += ("activity_details_expanded",)
+            row["state_contract"]["expected_fact_values"]["activity_details_expanded"] = True
         if row.get("active") and row["id"] == "active-deck-browser-home-after-nurture":
             row["owned_module_dependencies"] += ("capture/reviewer_feedback.py",)
         if row.get("active") and row["id"] in {

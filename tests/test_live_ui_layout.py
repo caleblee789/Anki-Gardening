@@ -424,7 +424,8 @@ def test_collection_hides_dormant_landmarks_and_retains_enabled_layout(
     application.processEvents()
 
 
-def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch):
+@pytest.mark.parametrize("initial_session_state", ["expanded", "collapsed", "hidden"])
+def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_session_state):
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     try:
@@ -449,9 +450,11 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch):
     opened, positions = [], []
     hud = ReviewGardenHud(owner, on_open_garden=lambda: opened.append("garden"),
                           on_open_plant=lambda plant_id: opened.append(plant_id),
+                          on_open_activity=lambda: opened.append("activity"),
                           on_open_supplies=opened.append, on_position_changed=positions.append,
                           resolve_reward_art=engine.resolve_item_asset, animations_enabled=False)
     hud.set_callbacks(on_open_plant=lambda plant_id: opened.append(plant_id), on_open_supplies=opened.append,
+                      on_open_activity=lambda: opened.append("activity"),
                       on_position_changed=positions.append, on_toggle_collapsed=lambda value: hud.set_collapsed(value),
                       resolve_reward_art=engine.resolve_item_asset, animations_enabled=False)
     projection = project_reviewer_hud(engine, storage.state)
@@ -503,20 +506,40 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch):
         assert not hud._collapsed and hud.geometry().right() == right_edge
         assert hud._position == saved and len(positions) == 2
 
+        if initial_session_state == "hidden":
+            owner.hide()
+        elif initial_session_state == "collapsed":
+            hud.set_collapsed(True)
+        hud.restore_reward_state({"feed_expanded": False})
         for n in range(8):
             item = RewardItemProjection(f'coin-{n}', RewardHero.COIN_OR_BOOSTER, 'Checkpoint reward', 'Garden reward', garden_coins=2)
             hud.present_reward(RewardBundleProjection(f'answer-{n}', '2026-09-06T12:00:00Z', (item,)))
+        hud.update_session_totals({"footer_growth_units": 12_600})
+        owner.show()
+        hud.set_collapsed(False)
         QTest.qWait(40)
-        assert hud._reward_feed.isVisibleTo(hud)
+        assert not hud._reward_feed.isVisibleTo(hud)
         assert not hud._reward_details_toggle.isVisibleTo(hud)
         assert hud._reward_feed.model.rowCount() == 8
         assert hud._session_history_toggle.y() > max(tile.geometry().bottom() for tile in hud._session_metric_tiles)
-        click(hud._session_heading)
+        initial_height = hud.height()
+        initial_footer = hud._session_footer.geometry()
+        opened.clear()
+        for target in (hud._session_heading, *hud._session_metric_tiles, hud._session_history_toggle):
+            click(target)
+            assert opened[-1] == "activity"
+            assert not hud._reward_feed.isVisibleTo(hud)
+        assert opened == ["activity"] * 5
+        opened.clear()
+        click(hud._session_history_chevron)
         assert hud._reward_feed.isVisibleTo(hud)
-        click(hud._session_history_toggle)
+        click(hud._session_history_chevron)
         assert not hud._reward_feed.isVisibleTo(hud)
         assert all(tile.isVisibleTo(hud) for tile in hud._session_metric_tiles)
-        click(hud._session_history_toggle)
+        assert hud.height() == initial_height
+        assert hud._session_footer.geometry() == initial_footer
+        assert not opened
+        click(hud._session_history_chevron)
         assert hud._reward_feed.isVisibleTo(hud)
         assert all(not hud._reward_feed.delegate.artwork_for(entry.item).isNull()
                    for entry in hud._reward_feed.model.entries)

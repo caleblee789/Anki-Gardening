@@ -1836,7 +1836,7 @@ def test_reviewer_plant_selection_request_coalesces_and_preserves_session(monkey
     assert app.reviewer_hooks._session_summary_accumulator is accumulator
 
 
-def test_dashboard_opens_public_collection_and_plant_selection_routes_after_presenting(monkeypatch):
+def test_dashboard_opens_public_routes_after_presenting(monkeypatch):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     addon.mw = aqt_mod.mw
@@ -1849,6 +1849,7 @@ def test_dashboard_opens_public_collection_and_plant_selection_routes_after_pres
         acknowledge_rendered_feedback=lambda: calls.append("acknowledge"),
         open_plant_selection=lambda: calls.append("plant-selection"),
         open_collection=lambda: calls.append("collection"),
+        open_section=lambda section, page: calls.append((section, page)),
         _present_starter_setup_if_needed=lambda: calls.append("starter"),
     )
     app._dashboard_open_pending = True
@@ -1867,6 +1868,14 @@ def test_dashboard_opens_public_collection_and_plant_selection_routes_after_pres
     app._open_dashboard_when_ready()
     assert calls == ["prepare", "show", "acknowledge", "collection"]
     assert app._collection_open_pending is False
+
+    calls.clear()
+    app.open_activity()
+    assert app._activity_open_pending is True
+    app._dashboard_open_pending = True
+    app._open_dashboard_when_ready()
+    assert calls == ["prepare", "show", "acknowledge", ("progress", "activity")]
+    assert app._activity_open_pending is False
 
 
 def test_dormant_landmark_deep_link_opens_plants_after_presenting(monkeypatch):

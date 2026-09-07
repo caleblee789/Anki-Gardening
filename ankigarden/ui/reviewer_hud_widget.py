@@ -1495,6 +1495,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         *,
         on_open_garden: Callback = None,
         on_open_plant: Callback = None,
+        on_open_activity: Callback = None,
         on_open_supplies: Callback = None,
         on_position_changed: Callback = None,
         on_open_collection: Callback = None,
@@ -1515,6 +1516,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._viewport_parent = parent
         self._on_open_garden = on_open_garden
         self._on_open_plant = on_open_plant
+        self._on_open_activity = on_open_activity
         self._on_open_supplies = on_open_supplies
         self._on_position_changed = on_position_changed
         self._on_open_collection = on_open_collection
@@ -1819,6 +1821,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         *,
         on_open_garden: Callback = None,
         on_open_plant: Callback = None,
+        on_open_activity: Callback = None,
         on_open_supplies: Callback = None,
         on_position_changed: Callback = None,
         on_open_collection: Callback = None,
@@ -1834,6 +1837,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
     ) -> None:
         self._on_open_garden = on_open_garden
         self._on_open_plant = on_open_plant
+        self._on_open_activity = on_open_activity
         self._on_open_supplies = on_open_supplies
         self._on_position_changed = on_position_changed
         self._on_open_collection = on_open_collection
@@ -1903,7 +1907,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "stop:1 rgba(241,201,75,0));}"
             "QFrame#reviewerHudRewardDivider {background:" + t["reviewer_hud_divider"] + ";border:0;}"
             "QFrame#reviewerHudSessionFooter {background:transparent;border:0;border-radius:0;}"
-            "QFrame#reviewerHudSessionFooter[historyAvailable='true']:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
             "QFrame#reviewerHudRewardHistory {background:transparent;border:0;}"
             "QFrame[hudHistoryRow='true'] {background:transparent;border:0;border-radius:7px;}"
             "QFrame[hudHistoryRow='true']:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
@@ -2772,13 +2775,14 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_divider.hide()
         surface.addWidget(self._reward_divider)
 
-        self._session_footer = QFrame(self._reward_surface)
+        self._session_footer = _ClickableFrame(self._reward_surface, self._open_activity)
         self._session_footer.setObjectName("reviewerHudSessionFooter")
         self._session_footer.setProperty("semanticId", "reviewer.hud.session-footer")
         self._session_footer.setProperty("historyAvailable", False)
         self._session_footer.setProperty("historyExpanded", True)
-        self._session_footer.setCursor(Qt.CursorShape.ArrowCursor)
+        self._session_footer.setAccessibleName("Open Progress Activity")
         self._session_footer.setMinimumHeight(76)
+        self._session_footer.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         footer = QVBoxLayout(self._session_footer)
         footer.setContentsMargins(0, 6, 0, 8)
         footer.setSpacing(6)
@@ -2790,10 +2794,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _set_decoration(self._session_heading)
         heading_row.addWidget(self._session_heading)
         heading_row.addStretch(1)
-        self._session_history_toggle = _ClickableFrame(self._session_footer, self._toggle_reward_history)
+        self._session_history_toggle = QFrame(self._session_footer)
         self._session_history_toggle.setObjectName("reviewerHudSessionHistoryToggle")
         self._session_history_toggle.setMinimumHeight(24)
-        self._session_history_toggle.setAccessibleName("Toggle recent rewards")
         history_heading = QHBoxLayout(self._session_history_toggle)
         history_heading.setContentsMargins(0, 2, 0, 2)
         history_heading.setSpacing(4)
@@ -2801,18 +2804,17 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         history_label.setProperty("hudMuted", True)
         _set_decoration(history_label)
         history_heading.addWidget(history_label, 1)
-        self._session_history_chevron = QLabel("", self._session_history_toggle)
+        self._session_history_chevron = QToolButton(self._session_history_toggle)
         self._session_history_chevron.setObjectName("reviewerHudSessionChevron")
         self._session_history_chevron.setProperty(
             "semanticId", "reviewer.hud.session-footer.chevron"
         )
-        self._session_history_chevron.setProperty("hudMuted", True)
-        self._session_history_chevron.setFixedWidth(14)
-        self._session_history_chevron.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
+        self._session_history_chevron.setFixedSize(32, 32)
+        self._session_history_chevron.setIconSize(QSize(18, 18))
+        self._session_history_chevron.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._session_history_chevron.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._session_history_chevron.clicked.connect(self._toggle_reward_history)
         self._session_history_chevron.hide()
-        _set_decoration(self._session_history_chevron)
         history_heading.addWidget(self._session_history_chevron)
         footer.addLayout(heading_row)
         from .session_summary_card import session_summary_palette
@@ -2952,6 +2954,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             _call(self._on_open_plant, plant_id)
         else:
             _call(self._on_open_garden)
+
+    def _open_activity(self) -> None:
+        _call(self._on_open_activity)
 
     def _open_growth_projects(self) -> None:
         """Open the canonical Collection route for project status or choice."""
@@ -5078,7 +5083,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             widget.show()
         self._session_footer.setProperty("metricsWrapped", False)
         self._session_footer.setProperty("metricRowCount", 1)
-        self._session_footer.setFixedHeight(max(76, self._session_footer.layout().sizeHint().height()))
+        # Hidden/collapsed metrics may still have their temporary stacked size.
+        # Let Qt follow the settled size hint instead of freezing that height.
+        self._session_footer.updateGeometry()
 
     def _set_session_metric_values(
         self,
@@ -5981,7 +5988,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             self._session_footer.setProperty("historyAvailable", available)
             self._session_history_chevron.setVisible(available)
             self._set_session_history_chevron(bool(self._session_footer.property("historyExpanded")))
-            self._session_history_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
             self._sync_reward_dock_visibility()
             return
         atomic_bundles = tuple(self._reward_history)
@@ -6170,13 +6176,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._session_history_chevron.setProperty(
             "chevronDirection", direction
         )
-        self._session_history_chevron.setPixmap(self._icon_pixmap(
+        self._session_history_chevron.setIcon(self._icon(
             f"chevron-{direction}",
-            13,
+            18,
             GARDEN_THEME["text_secondary"],
         ))
         self._session_history_chevron.setAccessibleName(
-            "Collapse session history" if expanded else "Expand session history"
+            "Collapse recent rewards" if expanded else "Expand recent rewards"
         )
 
     def _sync_unseen_badge(self) -> None:

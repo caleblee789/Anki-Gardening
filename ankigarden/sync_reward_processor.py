@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .environment import ENVIRONMENT_CATALOG, GROWTH_CHARGES
-from .garden_finds import standard_find_artwork_ref
+from .garden_finds import STANDARD_FIND_RECEIPT_SOURCES, standard_find_artwork_ref
 from .game import CommittedAnswerResult
 from .growth import GROWTH_UNITS_PER_POINT, stage_progress
 from .models.state import GROWTH_STAGES
@@ -396,7 +396,7 @@ def build_sync_reward_summary(
                     "environment_kind": kind,
                 })
             continue
-        if reward_type != "inventory_item" or source == "garden_find" or not item_id:
+        if reward_type != "inventory_item" or source in STANDARD_FIND_RECEIPT_SOURCES or not item_id:
             continue
         name, rarity = _item_name_rarity(item_id)
         row = finds_by_id.setdefault(item_id, {

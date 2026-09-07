@@ -210,7 +210,7 @@ def test_summary_counts_multi_day_events_even_when_a_later_arrival_has_lower_id(
     assert summary.to_dict()["model_version"] == SYNC_REWARD_MODEL_VERSION
 
 
-def test_sync_named_find_replaces_legacy_category_icon_with_canonical_art() -> None:
+def test_sync_named_finds_keep_canonical_art_and_single_receipt_payouts() -> None:
     legacy_outcome = GardenFindOutcome(
         "answer:100",
         CURRENT_DAY,
@@ -226,6 +226,12 @@ def test_sync_named_find_replaces_legacy_category_icon_with_canonical_art() -> N
         tier="Common",
         artwork_ref="growth",
     )
+    item_outcome = replace(
+        legacy_outcome, answer_key="answer:101", reward_id="find_small_charge",
+        reward_type="inventory_item", amount=1, item_id="growth_charge_small",
+        display_name="Small Growth Charge", description="+1 Small Growth Charge",
+        artwork_ref="ui_growth_charge_small",
+    )
     result = replace(
         _result(
             event_id="answer:100",
@@ -233,8 +239,13 @@ def test_sync_named_find_replaces_legacy_category_icon_with_canonical_art() -> N
             before_units=0,
             after_units=1_000,
         ),
-        garden_find_outcomes=(legacy_outcome,),
-        standard_find_count=1,
+        garden_find_outcomes=(legacy_outcome, item_outcome),
+        standard_find_count=2,
+        reward_receipts=(RewardReceipt(
+            "garden_find:answer:101:standard", "inventory_item", "standard_find", "find_small_charge",
+            CURRENT_DAY, "answer:100", f"{CURRENT_DAY}T12:00:00+00:00",
+            amount=1, item_id="growth_charge_small",
+        ),),
     )
     engine = SimpleNamespace(
         _scheduler_day=lambda: CURRENT_DAY,
@@ -252,6 +263,9 @@ def test_sync_named_find_replaces_legacy_category_icon_with_canonical_art() -> N
 
     assert summary is not None
     assert summary.finds[0]["image_asset"] == "/art/morning_dew.webp"
+    assert [(row["reward_id"], row["quantity"]) for row in summary.finds] == [
+        ("find_morning_dew", 1), ("find_small_charge", 1),
+    ]
 
 
 def test_sync_active_boosts_keep_canonical_item_art_in_pending_summary() -> None:

@@ -129,6 +129,19 @@ def workspace_postcondition(runner, widget, route):
             issues.append("use-item-panel")
     if route == "diagnostics" and not widget.diagnostics_content.isVisibleTo(widget):
         issues.append("diagnostics-expanded")
+    details_facts = {}
+    if route in {"progress/activity", "today-details"}:
+        from ..ui.dashboard import DisclosureRow
+
+        details = [row for row in dashboard.progress_dialog.findChildren(DisclosureRow)
+                   if row.property("semanticId") in {"progress.today-details", "progress.streak-rewards"}]
+        expanded = len(details) == 2 and all(
+            row.button.isChecked() and row.panel.isVisibleTo(widget)
+            for row in details
+        )
+        details_facts["activity_details_expanded"] = expanded
+        if not expanded:
+            issues.append("activity-details-expanded")
     if actual != route:
         issues.append("workspace-route")
     if not visible:
@@ -137,7 +150,7 @@ def workspace_postcondition(runner, widget, route):
     if not naming["passed"]:
         issues.append("plant-naming")
     return {"workspace_route": actual, "visible_content": bool(visible),
-            "plant_naming": naming, "issues": issues}
+            "plant_naming": naming, "issues": issues, **details_facts}
 
 
 def capture_plant_menu_layouts(runner, *, sizes=((1040, 720),)):
@@ -496,9 +509,6 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
                 widget.diagnostics_toggle.setChecked(True)
         elif route == "today-details":
             dashboard.open_section("progress", "today")
-            _settle()
-            disclosure = next(button for button in dashboard.progress_dialog.findChildren(QPushButton) if button.isVisibleTo(dashboard) and button.parentWidget().property("semanticId") == "progress.today-details")
-            disclosure.click()
         elif route == "purchase-fertilizer":
             plant.fertilizer_card_batches = [CardEffectBatch("fertilizer_basic", 100, 100, 100)]
             quote = engine.quote_purchase(PurchaseKind.FERTILIZER, "premium", target_id=plant.plant_id)
@@ -519,6 +529,17 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             dashboard._shop._show_purchase_receipt(outcome)
         else:
             raise ValueError(f"Unknown workspace capture route: {route}")
+        if route in {"progress/activity", "today-details"}:
+            from ..ui.dashboard import DisclosureRow
+
+            dashboard.resize(1440, 1000)
+            _settle()
+            for disclosure in dashboard.progress_dialog.findChildren(DisclosureRow):
+                if disclosure.property("semanticId") in {"progress.today-details", "progress.streak-rewards"}:
+                    if not disclosure.button.isChecked():
+                        disclosure.button.click()
+            _settle()
+            dashboard.progress_dialog.body_scrolls["today"].verticalScrollBar().setValue(0)
         if widget is not dashboard:
             widget.show()
             cleanup = lambda target=widget: runner._close_widget(target)

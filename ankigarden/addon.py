@@ -212,6 +212,7 @@ class AnkiGardenApp:
         self._dashboard_open_failures = 0
         self._dashboard_focus_plant_id = ""
         self._supplies_open_pending = ""
+        self._activity_open_pending = False
         self._settings_open_pending = False
         self._starter_open_pending = False
         self._dashboard_select_plant_pending = False
@@ -686,6 +687,7 @@ class AnkiGardenApp:
         self._collection_tab_pending = "plants"
         self._collection_focus_tier_id_pending = ""
         self._settings_open_pending = True
+        self._activity_open_pending = False
         self.open_dashboard()
 
     def open_starter_selection(self) -> None:
@@ -695,6 +697,7 @@ class AnkiGardenApp:
         self._collection_tab_pending = "plants"
         self._collection_focus_tier_id_pending = ""
         self._starter_open_pending = True
+        self._activity_open_pending = False
         self.open_dashboard()
 
     def open_collection(
@@ -719,6 +722,7 @@ class AnkiGardenApp:
         self._collection_tab_pending = normalized_tab
         self._collection_focus_tier_id_pending = str(focus_tier_id or "") if landmarks_enabled() else ""
         self._collection_open_pending = True
+        self._activity_open_pending = False
         self.open_dashboard()
 
     def open_supplies(self, group: str = "fertilizer") -> None:
@@ -729,6 +733,18 @@ class AnkiGardenApp:
         self._dashboard_select_plant_pending = False
         self._dashboard_focus_plant_id = ""
         self._supplies_open_pending = "booster" if group == "booster" else "fertilizer"
+        self._activity_open_pending = False
+        self.open_dashboard()
+
+    def open_activity(self) -> None:
+        """Open Progress Activity after the shared dashboard is ready."""
+        self._settings_open_pending = False
+        self._starter_open_pending = False
+        self._collection_open_pending = False
+        self._dashboard_select_plant_pending = False
+        self._dashboard_focus_plant_id = ""
+        self._supplies_open_pending = ""
+        self._activity_open_pending = True
         self.open_dashboard()
 
     def open_garden_landmarks(self, *, focus_tier_id: str = "") -> None:
@@ -757,6 +773,7 @@ class AnkiGardenApp:
         if callable(dismiss_summary):
             dismiss_summary("garden")
         if str(plant_id or ""):
+            self._activity_open_pending = False
             self._supplies_open_pending = ""
             self._settings_open_pending = False
             self._starter_open_pending = False
@@ -764,6 +781,7 @@ class AnkiGardenApp:
             self._dashboard_select_plant_pending = False
             self._dashboard_focus_plant_id = str(plant_id)
         if bool(select_another_plant):
+            self._activity_open_pending = False
             self._settings_open_pending = False
             self._starter_open_pending = False
             self._collection_open_pending = False
@@ -784,6 +802,7 @@ class AnkiGardenApp:
             QTimer.singleShot(max(0, int(delay_ms)), self._open_dashboard_when_ready)
         except Exception:
             self._dashboard_open_pending = False
+            self._activity_open_pending = False
             self._settings_open_pending = False
             self._starter_open_pending = False
             self._dashboard_select_plant_pending = False
@@ -822,6 +841,7 @@ class AnkiGardenApp:
                 self._schedule_dashboard_open(100)
                 return
             self._dashboard_open_pending = False
+            self._activity_open_pending = False
             self._settings_open_pending = False
             self._starter_open_pending = False
             self._dashboard_select_plant_pending = False
@@ -975,6 +995,9 @@ class AnkiGardenApp:
                 group = self._supplies_open_pending
                 self._supplies_open_pending = ""
                 self.dashboard.open_section("shop", "supplies", item_id=group)
+            elif getattr(self, "_activity_open_pending", False):
+                self.dashboard.open_section("progress", "activity")
+                self._activity_open_pending = False
             else:
                 prompt_starter = getattr(self.dashboard, "_present_starter_setup_if_needed", None)
                 if callable(prompt_starter):
@@ -1012,6 +1035,7 @@ class AnkiGardenApp:
                 # This request is over. Discard its destination as well as its
                 # retry state so a later ordinary Open Garden action cannot
                 # inherit a stale request to open Settings.
+                self._activity_open_pending = False
                 self._settings_open_pending = False
                 self._starter_open_pending = False
                 self._dashboard_select_plant_pending = False
