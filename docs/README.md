@@ -8,8 +8,9 @@ implementation disagree.
 ## Current product and release contracts
 
 - [Development guide](development.md): source installation, packaging, and local checks.
+- [September 8 project cleanup](project-cleanup-20260908.md): retained evidence, retired local output, diagnostic recovery, and package protection.
 - [Quick progression and balance audit](balance-audit-20260905.md): reduced simulation, equipped effects, scaling achievements, pacing results, and recommendations.
-- [UI release-quality review](ui/release-quality-20260904.md): the current 36-surface review, screenshots, package identities, and completion checklist.
+- [Historical UI release-quality review](ui/release-quality-20260904.md): the earlier 36-surface review, package identities, and completion checklist.
 
 - `feature-evidence-matrix.md`: feature behavior and automated/live acceptance
   gates.
