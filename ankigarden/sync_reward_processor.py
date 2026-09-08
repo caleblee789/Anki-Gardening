@@ -546,7 +546,7 @@ def build_sync_reward_summary(
         current_day = ""
     all_clear_receipts = tuple(
         receipt for receipt in receipts
-        if str(getattr(receipt, "source", "")) == "all_due"
+        if str(getattr(receipt, "source", "")) in {"all_due", "todays_cards"}
         and (not current_day or str(getattr(receipt, "scheduler_day", "")) == current_day)
     )
     fertilizer_changed = bool(

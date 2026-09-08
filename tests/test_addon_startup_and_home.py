@@ -1742,7 +1742,8 @@ def test_finished_overview_injection_is_scoped_to_main_congratulations_page(
     assert target.scripts == []
 
 
-def test_home_bridge_opens_and_refreshes_only_main_garden_context(monkeypatch):
+@pytest.mark.parametrize("subclassed", [False, True])
+def test_home_bridge_opens_and_refreshes_only_main_garden_context(monkeypatch, subclassed):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     addon.mw = aqt_mod.mw
@@ -1752,11 +1753,62 @@ def test_home_bridge_opens_and_refreshes_only_main_garden_context(monkeypatch):
     app.open_dashboard = lambda: opened.append(True)
     aqt_mod.mw.reset = lambda: resets.append(True)
     deck_ctx = type("DeckBrowser", (), {})()
+    if subclassed:
+        deck_ctx = type("CustomDashboard", (type(deck_ctx),), {})()
+
+    # Shared bridge filters must retain the previous add-on's result and must
+    # not execute a command a second time, even in the Garden namespace.
+    previous = (True, object())
+    for command in ("anki-garden:open", "anki-garden:refresh", "anki-garden:choose-starter", "other-addon:open"):
+        assert app._handle_home_bridge_message(previous, command, deck_ctx) is previous
+    assert opened == []
+    assert resets == []
+    unhandled = (False, object())
+    assert app._handle_home_bridge_message(unhandled, "other-addon:open", deck_ctx) is unhandled
+
+    web_content = SimpleNamespace(body="<main>Other add-on content</main>")
+    app._inject_home_garden_webview(web_content, deck_ctx)
+    assert web_content.body.startswith("<main>Other add-on content</main>")
+    assert 'id="ag-home-root"' in web_content.body
 
     assert app._handle_home_bridge_message((False, None), "anki-garden:open", deck_ctx)[0] is True
     assert app._handle_home_bridge_message((False, None), "anki-garden:refresh", deck_ctx)[0] is True
     assert opened == [True]
     assert resets == [True]
+
+
+@pytest.mark.parametrize("zoom", [0.8, 1.0, 1.25, 2.0])
+def test_reviewer_answer_controls_use_native_coordinates_at_webview_zoom(monkeypatch, zoom):
+    aqt_mod, *_ = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    properties = {}
+    web = SimpleNamespace(
+        width=lambda: 1000,
+        height=lambda: 800,
+        zoomFactor=lambda: zoom,
+        setProperty=lambda key, value: properties.__setitem__(key, value),
+        evalWithCallback=lambda *_: None,
+    )
+    aqt_mod.mw.state = "review"
+    aqt_mod.mw.reviewer = SimpleNamespace(web=web)
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), SimpleNamespace())
+    handler._reviewer_answer_controls_generation = 1
+    payload = {
+        "schema_version": 1, "source": "webengine-dom", "measured": True,
+        "viewport": {"width": 1000 / zoom, "height": 800 / zoom},
+        "rect": {"x": 100 / zoom, "y": 600 / zoom, "width": 800 / zoom, "height": 200 / zoom},
+        "matched_nodes": 1,
+    }
+    handler._accept_reviewer_answer_controls_telemetry(web, web, 1, 1000, 800, 1000, 800, payload)
+    assert properties["reviewerAnswerControlsMeasured"] is True
+    assert properties["reviewerAnswerControlsRect"] == [100, 600, 800, 200]
+    assert properties["reviewerAnswerControlsClearance"] == 200
+
+    # A late measurement from before a resize/zoom change remains invalid.
+    payload["viewport"]["width"] += 100
+    handler._accept_reviewer_answer_controls_telemetry(web, web, 1, 1000, 800, 1000, 800, payload)
+    assert properties["reviewerAnswerControlsMeasured"] is False
 
 
 def test_home_bridge_failed_retry_still_resets_to_a_recoverable_home_state(monkeypatch):
@@ -2780,6 +2832,7 @@ def test_main_screen_context_detection_excludes_lower_bars(monkeypatch):
     assert app._is_main_screen_context(deck_ctx) is True
     assert app._is_main_screen_context(overview_ctx) is True
     assert app._is_main_screen_context(bottom_ctx) is False
+    assert app._is_main_screen_context(type("CustomBar", (type(bottom_ctx),), {})()) is False
 
 
 def test_same_day_catchup_revlog_mapping_matches_live_queue_semantics(monkeypatch):

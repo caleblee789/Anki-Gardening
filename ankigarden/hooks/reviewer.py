@@ -72,8 +72,8 @@ REVIEWER_ANSWER_CONTROLS_FALLBACK_CLEARANCE = HUD_CONTROLS_CLEARANCE
 def reviewer_answer_controls_measurement_script() -> str:
     """Return the WebEngine probe for Anki's visible answer controls.
 
-    Coordinates are CSS pixels relative to the Reviewer webview viewport, which
-    is the same logical coordinate space used by the native HUD overlay. The
+    Coordinates are CSS pixels relative to the Reviewer webview viewport;
+    the receiver converts them to native logical pixels using webview zoom. The
     selector list intentionally targets answer controls rather than Anki's
     whole bottom bar so Edit/More/navigation chrome cannot shrink the HUD.
     """
@@ -168,10 +168,17 @@ def normalize_reviewer_answer_controls_telemetry(
     *,
     viewport_width: int,
     viewport_height: int,
+    zoom_factor: float = 1.0,
 ) -> dict[str, Any] | None:
     """Validate one WebEngine answer-control measurement fail closed."""
 
     if not isinstance(payload, Mapping):
+        return None
+    try:
+        zoom_factor = float(zoom_factor)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(zoom_factor) or zoom_factor <= 0:
         return None
     try:
         schema_version = int(payload.get("schema_version", 0) or 0)
@@ -190,12 +197,12 @@ def normalize_reviewer_answer_controls_telemetry(
     if not isinstance(viewport, Mapping) or not isinstance(rect, Mapping):
         return None
     try:
-        measured_width = int(round(float(viewport.get("width", 0) or 0)))
-        measured_height = int(round(float(viewport.get("height", 0) or 0)))
-        x = int(round(float(rect.get("x", 0) or 0)))
-        y = int(round(float(rect.get("y", 0) or 0)))
-        width = int(round(float(rect.get("width", 0) or 0)))
-        height = int(round(float(rect.get("height", 0) or 0)))
+        measured_width = int(round(float(viewport.get("width", 0) or 0) * zoom_factor))
+        measured_height = int(round(float(viewport.get("height", 0) or 0) * zoom_factor))
+        x = int(round(float(rect.get("x", 0) or 0) * zoom_factor))
+        y = int(round(float(rect.get("y", 0) or 0) * zoom_factor))
+        width = int(round(float(rect.get("width", 0) or 0) * zoom_factor))
+        height = int(round(float(rect.get("height", 0) or 0) * zoom_factor))
         matched_nodes = max(0, int(payload.get("matched_nodes", 0) or 0))
     except (TypeError, ValueError, OverflowError):
         return None
@@ -2953,6 +2960,7 @@ class ReviewerHookHandler:
             live_height = max(1, int(parent.height()))
             live_source_width = max(1, int(source_webview.width()))
             live_source_height = max(1, int(source_webview.height()))
+            zoom_factor = float(getattr(source_webview, "zoomFactor", lambda: 1.0)())
         except (AttributeError, RuntimeError, TypeError, ValueError):
             return
         if (
@@ -2967,6 +2975,7 @@ class ReviewerHookHandler:
                 payload,
                 viewport_width=live_source_width,
                 viewport_height=live_source_height,
+                zoom_factor=zoom_factor,
             )
             if telemetry is not None and source_webview is not parent:
                 try:

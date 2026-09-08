@@ -2376,6 +2376,11 @@ class GardenGameEngine:
             for entry in entries:
                 if int(entry.answer_ms) < int(self.state.reward_activation_ms):
                     continue
+                ledger = getattr(self.storage, "_reward_ledger", None)
+                if ledger is not None and ledger.deferred_review_context(int(entry.revlog_id)):
+                    # A locally observed answer made while verification was
+                    # pending still earns rewards after a collection replacement.
+                    continue
                 if queue_and_lapse_from_revlog_type(
                     entry.review_type, entry.ease
                 ) is None:
@@ -2725,38 +2730,37 @@ class GardenGameEngine:
             self.state.daily_stats = current_stats
             self.state.daily_completion = current_completion
             self.state.daily_economy_snapshot = current_economy_snapshot
+            current_day_answers = sum(
+                str(result.scheduler_day) == current_day
+                for result in committed_results
+            ) + int(
+                pending_result is not None
+                and str(pending_result[0].get("scheduler_day", "")) == current_day
+            )
+            completion = self.state.daily_completion
+            if completion.sync_completion_correlation != sync_correlation:
+                completion.sync_completion_correlation = sync_correlation
+                completion.sync_completion_answers = 0
+            completion.sync_completion_answers += current_day_answers
+            # The scheduler already reflects the entire sync. Do not compare
+            # that queue shrink against only the first small replay batch.
+            # Keep evidence durable until the last batch commits atomically
+            # with the completion projection and its reward.
             if (
                 pending_result is not None
                 and due_status is not None
-                and any(
-                    str(result.scheduler_day) == current_day
-                    for result in committed_results
-                )
-                or (
-                    pending_result is not None
-                    and due_status is not None
-                    and str(pending_result[0].get("scheduler_day", "")) == current_day
-                )
+                and completion.sync_completion_answers > 0
+                and not getattr(self.storage, "_history_batch_has_more", False)
             ):
                 self.evaluate_today_cards(
                     due_status,
                     persist=False,
                     correlation_id=str(pending_result[1].correlation_id),
                     record_completed_delta=True,
-                    completed_obligation_limit=max(
-                        1,
-                        sum(
-                            1
-                            for result in committed_results
-                            if str(result.scheduler_day) == current_day
-                        )
-                        + int(
-                            str(pending_result[0].get("scheduler_day", ""))
-                            == current_day
-                        ),
-                    ),
+                    completed_obligation_limit=completion.sync_completion_answers,
                     emit_feedback=False,
                 )
+                completion.sync_completion_answers = 0
             if pending_result is not None:
                 payload, award, answer_baseline = pending_result
                 committed_results.append(self._committed_answer_result(

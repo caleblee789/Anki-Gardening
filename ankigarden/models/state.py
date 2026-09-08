@@ -600,6 +600,9 @@ class DailyCompletionState:
     cutoff_at_ms: int = 0
     cards_completed_today: int = 0
     unresolved_obligation_disappearances: int = 0
+    # Commit completion evidence with each replay batch, including across restart.
+    sync_completion_correlation: str = ""
+    sync_completion_answers: int = 0
     reward_claimed: bool = False
     unavailable_reason: str = ""
 
@@ -2681,6 +2684,7 @@ def _daily_completion_state(
         "cutoff_at_ms",
         "cards_completed_today",
         "unresolved_obligation_disappearances",
+        "sync_completion_answers",
     ):
         setattr(
             result,
@@ -2689,6 +2693,11 @@ def _daily_completion_state(
                 value.get(key), 0, f"daily_completion.{key}", issues
             ),
         )
+    correlation = value.get("sync_completion_correlation", "")
+    if not isinstance(correlation, str):
+        issues.append("daily_completion.sync_completion_correlation: expected string")
+        correlation = ""
+    result.sync_completion_correlation = correlation.strip()[:240]
     result.starting_required_cards_completed = min(
         result.starting_required_cards,
         result.starting_required_cards_completed,

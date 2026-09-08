@@ -116,14 +116,16 @@ class ReconciliationCoordinator:
             time.tzname, time.timezone, time.altzone,
         )
 
-    def invalidate(self, reason: str, *, suspended: bool = False, replacement: bool = False) -> None:
+    def invalidate(self, reason: str, *, suspended: bool | None = None, replacement: bool = False) -> None:
         self.generation += 1
         self.dirty = True
         self.busy = False
         self.storage.history_index = None
         self.storage._verified_history_high_water = 0
         self.storage.invalidate_due_snapshot()
-        self.suspended = suspended
+        # Ordinary invalidations cannot release a sync/collection-close hold.
+        if suspended is not None:
+            self.suspended = suspended
         self._replacement = self._replacement or replacement
         self.request(reason, replacement=replacement)
 
@@ -397,6 +399,13 @@ class ReconciliationCoordinator:
                 after_id=self.storage._history_after_id,
             ), [])
             if remaining:
+                self._schedule_batch(1)
+            elif self._replacement:
+                # The baseline deliberately leaves deferred local answers
+                # unconsumed. Replay them normally after replacement history
+                # has been drained, including answers below the batch cursor.
+                self._replacement = False
+                self.storage._history_after_id = 0
                 self._schedule_batch(1)
             else:
                 self._run(lambda col: int(col.db.scalar("select max(id) from revlog where type in (0, 1, 2, 3)") or 0),

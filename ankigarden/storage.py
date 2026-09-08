@@ -4216,6 +4216,7 @@ class GardenStorage:
     @timed("history.load-batch")
     def load_reconciliation_history(self) -> HistoricalReviewSnapshot | IndexedHistoricalReviewSnapshot:
         """Use the verified index; compatibility adapters retain the full reader."""
+        self._history_batch_has_more = False
         index = getattr(self, "history_index", None)
         if index is None or self._reward_ledger is None:
             return self.load_eligible_review_history()
@@ -4229,10 +4230,11 @@ class GardenStorage:
         ordinals: dict[int, int] = {}
         # The coordinator plans and commits aliases before enabling replay.
         # Loading a reward batch is now independent of each card's lifetime.
+        batch_limit = getattr(self, "_history_batch_limit", None)
         for page in index.reward_pages(
             activation_ms=max(1, int(self.state.reward_activation_ms)),
             through_day=current_day, ledger_path=self.database_path,
-            limit=getattr(self, "_history_batch_limit", None),
+            limit=None if batch_limit is None else batch_limit + 1,
             after_id=getattr(self, "_history_after_id", 0),
         ):
             identities = self._reward_ledger.bindings_for_revlogs(int(row[0]) for row in page)
@@ -4249,6 +4251,10 @@ class GardenStorage:
                     card_day_ordinal=int(lineage.rsplit("|", 1)[-1]), answer_identity=lineage,
                 ))
                 ordinals[revlog_id] = int(row[9])
+        if batch_limit is not None and len(entries) > batch_limit:
+            self._history_batch_has_more = True
+            entries = entries[:batch_limit]
+            ordinals = {entry.revlog_id: ordinals[entry.revlog_id] for entry in entries}
         self._history_loaded_through = max((entry.revlog_id for entry in entries), default=0)
         return IndexedHistoricalReviewSnapshot(
             tuple(entries), max((int(row["last"]) for row in days), default=0), history.fingerprint,

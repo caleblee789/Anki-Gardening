@@ -81,7 +81,7 @@ def _all_clear_receipt(event_id: str, scheduler_day: str, amount: int) -> Reward
     return RewardReceipt(
         event_key=f"all_due:{scheduler_day}",
         reward_type="coins",
-        source="all_due",
+        source="todays_cards",
         source_id=scheduler_day,
         scheduler_day=scheduler_day,
         correlation_id=event_id,
