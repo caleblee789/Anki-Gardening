@@ -1,7 +1,7 @@
 # Progression state and presentation contract
 
 The authoritative persisted boundary is the schema-30 reward database under
-`user_files/`. Supported schema-10–27 state migrates fail-closed; schema-21 JSON
+`user_files/`. Supported schema-10–29 state migrates fail-closed; schema-21 JSON
 and SQLite authorities are backed up at their historical migration boundary.
 Mutable state and caches never enter the distributable archive.
 
@@ -14,8 +14,8 @@ Mutable state and caches never enter the distributable archive.
 - `streak_growth_remainder_units` and `checkpoint_coin_carry_units` retain
   fractional progression and reward value.
 - Each plant persists checkpoint and stage claims, completion date/time,
-  contribution statistics, Full Bloom reward state, timed Fertilizer periods
-  and queues, and card-counted Booster batches.
+  contribution statistics, Full Bloom reward state, card-counted Fertilizer
+  queues, and card-counted Booster batches.
 - `DailyStats` persists `answer_growth_units`, `instant_growth_units`,
   `applied_growth_units`, `redirected_growth_units`, `shared_growth_units`, and
   `stored_growth_units`, plus `plant_applied_growth_units`,
@@ -68,8 +68,8 @@ One eligible completed card creates one engine-owned transaction:
    planted unfinished plant as a possible recipient.
 3. Route the complete primary lane through the nurtured plant and then through
    planted unfinished plants in deterministic slot order.
-4. Calculate one Shared lane for each other planted plant as exactly 20% of the
-   original Answer Growth.
+4. Calculate one Shared lane for each other planted plant as exactly 10% of the
+   original Answer Growth, or 15% after the permanent Garden Trowel unlock.
 5. Give a still-growing source plant its own share. Divide a Full Bloom source’s
    share exactly among all planted plants still growing, including the nurtured
    plant. Preserve division remainders deterministically.
@@ -88,36 +88,24 @@ weights stay constant when no target exists; the complete reward becomes Stored
 Growth when necessary. Growth Charges never consume paid value without routing
 or storing the full amount.
 
-The canonical Small Growth Charge projection is 450→550 total Growth,
-Seed→Sprout, two charges→one, and 50/2,000 toward Young. No-transition and
+The canonical Small Growth Charge projection is 350→450 total Growth,
+Seed→Sprout, two charges→one, and 50/1,600 toward Young. No-transition and
 no-stage-reward outcomes are separate successful projections; Full Bloom
 rejection and overflow conservation remain engine decisions.
 
 ## Milestones and Full Bloom
 
-Internal stage IDs and thresholds remain:
+Internal stages remain `seed`, `sprout`, `young`, `mature`, `flowering`, and
+`rare`; their visible names are Seed, Sprout, Young, Mature, Flowering, and
+Full Bloom. Current thresholds are 0/400/2,000/6,000/15,000/35,000 Growth.
+Use the catalog's checkpoint and completion pools through the shared projection;
+[the progression reference](../progression-rewards-effects-reference.md) records
+the current amounts. Exact event keys prevent milestone replay.
 
-| Internal ID | Player label | Threshold |
-|---|---|---:|
-| `seed` | Seed | 0 |
-| `sprout` | Sprout | 500 |
-| `young` | Young | 2,500 |
-| `mature` | Mature | 8,000 |
-| `flowering` | Flowering | 20,000 |
-| `rare` | Full Bloom | 50,000 |
-
-Stage reward pools are distributed across 25%, 50%, 75%, and completion:
-
-- Sprout: `1 / 1 / 1 / 2`
-- Young: `2 / 2 / 2 / 4`
-- Mature: `4 / 4 / 4 / 8`
-- Flowering: `7 / 7 / 7 / 14`
-- Full Bloom: `10 / 10 / 10 / 20`
-
-Autumn Hearth applies 50% to the whole stream, carrying fractional Coins
-between payouts. Full Bloom additionally grants one Small Growth Charge and a
-permanent collection record. Exact event keys prevent checkpoint, stage, or
-completion replay.
+Autumn Hearth adds 15% to newly earned gameplay Coins, retaining fractional
+carry between grants. Existing balances, purchases, refunds, reversals, and
+replays do not create new earned income. Full Bloom retains its first-time
+Small Growth Charge and permanent collection record.
 
 ## Today’s Cards projection
 
@@ -132,7 +120,7 @@ grant:
 - Restored cards may return the state to incomplete before grant.
 - At least one eligible card must be completed.
 - Scheduler or due-tree uncertainty produces `unavailable` and grants nothing.
-- Completion grants 10 Garden Coins plus the locked Scenery gift once.
+- Completion grants 16 core Garden Coins plus applicable equipped effects once.
 - The first valid completion also grants the 5-Coin **Review Day Complete**
   achievement.
 
@@ -143,7 +131,7 @@ Projection states are `in_progress`, `waiting_for_learning`, `complete`,
 |---|---|---|
 | In progress | `18 cards remaining` | `176 cards complete` |
 | Waiting | `2 more cards will be due in 6 minutes` | None |
-| Complete | `TODAY’S CARDS COMPLETE` | `+10 Garden Coins earned` and `176 cards complete` |
+| Complete | `TODAY’S CARDS COMPLETE` | `+16 Garden Coins earned` and `176 cards complete` |
 | Not eligible | `NO COMPLETION REWARD TODAY` | `No cards were due today!` |
 | Unavailable | `CARD STATUS UNAVAILABLE` | `Anki Garden could not verify today’s cards. Normal Garden Growth is unaffected.` |
 
@@ -237,11 +225,10 @@ pools using its stable event identity.
 - Standard chance increases after long gaps and guarantees a Find by the 75th
   eligible card without one.
 - The guaranteed Find is at least Uncommon.
-- A maximum of three Standard Finds may be granted in one Anki day.
-- At the cap, progress pauses until the next day.
+- Standard Finds have no daily limit; saved drought progress continues between sessions.
 - No-target state never changes reward weights.
-- Environment counters have finite 5,000 / 20,000 / 50,000 hard guarantees for
-  Rare / Very Rare / Ultra.
+- Environment tiers use 10,000 / 40,000 / 50,000 card guarantees and independent
+  60 / 180 / 365 completion guarantees for Rare / Very Rare / Ultra Rare.
 - An unlock resets only its tier and selects uniformly among unowned items.
 
 The persistent HUD never exposes the Standard gap counter, probability band,
@@ -273,7 +260,7 @@ compact summaries, and an event-ID-backed remainder action; detached toast
 stacks do not exist. Atomic items remain intact for history and reconciliation.
 
 The local review-session summary includes cards complete, applied/Shared/Stored
-Growth, Coins, Finds, crossings, Today’s Cards state, remaining Fertilizer time,
+Growth, Coins, Finds, crossings, Today’s Cards state, remaining Fertilizer cards,
 and remaining Booster cards. It
 is in-memory only and excludes background sync catch-up.
 
@@ -316,11 +303,11 @@ that same shared reward component list.
 
 ## Beds and collection
 
-Every other planted plant adds one 20% Shared Growth lane. A growing source
+Every other planted plant adds one 10% Shared Growth lane. A growing source
 receives its own lane; a Full Bloom source’s lane divides among all planted
 plants still growing. With one through six planted plants, aggregate garden
-output is 100%, 120%, 140%, 160%, 180%, and 200% while at least one plant is
-unfinished. Bed cards disclose the share rule, redistribution, and current
+output is 100%, 110%, 120%, 130%, 140%, and 150% while at least one plant is
+unfinished. The permanent Garden Trowel increases each Shared lane to 15%. Bed cards disclose the share rule, redistribution, and current
 aggregate value.
 
 Species, personality, names, planter styling, and placement do not change
@@ -370,24 +357,13 @@ Growth. The schema-27-to-28 upgrade does not repeat earlier economy migrations.
 Watering Station cadence is retained by Anki day so delayed sync cannot change
 another day's progress. Existing SQLite snapshot rows remain historical records.
 
-## v26 evidence boundary
+## Capture evidence boundary
 
-Capture contract v26 is independent from persisted schema 27. It uses contract
-schema 2 and scenario schema 3 with 18 representative/34 full surfaces and
-two/five contact-sheet pages. All evidence layers require `scenario_id`,
-`fixture_id`, and one-based `scenario_step`; shared fixture IDs preserve
-sequential lineage, and v25 evidence is rejected.
-
-Hard gates cover deprecated visible copy, root/DOM overflow, progress
-fractions, asset mappings, Reviewer exclusion rectangles, four-state scroll
-coverage, and lineage. Current run paths, archive and capture hashes, artifact
-sizes, and validation totals are recorded only in the
-[final 2.2.0 UI audit](final-ui-audit-2.2.0.md) and the
-[five-page contact-sheet index](../../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260901-002050/contact-sheet-set.json).
-Automated evidence retains
-`quality_status: review-required` and `release_ready: false`; manual macOS,
-Windows/Linux, mixed-DPI, forced-colors, screen-reader, broader-keyboard, and
-human approval remain open.
+Capture contracts are independent from persisted state versions. The current
+v29 compiled registry defines active surfaces, scenarios, lineage, and evidence
+requirements. Historical v26 captures and their counts cannot certify this
+candidate. Record exact production/capture hashes and native/platform acceptance
+separately; automated evidence never grants human or public-release approval.
 
 ## Gardening Trophies (schema 29)
 

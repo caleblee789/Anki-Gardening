@@ -305,7 +305,7 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
         "Booster Potion · 38 cards remaining",
         "Garden decoration · +0.5 Growth",
         "Scenery · +0.25 Growth",
-        "Garden Rhythm · +1 Growth",
+        "Permanent Growth bonus · +1 Growth",
     )
     assert nurture.visible_effect_art_refs == (
         "fertilizer_quality",
@@ -943,7 +943,7 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     )
 
     assert bundle.compact.eyebrow == "MILESTONE REACHED"
-    assert bundle.compact.hero_title == "Heritage Rose reached full bloom"
+    assert bundle.compact.hero_title == "Heritage Rose reached Full Bloom"
     assert bundle.compact.hero_subtitle == ""
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
         "1 Garden Find",

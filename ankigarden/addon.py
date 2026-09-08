@@ -199,6 +199,7 @@ class AnkiGardenApp:
         )
         self._profile_will_close_callback = self._on_profile_will_close
         self._profile_did_open_callback = self._on_profile_did_open
+        self._sync_in_progress = False
         self._collection_replacement_pending = False
         self._collection_hooked = False
         self._collection_callback = self._on_collection_did_load
@@ -1086,6 +1087,7 @@ class AnkiGardenApp:
 
     def _on_sync_will_start(self, *_args: object, **_kwargs: object) -> None:
         """Establish a clean local reward boundary before collection sync."""
+        self._sync_in_progress = True
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
             runtime.invalidate("sync start", suspended=True)
@@ -1113,9 +1115,10 @@ class AnkiGardenApp:
             )
 
     def _on_sync_finished(self, *_args: object, **_kwargs: object) -> None:
+        self._sync_in_progress = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
-            runtime.invalidate("sync completion", replacement=self._collection_replacement_pending)
+            runtime.invalidate("sync completion", suspended=False, replacement=self._collection_replacement_pending)
             self._collection_replacement_pending = False
             return
         self._invalidate_review_history("sync completion")
@@ -1299,7 +1302,10 @@ class AnkiGardenApp:
     ) -> None:
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
-            runtime.invalidate("collection replacement", replacement=True)
+            runtime.invalidate(
+                "collection replacement", replacement=True,
+                suspended=bool(getattr(self, "_sync_in_progress", False)),
+            )
             return
         detector = getattr(self, "sync_review_detector", None)
         note_generation = getattr(detector, "note_collection_generation", None)
@@ -1329,6 +1335,7 @@ class AnkiGardenApp:
                 )
 
     def _on_profile_will_close(self, *_args: object, **_kwargs: object) -> None:
+        self._sync_in_progress = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
             runtime.close()
@@ -1402,6 +1409,8 @@ class AnkiGardenApp:
             logger.warning("Anki Garden: no supported home-screen hooks available on this Anki version")
 
     def _handle_home_bridge_message(self, handled: tuple[bool, object], message: str, context: object) -> tuple[bool, object]:
+        if handled[0]:
+            return handled
         if not message.startswith("anki-garden:") or not self._is_main_screen_context(context):
             return handled
         command = message.partition(":")[2]
@@ -1442,9 +1451,23 @@ class AnkiGardenApp:
         return f"{module}.{qualname}".lower()
 
     def _is_main_screen_context(self, context: object) -> bool:
-        context_name = self._context_name(context)
-        is_primary_home_context = any(name in context_name for name in ("deckbrowser", "overview", "homescreen"))
-        is_lower_bar_context = any(name in context_name for name in ("bottom", "toolbar", "statusbar", "footer"))
+        # Add-ons can subclass DeckBrowser/Overview with an unrelated class
+        # name. Retain the base context identity when deciding where to inject
+        # the card and where its bridge commands are valid.
+        context_names = [
+            f"{cls.__module__}.{cls.__qualname__}".lower()
+            for cls in type(context).__mro__
+        ]
+        is_primary_home_context = any(
+            name in candidate
+            for candidate in context_names
+            for name in ("deckbrowser", "overview", "homescreen")
+        )
+        is_lower_bar_context = any(
+            name in candidate
+            for candidate in context_names
+            for name in ("bottom", "toolbar", "statusbar", "footer")
+        )
         return is_primary_home_context and not is_lower_bar_context
 
     def _inject_home_garden_webview(self, web_content: object, context: object) -> None:

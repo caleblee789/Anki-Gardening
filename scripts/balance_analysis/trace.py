@@ -23,7 +23,7 @@ TRACE_FIELDS: Tuple[str, ...] = (
     "answers",
     "completed_today",
     "study_run",
-    "garden_rhythm_percent",
+    "permanent_growth_percent",
     "growth_total_units",
     "growth_applied_units",
     "growth_stored_balance_units",
@@ -45,7 +45,6 @@ TRACE_FIELDS: Tuple[str, ...] = (
     "active_scenery_id",
     "environment_effect_growth_units",
     "environment_effect_coins",
-    "garden_cycle_remainder",
     "coin_sources",
 )
 
@@ -63,7 +62,6 @@ REQUIRED_PARITY_BEHAVIORS: Tuple[str, ...] = (
     "application_restart",
     "anki_day_rollover",
     "todays_cards_completion",
-    "fifth_garden_cycle_completion",
     "seventh_streak_day_reward",
     "standard_find_natural",
     "standard_find_forced",
@@ -112,7 +110,6 @@ REQUIRED_PARITY_STATE_FIELDS: Tuple[str, ...] = (
     "booster_remaining_cards",
     "garden_bonus_counters",
     "scenery_counters",
-    "garden_cycle_remainder",
     "find_drought_counter",
     "daily_find_cap_and_count",
     "environment_pity_counters",
@@ -132,7 +129,6 @@ COVERED_PARITY_STATE_FIELDS: Tuple[str, ...] = (
     "stored_growth_balance",
     "lifetime_stored_routing_total",
     "bed_ownership",
-    "garden_cycle_remainder",
 )
 
 
@@ -148,7 +144,6 @@ TRACE_PARITY_STATE_FIELD_PATHS: Mapping[str, str] = {
         "growth_routed_to_storage_units_lifetime"
     ),
     "bed_ownership": "beds_owned",
-    "garden_cycle_remainder": "garden_cycle_remainder",
 }
 
 
@@ -340,7 +335,7 @@ def randomized_multi_event_parity_cases(
     rows = []
     for seed_index in range(total):
         # Two through eight checkpoints cross restart, retry, missing-day,
-        # Garden Rhythm, Garden Cycle, and seven-day streak paths.
+        # Completion eligibility and permanent streak achievement paths.
         day_count = 2 + seed_index % 7
         events = []
         calendar_offset = 0
@@ -700,8 +695,6 @@ def _covered_behaviors_from_manifest(
             )
     if any(len(days) > 1 for days in scheduler_days.values()):
         covered.add("anki_day_rollover")
-    if any(count >= 5 for count in complete_counts.values()):
-        covered.add("fifth_garden_cycle_completion")
     if any(value >= 7 for value in max_study_run.values()):
         covered.add("seventh_streak_day_reward")
     return tuple(
@@ -966,10 +959,10 @@ def project_production_engine_trace_row(
         "answers": int(getattr(daily, "reviewed", 0) or 0),
         "completed_today": bool(getattr(daily, "completed_due_cards", False)),
         "study_run": int(event.payload.get("trace_study_run", 0) or 0),
-        "garden_rhythm_percent": int(
+        "permanent_growth_percent": int(
             engine.current_streak_bonus_percent()
             if hasattr(engine, "current_streak_bonus_percent")
-            else event.payload.get("trace_rhythm_percent", 0) or 0
+            else 0
         ),
         "growth_total_units": int(getattr(aggregates, "growth_generated_units", 0) or 0),
         "growth_applied_units": int(getattr(aggregates, "growth_applied_to_plants_units", 0) or 0),
@@ -1011,7 +1004,6 @@ def project_production_engine_trace_row(
             amount for source, amount in coin_sources.items()
             if source in {"harvest_bell", "autumn_hearth", "other"}
         ),
-        "garden_cycle_remainder": int(getattr(state, "garden_cycle_remainder", 0) or 0),
         "coin_sources": dict(sorted(coin_sources.items())),
     }
 
@@ -1232,7 +1224,6 @@ def project_production_release_state(engine: Any) -> Mapping[str, object]:
             ),
         },
         "scenery_counters": {
-            "snow_completion": max(0, int(state.snow_completion_progress)),
             "full_moon_completion": max(
                 0, int(state.full_moon_completion_progress)
             ),
@@ -1240,7 +1231,6 @@ def project_production_release_state(engine: Any) -> Mapping[str, object]:
                 state.prism_released_anki_day_id or ""
             ),
         },
-        "garden_cycle_remainder": max(0, int(state.garden_cycle_remainder)),
         "find_drought_counter": max(0, int(state.garden_find_drought_count)),
         "daily_find_cap_and_count": {
             "cap": find_status.daily_cap,

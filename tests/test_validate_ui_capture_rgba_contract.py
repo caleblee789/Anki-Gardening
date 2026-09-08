@@ -27,7 +27,8 @@ def test_compiled_v29_contract_reports_current_surface_requirement(
 ) -> None:
     contract_path = ROOT / "ankigarden" / "capture" / "capture-contract-v29.json"
     payload = json.loads(contract_path.read_text(encoding="utf-8"))
-    payload["surface_count"] = 52
+    expected_count = payload["surface_count"]
+    payload["surface_count"] = expected_count + 1
     stale_path = tmp_path / "capture-contract-v29.json"
     stale_path.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -35,7 +36,7 @@ def test_compiled_v29_contract_reports_current_surface_requirement(
         _load_current_contract_payload(stale_path)
 
     assert (
-        "compiled v29 contract must contain 50 active surfaces"
+        f"compiled v29 contract must contain {expected_count} active surfaces"
         in error.value.issues
     )
     assert all("35 active surfaces" not in issue for issue in error.value.issues)

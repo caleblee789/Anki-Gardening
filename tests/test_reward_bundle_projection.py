@@ -139,7 +139,7 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
     assert checkpoint.plant_class == "Bonsai"
     assert checkpoint.sequence == 1
     assert bundle.compact.eyebrow == "MILESTONE REACHED"
-    assert bundle.compact.hero_title == "Bonsai reached full bloom"
+    assert bundle.compact.hero_title == "Bonsai reached Full Bloom"
     assert bundle.compact.hero_subtitle == ""
     assert [summary.label for summary in bundle.visible_summaries] == [
         "1 Garden Find",
@@ -470,7 +470,7 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
 
     assert compact == RewardCompactProjection(
         eyebrow="MILESTONE REACHED",
-        hero_title="Bonsai reached full bloom",
+        hero_title="Bonsai reached Full Bloom",
         hero_subtitle="",
         visible_summaries=(
             RewardCompactSummary(
@@ -730,7 +730,7 @@ def test_session_history_names_meaningful_events_and_aggregates_routine_growth()
     rows = project_reward_session_history((bloom, collectibles, bloom))
 
     assert tuple(row.name for row in rows) == (
-        "Rose reached full bloom",
+        "Rose reached Full Bloom",
         "Morning Dew",
         "Firefly Evening",
         "Growth applied",
@@ -840,7 +840,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
     expected = (
         RewardDetailRow(
             category_label="",
-            name="Rose reached full bloom",
+            name="Rose reached Full Bloom",
             value="+14 Coins",
             event_ids=("bloom:rose",),
             artwork_ref="rose-rare.webp",
@@ -867,7 +867,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
         ),
         RewardDetailRow(
             category_label="",
-            name="Rose reached 75% toward flowering",
+            name="Rose reached 75% toward Flowering",
             value="+2 Coins",
             event_ids=("checkpoint:rose:75",),
         ),
@@ -918,7 +918,7 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
     assert bundle.hero.event_id == "stage:rose:mature"
     assert bundle.hero.detail == "Reached Mature"
     assert bundle.compact.eyebrow == "NEW GROWTH STAGE"
-    assert bundle.compact.hero_title == "Rose reached mature"
+    assert bundle.compact.hero_title == "Rose reached Mature"
     assert bundle.compact.hero_subtitle == "Advanced 2 stages"
     assert {item.event_id for item in bundle.all_items} == {
         "stage:rose:young",
@@ -927,8 +927,8 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
     }
     assert {item.sequence for item in bundle.all_items} == {0, 1, 2}
     assert {row.name for row in bundle.detail_rows} == {
-        "Rose reached young",
-        "Rose reached mature",
+        "Rose reached Young",
+        "Rose reached Mature",
     }
     assert len(bundle.detail_rows) == 3
     assert {event_id for row in bundle.detail_rows for event_id in row.event_ids} == {
@@ -1004,7 +1004,7 @@ def test_checkpoint_compact_copy_names_progress_and_next_target() -> None:
     assert bundle.hero.artwork_ref == "rose-young.webp"
     assert bundle.hero.garden_coins == 2
     assert bundle.compact.eyebrow == "CHECKPOINT REACHED"
-    assert bundle.compact.hero_title == "Rose reached 50% toward mature"
+    assert bundle.compact.hero_title == "Rose reached 50% toward Mature"
     assert bundle.compact.hero_subtitle == "Next checkpoint at 75%"
 
 
@@ -1023,7 +1023,7 @@ def test_single_stage_compact_copy_names_only_the_final_stage() -> None:
 
     assert bundle is not None
     assert bundle.compact.eyebrow == "NEW GROWTH STAGE"
-    assert bundle.compact.hero_title == "Rose reached young"
+    assert bundle.compact.hero_title == "Rose reached Young"
     assert bundle.compact.hero_subtitle == ""
 
 
@@ -1105,16 +1105,6 @@ def test_small_receipt_only_coin_reward_is_routine_but_inventory_is_major() -> N
         item_id="booster_potion",
         title="Booster Potion",
     )
-    cycle_receipt = RewardReceipt(
-        "completion_cycle_5:2026-08-28",
-        "coins",
-        "completion_cycle_5",
-        "completion_cycle_5",
-        "2026-08-28",
-        event_id,
-        "2026-08-28T10:00:00Z",
-        amount=30,
-    )
 
     routine_bundle = project_committed_reward_bundle(
         _event(event_id=event_id, reward_receipts=(coin_receipt,)),
@@ -1122,13 +1112,10 @@ def test_small_receipt_only_coin_reward_is_routine_but_inventory_is_major() -> N
     major_bundle = project_committed_reward_bundle(
         _event(event_id=event_id, reward_receipts=(booster_receipt,)),
     )
-    cycle_bundle = project_committed_reward_bundle(
-        _event(event_id=event_id, reward_receipts=(cycle_receipt,)),
-    )
     stacked_bundle = project_committed_reward_bundle(
         _event(
             event_id=event_id,
-            reward_receipts=(cycle_receipt, booster_receipt),
+            reward_receipts=(coin_receipt, booster_receipt),
         ),
     )
 
@@ -1136,22 +1123,9 @@ def test_small_receipt_only_coin_reward_is_routine_but_inventory_is_major() -> N
     assert routine_bundle.routine_only is True
     assert major_bundle is not None
     assert major_bundle.routine_only is False
-    assert cycle_bundle is not None
-    assert (
-        cycle_bundle.hero.title,
-        cycle_bundle.hero.detail,
-        cycle_bundle.hero.artwork_ref,
-        cycle_bundle.hero.garden_coins,
-    ) == (
-        "Garden Cycle complete",
-        "5 completed review days",
-        "garden_reward",
-        30,
-    )
-    assert cycle_bundle.routine_only is False
     assert stacked_bundle is not None
     assert stacked_bundle.hero.title == "Booster Potion"
     assert next(
         item for item in stacked_bundle.all_items
-        if item.event_id == cycle_receipt.event_key
+        if item.event_id == coin_receipt.event_key
     ).routine is True

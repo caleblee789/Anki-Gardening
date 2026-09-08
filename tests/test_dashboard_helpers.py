@@ -64,8 +64,8 @@ def test_nursery_catalog_helpers_cover_shortfalls_receipts_empty_states_and_fold
     assert compact_shortfall(1, 0) == "Need 1 more Coin"
     assert compact_shortfall(100, 0) == "Need 100 more Coins"
     assert compact_shortfall(100, 100) == ""
-    assert receipt_actions(False) == ("Place in garden", "View in Collection")
-    assert receipt_actions(True) == ("Place in garden",)
+    assert receipt_actions(False) == ("Plant in garden", "View in Collection")
+    assert receipt_actions(True) == ("Plant in garden",)
     complete_collection = SimpleNamespace(
         species_text="10 of 10 species discovered",
         collection_entries_text="30 of 39 collection entries discovered",

@@ -73,7 +73,7 @@ def project_garden_setup(engine: Any, storage: Any) -> GardenSetupProjection:
         name = (COSMETIC_BY_ID[appearance_id].display_name
                 if appearance_id in COSMETIC_BY_ID else _catalog_name(catalog, appearance_id))
         effect = (garden_bonus_effect_copy(item.item_id, item.effect).strip()
-                  if item is not None and item.effects else "No bonus")
+                  if item is not None else "Appearance only")
         items.append(GardenSetupItem(
             kind, appearance_id, name,
             True,
@@ -110,9 +110,8 @@ def project_garden_setup(engine: Any, storage: Any) -> GardenSetupProjection:
                 ))
     bonus = engine.current_streak_bonus_percent()
     if bonus:
-        # This compatibility accessor now returns Garden Rhythm, not a streak
-        # multiplier. Keep the source name faithful to the current economy.
-        effects.append(GardenSupplyEffect("Garden Rhythm", f"+{bonus}% Growth"))
+        # Achievement unlocks retain this percentage after the streak ends.
+        effects.append(GardenSupplyEffect("Permanent Growth bonus", f"+{bonus}% Growth"))
     return GardenSetupProjection(tuple(items), tuple(effects))
 
 
@@ -154,7 +153,7 @@ def plant_stage_event(species: Any, stage: Any, *, checkpoint_percent: int = 0) 
 
     name = plant_species_name(species)
     resolved = stage_presentation(stage)
-    destination = resolved.display_name.lower() if resolved is not None else "a new stage"
+    destination = resolved.display_name if resolved is not None else "a new stage"
     if checkpoint_percent:
         return f"{name} reached {checkpoint_percent}% toward {destination}"
     return f"{name} reached {destination}"
@@ -238,6 +237,31 @@ def project_collection(state: Any) -> CollectionProjection:
             species_total > 0 and species_discovered == species_total
         ),
     )
+
+
+@dataclass(frozen=True)
+class AppearanceCollectionProjection:
+    category: str
+    owned: int
+    total: int
+
+    @property
+    def text(self) -> str:
+        label = "Scenery" if self.category == "scenery" else "Decorations"
+        return f"{label} collected: {self.owned:,} of {self.total:,}"
+
+
+def project_appearance_collection(state: Any, kind: str) -> AppearanceCollectionProjection:
+    """Count distinct player-facing collectible IDs, including owned defaults."""
+    from .collectibles import collection_entry_views
+
+    category = "scenery" if kind == "scenery" else "garden_features"
+    views = {
+        view.definition.item_id: view
+        for view in collection_entry_views(state)
+        if view.definition.category == category
+    }
+    return AppearanceCollectionProjection(category, sum(view.owned for view in views.values()), len(views))
 
 
 def _catalog_name(catalog: Mapping[str, Any], item_id: str) -> str:

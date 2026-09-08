@@ -11,6 +11,7 @@ from typing import Any
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..environment import DEFAULT_SCENERY_ID
 from ..models.state import STREAK_BONUS_TIERS
+from ..achievements import streak_growth_progress
 from .copy import (
     CHOOSE_STARTER_ACTION,
     FALLBACK_GARDEN_NAME,
@@ -510,7 +511,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__identity-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; min-width:0; }
 .ag-home__identity { min-width:0; }
 .ag-home__garden-context { display:block; margin-top:2px; color:#95a89f; font-size:12px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__eyebrow { margin-bottom:1px; color:#95a89f; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:16px; text-transform:uppercase; }
+.ag-home__eyebrow { margin-bottom:1px; color:#95a89f; font-size:12px; font-weight:650; letter-spacing:.08em; line-height:16px; text-transform:uppercase; }
 .ag-home__focus-name {
   display:block;
   overflow:hidden;
@@ -642,15 +643,15 @@ HOME_WIDGET_STYLE = """
 .ag-home__artwork-zone { min-width:0; grid-column:2; pointer-events:none; }
 .ag-home__identity-row > .ag-home__open,
 .ag-home__identity-row > button { grid-column:3; }
-.ag-home__eyebrow { margin-bottom:2px; color:#95A89F; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:13px; }
-.ag-home__focus-name { font-size:20px; line-height:1.2; font-weight:650; white-space:normal; overflow-wrap:anywhere; }
+.ag-home__eyebrow { margin-bottom:2px; color:#95A89F; font-size:12px; font-weight:650; letter-spacing:.08em; line-height:13px; }
+.ag-home__focus-name { font-size:18px; line-height:1.2; font-weight:650; white-space:normal; overflow-wrap:anywhere; }
 .ag-home__support {
   display:block;
   max-width:260px;
   margin-top:0;
   overflow:hidden;
   color:#B7C4BD;
-  font-size:13px;
+  font-size:14px;
   font-weight:400;
   line-height:1.35;
   font-variant-numeric:tabular-nums;
@@ -663,13 +664,14 @@ HOME_WIDGET_STYLE = """
   margin-top:0;
   overflow:hidden;
   color:#B7C4BD;
-  font-size:12px;
+  font-size:13px;
   line-height:1.35;
   font-variant-numeric:tabular-nums;
   white-space:normal;
   overflow-wrap:anywhere;
 }
-.ag-home__support--plant { display:flex; gap:4px; }
+.ag-home__identity--planted .ag-home__focus-name { font-size:14px; font-weight:400; color:#B7C4BD; line-height:20px; }
+.ag-home__support--plant { display:flex; gap:4px; font-size:18px; font-weight:600; color:#F4F7F5; line-height:22px; }
 .ag-home__plant-name { min-width:0; overflow-wrap:anywhere; }
 .ag-home__plant-stage { flex:none; }
 .ag-home__growth-track {
@@ -1347,7 +1349,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             growth_text = f"{display_growth_current:,} total Growth"
         elif display_growth_goal > 0:
             destination = format_status_label(data.active_next_stage or "the next stage")
-            growth_text = f"Next: {destination} · {format_growth(display_growth_current, display_growth_goal)}"
+            growth_text = format_stage_progress(display_growth_current, display_growth_goal, destination)
         else:
             growth_text = preview.growth_text or "0"
         preview_identity = preview.active_plant_name
@@ -1390,7 +1392,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     )
     support_class = "ag-home__support ag-home__support--plant" if preview_plant_name else "ag-home__support"
     garden_identity_html = (
-        '<div class="ag-home__identity">'
+        f'<div class="ag-home__identity{" ag-home__identity--planted" if preview_plant_name else ""}">'
         f'<h2 class="ag-home__focus-name" data-testid="home-title" '
         f'aria-label="{escape(preview_title, quote=True)}" '
         f'title="{escape(preview_title, quote=True)}">{escape(preview_title)}</h2>'
@@ -1575,6 +1577,7 @@ def build_home_widget_success_data(
         scene_items=scene_items,
         unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
     )
+    retained_percent, next_tier = streak_growth_progress(state)
     return HomeWidgetData(
         reviews_today=reviews_today,
         growth_earned=int(stats.growth_earned),
@@ -1584,9 +1587,9 @@ def build_home_widget_success_data(
         bonus_growth=int(getattr(stats, "bonus_growth", 0)),
         all_due_completed=bool(getattr(stats, "completed_due_cards", False)),
         streak_days=int(state.streak_days),
-        streak_bonus_percent=_streak_bonus_percent(int(state.streak_days)),
-        next_streak_day=_next_streak_day(int(state.streak_days)),
-        next_streak_bonus_percent=_next_streak_bonus(int(state.streak_days)),
+        streak_bonus_percent=retained_percent,
+        next_streak_day=next_tier.progress_target if next_tier else None,
+        next_streak_bonus_percent=next_tier.reward.permanent_growth_percent if next_tier else None,
         garden_currency=max(0, int(getattr(state, "currency_balance", 0))),
         weather=str(
             getattr(
@@ -1660,24 +1663,6 @@ def build_home_widget_success_data(
             getattr(stats, "growth_accounting_stale", False)
         ),
     )
-
-
-def _streak_bonus_percent(streak_days: int) -> int:
-    bonus = 0
-    for threshold, percent in STREAK_BONUS_TIERS:
-        if streak_days >= threshold:
-            bonus = percent
-        else:
-            break
-    return bonus
-
-
-def _next_streak_day(streak_days: int) -> int | None:
-    return next((threshold for threshold, _percent in STREAK_BONUS_TIERS if streak_days < threshold), None)
-
-
-def _next_streak_bonus(streak_days: int) -> int | None:
-    return next((percent for threshold, percent in STREAK_BONUS_TIERS if streak_days < threshold), None)
 
 
 def _streak_milestone_progress(streak_days: int) -> int:

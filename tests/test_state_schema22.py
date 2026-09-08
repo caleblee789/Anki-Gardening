@@ -29,7 +29,7 @@ def _schema21_payload(state: GardenState) -> dict:
         "daily_loadout",
         "stored_growth_units",
         "streak_growth_remainder_units",
-        "checkpoint_coin_carry_units",
+        "autumn_coin_carry_units",
         "first_daily_completion_reward_claimed",
         "environment_pity_misses",
     ):
@@ -130,7 +130,7 @@ def test_schema22_exact_progression_fields_round_trip() -> None:
         ),
         stored_growth_units=1_250,
         streak_growth_remainder_units=50,
-        checkpoint_coin_carry_units=50,
+        autumn_coin_carry_units=50,
         environment_pity_misses={"rare": 12, "very_rare": 34, "ultra": 56},
     )
 
@@ -141,7 +141,7 @@ def test_schema22_exact_progression_fields_round_trip() -> None:
     assert restored.plants[0].fertilizer_card_batches == [batch]
     assert restored.stored_growth_units == 1_250
     assert restored.streak_growth_remainder_units == 50
-    assert restored.checkpoint_coin_carry_units == 50
+    assert restored.autumn_coin_carry_units == 50
     assert restored.daily_stats.plant_applied_growth_units == {"p": 500}
     assert restored.daily_stats.plant_shared_growth_units == {"p": 270}
     assert restored.daily_completion.cards_completed_today == 176

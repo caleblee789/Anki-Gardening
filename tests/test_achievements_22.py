@@ -85,7 +85,7 @@ def test_existing_seven_rewards_remain_backward_compatible() -> None:
         )
         for achievement_id in EXPECTED_IDS[:7]
     } == {
-        "streak_7": (10, 0, 0),
+        "streak_7": (0, 0, 0),
         "streak_30": (100, 1, 0),
         "streak_100": (300, 0, 0),
         "streak_365": (1_000, 0, 0),

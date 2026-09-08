@@ -7,6 +7,8 @@
 
 ## Clearer Garden and reward panels
 
+- Fresh gardens correctly show a zero-day streak until the first studied card.
+
 - Collection combines species and plant details in one panel. Appearance shares
   a single preview, Equip action, and Undo for scenery and decorations.
 - The compact reviewer stays a narrow vertical strip. Earned items, milestones,
@@ -30,15 +32,18 @@
 - Each other planted bed adds one exact 10% Shared Growth lane, for 150% output
   with six beds. Full Bloom beds continue contributing while another planted
   plant is still growing.
-- Garden Rhythm replaces streak Growth: verified Today’s Cards completions
-  among the prior seven eligible study days add 0–10% to base Growth without a
-  total-reset cliff. Anki streak still grants its recurring Garden Coins and badges.
+- Streak achievements permanently unlock total base-card Growth bonuses of 5%,
+  10%, 15%, and 20% at 7, 30, 100, and 365 consecutive study days. The highest
+  unlocked tier remains after a streak ends and replaces Garden Rhythm and the
+  former streak-dependent Growth tiers.
 - Beds 3–6 are earned at Mature and unique Full Bloom milestones rather than
   purchased.
-- The first eligible answer now grants 4 Garden Coins and Today’s Cards grants
-  8, preserving the ordinary completed-day total. Every fifth valid Today’s
-  Cards completion adds an automatic Garden Cycle reward of 30 Garden Coins;
-  missing days do not reset it.
+- The first eligible answer grants 4 Garden Coins. Finish all cards due today
+  grants 16 core Garden Coins, once daily through the existing completion check.
+  The global five-completion cycle and independent weekly streak Coins are gone.
+  Activity combines daily rewards and retained Growth progress in one Study
+  rewards panel; Achievements shows the full ladder in three columns where space
+  permits.
 
 ## Equal purchases and card-counted value
 
@@ -47,23 +52,27 @@
 - Basic, Quality, and Magical Fertilizer now grant +1/100, +2/200, and +3/400
   eligible cards. Time outside Anki never consumes purchased value.
 - Fertilizer tiers use a persistent FIFO card queue. Booster Potion remains
-  +5 for 100 cards. Owning Herbalist’s Hourglass or Full Moon Garden adds
-  25 cards to new Potions for each, up to 150 cards when both are owned.
+  +5 Growth per card for 100 cards, regardless of owned scenery or decorations.
 - Grand Growth Charge now has real achievement routes through Botanical
   Collection and Old Growth.
 
 ## Rebalanced Bonuses, Scenery, and Finds
 
-- Equipping scenery or a decoration saves its artwork and effect together.
-  Previewing an item changes neither. Garden Rhythm retains its automatic
-  daily snapshot.
+- Equipping an item saves its artwork and bonus together. Previewing an item
+  does not activate its bonus; hiding its artwork does not disable the bonus.
 - Wind Chime remains uncapped; Watering Station grants +1 Growth every second card
-  among the first 200 each day; Hourglass awards a Booster every 30 active completions and extends
-  activated Potions by 25 cards.
-- Paid Scenery now has distinct short-day, general-Growth, Garden Coin, and delayed
-  Charge roles. Firefly Lantern, Prism Trellis, Rainbow Horizon, Halloween
-  Garden, Full Moon Garden, and Celestial Eclipse use the canonical 2.2.0
-  effects in `balance_catalog.py`.
+  among the first 200 each day.
+- Herbalist’s Hourglass: Finish all cards due on 15 days: +1 Booster Potion.
+  Full Moon Garden: Finish all cards due on 4 days: +1 Booster Potion.
+  Both rewards repeat; the days need not be consecutive. Ownership no longer
+  extends Potion duration.
+- Autumn Hearth: Earn 15% more Coins. The bonus applies once to newly earned
+  gameplay Coins while active, with fractional value retained between awards.
+- Snow-Covered Garden: Finish all cards due today: +50 Growth. This replaces
+  the stored 100-Growth charge awarded every two completed days.
+- Every scenery and decoration has one complete effect line generated from
+  `balance_catalog.py`. Halloween Garden: Finish all cards due today: 1 mystery
+  gift. Its contents and probabilities are unchanged.
 - Standard Find protection still guarantees an at-least-Uncommon result by
   drought answer 75, with no daily Standard Find limit. Saved drought progress
   resumes on the next eligible answer, and earlier outcomes stay unchanged.
@@ -94,26 +103,22 @@
 
 ## Persistence and migration
 
-- State schema 30 retains durable trophy activation boundaries and stores exact card-effect queues, daily Garden Rhythm
-  snapshots, unified equipment, dual environment pity, earned beds,
-  Garden Cycle, active Growth targets, cumulative project funding
+- State schema 30 retains durable trophy activation boundaries and stores exact card-effect queues, daily reward
+  records, unified equipment, dual environment pity, earned beds,
+  permanent achievement tiers, active Growth targets, cumulative project funding
   and claims, and provenance-qualified lifetime economy
   aggregates.
-- Scenery and decorations can be equipped throughout the day. Their artwork
-  and effects stay together; old pending selections are discarded while
-  displayed items, earned rewards, and saved progress are preserved.
+- Scenery and decorations retain their appearance controls, active-bonus
+  eligibility, and daily reward limits.
 - Permanent answer, Find, discovery, purchase, Charge, project, and
   migration identities live independently from bounded UI receipt history.
 - Timed Fertilizer converts proportionally to cards with ceiling. Existing paid
   beds remain unlocked and receive their fixed Garden Coin refunds. Recorded plant
   purchases above 250 Garden Coins receive only the difference; cheaper purchases are
   never debited. Rich Compost inventory becomes Basic Fertilizer.
-- Existing Full Moon progress carries from the old four-completion cadence to
-  the new six-completion cadence proportionally, rounded up so positive earned
-  progress is not erased.
 - Existing Stored Growth, project claims and partial progress, and
   owned environments are preserved. Migration never auto-spends Stored Growth,
-  recharges a claim, grants a retroactive Garden Cycle, or grants retroactive
+  recharges a claim or grants retroactive
   calendar pity.
 
 The complete current mechanics and catalog are documented in the

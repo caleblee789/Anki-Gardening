@@ -41,7 +41,6 @@ def test_round_trip_preserves_unified_equipment_and_economy_models() -> None:
         )],
         daily_economy_snapshot=DailyEconomySnapshot(
             "2026-08-30",
-            8,
             "wind_chime",
             "default",
             "local_first_answer",
@@ -49,7 +48,6 @@ def test_round_trip_preserves_unified_equipment_and_economy_models() -> None:
         ),
         firefly_lantern_progress=4,
         hourglass_completion_progress=2,
-        snow_completion_progress=3,
         full_moon_completion_progress=1,
         prism_pending_growth_units=155,
         garden_project=GardenProjectState(
@@ -115,7 +113,7 @@ def test_schema26_round_trip_preserves_booster_activation_boundary() -> None:
     booster = CardEffectBatch(
         "booster_potion",
         500,
-        125,
+        100,
         73,
         "2026-08-30T12:00:00+00:00",
         "booster:activation-boundary",
@@ -139,7 +137,6 @@ def test_schema26_repairs_effect_counter_and_project_boundaries() -> None:
     payload = GardenState().to_dict()
     payload["firefly_lantern_progress"] = 99
     payload["hourglass_completion_progress"] = 99
-    payload["snow_completion_progress"] = 99
     payload["full_moon_completion_progress"] = 99
     payload["prism_pending_growth_units"] = 99_999
     payload["environment_completion_pity_misses"] = {
@@ -158,9 +155,8 @@ def test_schema26_repairs_effect_counter_and_project_boundaries() -> None:
 
     restored = GardenState.from_dict(payload)
     assert restored.firefly_lantern_progress == 4
-    assert restored.hourglass_completion_progress == 29
-    assert restored.snow_completion_progress == 1
-    assert restored.full_moon_completion_progress == 5
+    assert restored.hourglass_completion_progress == 14
+    assert restored.full_moon_completion_progress == 3
     assert restored.prism_pending_growth_units == 30_000
     assert restored.environment_completion_pity_misses == {
         "rare": 0,
@@ -198,9 +194,6 @@ def test_schema27_round_trips_unambiguous_growth_and_endgame_authorities() -> No
         ),
         garden_legacy_level=2,
         garden_legacy_progress_units=123,
-        garden_cycle_remainder=4,
-        garden_cycle_migration_version=27,
-        garden_cycle_history_complete=True,
     )
 
     payload = state.to_dict()
@@ -226,4 +219,3 @@ def test_schema27_round_trips_unambiguous_growth_and_endgame_authorities() -> No
     assert (restored.garden_legacy_level, restored.garden_legacy_progress_units) == (
         2, 123
     )
-    assert restored.garden_cycle_remainder == 4

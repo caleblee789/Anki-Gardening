@@ -11,12 +11,24 @@ from typing import Dict, Iterable, Mapping, Optional, Tuple
 
 from .balance_catalog import (
     ACHIEVEMENTS as CATALOG_ACHIEVEMENTS,
+    COMPLETION_TRIGGER_COPY,
     AchievementDefinition as CatalogAchievementDefinition,
     RewardGrant as CatalogRewardGrant,
 )
 
 
 HISTORY_FINGERPRINT_VERSION = 1
+
+
+def streak_growth_progress(state) -> tuple[int, AchievementDefinition | None]:
+    """Read the retained Growth tier from persistent achievement unlocks."""
+    percent = max((definition.reward.permanent_growth_percent
+                   for definition in STREAK_ACHIEVEMENTS
+                   if (record := state.achievements.get(definition.achievement_id))
+                   and record.unlocked), default=0)
+    next_tier = next((definition for definition in STREAK_ACHIEVEMENTS
+                      if definition.reward.permanent_growth_percent > percent), None)
+    return percent, next_tier
 
 
 class AchievementCategory(str, Enum):
@@ -58,6 +70,7 @@ class RewardBundle:
     grand_growth_charges: int = 0
     bed_unlocks: tuple[int, ...] = ()
     cosmetic_ids: tuple[str, ...] = ()
+    permanent_growth_percent: int = 0
 
     def __post_init__(self) -> None:
         values = (
@@ -125,6 +138,7 @@ class AchievementDefinition:
 
 def _bundle_from_catalog_grants(
     grants: tuple[CatalogRewardGrant, ...],
+    permanent_growth_percent: int = 0,
 ) -> RewardBundle:
     coins = 0
     small = 0
@@ -158,6 +172,7 @@ def _bundle_from_catalog_grants(
             raise ValueError(f"unsupported achievement reward kind: {kind}")
     return RewardBundle(
         coins=coins,
+        permanent_growth_percent=permanent_growth_percent,
         small_growth_charges=small,
         standard_growth_charges=standard,
         grand_growth_charges=grand,
@@ -177,7 +192,7 @@ def _definition_from_catalog(
         evaluation_mode=AchievementEvaluationMode(definition.evaluation_mode.value),
         progress_metric=AchievementProgressMetric(definition.progress_metric.value),
         progress_target=definition.progress_target,
-        reward=_bundle_from_catalog_grants(definition.rewards),
+        reward=_bundle_from_catalog_grants(definition.rewards, definition.permanent_growth_percent),
         historical_backfill=definition.historical_backfill,
         minimum_answers=definition.minimum_answers,
         minimum_non_again_percent=definition.minimum_non_again_percent,
@@ -193,6 +208,26 @@ ACHIEVEMENTS_BY_ID: Mapping[str, AchievementDefinition] = MappingProxyType({
     definition.achievement_id: definition
     for definition in ACHIEVEMENT_DEFINITIONS
 })
+# Keep the evaluator and saved IDs intact; bed milestones have their own page.
+BED_MILESTONES = MappingProxyType({
+    definition.achievement_id: definition.reward.bed_unlocks[0]
+    for definition in ACHIEVEMENT_DEFINITIONS
+    if definition.reward.bed_unlocks
+})
+VISIBLE_ACHIEVEMENT_DEFINITIONS = tuple(
+    definition for definition in ACHIEVEMENT_DEFINITIONS
+    if definition.achievement_id not in BED_MILESTONES
+)
+
+
+def milestone_unlocked_text(achievement_id: str) -> str:
+    bed = BED_MILESTONES.get(achievement_id)
+    if bed is not None:
+        return f"Bed {bed} unlocked"
+    definition = ACHIEVEMENTS_BY_ID.get(achievement_id)
+    return f"Unlocked {definition.name}" if definition is not None else ""
+
+
 STREAK_ACHIEVEMENTS: Tuple[AchievementDefinition, ...] = tuple(
     definition
     for definition in ACHIEVEMENT_DEFINITIONS
@@ -208,6 +243,84 @@ VALID_COMPLETION_ACHIEVEMENTS: Tuple[AchievementDefinition, ...] = tuple(
     for definition in ACHIEVEMENT_DEFINITIONS
     if definition.progress_metric is AchievementProgressMetric.VALID_COMPLETIONS
 )
+
+
+def _presentation_definition(definition: AchievementDefinition | str) -> AchievementDefinition:
+    return ACHIEVEMENTS_BY_ID[definition] if isinstance(definition, str) else definition
+
+
+def achievement_objective(definition: AchievementDefinition | str) -> str:
+    """Describe the canonical criterion without changing its counting rules."""
+    definition = _presentation_definition(definition)
+    target = definition.progress_target
+    metric = definition.progress_metric
+    if metric is AchievementProgressMetric.DAILY_ANSWERS:
+        return f"Study {target:,} cards in one day"
+    if metric is AchievementProgressMetric.LIFETIME_ANSWERS:
+        return f"Study {target:,} cards total"
+    if metric is AchievementProgressMetric.STREAK_DAYS:
+        return f"Study on {target:,} consecutive days"
+    if metric in {AchievementProgressMetric.VALID_ALL_DUE_DAYS, AchievementProgressMetric.VALID_COMPLETIONS}:
+        return COMPLETION_TRIGGER_COPY if target == 1 else f"Finish all cards due on {target:,} days"
+    if metric in {AchievementProgressMetric.MATURE_SPECIES, AchievementProgressMetric.FULL_BLOOM_SPECIES}:
+        stage = "Mature" if metric is AchievementProgressMetric.MATURE_SPECIES else "Full Bloom"
+        species = "species" if target == 1 else "different species"
+        return f"Grow {target:,} {species} to {stage}"
+    return definition.description.rstrip(".")
+
+
+def achievement_progress_units(definition: AchievementDefinition | str) -> str:
+    """Units for the same model-provided numerator and denominator."""
+    metric = _presentation_definition(definition).progress_metric
+    if metric in {AchievementProgressMetric.VALID_ALL_DUE_DAYS, AchievementProgressMetric.VALID_COMPLETIONS}:
+        return "completed days"
+    if metric is AchievementProgressMetric.STREAK_DAYS:
+        return "consecutive days"
+    if metric in {AchievementProgressMetric.MATURE_SPECIES, AchievementProgressMetric.FULL_BLOOM_SPECIES}:
+        return "species"
+    return "cards"
+
+
+@dataclass(frozen=True)
+class AchievementTargetPresentation:
+    target_type: str
+    target_id: str
+    achievement_id: str
+    name: str
+    objective: str
+    granted: bool
+
+
+def achievement_target_presentation(
+    state: object, target_type: str, target_id: str | int,
+) -> AchievementTargetPresentation | None:
+    """Resolve a target from real grants and current entitlements, read-only.
+
+    No plant/species grant exists in the current registry. Unknown targets
+    remain unknown instead of acquiring an inferred progression requirement.
+    """
+    if target_type == "bed":
+        try:
+            bed = int(str(target_id).removeprefix("bed_"))
+        except ValueError:
+            return None
+        normalized_id = f"bed_{bed}"
+        definition = next((item for item in ACHIEVEMENT_DEFINITIONS if bed in item.reward.bed_unlocks), None)
+        from .plant_beds import earned_bed_numbers
+        granted = bed in earned_bed_numbers(state)
+    elif target_type == "cosmetic":
+        normalized_id = str(target_id)
+        definition = next((item for item in ACHIEVEMENT_DEFINITIONS if normalized_id in item.reward.cosmetic_ids), None)
+        granted = normalized_id in getattr(state, "inventory", {}).get("cosmetics", ())
+    else:
+        return None
+    if definition is None:
+        return None
+    return AchievementTargetPresentation(
+        target_type, normalized_id, definition.achievement_id,
+        f"Bed {bed}" if target_type == "bed" else definition.name,
+        achievement_objective(definition), bool(granted),
+    )
 FULL_BLOOM_ACHIEVEMENTS: Tuple[AchievementDefinition, ...] = tuple(
     definition
     for definition in ACHIEVEMENT_DEFINITIONS

@@ -66,7 +66,7 @@ NAVIGATION = {
     "growth-charge-use-ready": "Choose Growth Charge → use confirmation",
     "growth-charge-success-stage-reward": "Confirm Growth Charge → committed stage reward",
     "progress-today-page": "Progress → Today",
-    "progress-today-details": "Progress → Today → expand details",
+    "progress-today-details": "Progress → Activity → retained Growth bonus after a broken streak",
     "progress-achievements-page": "Progress → Achievements (top)",
     "workspace-achievements-scroll-end": "Progress → Achievements → scroll to end (final rows)",
     "workspace-trophy-room": "Progress → Trophy Room (locked and unlocked)",

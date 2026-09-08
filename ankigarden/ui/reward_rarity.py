@@ -82,7 +82,7 @@ def rarity_art_style(tone: RewardTreatment, strength: float = 1.0) -> str:
 
 def rarity_badge_style(tone: RewardTreatment) -> str:
     return (f"color:{tone.color};background:{tone.rgba(24)};border:0;"
-            "border-radius:6px;padding:4px 8px;font-size:11px;font-weight:650;")
+            "border-radius:6px;padding:4px 8px;font-size:12px;font-weight:650;")
 
 
 def apply_reward_treatment(frame: Any, source: Any = "", *, title: Any = None,

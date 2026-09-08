@@ -8,6 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from hashlib import blake2b, sha256
 from fractions import Fraction
+from functools import lru_cache
 import math
 from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
@@ -155,8 +156,6 @@ ENVIRONMENT_METRIC_UNITS = {
 COIN_SOURCE_IDS = (
     "first_eligible_answer",
     "todays_cards",
-    "completion_cycle_5",
-    "seven_day_streak_cycle",
     "achievement",
     "plant_milestone",
     "standard_find",
@@ -168,8 +167,6 @@ COIN_SOURCE_IDS = (
 COIN_SOURCE_BEHAVIORAL_FAMILY = {
     "first_eligible_answer": "study_attendance",
     "todays_cards": "todays_cards_completion",
-    "completion_cycle_5": "todays_cards_completion",
-    "seven_day_streak_cycle": "streak",
     "achievement": "achievements",
     "plant_milestone": "plant_progression",
     "standard_find": "finds",
@@ -202,6 +199,8 @@ def _is_right_censored_timing_metric(metric_id: str) -> bool:
 def _metric_unit(metric_id: str) -> str:
     if metric_id in METRIC_UNITS:
         return METRIC_UNITS[metric_id]
+    if metric_id.startswith("growth.source."):
+        return "growth_units"
     if metric_id.startswith("coins.source."):
         return "coins"
     if metric_id.startswith("mastery."):
@@ -608,6 +607,7 @@ def generate_event_stream(
         finds = 0
         find_coins = 0
         find_growth_units = 0
+        find_growth_by_answer = []
         inventory = []
         capped = False
         attempted = answers
@@ -629,7 +629,9 @@ def generate_event_stream(
             if "coin" in reward_kind:
                 find_coins += reward.amount
             elif "growth" in reward_kind:
-                find_growth_units += reward.amount * GROWTH_UNITS_PER_POINT
+                units = reward.amount * GROWTH_UNITS_PER_POINT
+                find_growth_units += units
+                find_growth_by_answer.append((answers - attempted, units))
             elif reward.inventory_item_id:
                 inventory.extend([reward.inventory_item_id] * reward.amount)
             remaining_gap = gap_sampler.sample(rng)
@@ -643,6 +645,7 @@ def generate_event_stream(
             standard_finds=finds,
             find_coins=find_coins,
             find_growth_units=find_growth_units,
+            find_growth_units_by_answer=tuple(find_growth_by_answer),
             inventory_items=tuple(inventory),
             capped=capped,
             maximum_gap=maximum_gap,
@@ -719,38 +722,93 @@ def _grant_growth_value(facts: CatalogFacts, grant) -> int:
     return 0
 
 
+@lru_cache(maxsize=8)
+def _find_coin_rate(rewards, schedule) -> Fraction:
+    """Long-run Coins per answer, including the guarantee's reward pool."""
+    ranks = {"common": 0, "uncommon": 1, "rare": 2, "exceptional": 3}
+    survival = Fraction(1)
+    expected_gap = expected_coins = Fraction(0)
+    for band in schedule:
+        pool = tuple(row for row in rewards
+                     if ranks.get(row.tier.lower(), 0)
+                     >= ranks.get(band.minimum_tier.lower(), 0))
+        reward_coins = Fraction(
+            sum(row.weight * row.amount for row in pool
+                if row.reward_kind.lower() == "coins"),
+            sum(row.weight for row in pool),
+        )
+        for answer in range(band.first_answer, band.last_answer + 1):
+            hit = survival * Fraction(band.numerator, band.denominator)
+            survival -= hit
+            expected_gap += answer * hit
+            expected_coins += reward_coins * hit
+    return expected_coins / expected_gap
+
+
 def _environment_daily_value(
     facts: CatalogFacts,
     item_id: str,
     scenario: ScenarioSpec,
+    state: Optional[RunState] = None,
 ) -> Tuple[Fraction, Fraction]:
-    growth = Fraction(0, 1)
-    coins = Fraction(0, 1)
+    """Forecast incremental daily output, not a globally optimal strategy.
+
+    Percentage income uses recurring study, completion, Finds and currently
+    equipped completion rewards. Finite achievements/milestones are excluded.
+    Without a state, Growth is quoted before Shared Growth for catalog reports.
+    """
+    growth = Fraction(0)
+    coins = Fraction(0)
     completion_rate = Fraction(scenario.completion_percent, 100)
+    shared_multiplier = Fraction(1)
+    if state is not None:
+        numerator, denominator = facts.shared_growth_numerator, facts.shared_growth_denominator
+        for trophy in _active_trophies(state, facts):
+            if trophy.shared_growth_numerator * denominator > numerator * trophy.shared_growth_denominator:
+                numerator, denominator = trophy.shared_growth_numerator, trophy.shared_growth_denominator
+        shared_multiplier += max(0, len(_planted_indices(state)) - 1) * Fraction(numerator, denominator)
+
+    def grant_growth(grant) -> Fraction:
+        value = Fraction(_grant_growth_value(facts, grant))
+        if grant.kind.lower() == "growth" or (
+            grant.kind.lower() == "consumable"
+            and any(item.consumable_id == grant.item_id and item.growth_per_card
+                    for item in facts.consumables)
+        ):
+            value *= shared_multiplier
+        return value
+
     for effect in facts.effects_by_item_id.get(item_id, ()):
-        triggers = Fraction(1, 1)
+        triggers = Fraction(1)
         if effect.trigger == "eligible_card":
-            eligible = min(
-                scenario.cohort.cards_per_study_day,
-                effect.first_n_per_day or scenario.cohort.cards_per_study_day,
-            )
-            triggers = (
-                Fraction(eligible, max(1, effect.every_n))
-                if effect.counter_scope == "lifetime_active"
-                else Fraction(eligible // max(1, effect.every_n), 1)
-            )
+            eligible = min(scenario.cohort.cards_per_study_day,
+                           effect.first_n_per_day or scenario.cohort.cards_per_study_day)
+            triggers = (Fraction(eligible, max(1, effect.every_n))
+                        if effect.counter_scope == "lifetime_active"
+                        else Fraction(eligible // max(1, effect.every_n)))
         elif effect.trigger == "valid_completion":
             triggers = completion_rate / max(1, effect.every_n)
         elif effect.trigger in {"booster_activation", "plant_milestone"}:
-            # These are interaction modifiers, not independent daily grants.
-            triggers = Fraction(0, 1)
+            triggers = Fraction(0)
         if effect.grant is not None:
-            growth += triggers * _grant_growth_value(facts, effect.grant)
-            if effect.grant.kind.lower() == "coins":
-                coins += triggers * effect.grant.amount
+            grant = effect.grant
+            growth += triggers * grant_growth(grant)
+            if grant.kind.lower() == "coins":
+                coins += triggers * grant.amount
+            elif grant.kind.lower() == "earned_coin_percent":
+                recurring = (facts.daily_activity_coins
+                             + completion_rate * facts.completion_coins
+                             + scenario.cohort.cards_per_study_day
+                             * _find_coin_rate(facts.standard_rewards, facts.standard_find_schedule))
+                if state is not None:
+                    recurring += completion_rate * sum(t.completion_coins for t in _active_trophies(state, facts))
+                    for bonus in facts.effects_by_item_id.get(state.active_garden_bonus_id, ()):
+                        if bonus.trigger == "valid_completion" and bonus.grant is not None and bonus.grant.kind.lower() == "coins":
+                            recurring += completion_rate * bonus.grant.amount / max(1, bonus.every_n)
+                coins += recurring * Fraction(grant.amount, 100)
         for grant, weight in effect.weighted_grants:
             weighted_triggers = triggers * Fraction(weight, 100)
-            growth += weighted_triggers * _grant_growth_value(facts, grant)
+            growth += weighted_triggers * grant_growth(grant)
             if grant.kind.lower() == "coins":
                 coins += weighted_triggers * grant.amount
     return growth, coins
@@ -759,6 +817,7 @@ def _environment_daily_value(
 def _permanent_priority(
     facts: CatalogFacts,
     scenario: ScenarioSpec,
+    state: Optional[RunState] = None,
 ) -> Tuple[PurchaseOption, ...]:
     options = facts.purchase_options
     strategy = scenario.strategy
@@ -777,7 +836,7 @@ def _permanent_priority(
     if strategy.optimize_for:
         def optimized_key(item: PurchaseOption):
             if item.category in {"garden_bonus", "scenery"}:
-                growth, coins = _environment_daily_value(facts, item.item_id, scenario)
+                growth, coins = _environment_daily_value(facts, item.item_id, scenario, state)
                 value = coins if strategy.optimize_for == "coin" else growth
                 ratio = value / item.price_coins if item.price_coins else Fraction(0, 1)
                 return (-ratio, item.price_coins, item.item_id)
@@ -877,12 +936,10 @@ class RunState:
     active_scenery_id: str
     effect_counters: Counter
     effect_banks: Counter
-    milestone_coin_carry_units: int
-    milestone_bonus_percent: int
+    autumn_coin_carry_units: int
     environment_effect_growth_units: int
     environment_effect_coins: int
     environment_effect_consumables: int
-    garden_cycle_remainder: int
     environment_first_day_by_tier: Dict[str, int]
     environment_both_day_by_tier: Dict[str, int]
     environment_first_card_by_tier: Dict[str, int]
@@ -900,6 +957,7 @@ class RunState:
     active_trophy_ids: set[str] = field(default_factory=set)
     planted_order: Optional[List[int]] = None
     garden_effects_collected: bool = False
+    answer_growth_sources: Counter = field(default_factory=Counter)
 
 
 def _initial_state(facts: CatalogFacts, scenario: ScenarioSpec) -> RunState:
@@ -1045,12 +1103,10 @@ def _initial_state(facts: CatalogFacts, scenario: ScenarioSpec) -> RunState:
         active_scenery_id=active_scenery_id,
         effect_counters=Counter(),
         effect_banks=Counter(),
-        milestone_coin_carry_units=0,
-        milestone_bonus_percent=0,
+        autumn_coin_carry_units=0,
         environment_effect_growth_units=0,
         environment_effect_coins=0,
         environment_effect_consumables=0,
-        garden_cycle_remainder=0,
         environment_first_day_by_tier={},
         environment_both_day_by_tier={},
         environment_first_card_by_tier={},
@@ -1088,6 +1144,16 @@ def _credit(state: RunState, source: str, amount: int) -> None:
     state.wallet += value
     state.gross_coins += value
     state.coin_sources[source] += value
+    if source != "autumn_hearth":
+        from ankigarden.earned_coins import quote_earned_coins
+        quote = quote_earned_coins(value, active_scenery_id=state.active_scenery_id,
+                                  carry_units=state.autumn_coin_carry_units)
+        state.autumn_coin_carry_units = quote.next_carry_units
+        state.wallet += quote.bonus_coins
+        state.gross_coins += quote.bonus_coins
+        if quote.bonus_coins:
+            state.coin_sources["autumn_hearth"] += quote.bonus_coins
+        state.environment_effect_coins += quote.bonus_coins
 
 
 def _endgame_option_by_id(
@@ -1272,6 +1338,23 @@ def _planted_indices(state: RunState) -> Tuple[int, ...]:
     return tuple(range(planted))
 
 
+def _fill_owned_beds(state: RunState, facts: CatalogFacts) -> None:
+    """Replay a Collection visit, including owned Full Blooms in empty beds.
+
+    Full Bloom beds still generate Shared Growth. The production replay fills
+    in ownership order before purchases, after each purchase, and after swaps.
+    """
+    if state.planted_order is None:
+        return
+    for index in range(state.species_owned):
+        if len(state.planted_order) >= state.beds_owned:
+            break
+        if index not in state.planted_order:
+            state.planted_order.append(index)
+    if state.active_plant_index is None:
+        state.active_plant_index = _next_unfinished_plant_index(state, facts)
+
+
 def _rotate_completed_plants(
     state: RunState, facts: CatalogFacts, *, replace_completed: bool = True,
 ) -> None:
@@ -1350,21 +1433,6 @@ def _credit_plant_milestones(
     if not milestone_coins:
         return
     _credit(state, "plant_milestone", milestone_coins)
-    bonus_percent = state.milestone_bonus_percent
-    if not bonus_percent:
-        return
-    bonus_coins, state.milestone_coin_carry_units = divmod(
-        milestone_coins * bonus_percent + state.milestone_coin_carry_units,
-        100,
-    )
-    if bonus_coins:
-        _credit(
-            state,
-            "autumn_hearth"
-            if state.active_scenery_id == "autumn" else "other",
-            bonus_coins,
-        )
-        state.environment_effect_coins += bonus_coins
 
 
 def _enqueue_fertilizer_batch(
@@ -1578,7 +1646,7 @@ def _apply_review_growth(
     primary_units: int,
     milestone_schedule: MilestoneSchedule,
 ) -> None:
-    """Route one aggregated day's answer Growth through production lanes."""
+    """Route one answer or a linear batch through production Growth lanes."""
 
     requested_primary = max(0, int(primary_units))
     planted = _planted_indices(state)
@@ -1636,6 +1704,7 @@ def _purchase_day(
     permanent_plan: Sequence[PurchaseOption],
     consumable: Optional[PurchaseOption],
 ) -> None:
+    _fill_owned_beds(state, facts)
     non_endgame_plan = tuple(
         option for option in permanent_plan
         if option.category not in {"landmark", "mastery"}
@@ -1662,6 +1731,7 @@ def _purchase_day(
             while len(state.plant_growth_units) < state.species_owned:
                 state.plant_growth_units.append(0)
                 state.plant_species_ids.append(option.item_id)
+            _fill_owned_beds(state, facts)
             if (
                 state.active_plant_index is None
                 and _has_unfinished_planted_plant(state, facts)
@@ -1692,6 +1762,7 @@ def _purchase_day(
     _rotate_completed_plants(
         state, facts, replace_completed=scenario.rotate_completed_plants,
     )
+    _fill_owned_beds(state, facts)
 
     # The endgame strategy acknowledges an active project and contributes the
     # entire existing reserve. Funding is independent from later Coin claims.
@@ -1864,18 +1935,11 @@ def _equip_best_environment(
             continue
 
         def score(option: PurchaseOption):
-            growth, coins = _environment_daily_value(facts, option.item_id, scenario)
+            growth, coins = _environment_daily_value(facts, option.item_id, scenario, state)
             value = coins if objective == "coin" else growth
             return (value, option.item_id == current, option.item_id)
 
         setattr(state, attribute, max(candidates, key=score).item_id)
-    state.milestone_bonus_percent = sum(
-        effect.grant.amount
-        for effect in facts.effects_by_item_id.get(state.active_scenery_id, ())
-        if effect.trigger == "plant_milestone"
-        and effect.grant is not None
-        and effect.grant.kind.lower() == "milestone_coin_percent"
-    )
 
 
 def _effect_trigger_count(
@@ -2109,6 +2173,40 @@ def _collect_pre_shared_environment_growth(
     return total_units, frozenset(effect_ids)
 
 
+def _review_day_changes_routing(
+    state: RunState, facts: CatalogFacts, event: DayEvents,
+    permanent_growth_percent: int,
+) -> bool:
+    """Batch only when lane rounding and Full Bloom routing stay linear."""
+    planted = _planted_indices(state)
+    numerator, denominator = facts.shared_growth_numerator, facts.shared_growth_denominator
+    trophies = _active_trophies(state, facts)
+    for trophy in trophies:
+        if trophy.shared_growth_numerator * denominator > numerator * trophy.shared_growth_denominator:
+            numerator, denominator = trophy.shared_growth_numerator, trophy.shared_growth_denominator
+    primary = (facts.base_growth_per_review * GROWTH_UNITS_PER_POINT
+               + facts.base_growth_per_review * permanent_growth_percent
+               + GROWTH_UNITS_PER_POINT * sum(t.review_growth for t in trophies))
+    increments = [
+        effect.grant.amount * GROWTH_UNITS_PER_POINT
+        for item_id in (state.active_garden_bonus_id, state.active_scenery_id)
+        for effect in facts.effects_by_item_id.get(item_id, ())
+        if effect.trigger == "eligible_card" and effect.grant is not None
+        and effect.grant.kind.lower() == "growth"
+    ]
+    other_beds = max(0, len(planted) - 1)
+    if other_beds and any(value * numerator % denominator for value in (primary, *increments)):
+        return True
+    # This upper bound assumes every equipped increment on every answer.
+    # An actual crossing is always handled per answer, without predicting its
+    # exact card or mixing primary and Shared lane order across that crossing.
+    day_upper = event.answers * (primary + sum(increments))
+    day_upper += day_upper * other_beds * numerator // denominator
+    full = facts.full_bloom_growth * GROWTH_UNITS_PER_POINT
+    return any(0 < full - state.plant_growth_units[index] <= day_upper
+               for index in planted)
+
+
 def _apply_firefly_review_day(
     state: RunState,
     facts: CatalogFacts,
@@ -2116,14 +2214,13 @@ def _apply_firefly_review_day(
     consumables_by_id: Mapping[str, object],
     milestone_schedule: MilestoneSchedule,
     *,
-    rhythm_percent: int,
+    permanent_growth_percent: int,
 ) -> frozenset[str]:
     """Interleave order-sensitive effects with ordinary review Growth.
 
-    The ordinary accelerated path aggregates a day because every lane is
-    linear. Firefly's closest target and a card-counted consumable's attached
-    plant can change within a batch. Processing only those days card-by-card
-    preserves production ordering without slowing the ordinary simulation.
+    Full Bloom routing, direct Finds, fractional lanes and card-counted
+    effects can change within a batch. Linear days keep the aggregated path;
+    order-sensitive days preserve the production sequence answer by answer.
     """
 
     firefly = next(
@@ -2159,7 +2256,7 @@ def _apply_firefly_review_day(
 
     base_per_answer = (
         facts.base_growth_per_review * GROWTH_UNITS_PER_POINT
-        + facts.base_growth_per_review * max(0, int(rhythm_percent))
+        + facts.base_growth_per_review * max(0, int(permanent_growth_percent))
     )
     find_growth_by_answer = dict(event.find_growth_units_by_answer)
     for answer_number in range(1, max(0, int(event.answers)) + 1):
@@ -2196,11 +2293,13 @@ def _apply_firefly_review_day(
                 units = effect.grant.amount * GROWTH_UNITS_PER_POINT
                 environment_units += units
                 state.environment_effect_growth_units += units
+        trophy_units = GROWTH_UNITS_PER_POINT * sum(
+            t.review_growth for t in _active_trophies(state, facts))
+        state.answer_growth_sources["trophies"] += trophy_units
         _apply_review_growth(
             state,
             facts,
-            base_per_answer + consumable_units + environment_units
-            + GROWTH_UNITS_PER_POINT * sum(t.review_growth for t in _active_trophies(state, facts)),
+            base_per_answer + consumable_units + environment_units + trophy_units,
             milestone_schedule,
         )
 
@@ -2294,16 +2393,7 @@ def _consume_inventory_growth(
         card_count = consumable.card_count
         if consumable.growth_per_card:
             is_booster = consumable.consumable_kind.lower() == "booster"
-            extension_cards = sum(
-                effect.grant.amount
-                for owned in state.permanent_owned
-                for effect in facts.effects_by_item_id.get(owned, ())
-                if effect.trigger == "booster_activation"
-                and effect.grant is not None
-                and effect.grant.kind.lower() == "booster_card_limit"
-                and (not effect.active_only or owned in {state.active_garden_bonus_id, state.active_scenery_id})
-            ) if is_booster else 0
-            card_count += extension_cards
+            extension_cards = 0
             state.consumable_effect_cards[item_id] += card_count
             state.environment_extension_cards[item_id] += extension_cards
             state.consumable_active_batches.setdefault(item_id, []).append([
@@ -2548,6 +2638,7 @@ def _claim_achievements(
                         # No current achievement uses direct Growth, but keeping
                         # the catalog grant general avoids a future omission.
                         units = grant.amount * GROWTH_UNITS_PER_POINT
+                        state.answer_growth_sources["achievement_growth"] += units
                         _apply_growth(
                             state,
                             facts,
@@ -2569,6 +2660,29 @@ def _claim_achievements(
         state.achievement_cursors[metric] = cursor
     if activate_trophies:
         _activate_earned_trophies(state, facts, answers=state.answers, include_completions=True)
+
+
+def _growth_source_totals(state: RunState) -> Mapping[str, int]:
+    """Disjoint generated-Growth contributions, excluding the opening balance.
+
+    Inventory rewards count when consumed, under the supply delivering Growth;
+    they are not also credited to the Find or scenery that awarded the item.
+    Shared Growth is its own incremental contribution, never counted twice.
+    """
+    return {
+        "base_cards": state.answer_growth_sources["base_cards"],
+        "shared_growth": state.shared_growth_units,
+        "streak_bonus": state.answer_growth_sources["streak_bonus"],
+        "fertilizer": sum(value for key, value in state.consumable_growth_by_item_units.items()
+                          if key.startswith("fertilizer_")),
+        "booster_potions": state.consumable_growth_by_item_units["booster_potion"],
+        "growth_charges": sum(value for key, value in state.consumable_growth_by_item_units.items()
+                              if key.startswith("growth_charge_")),
+        "direct_finds": state.find_growth_units,
+        "appearance_effects": state.environment_effect_growth_units,
+        "trophies": state.answer_growth_sources["trophies"],
+        "achievement_growth": state.answer_growth_sources["achievement_growth"],
+    }
 
 
 def _checkpoint_metrics(state: RunState, facts: CatalogFacts) -> Mapping[str, Optional[float]]:
@@ -2688,7 +2802,6 @@ def _checkpoint_metrics(state: RunState, facts: CatalogFacts) -> Mapping[str, Op
             state.gross_coins
             - state.coin_sources["todays_cards"]
             - state.coin_sources["all_due"]
-            - state.coin_sources["completion_cycle_5"]
         ),
         "coins.spent": state.spent_coins,
         "coins.ending": state.wallet,
@@ -2894,6 +3007,10 @@ def _checkpoint_metrics(state: RunState, facts: CatalogFacts) -> Mapping[str, Op
                 if check_opportunities else 0.0
             ),
         })
+    metrics.update({
+        f"growth.source.{key}": value
+        for key, value in _growth_source_totals(state).items()
+    })
     return metrics
 
 
@@ -3038,7 +3155,7 @@ def simulate_scenario(
     # Bed unlocks do not plant seedlings until the next Collection visit.
     state.planted_order = list(_planted_indices(state))
     _equip_best_environment(state, facts, scenario)
-    permanent_plan = _permanent_priority(facts, scenario)
+    permanent_plan = _permanent_priority(facts, scenario, state)
     consumable = _best_consumable(
         facts.purchase_options,
         scenario.strategy.optimize_for or "growth",
@@ -3070,7 +3187,7 @@ def simulate_scenario(
 
     for event in stream:
         complete = False
-        rhythm_percent = 0
+        permanent_growth_percent = 0
         if event.study:
             active_index += 1
             state.studied_days += 1
@@ -3083,43 +3200,8 @@ def simulate_scenario(
             if complete:
                 state.completed_days += 1
 
-            _credit(state, "first_eligible_answer", facts.daily_activity_coins)
-            if complete:
-                _credit(state, "todays_cards", facts.completion_coins)
-                journal_coins = sum(t.completion_coins for t in _active_trophies(state, facts))
-                if journal_coins:
-                    _credit(state, "achievement_trophy", journal_coins)
-                state.garden_cycle_remainder += 1
-                if (
-                    state.garden_cycle_remainder
-                    >= facts.garden_cycle_completions
-                ):
-                    state.garden_cycle_remainder = 0
-                    _credit(
-                        state,
-                        "completion_cycle_5",
-                        facts.garden_cycle_coins,
-                    )
-            # Production folds only the first seven-day cycle into the
-            # streak_7 achievement's identical 10-Coin payout.  After a gap,
-            # a later streak may reach seven again; because the achievement
-            # is already owned, that cycle uses the recurring source.
-            if (
-                state.study_run % 7 == 0
-                and (
-                    state.study_run != 7
-                    or "streak_7" in state.claimed_achievements
-                )
-            ):
-                _credit(
-                    state,
-                    "seven_day_streak_cycle",
-                    facts.weekly_streak_coins,
-                )
-
-            rhythm_percent = facts.rhythm_percent(
-                sum(state.recent_completion_flags[-7:])
-            )
+            # Match the replay strategy: use previously owned supplies before
+            # the first answer can award this day's streak achievement items.
             _consume_inventory_growth(
                 state,
                 facts,
@@ -3130,11 +3212,29 @@ def simulate_scenario(
                 answers=event.answers,
                 complete=complete,
             )
+            _claim_achievements(
+                state, facts, event_answers=event.answers,
+                achievements_by_metric={"streak_days": achievements_by_metric.get("streak_days", ())},
+                beds_by_item_id=beds_by_item_id, milestone_schedule=milestone_schedule,
+                activate_trophies=False,
+            )
+            _credit(state, "first_eligible_answer", facts.daily_activity_coins)
+            if complete:
+                _credit(state, "todays_cards", facts.completion_coins)
+                journal_coins = sum(t.completion_coins for t in _active_trophies(state, facts))
+                if journal_coins:
+                    _credit(state, "achievement_trophy", journal_coins)
+            permanent_growth_percent = max((item.permanent_growth_percent
+                for item in facts.achievements if item.achievement_id in state.claimed_achievements), default=0)
+            state.answer_growth_sources["base_cards"] += (
+                event.answers * facts.base_growth_per_review * GROWTH_UNITS_PER_POINT)
+            state.answer_growth_sources["streak_bonus"] += (
+                event.answers * facts.base_growth_per_review * permanent_growth_percent)
             active_consumable_is_order_sensitive = any(
                 max(0, int(batch[0])) > 0
                 and (
                     len(batch) < 3
-                    or int(batch[2]) == state.active_plant_index
+                    or int(batch[2]) == _supply_target_index(state, facts)
                 )
                 for batches in state.consumable_active_batches.values()
                 for batch in batches
@@ -3144,6 +3244,8 @@ def simulate_scenario(
                  and not _garden_supplies_available(state, facts))
                 or active_consumable_is_order_sensitive
                 or bool(event.find_growth_units_by_answer)
+                or _review_day_changes_routing(
+                    state, facts, event, permanent_growth_percent)
                 or any(
                     t not in _active_trophies(state, facts) and (
                         (t.progress_metric == "lifetime_answers" and state.answers >= t.progress_target)
@@ -3158,7 +3260,7 @@ def simulate_scenario(
                     event,
                     consumables_by_id,
                     milestone_schedule,
-                    rhythm_percent=rhythm_percent,
+                    permanent_growth_percent=permanent_growth_percent,
                 )
             else:
                 consumable_primary_units = _apply_active_consumable_growth(
@@ -3176,12 +3278,15 @@ def simulate_scenario(
                         complete=complete,
                     )
                 )
+                state.answer_growth_sources["trophies"] += (
+                    event.answers * GROWTH_UNITS_PER_POINT
+                    * sum(t.review_growth for t in _active_trophies(state, facts)))
                 primary_units = (
                     event.answers
                     * (
                         facts.base_growth_per_review
                         * GROWTH_UNITS_PER_POINT
-                        + facts.base_growth_per_review * rhythm_percent
+                        + facts.base_growth_per_review * permanent_growth_percent
                         + GROWTH_UNITS_PER_POINT * sum(t.review_growth for t in _active_trophies(state, facts))
                     )
                     + consumable_primary_units
@@ -3238,10 +3343,8 @@ def simulate_scenario(
         for item_id in event.inventory_items:
             state.inventory[item_id] += 1
             state.consumable_units_earned[item_id] += 1
-        ownership_changed = False
         for discovery in event.environment_discoveries:
             item_id = discovery.item_id
-            ownership_changed = ownership_changed or item_id not in state.permanent_owned
             if item_id not in state.permanent_owned:
                 tier_id = discovery.tier_id
                 owned_before = state.environment_owned_count_by_tier[tier_id]
@@ -3280,9 +3383,6 @@ def simulate_scenario(
             for tier_id, count in event.environment_blocked_completion_checks:
                 state.environment_blocked_completions_by_tier[tier_id] += count
         if scenario.all_environments_owned:
-            ownership_changed = ownership_changed or not set(
-                facts.environment_discovery_ids
-            ).issubset(state.permanent_owned)
             state.permanent_owned.update(facts.environment_discovery_ids)
         state.environment_owned = sum(
             item_id in state.permanent_owned
@@ -3299,7 +3399,6 @@ def simulate_scenario(
                 milestone_schedule=milestone_schedule,
             )
 
-        permanent_count_before_purchase = len(state.permanent_owned)
         _purchase_day(
             state,
             facts,
@@ -3308,12 +3407,8 @@ def simulate_scenario(
             permanent_plan,
             consumable,
         )
-        ownership_changed = (
-            ownership_changed
-            or len(state.permanent_owned) != permanent_count_before_purchase
-        )
-        if ownership_changed:
-            _equip_best_environment(state, facts, scenario)
+        # Bed occupancy and trophy rates can change an item's total output.
+        _equip_best_environment(state, facts, scenario)
         if capture_trace:
             release_state_rows.append(_annual_release_state_row(state, facts))
             trace_rows.append({
@@ -3323,7 +3418,7 @@ def simulate_scenario(
                 "answers": event.answers,
                 "completed_today": complete,
                 "study_run": state.study_run,
-                "garden_rhythm_percent": rhythm_percent,
+                "permanent_growth_percent": permanent_growth_percent,
                 "growth_total_units": state.total_growth_units,
                 "growth_applied_units": state.applied_growth_units,
                 "growth_stored_balance_units": state.stored_growth_units,
@@ -3345,7 +3440,6 @@ def simulate_scenario(
                 "active_scenery_id": state.active_scenery_id,
                 "environment_effect_growth_units": state.environment_effect_growth_units,
                 "environment_effect_coins": state.environment_effect_coins,
-                "garden_cycle_remainder": state.garden_cycle_remainder,
                 "coin_sources": dict(sorted(state.coin_sources.items())),
             })
         if event.day in config.checkpoint_days:
@@ -3360,6 +3454,8 @@ def simulate_scenario(
                 }
 
     failures = []
+    if sum(_growth_source_totals(state).values()) != state.total_growth_units:
+        failures.append("GROWTH-SOURCE-RECONCILIATION")
     if state.gross_coins - state.spent_coins != state.wallet:
         failures.append("LEDGER-COIN-RECONCILIATION")
     if state.wallet < 0:
@@ -3693,7 +3789,7 @@ def _concentration_findings(
                 "observed": observed,
                 "interpretation": "Calculated from pooled exact ledger-source totals.",
                 "caveat": (
-                    "Today’s Cards and Garden Cycle remain one behavioral family."
+                    "Completion income uses the consolidated daily reward."
                     if field == "completion_family_share" else ""
                 ),
             })
@@ -3906,9 +4002,6 @@ def _catalog_analysis(facts: CatalogFacts) -> Mapping[str, object]:
         "coins": {
             "daily_activity": facts.daily_activity_coins,
             "valid_completion": facts.completion_coins,
-            "weekly_streak": facts.weekly_streak_coins,
-            "garden_cycle_every_completions": facts.garden_cycle_completions,
-            "garden_cycle_coins": facts.garden_cycle_coins,
             "permanent_cost_by_category": dict(sorted(permanent_costs.items())),
             "permanent_cost_total": sum(permanent_costs.values()),
             "functional_catalog_cost_total": sum(
@@ -4067,8 +4160,8 @@ def _collect_cohort(
                     if (
                         value is not None
                         and (
-                            metric_id == "coins.gross"
-                            or metric_id.startswith("coins.source.")
+                            metric_id in {"coins.gross", "growth.generated_units"}
+                            or metric_id.startswith(("coins.source.", "growth.source."))
                         )
                     ):
                         if isinstance(value, bool) or not isinstance(value, int):
@@ -4401,7 +4494,7 @@ def simulate_balance(
                 statistic["conditional_reacher_population_scope"] = (
                     f"{scenario_id}|day_{checkpoint_day}|reached_by_checkpoint"
                 )
-            if metric_id == "coins.gross" or metric_id.startswith("coins.source."):
+            if metric_id in {"coins.gross", "growth.generated_units"} or metric_id.startswith(("coins.source.", "growth.source.")):
                 statistic["pooled_total"] = exact_integer_totals[
                     (scenario_id, checkpoint_day, metric_id)
                 ]

@@ -63,6 +63,26 @@ def _recorded_plant_purchase(amount: int) -> CompletedPurchaseRequest:
     )
 
 
+def test_plant_beds_restore_legacy_completion_without_inventing_bonus_receipt():
+    from ankigarden.models.state import Achievement
+    from ankigarden.plant_beds import plant_bed_progress
+
+    state = GardenState(plants=[Plant("retained", "bonsai", "Retained", 0)],
+                        active_plant_id="retained")
+    state.achievements["flourishing_garden"] = Achievement(
+        "flourishing_garden", "Flourishing Garden", "", unlocked=True,
+        unlocked_at="2026-09-07T12:00:00+00:00")
+    loaded = GardenState.from_dict(state.to_dict())
+    bed = plant_bed_progress(loaded)[5]
+    assert loaded.unlocked_slots == 6 and bed.unlocked
+    assert bed.unlocked_at == "2026-09-07T12:00:00+00:00"
+    assert not bed.bonus_received and bed.current == 0
+    assert loaded.plants[0].slot_index == 0 and loaded.active_plant_id == "retained"
+    again = GardenState.from_dict(loaded.to_dict())
+    assert plant_bed_progress(again) == plant_bed_progress(loaded)
+    assert again.consumables == loaded.consumables
+
+
 def test_v25_migration_preserves_growth_and_converts_paid_effects_by_ceil() -> None:
     state = GardenState(
         plants=[Plant("plant-1", "bonsai", "Moss", 0)],
@@ -96,14 +116,19 @@ def test_v25_migration_preserves_growth_and_converts_paid_effects_by_ceil() -> N
         "very_rare": 99,
         "ultra": 99,
     }
-    payload.pop("full_moon_completion_progress", None)
-    payload["environment_completion_counts"] = {"full_moon": 7}
 
     migrated = migrate_modern_state(payload, migrated_at=1_000.0)
 
     assert migrated.version == STATE_VERSION
     assert migrated.stored_growth_units == 12_345
     assert migrated.earned_bed_unlocks == [3, 4, 5, 6]
+    from ankigarden.plant_beds import plant_bed_progress
+    beds = plant_bed_progress(migrated)
+    assert all(bed.unlocked and bed.unlocked_at is None for bed in beds)
+    assert not beds[5].bonus_received  # A purchased-bed migration is not an item grant.
+    reloaded = GardenState.from_dict(migrated.to_dict())
+    assert plant_bed_progress(reloaded) == beds
+    assert reloaded.consumables == migrated.consumables
     assert {
         "first_canopy",
         "first_full_bloom",
@@ -130,7 +155,6 @@ def test_v25_migration_preserves_growth_and_converts_paid_effects_by_ceil() -> N
         "very_rare": 0,
         "ultra": 0,
     }
-    assert migrated.full_moon_completion_progress == 5
     batch = migrated.plants[0].card_effect_queue.fertilizer_batches[0]
     # 1,801 seconds of a 3,600-second dose: ceil(100 * 1801 / 3600) = 51.
     assert (batch.total_cards, batch.remaining_cards) == (100, 51)
@@ -143,21 +167,6 @@ def test_v25_migration_preserves_growth_and_converts_paid_effects_by_ceil() -> N
         "migration:v26:bed_refund:6": 800,
         "migration:v26:plant_refund:00000000-0000-0000-0000-000000000123": 350,
     }
-
-
-def test_full_moon_migration_preserves_each_old_fraction_without_overpaying() -> None:
-    expected_by_old_remainder = {0: 0, 1: 2, 2: 3, 3: 5}
-    for old_remainder, expected_progress in expected_by_old_remainder.items():
-        payload = GardenState().to_dict()
-        payload["version"] = 25
-        payload.pop("full_moon_completion_progress", None)
-        payload["environment_completion_counts"] = {
-            "full_moon": 8 + old_remainder
-        }
-
-        migrated = migrate_modern_state(payload, migrated_at=1_000.0)
-
-        assert migrated.full_moon_completion_progress == expected_progress
 
 
 def test_schema25_growth_overflow_is_conserved_in_exact_stored_units() -> None:
@@ -284,7 +293,7 @@ def test_v25_bounded_request_receipts_seed_permanent_idempotency(tmp_path) -> No
     ledger.close()
 
 
-def test_storage_wrappers_expose_snapshot_and_rhythm_history(tmp_path) -> None:
+def test_storage_wrappers_expose_snapshot_and_completion_history(tmp_path) -> None:
     ledger = RewardLedger(tmp_path / "ledger.sqlite3")
     ledger.stage_answer_consumption(AnswerConsumptionRecord(
         "answer-1", "2026-08-28"
@@ -298,7 +307,6 @@ def test_storage_wrappers_expose_snapshot_and_rhythm_history(tmp_path) -> None:
     snapshot = storage.stage_daily_economy_snapshot(
         DailyEconomySnapshotRecord(
             anki_day="2026-08-30",
-            garden_rhythm_percent=2,
             active_garden_bonus_id="seedling_sign",
             active_scenery_effect_id="default",
             snapshot_source="local_first_answer",
@@ -399,8 +407,6 @@ def test_schema26_to_27_preserves_value_and_grandfathers_claimed_funding(
         .grandfathered_funding_units_by_species
     ) == {"bonsai": 17_500_000}
     assert migrated.garden_legacy_level == migrated.garden_legacy_progress_units == 0
-    assert migrated.garden_cycle_remainder == 0
-    assert not migrated.garden_cycle_history_complete
     ledger = RewardLedger(tmp_path / "preserved-endgame.sqlite3")
     GardenStorage._initialize_schema27_migration_metadata(ledger, migrated)
     migration = ledger.idempotency_record(
@@ -421,34 +427,6 @@ def test_schema26_to_27_preserves_value_and_grandfathers_claimed_funding(
     ledger.close()
 
 
-def test_schema27_cycle_migration_uses_only_reconciled_completion_history(
-    tmp_path,
-) -> None:
-    ledger = RewardLedger(tmp_path / "cycle-ledger.sqlite3")
-    for day in range(1, 7):
-        ledger.stage_reward_event(RewardEventRecord(
-            f"all_due:2026-08-{day:02d}", "all_due", f"2026-08-{day:02d}"
-        ))
-    state = GardenState()
-    state.lifetime_economy_aggregates.today_cards_completions = 6
-
-    GardenStorage._initialize_schema27_migration_metadata(ledger, state)
-
-    assert state.garden_cycle_remainder == 1
-    assert state.garden_cycle_history_complete
-    migration = ledger.idempotency_record(
-        "migration", "migration:schema27:economy-authorities"
-    )
-    assert migration is not None
-    assert migration.outcome["endgame_reconciliation_version"] == 1
-    assert migration.outcome["landmark_highest_claimed_tier_baseline"] == 0
-    assert migration.outcome[
-        "mastery_highest_claimed_rank_baseline_by_species"
-    ] == {}
-    ledger.rollback_all()
-    ledger.close()
-
-
 def test_schema26_empty_history_stays_explicitly_incomplete(tmp_path) -> None:
     payload = GardenState().to_dict()
     payload["version"] = 26
@@ -457,8 +435,6 @@ def test_schema26_empty_history_stays_explicitly_incomplete(tmp_path) -> None:
 
     GardenStorage._initialize_schema27_migration_metadata(ledger, state)
 
-    assert not state.garden_cycle_history_complete
-    assert state.garden_cycle_remainder == 0
     storage = GardenStorage.__new__(GardenStorage)
     storage.state = state
     storage._reward_ledger = ledger
@@ -671,7 +647,6 @@ def test_equipment_upgrade_preserves_display_progress_and_earned_state(tmp_path,
     ledger = RewardLedger(database)
     GardenStorage._initialize_schema27_migration_metadata(ledger, state)
     # These values have advanced since the earlier migration's opening record.
-    state.garden_cycle_remainder = 3
     state.currency_balance = 543
     payload = state.to_dict()
     payload["version"] = 27

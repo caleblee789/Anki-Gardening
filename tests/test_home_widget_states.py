@@ -406,7 +406,7 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
     assert f'title="{name} · 30 / 500 Growth"' in html
     assert f'class="ag-home__plant-name">{name}</span>' in html
     assert 'class="ag-home__plant-stage"' not in html
-    assert '>Next: Full Bloom · 30 / 500 Growth</span>' in html
+    assert '>30 / 500 Growth to Full Bloom</span>' in html
     assert "white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 400px)" in html
@@ -766,6 +766,7 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
 ])
 def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(points, stage, name, progress, mode) -> None:
     state = SimpleNamespace(
+        achievements={},
         daily_stats=SimpleNamespace(
             growth_earned=0,
             base_growth=0,
@@ -823,6 +824,7 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
 
 def test_home_keeps_scenery_and_equipment_state_but_omits_decoration_art() -> None:
     state = SimpleNamespace(
+        achievements={},
         daily_stats=SimpleNamespace(
             growth_earned=0,
             base_growth=0,

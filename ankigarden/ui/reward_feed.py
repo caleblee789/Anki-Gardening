@@ -56,10 +56,10 @@ class _FeedDelegate(QStyledItemDelegate):
         self.new_ids = set()
         self.progress = 1.0
         self.title_font = QFont(view.font())
-        self.title_font.setPixelSize(12)
+        self.title_font.setPixelSize(14)
         self.title_font.setWeight(QFont.Weight.DemiBold)
         self.small_font = QFont(view.font())
-        self.small_font.setPixelSize(11)
+        self.small_font.setPixelSize(13)
         self.value_font = QFont(self.title_font)
         self.body_font = QFont(self.title_font)
         self.body_font.setWeight(QFont.Weight.Normal)
@@ -86,24 +86,18 @@ class _FeedDelegate(QStyledItemDelegate):
         tone = reward_treatment(item)
         title = project_reward_detail_rows((item,))[0].name
         if item.kind == RewardHero.ROUTINE_GROWTH and item.artwork_ref != "stored_growth":
-            title = "Card reward"
-        category = {
-            RewardHero.FULL_BLOOM: "Growth milestone",
-            RewardHero.STAGE_CHANGE: "Growth milestone",
-            RewardHero.CHECKPOINT: "Checkpoint",
-            RewardHero.ENVIRONMENT_DISCOVERY: "New discovery",
-            RewardHero.GARDEN_FIND: "Garden Find",
-            RewardHero.COIN_OR_BOOSTER: "Item earned" if item.inventory_items else "",
-        }.get(item.kind, "")
+            title = "Card Growth"
+        category = ""
         detail = " · ".join(item.learner_inventory_labels)
         if not detail and item.kind not in {RewardHero.ROUTINE_GROWTH, RewardHero.FULL_BLOOM, RewardHero.STAGE_CHANGE, RewardHero.CHECKPOINT}:
             detail = item.detail if item.detail.casefold() != title.casefold() else ""
         if item.kind == RewardHero.GARDEN_FIND and (item.growth_units or item.garden_coins):
             detail = ""
-        text_width = max(60, width - 76)
+        badge_width = QFontMetrics(self.small_font).horizontalAdvance(tone.label) + 20 if tone.label and tone.label.casefold() not in title.casefold() else 0
+        text_width = max(60, width - 76 - badge_width)
         title_height = QFontMetrics(self.title_font).boundingRect(QRect(0, 0, text_width, 1000), Qt.TextFlag.TextWordWrap, title).height()
         detail_height = QFontMetrics(self.small_font).boundingRect(QRect(0, 0, text_width, 1000), Qt.TextFlag.TextWordWrap, detail).height() if detail else 0
-        heading_height = 22 if category or tone.label else 0
+        heading_height = 0
         values_height = 20 if item.growth_units or item.garden_coins else 0
         height = 20 + heading_height + max(40, title_height + (4 + detail_height if detail else 0) + values_height)
         return item, tone, title, category, detail, title_height, detail_height, heading_height, height
@@ -137,7 +131,7 @@ class _FeedDelegate(QStyledItemDelegate):
         painter.setPen(QColor(GARDEN_THEME['text_primary']))
         if category:
             painter.drawText(QRect(left, top, width - 24, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, category)
-        if tone.label:
+        if tone.label and tone.label.casefold() not in title.casefold():
             painter.setFont(self.small_font)
             badge_w = QFontMetrics(self.small_font).horizontalAdvance(tone.label) + 14
             badge = QRectF(card.right() - badge_w - 8, top, badge_w, 18)
@@ -155,10 +149,10 @@ class _FeedDelegate(QStyledItemDelegate):
             painter.drawPixmap(QRect(left + (40 - size.width()) // 2,
                                      top + (40 - size.height()) // 2,
                                      size.width(), size.height()), pixmap)
-        text_left, text_width = left + 48, max(60, width - 76)
+        text_left, text_width = left + 48, max(60, width - 76 - (QFontMetrics(self.small_font).horizontalAdvance(tone.label) + 20 if tone.label and tone.label.casefold() not in title.casefold() else 0))
         milestone = item.kind in {RewardHero.FULL_BLOOM, RewardHero.STAGE_CHANGE, RewardHero.CHECKPOINT}
-        painter.setFont(self.body_font if milestone else self.title_font)
-        painter.setPen(QColor(GARDEN_THEME['text_secondary'] if milestone else tone.color if tone.notable else GARDEN_THEME['text_primary']))
+        painter.setFont(self.title_font)
+        painter.setPen(QColor(tone.color if tone.notable else GARDEN_THEME['text_primary']))
         painter.drawText(QRect(text_left, top, text_width, title_h), Qt.TextFlag.TextWordWrap, title)
         value_top = top + title_h + 4
         if detail:

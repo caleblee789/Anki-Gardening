@@ -97,6 +97,47 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
             dashboard.resize(1040, 720)
             dashboard.toast_region.clear()
             _settle()
+            if route.startswith("plant-beds-"):
+                from ..achievements import BED_MILESTONES, ACHIEVEMENTS_BY_ID
+                from ..models.state import Achievement, Plant, CURRENT_CATALOG_SPECIES_ORDER, GROWTH_THRESHOLDS
+                from ..plant_beds import plant_bed_progress
+                state = storage.state
+                unlocked_count = {"plant-beds-starting": 2, "plant-beds-partial": 4,
+                                  "plant-beds-unlocked": 6}[route]
+                species_count = {2: 0, 4: 2, 6: 6}[unlocked_count]
+                state.unlocked_slots = unlocked_count
+                state.earned_bed_unlocks = list(range(3, unlocked_count + 1))
+                state.plants = [Plant(f"bed-fixture-{index}", species, species.title(),
+                                      index if index < 2 else None,
+                                      growth_points=GROWTH_THRESHOLDS[-1] if index < species_count else 0)
+                                for index, species in enumerate(CURRENT_CATALOG_SPECIES_ORDER[:max(1, species_count)])]
+                state.active_plant_id = state.plants[0].plant_id
+                state.unlocked_species = [plant.species for plant in state.plants]
+                state.recent_reward_receipts = []
+                for milestone, bed in BED_MILESTONES.items():
+                    definition = ACHIEVEMENTS_BY_ID[milestone]
+                    unlocked = bed <= unlocked_count
+                    state.achievements[milestone] = Achievement(
+                        milestone, definition.name, definition.description,
+                        unlocked=unlocked, progress=1.0 if unlocked else 0.0,
+                        unlocked_at="2026-09-07T12:00:00+00:00" if unlocked else None,
+                        rewarded_at="2026-09-07T12:00:00+00:00" if unlocked else None,
+                        reward_event_key=f"achievement:{milestone}" if unlocked else "",
+                    )
+                dashboard.refresh_all(acknowledge=False)
+                dashboard.open_section("progress", "plant_beds")
+                _settle()
+                page = dashboard.progress_dialog.plant_beds
+                checks["unlockable_beds_in_order"] = list(page.cards) == [f"bed_{number}" for number in range(3, 7)]
+                checks["starter_summary"] = page.starter_summary.text() == "Beds 1 and 2 are available from the start."
+                checks["unlocked_count"] = sum(row.unlocked for row in plant_bed_progress(state)) == unlocked_count
+                checks["counter_includes_starters"] = page.count.text() == ("All 6 beds unlocked" if unlocked_count == 6 else f"{unlocked_count} of 6 beds unlocked")
+                checks["page_visible"] = page.isVisibleTo(dashboard)
+                checks["no_scroll_at_normal_size"] = page.verticalScrollBar().maximum() == 0
+                from .workspace import capture_plant_beds_layouts
+                capture_plant_beds_layouts(runner, route)
+                capture()
+                return
             if route in {"starter-nurture", "welcome", "welcome-rewards"}:
                 cleanups.append(runner._replace_capture_state(GardenState()))
                 if route == "welcome-rewards":
@@ -221,10 +262,16 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
                 else:
                     dashboard.open_section("progress", "achievements")
                 _settle()
-                scrolls = [s for s in dashboard.findChildren(QScrollArea) if s.isVisibleTo(dashboard) and s.verticalScrollBar().maximum() > 0]
-                if not scrolls:
-                    raise RuntimeError("Expected a scrollable content owner")
-                scroll = max(scrolls, key=lambda s:s.verticalScrollBar().maximum())
+                if route == "supplies-end":
+                    # The two-column catalog can fit without vertical scrolling.
+                    scroll = dashboard.nursery_dialog.supplements_scroll
+                    if not scroll.isVisibleTo(dashboard):
+                        raise RuntimeError("Expected the visible Supplies content owner")
+                else:
+                    scrolls = [s for s in dashboard.findChildren(QScrollArea) if s.isVisibleTo(dashboard) and s.verticalScrollBar().maximum() > 0]
+                    if not scrolls:
+                        raise RuntimeError("Expected a scrollable content owner")
+                    scroll = max(scrolls, key=lambda s:s.verticalScrollBar().maximum())
                 scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
                 _settle()
                 checks["scroll_at_end"] = scroll.verticalScrollBar().value() == scroll.verticalScrollBar().maximum()
@@ -252,7 +299,9 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
                 dialog = GardenSettingsDialog(dashboard, engine, runner.app.config)
                 dialog.prepare_to_show()
                 dialog.show()
-                cleanups.append(lambda: runner._close_widget(dialog))
+                # Explicit Cancel discards the fixture draft; X/Escape exercise
+                # the production dirty-close confirmation instead.
+                cleanups.append(dialog.cancel_settings.click)
                 if route == "settings-dirty":
                     dialog.garden_name_edit.setText("My Moonlit Garden")
                     _settle()

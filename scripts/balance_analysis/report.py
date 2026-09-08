@@ -1347,14 +1347,13 @@ def build_pdf(report: Mapping[str, Any], output_path: Path) -> Path:
         elif section_index == 7:
             coin_analysis = analysis.get("coins", {})
             story.append(table([
-                ["First answer", "Today’s Cards", "Garden Cycle / 5", "Functional cost"],
+                ["Study 1 card", "Finish all cards due today", "Functional cost"],
                 [
                     _fmt(coin_analysis.get("daily_activity"), 0),
                     _fmt(coin_analysis.get("valid_completion"), 0),
-                    _fmt(coin_analysis.get("garden_cycle_coins"), 0),
                     _fmt(coin_analysis.get("functional_catalog_cost_total"), 0),
                 ],
-            ], widths=[1.4 * inch, 1.5 * inch, 1.45 * inch, 1.95 * inch], tiny=True))
+            ], widths=[1.5 * inch, 3 * inch, 1.8 * inch], tiny=True))
             story.append(Spacer(1, 7))
             concentration_data = [[
                 "Cohort",

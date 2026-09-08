@@ -111,6 +111,8 @@ def test_package_contains_runtime_and_excludes_mutable_data(
         capabilities = _archive_capabilities(archive)
         packaged_game = archive.read("game.py").decode("utf-8")
         asset_manifest = json.loads(archive.read("assets/manifest.json"))
+        availability: dict[str, object] = {}
+        exec(archive.read("feature_availability.py"), availability)
         expected = {
             path.relative_to(ADDON).as_posix(): package_payload(path)
             for path in package_files()
@@ -166,6 +168,13 @@ def test_package_contains_runtime_and_excludes_mutable_data(
     assert OBSOLETE_ROSE_V6_ALIASES.isdisjoint(names)
     packaged_assets = {name for name in names if name.startswith("assets/")}
     assert packaged_assets == runtime_asset_paths()
+    for category, flag in (
+        ("landmarks", "LANDMARKS_ENABLED"),
+        ("mastery", "MASTERY_ENABLED"),
+    ):
+        enabled = availability[flag]
+        assert any(row["category"] == category for row in asset_manifest["assets"]) == enabled
+        assert any(f"/{category}/" in name for name in packaged_assets) == enabled
     assert not any(
         "/backgrounds/" in name and "_16x9" in name for name in packaged_assets
     )

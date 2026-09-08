@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 import json
 from typing import Any, Iterable, Mapping
 
+from .reward_counts import activity_drop_count
+
 
 ACTIVITY_SCHEMA = (
     """CREATE TABLE IF NOT EXISTS activity_event (
@@ -91,7 +93,6 @@ class ActivityEntry:
 
 ALIASES = {
     "daily_activity": "first_eligible_answer",
-    "weekly_streak": "seven_day_streak_cycle",
     "all_due": "todays_cards",
     "garden_find": "standard_find",
     "achievement_backfill": "achievement",
@@ -110,8 +111,9 @@ def source_name(source: str, source_id: str = "", reason: str = "",
         from .reward_presentation import _inventory_item_name
         return f"{_inventory_item_name(source_id)} used" if source_id else "Garden item used"
     if source == "achievement":
-        if source_id == "streak_7":
-            return "7-day streak & achievement"
+        from .achievements import BED_MILESTONES
+        if source_id in BED_MILESTONES:
+            return f"Bed {BED_MILESTONES[source_id]} unlocked"
         name = (achievement_names or {}).get(source_id, "")
         if not name:
             from .achievements import ACHIEVEMENTS_BY_ID
@@ -120,9 +122,6 @@ def source_name(source: str, source_id: str = "", reason: str = "",
         return f"Achievement · {name}" if name else "Achievement reward"
     if source == "first_eligible_answer":
         return "First card today"
-    if source == "seven_day_streak_cycle":
-        day = source_id.removeprefix("day_")
-        return f"{day}-day streak reward" if day.isdigit() else "7-day streak reward"
     if source == "standard_find":
         name = reason.removeprefix("Standard Find: ").removeprefix("Garden Find: ")
         return learner_card_copy(name) if name else "Garden Find"
@@ -138,7 +137,7 @@ def source_name(source: str, source_id: str = "", reason: str = "",
         "legacy": "Earlier Coin activity", "garden_find_environment": "Garden discovery",
         "environment_completion_gift": "Scenery gift",
         "garden_decoration": "Garden bonus", "growth_charge": "Growth Charge used",
-        "charge": "Growth Charge used", "answer_growth": "Review Growth",
+        "charge": "Growth Charge used", "answer_growth": "Card Growth",
         "prism_harvest": "Prism Trellis", "adjustment": "Coin adjustment",
     }
     if source in names:
@@ -178,7 +177,7 @@ def event_from_economy(record: Any, *, state: Any = None,
     if receipts:
         payload["items"] = [
             {"kind": r.reward_type, "item_id": r.item_id, "amount": r.amount,
-             "name": r.title}
+             "name": r.title, "source": r.source, "event_key": r.event_key}
             for r in receipts if r.reward_type in {"inventory_item", "environment_item"}
         ]
     metrics = dict(record.metric_deltas or {})
@@ -199,16 +198,36 @@ def event_from_economy(record: Any, *, state: Any = None,
         if purchase is not None:
             payload["reason"] = purchase.item_name + (f" ×{purchase.quantity:,}" if purchase.quantity > 1 else "")
             payload["purchase_named"] = True
+    find_count = sum(int(v) for v in dict(metrics.get("finds_by_outcome", {})).values())
+    payload["standard_find_count"] = find_count
+    payload["drop_count_version"] = 1
+    drops = activity_drop_count(find_count, source, payload.get("items", ()))
     growth = int(record.growth_generated_units)
     if earlier and not growth and record.growth_flow_kind == "legacy_unreconciled":
         payload["growth_unavailable"] = True
     return ActivityEvent(
         key, key, str(record.scheduler_day), str(record.occurred_at), source,
         correlation_id, coin_delta, growth, 0,
-        sum(int(v) for v in dict(metrics.get("finds_by_outcome", {})).values()),
+        drops,
         source in {"migration", "refund", "adjustment"} or record.event_kind == "migration",
         payload,
     )
+
+
+def updated_activity_drop_counts(connection: Any) -> Iterable[ActivityEvent]:
+    """Upgrade only the disposable display projection, preserving grant facts."""
+    for row in connection.execute("SELECT * FROM activity_event"):
+        payload = json.loads(row["payload_json"])
+        if payload.get("drop_count_version") == 1:
+            continue
+        find_count = int(payload.get("standard_find_count", row["finds"]))
+        payload.update(standard_find_count=find_count, drop_count_version=1)
+        yield ActivityEvent(
+            row["event_key"], row["group_id"], row["scheduler_day"], row["occurred_at"],
+            row["source"], row["correlation_id"], row["coins"], row["growth_units"],
+            row["card_answers"], activity_drop_count(find_count, row["source"], payload.get("items", ())),
+            bool(row["adjustment"]), payload,
+        )
 
 
 def transaction_event_key(tx: Any) -> str:
@@ -330,23 +349,3 @@ def read_day_totals(connection: Any, day: str) -> dict[str, int]:
         COALESCE(SUM(growth_units),0), COALESCE(SUM(finds),0)
         FROM activity_event WHERE scheduler_day=?""", (day,)).fetchone()
     return dict(zip(("card_answers", "coins", "growth_units", "finds"), map(int, row)))
-
-
-def read_streak_rewards(connection: Any, day: str = "") -> dict[str, int]:
-    where = " AND scheduler_day=?" if day else ""
-    rows = connection.execute("""SELECT event_key, source, coins, payload_json FROM activity_event
-        WHERE coins>0 AND source IN ('first_eligible_answer','daily_activity',
-            'seven_day_streak_cycle','weekly_streak','achievement','achievement_backfill')""" + where,
-        (day,) if day else ()).fetchall()
-    totals = {"daily": 0, "streak": 0, "achievements": 0}
-    for row in rows:
-        source = ALIASES.get(row["source"], row["source"])
-        source_id = str(json.loads(row["payload_json"]).get("source_id", ""))
-        if not source_id and row["event_key"].startswith("achievement:"):
-            source_id = row["event_key"].partition(":")[2]
-        key = ("daily" if source == "first_eligible_answer" else
-               "streak" if source == "seven_day_streak_cycle" or source_id == "streak_7" else
-               "achievements" if source_id.startswith("streak_") else "")
-        if key:
-            totals[key] += int(row["coins"])
-    return totals

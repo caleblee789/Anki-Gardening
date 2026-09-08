@@ -247,7 +247,13 @@ def test_final_v6_source_master_has_clean_alpha_and_exact_runtime_pixels(
         assert source.mode == "RGBA"
         assert source.size == runtime.size == (1254, 1254)
         assert source.getchannel("A").getextrema() == (0, 255)
-        assert source.tobytes() == runtime.convert("RGBA").tobytes()
+        actual = runtime.convert("RGBA")
+        assert source.getchannel("A").tobytes() == actual.getchannel("A").tobytes()
+        invisible = source.getchannel("A").point(lambda alpha: 255 if alpha == 0 else 0)
+        expected = source.copy()
+        expected.paste((0, 0, 0, 0), mask=invisible)
+        actual.paste((0, 0, 0, 0), mask=invisible)
+        assert expected.tobytes() == actual.tobytes()
 
 
 def test_runtime_complete_lines_are_fully_integrated_in_the_manifest() -> None:

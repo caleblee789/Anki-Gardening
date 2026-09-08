@@ -72,7 +72,7 @@ def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> N
         "percent": 75,
         "stage_name": "flowering",
         "display_text": "75% toward Flowering reached",
-    }, "bonsai") == "Bonsai reached 75% toward flowering"
+    }, "bonsai") == "Bonsai reached 75% toward Flowering"
 
 
 def test_geometry_is_upper_right_and_viewport_bounded() -> None:
@@ -90,7 +90,7 @@ def test_metric_plan_matches_session_totals_and_preserves_source_rewards() -> No
         ("42", "cards", "sync_review_cards"),
         ("+12", "Coins", "garden_coin"),
         ("+520", "Growth", "growth_resource"),
-        ("0", "Discoveries", "garden_discovery"),
+        ("0", "Items & finds", "garden_discovery"),
     )
     assert sync_reward_metric_plan(_summary(garden_coin_delta=0))[1] == (
         "0", "Coins", "garden_coin"
@@ -126,11 +126,11 @@ def test_metric_plan_matches_session_totals_and_preserves_source_rewards() -> No
         ("42", "cards", "sync_review_cards"),
         ("+12", "Coins", "garden_coin"),
         ("+520", "Growth", "growth_resource"),
-        ("5", "Discoveries", "garden_discovery"),
+        ("5", "Items & finds", "garden_discovery"),
     )
     assert sync_reward_metric_plan(
         _summary(environment_discoveries=discovery_rows[:1])
-    )[-1] == ("1", "Discoveries", "garden_discovery")
+    )[-1] == ("1", "Items & finds", "garden_discovery")
     restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
 
     assert restored is not None
@@ -184,18 +184,19 @@ def test_visibility_keeps_all_rewards_and_plant_progress_visible() -> None:
     assert expanded.progression_events == ()
 
 
-def test_exact_generalized_subtitle_copy() -> None:
+def test_subtitle_uses_only_recorded_study_count_without_claiming_device_origin() -> None:
+    assert sync_reward_subtitle(_summary(eligible_answer_count=0)) == ""
     assert _summary(eligible_answer_count=1).subtitle == (
-        "Reward from 1 card answer on another device."
+        "From 1 card studied"
     )
     assert _summary().subtitle == (
-        "Rewards from 42 card answers on another device."
+        "From 42 cards studied"
     )
     assert sync_reward_subtitle(_summary(eligible_answer_count=1)) == (
-        "From 1 synced review"
+        "From 1 card studied"
     )
     assert sync_reward_subtitle(_summary()) == (
-        "From 42 synced reviews"
+        "From 42 cards studied"
     )
 
 
@@ -305,8 +306,8 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch,
 
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "Rewards after syncing" in texts
-    assert "From 42 synced reviews" in texts
-    assert {"GROWTH MILESTONE", "Full Bloom", "NEW DISCOVERY"} <= texts
+    assert "From 42 cards studied" in texts
+    assert {"Wisteria reached Full Bloom", "Full Bloom", "New discoveries"} <= texts
     for label in card.findChildren(QLabel):
         if label.property("receiptMetricLabel") or label.property("receiptMetricValue"):
             assert label.fontMetrics().horizontalAdvance(label.text()) <= label.contentsRect().width()
@@ -324,8 +325,8 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch,
     assert card._summary_fixed.mapTo(card, QPoint(0, 0)) == pinned_position
     assert card._summary_fixed.isVisibleTo(card)
     texts = {label.text() for label in card.findChildren(QLabel)}
-    assert {"GROWTH MILESTONE", "Full Bloom", "NEW DISCOVERY"} <= texts
-    assert "Stored Growth added" in texts
+    assert {"Wisteria reached Full Bloom", "Full Bloom", "New discoveries"} <= texts
+    assert "Stored Growth" in texts
     assert not any("landmark" in text.casefold() or "mastery" in text.casefold() for text in texts)
     project_rows = [
         widget

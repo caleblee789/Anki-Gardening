@@ -26,7 +26,7 @@ def _effect_rows(item):
 
 def test_normalized_garden_feature_effects_are_structured_and_player_copy_is_plain():
     assert GARDEN_FEATURE_CATALOG["harvest_bell"].effect == (
-        "Finish today’s cards: +5 Coins."
+        "Finish all cards due today: +5 Coins"
     )
     assert _effect_rows(GARDEN_FEATURE_CATALOG["harvest_bell"]) == ((
         "completion_coins_plus_5",
@@ -72,12 +72,11 @@ def test_normalized_scenery_effects_are_structured_and_bounded():
 
     autumn = SCENERY_CATALOG["autumn"]
     assert autumn.price == 500
-    assert _effect_rows(autumn)[1][2:4] == ("milestone_coin_percent", 50)
+    assert _effect_rows(autumn)[0][2:4] == ("earned_coin_percent", 15)
 
     snowy = _effect_rows(SCENERY_CATALOG["snowy"])[0]
-    assert snowy[1:4] == ("today_cards_complete", "inventory_item", 1)
-    assert snowy[6] == 2
-    assert snowy[7] == "growth_charge_small"
+    assert snowy[1:4] == ("today_cards_complete", "instant_growth", 50)
+    assert snowy[7] is None
 
     rainbow = _effect_rows(SCENERY_CATALOG["rainbow_horizon"])[0]
     assert rainbow[2:5] == ("growth", 1, 75)
@@ -94,7 +93,7 @@ def test_normalized_scenery_effects_are_structured_and_bounded():
     assert full_moon[0][1:4] == (
         "today_cards_complete", "inventory_item", 1
     )
-    assert full_moon[0][6:8] == (6, "booster_potion")
+    assert full_moon[0][6:8] == (4, "booster_potion")
 
     eclipse = _effect_rows(SCENERY_CATALOG["eclipse"])[0]
     assert eclipse[2:5] == ("growth", 1, 125)

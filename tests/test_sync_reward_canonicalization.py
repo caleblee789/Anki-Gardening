@@ -35,7 +35,7 @@ def test_stage_change_supersedes_prior_stage_checkpoint() -> None:
 
     assert result.canonical_checkpoints == ()
     assert result.primary_milestone.kind == "stage_change"
-    assert result.primary_milestone.display_text == "Rose reached flowering"
+    assert result.primary_milestone.display_text == "Rose reached Flowering"
     assert SyncPlantResult.from_dict(result.to_dict()).growth_after_units == 1_520_050
     assert result.to_dict()["checkpoints"] == []
     assert result.to_dict()["transition_source"] == "shared_growth"

@@ -39,7 +39,7 @@ class WelcomeCard(QFrame):
             QPushButton:focus {{ border:2px solid {self._palette['growth_accent']}; }}
         """)
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 16)
+        root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
         heading = QHBoxLayout()
         self._heading_layout = heading
@@ -110,13 +110,13 @@ class WelcomeCard(QFrame):
         def column(title: str) -> QVBoxLayout:
             panel = QWidget(content)
             panel.setMinimumWidth(0)
-            panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
             rows = QVBoxLayout(panel)
             rows.setContentsMargins(0, 0, 0, 0)
             rows.setSpacing(8)
             rows.setAlignment(Qt.AlignmentFlag.AlignTop)
-            rows.addWidget(self._label(title, TextRole.CARD_TITLE))
-            layout.addWidget(panel, 1)
+            rows.addWidget(self._label(title, TextRole.SECTION_HEADING))
+            layout.addWidget(panel, 0, Qt.AlignmentFlag.AlignTop)
             self._reward_columns.append(panel)
             return rows
 
@@ -124,7 +124,7 @@ class WelcomeCard(QFrame):
         for reward in presentation.gift:
             gift.addWidget(self._reward_row(reward))
         if presentation.show_history:
-            history = column("Past Anki study")
+            history = column("Past study rewards")
             intro = self._label(presentation.history_intro, TextRole.SECONDARY)
             intro.setObjectName("gardenWelcomePastStudy")
             history.addWidget(intro)
@@ -144,7 +144,7 @@ class WelcomeCard(QFrame):
 
     def _reward_row(self, reward: Any) -> QWidget:
         art = QLabel(self)
-        art.setFixedSize(32, 32)
+        art.setFixedSize(32, 24)
         art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         color = self._palette["coin_accent" if reward.icon in {"coin", "stage"} else "growth_accent"]
         pixmap = garden_icon(reward.icon, color=color).pixmap(22, 22)
@@ -158,6 +158,9 @@ class WelcomeCard(QFrame):
                 source = _source_pixmap(path) if path else None
                 if source is not None and not source.isNull():
                     pixmap = _alpha_bounded_thumbnail(source, 32)
+                    dpr = max(1.0, pixmap.devicePixelRatioF())
+                    pixmap = pixmap.scaled(round(32 * dpr), round(24 * dpr), Qt.AspectRatioMode.KeepAspectRatio,
+                                           Qt.TransformationMode.SmoothTransformation)
                     source_path = path
             except Exception:
                 pass  # Retain the semantic icon if bundled art is unavailable.
@@ -165,7 +168,10 @@ class WelcomeCard(QFrame):
         art.setProperty("welcomeRewardArt", source_path)
         art.setProperty("welcomeRewardItem", reward.item_id)
         row = receipt_event_row(self, art, reward.text)
-        row.layout.setContentsMargins(6, 3, 6, 3)
+        row.layout.setContentsMargins(10, 6, 10, 6)
+        row.widget.setProperty("welcomeRewardRow", True)
+        row.widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        row.widget.setMaximumWidth(row.title.fontMetrics().horizontalAdvance(reward.text) + 64)
         row.widget.setAccessibleName(reward.text)
         return row.widget
 
@@ -175,20 +181,40 @@ class WelcomeCard(QFrame):
 
     def reposition(self) -> None:
         parent = self.parentWidget()
-        preferred_width = 720 if len(getattr(self, "_reward_columns", ())) > 1 else 440
+        preferred_width = 540 if len(getattr(self, "_reward_columns", ())) > 1 else 360
         width = min(preferred_width, max(0, parent.width() - 32))
         self.setFixedWidth(width)
         margins = self.layout().contentsMargins()
         inner_width = max(0, width - margins.left() - margins.right() - 2 * self.frameWidth())
         columns = getattr(self, "_reward_columns_layout", None)
         if columns is not None:
-            columns.setDirection(QBoxLayout.Direction.TopToBottom if width < 620 else QBoxLayout.Direction.LeftToRight)
-            count = len(self._reward_columns) if width >= 620 else 1
-            panel_width = max(1, (inner_width - 12 - (count - 1) * columns.spacing()) // count)
-            for panel in self._reward_columns:
-                for label in panel.findChildren(QLabel):
-                    if label.property("receiptEventTitle"):
-                        label.setMinimumHeight(max(0, label.heightForWidth(max(1, panel_width - 52))))
+            stacked = width < 500
+            columns.setDirection(QBoxLayout.Direction.TopToBottom if stacked else QBoxLayout.Direction.LeftToRight)
+            available = max(1, inner_width - 12)
+            gift_labels = [label for label in self._reward_columns[0].findChildren(QLabel)
+                           if label.property("receiptEventTitle")]
+            for label in gift_labels:
+                label.ensurePolished()
+            gift_width = min(180, max(140, *(label.fontMetrics().horizontalAdvance(label.text()) + 64
+                                          for label in gift_labels)))
+            for index, panel in enumerate(self._reward_columns):
+                panel_width = available
+                if not stacked and len(self._reward_columns) > 1:
+                    panel_width = gift_width if index == 0 else available - gift_width - columns.spacing()
+                panel.setFixedWidth(max(1, panel_width))
+                for row in panel.findChildren(QFrame):
+                    if not row.property("welcomeRewardRow"):
+                        continue
+                    row_margins = row.layout().contentsMargins()
+                    label = next(label for label in row.findChildren(QLabel) if label.property("receiptEventTitle"))
+                    label.ensurePolished()
+                    padding = row_margins.left() + row_margins.right() + 32 + row.layout().spacing()
+                    row_width = min(panel_width, label.fontMetrics().horizontalAdvance(label.text()) + padding + 4)
+                    row.setFixedWidth(row_width)
+                    text_width = max(1, row_width - padding)
+                    label.setMinimumHeight(max(0, label.heightForWidth(text_width)))
+                    row.setMinimumHeight(max(24, label.minimumHeight()) + row_margins.top() + row_margins.bottom())
+                    row.layout().invalidate()
                 panel.layout().invalidate()
             columns.invalidate()
         self.layout().activate()

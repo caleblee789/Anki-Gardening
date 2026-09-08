@@ -42,6 +42,48 @@ def _settle():
     app.processEvents()
 
 
+
+def expand_contact_sheet_details(runner, label, widget):
+    """Show real disclosure contents on representative contact-sheet surfaces."""
+    from aqt.qt import QFrame, QScrollArea, QToolButton, QWidget
+
+    targets = {"session-summary-after-review", "sync-rewards-summary"}
+    if label not in targets or widget is None:
+        return
+    checks = {}
+    class_name = ("SessionSummaryCard" if label == "session-summary-after-review"
+                  else "SyncRewardSummaryCard")
+    cards = [child for child in widget.findChildren(QWidget)
+             if type(child).__name__ == class_name and child.isVisibleTo(widget)]
+    if len(cards) != 1:
+        raise RuntimeError(f"Expected one visible {class_name}, found {len(cards)}")
+    card = cards[0]
+    if label == "session-summary-after-review":
+        toggle = card.findChild(QToolButton, "ankiGardenSessionProgressDisclosure")
+        if toggle is not None and not card._progress_details_expanded:
+            toggle.click()
+        _settle()
+        panel = card.findChild(QFrame, "ankiGardenSessionBreakdown")
+        checks["session_details_expanded"] = (
+            card._progress_details_expanded and panel is not None
+            and panel.isVisibleTo(card))
+    else:
+        toggle = card._disclosure
+        if toggle is not None and not card.expanded:
+            toggle.click()
+        _settle()
+        checks["sync_details_expanded_or_all_content_visible"] = (
+            card.expanded or card._disclosure is None)
+    # Details live after the reward list; include their painted contents.
+    for scroll in card.findChildren(QScrollArea):
+        if scroll.isVisibleTo(card):
+            scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+    _settle()
+    runner._capture_annotations.setdefault(label, {})["expanded_contact_sheet_details"] = checks
+    if not checks or not all(checks.values()):
+        raise RuntimeError(f"Expanded contact-sheet details failed: {label}: {checks}")
+
+
 def plant_naming_audit(runner, widget):
     """Check real visible/accessibility copy against retired stored names."""
     import re
@@ -130,18 +172,17 @@ def workspace_postcondition(runner, widget, route):
     if route == "diagnostics" and not widget.diagnostics_content.isVisibleTo(widget):
         issues.append("diagnostics-expanded")
     details_facts = {}
-    if route in {"progress/activity", "today-details"}:
-        from ..ui.dashboard import DisclosureRow
-
-        details = [row for row in dashboard.progress_dialog.findChildren(DisclosureRow)
-                   if row.property("semanticId") in {"progress.today-details", "progress.streak-rewards"}]
-        expanded = len(details) == 2 and all(
-            row.button.isChecked() and row.panel.isVisibleTo(widget)
-            for row in details
-        )
-        details_facts["activity_details_expanded"] = expanded
-        if not expanded:
-            issues.append("activity-details-expanded")
+    if route in {"progress/activity", "study-rewards-retained"}:
+        from ..ui.activity_page import ActivityPage
+        pages = dashboard.progress_dialog.findChildren(ActivityPage)
+        panels = [page.study_rewards_card for page in pages if hasattr(page, "study_rewards_card")]
+        details_facts["study_rewards_panel"] = len(panels) == 1 and panels[0].isVisibleTo(widget)
+        summary = runner.app.engine.study_rewards_summary()
+        retained = (summary["growth_percent"] == 10 and state.streak_days == 6
+                    and summary["next_tier_days"] == 100)
+        details_facts["retained_growth_after_break"] = retained
+        if not details_facts["study_rewards_panel"] or retained != (route == "study-rewards-retained"):
+            issues.append("study-rewards-state")
     if actual != route:
         issues.append("workspace-route")
     if not visible:
@@ -153,7 +194,7 @@ def workspace_postcondition(runner, widget, route):
             "plant_naming": naming, "issues": issues, **details_facts}
 
 
-def capture_plant_menu_layouts(runner, *, sizes=((1040, 720),)):
+def capture_plant_menu_layouts(runner, *, sizes=((1040, 720), (860, 580))):
     """Inspect current and edge beds at the normal Garden window size."""
     dashboard = runner.app.dashboard
     selected = dashboard.scene.selected_plant_id()
@@ -163,6 +204,12 @@ def capture_plant_menu_layouts(runner, *, sizes=((1040, 720),)):
     output.mkdir(exist_ok=True)
     records = []
     dashboard._plant_popover_motion_enabled = lambda: False
+    draw_plant = dashboard.scene._draw_plant_asset
+    painted_opacity = {}
+    def observe_plant(painter, placement, plant):
+        painted_opacity[str(plant.get("plant_id", ""))] = painter.opacity()
+        return draw_plant(painter, placement, plant)
+    dashboard.scene._draw_plant_asset = observe_plant
     try:
         for width, height in sizes:
             dashboard.resize(width, height)
@@ -170,6 +217,11 @@ def capture_plant_menu_layouts(runner, *, sizes=((1040, 720),)):
             planted = [plant for plant in runner.app.storage.state.plants if plant.planted]
             targets = {plant.plant_id: plant for plant in (planted[0], max(planted, key=lambda plant: plant.slot_index))} if planted else {}
             for plant in targets.values():
+                dashboard.scene.dismiss_selection()
+                _settle()
+                before_path = output / f"{width}x{height}-bed-{plant.slot_index + 1}-unselected.png"
+                before_saved = dashboard.grab().save(str(before_path), "PNG")
+                painted_opacity.clear()
                 dashboard.scene.keep_card_open(plant.plant_id)
                 dashboard._refresh_selected_plant_card()
                 _settle()
@@ -180,6 +232,8 @@ def capture_plant_menu_layouts(runner, *, sizes=((1040, 720),)):
                 # the broad hit target also includes transparent art padding.
                 protected = (bed.visible_region, bed.selection_region, bed.planter_bounds) if bed else ()
                 checks = {
+                    "ordinary_selection_opaque": painted_opacity.get(plant.plant_id) == 1.0,
+                    "unselected_screenshot_saved": bool(before_saved),
                     "popup_visible": card.isVisibleTo(dashboard),
                     "within_scene": dashboard.scene.rect().contains(card.geometry()),
                     "selected_plant_clear": bool(protected) and all(not QRectF(region.x, region.y, region.width, region.height).intersects(QRectF(card.geometry())) for region in protected),
@@ -193,11 +247,38 @@ def capture_plant_menu_layouts(runner, *, sizes=((1040, 720),)):
                 path = output / f"{width}x{height}-bed-{plant.slot_index + 1}.png"
                 saved = dashboard.grab().save(str(path), "PNG")
                 checks["screenshot_saved"] = bool(saved)
+                selected_opacity = dict(painted_opacity)
+                slots_before = {item.plant_id: item.slot_index for item in planted}
+                dashboard._begin_move(plant.plant_id)
+                _settle()
+                painted_opacity.clear()
+                moving_path = output / f"{width}x{height}-bed-{plant.slot_index + 1}-moving.png"
+                checks["moving_screenshot_saved"] = bool(dashboard.grab().save(str(moving_path), "PNG"))
+                moving_opacity = dict(painted_opacity)
+                checks["moving_plant_only_translucent"] = (
+                    abs(moving_opacity.get(plant.plant_id, 1.0) - 0.78) < 0.001
+                    and all(value == 1.0 for key, value in moving_opacity.items() if key != plant.plant_id)
+                )
+                dashboard._cancel_move()
+                _settle()
+                painted_opacity.clear()
+                dashboard.grab()
+                checks["cancel_restores_opacity_and_slots"] = (
+                    painted_opacity.get(plant.plant_id) == 1.0
+                    and slots_before == {item.plant_id: item.slot_index for item in planted}
+                    and dashboard._placement_draft is None
+                )
                 records.append({"window": [dashboard.width(), dashboard.height()],
                                 "plant_id": plant.plant_id, "bed": plant.slot_index + 1,
                                 "popup": list(card.geometry().getRect()), "bar_height": bar.height(),
-                                "screenshot": str(path), "checks": checks})
+                                "screenshot": str(path), "unselected_screenshot": str(before_path),
+                                "moving_screenshot": str(moving_path),
+                                "painted_plant_opacity": selected_opacity,
+                                "moving_plant_opacity": moving_opacity, "checks": checks})
     finally:
+        if dashboard._placement_draft is not None:
+            dashboard._cancel_move()
+        dashboard.scene._draw_plant_asset = draw_plant
         dashboard._plant_popover_motion_enabled = motion
         dashboard.resize(size)
         if selected:
@@ -218,6 +299,8 @@ def capture_garden_setup_supplement(runner):
     from ..models.state import CardEffectBatch, DailyEconomySnapshot, GardenProjectState
     from ..presentation import project_garden_setup
     from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
+    from ..bonus_copy import appearance_effect_groups
+    from ..ui.dashboard import AppearanceEffectGroups
 
     if getattr(runner, "_setup_supplement_captured", False):
         return
@@ -246,7 +329,7 @@ def capture_garden_setup_supplement(runner):
         state = storage.state
         state.inventory["garden_features"] = ["seedling_sign", "watering_station", "wind_chime"]
         state.daily_economy_snapshot = DailyEconomySnapshot(
-            anki_day=state.daily_stats.day, garden_rhythm_percent=4,
+            anki_day=state.daily_stats.day,
             snapshot_source="local_review", snapshot_id="garden-setup-capture",
             active_garden_bonus_id="watering_station", active_scenery_effect_id="default",
         )
@@ -271,7 +354,10 @@ def capture_garden_setup_supplement(runner):
         checks["visibility_switches_removed"] = not hasattr(panel, "show_weather") and not hasattr(panel, "show_scenery")
         checks["bonuses_paired_with_equipment"] = all(
             panel.setup_rows[item.kind][1].text() == item.appearance_name
-            and panel.setup_rows[item.kind][3].text() == ("Appearance only" if item.effect == "No bonus" else item.effect)
+            and panel.setup_rows[item.kind][3].text() == "\n\n".join(
+                "\n".join((group.effect, *group.conditions))
+                for group in appearance_effect_groups(item.appearance_id, state)
+            )
             for item in committed.items if item.kind != "landmark"
         )
         panel._select_option("scenery", "spring")
@@ -281,9 +367,8 @@ def capture_garden_setup_supplement(runner):
             for item in committed.items if item.kind != "landmark"
         )
         checks["collection_and_equipped_descriptions_match"] = all(
-            any(label.text() == panel.setup_rows[item.kind][3].text()
-                for label in panel._tiles[(item.kind, item.appearance_id)].findChildren(QLabel)
-                if label.property("environmentEffect"))
+            any(groups.text() == panel.setup_rows[item.kind][3].text()
+                for groups in panel._tiles[(item.kind, item.appearance_id)].findChildren(AppearanceEffectGroups))
             for item in committed.items if (item.kind, item.appearance_id) in panel._tiles
         )
         save("01-unsaved-scenery-preview")
@@ -343,7 +428,7 @@ def capture_garden_setup_supplement(runner):
             _settle()
             tiles = [tile for (tile_kind, _), tile in panel._tiles.items() if tile_kind == kind]
             labels = [label for tile in tiles for label in tile.findChildren(QLabel)
-                      if label.property("environmentName") or label.property("environmentEffect")]
+                      if label.property("environmentName") or label.property("appearanceEffectCondition") is not None]
             checks[f"{category}_browsing_text_fits"] = bool(labels) and all(
                 label.width() > 0 and label.height() >= max(0, label.heightForWidth(label.width()))
                 for label in labels
@@ -367,7 +452,7 @@ def capture_garden_setup_supplement(runner):
 
 
 def capture_progress_narrow(runner):
-    """Review one practical narrow size and the reachable final achievement row."""
+    """Review two-column achievements, the minimum size, and the final row."""
     from aqt.qt import QWidget
     from ..ui.dashboard import achievement_presentations
 
@@ -380,6 +465,16 @@ def capture_progress_narrow(runner):
     output.mkdir(exist_ok=True)
     checks = {}
     try:
+        for _ in range(8):
+            _settle()
+        checks["reference_two_columns"] = grid._columns == 2
+        def achievement_text_fits():
+            labels = [label for label in grid.container.findChildren(QLabel)
+                      if label.text() and label.isVisibleTo(grid.container)]
+            return all(label.width() > 0 and label.height() >= max(
+                0, label.heightForWidth(label.width())) for label in labels)
+
+        checks["reference_text_fits"] = achievement_text_fits()
         dashboard.resize(860, 580)
         for _ in range(8):
             _settle()
@@ -387,10 +482,19 @@ def capture_progress_narrow(runner):
         _settle()
         checks["narrow_size"] = dashboard.width() == 860 and dashboard.height() == 580
         checks["readable_columns"] = grid._columns == 2
+        checks["narrow_text_fits"] = achievement_text_fits()
         expected_ids = {view.achievement_id for view in achievement_presentations(runner.app.storage.state)}
         actual_ids = {str(card.property("achievementId")) for card in grid.container.findChildren(QWidget)
                       if card.property("achievementId")}
         checks["all_achievements_present"] = actual_ids == expected_ids
+        checks["all_growth_tiers_described"] = all(
+            any(f"Permanent Growth bonus: +{view.permanent_growth_percent}%" in label.text()
+                for card in grid.container.findChildren(QWidget)
+                if card.property("achievementId") == view.achievement_id
+                for label in card.findChildren(QLabel))
+            for view in achievement_presentations(runner.app.storage.state)
+            if view.permanent_growth_percent
+        )
         checks["no_horizontal_scroll"] = scroll.horizontalScrollBar().maximum() == 0
         checks["top_saved"] = dashboard.grab().save(str(output / "achievements-top.png"), "PNG")
         scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
@@ -398,6 +502,10 @@ def capture_progress_narrow(runner):
         last = grid._entries[-1][0]
         bottom = last.mapTo(scroll.viewport(), last.rect().bottomRight()).y()
         checks["final_row_reachable"] = 0 <= bottom < scroll.viewport().height()
+        checks["no_trailing_scroll_space"] = (
+            scroll.viewport().height() - 1 - bottom
+            <= grid.grid.contentsMargins().bottom() + 2
+        )
         checks["end_saved"] = dashboard.grab().save(str(output / "achievements-end.png"), "PNG")
         result = {"passed": all(checks.values()), "window": [dashboard.width(), dashboard.height()],
                   "columns": grid._columns, "last_row_bottom": bottom,
@@ -411,6 +519,226 @@ def capture_progress_narrow(runner):
         _settle()
     if not checks or not all(checks.values()):
         raise RuntimeError(f"Progress narrow layout audit failed: {checks}")
+
+
+def capture_plant_beds_layouts(runner, route):
+    """Use the existing supplementary capture lane for size and navigation QA."""
+    from aqt.qt import QProgressBar
+    dashboard = runner.app.dashboard
+    page = dashboard.progress_dialog.plant_beds
+    output = runner.session_dir / "plant-beds-layouts" / route
+    output.mkdir(parents=True, exist_ok=True)
+    checks = {}
+    measurements = {}
+    before = runner.app.storage.state.to_dict()
+    for width, height in ((1040, 720), (860, 580), (1440, 900)):
+        dashboard.resize(width, height)
+        _settle()
+        cards = tuple(page.cards.values())
+        rects = [card.geometry() for card in cards]
+        checks[f"{width}_two_columns"] = rects[0].y() == rects[1].y() and rects[1].x() > rects[0].right()
+        checks[f"{width}_equal_row_heights"] = all(rects[i].height() == rects[i + 1].height() for i in (0, 2))
+        checks[f"{width}_controlled_width"] = page.content.width() <= 1040
+        checks[f"{width}_no_horizontal_scroll"] = page.horizontalScrollBar().maximum() == 0
+        checks[f"{width}_four_pixel_bars"] = all(bar.height() == 4 for bar in page.findChildren(QProgressBar))
+        checks[f"{width}_content_driven_cards"] = all(card.minimumHeight() < 136 for card in cards)
+        # Equal content can legitimately produce equal rows. Check that each
+        # row fits its own content instead of requiring an arbitrary inequality.
+        checks[f"{width}_row_heights_independent"] = all(
+            abs(rects[i].height() - max(cards[j].heightForWidth(rects[j].width())
+                                       for j in (i, i + 1))) <= 2
+            for i in (0, 2)
+        )
+        measurements[str(width)] = {"card_heights": [rect.height() for rect in rects],
+                                    "heading_to_grid_bottom": rects[-1].bottom() + 1}
+        page.reveal_bed("bed_6")
+        _settle()
+        checks[f"{width}_focus"] = dashboard.focusWidget() is page.cards["bed_6"]
+        checks[f"{width}_saved"] = dashboard.grab().save(str(output / f"plant-beds-{width}x{height}.png"), "PNG")
+    dashboard.resize(1040, 720)
+    dashboard.open_section("progress", "achievements")
+    _settle()
+    dashboard.achievement_list.scroll.verticalScrollBar().setValue(
+        dashboard.achievement_list.scroll.verticalScrollBar().maximum())
+    dashboard._open_achievement("flourishing_garden")
+    _settle()
+    checks["legacy_link_direct_destination"] = dashboard.progress_dialog.current_page_key() == "plant_beds"
+    checks["legacy_link_focus"] = dashboard.focusWidget() is page.cards["bed_6"]
+    page.reveal_bed("bed_1")
+    _settle()
+    checks["starter_link_focuses_summary"] = dashboard.focusWidget() is page.starter_summary
+    checks["navigation_read_only"] = runner.app.storage.state.to_dict() == before
+    page.starter_summary.clearFocus()
+    page.verticalScrollBar().setValue(0)
+    _settle()
+    (output / "checks.json").write_text(json.dumps(checks, indent=2) + "\n", encoding="utf-8")
+    (output / "measurements.json").write_text(json.dumps(measurements, indent=2) + "\n", encoding="utf-8")
+    if not all(checks.values()):
+        raise RuntimeError(f"Plant Beds layout/navigation checks failed: {checks}")
+
+
+def capture_reviewer_appearance_effects(runner):
+    """Measure every appearance description in the actual native detail widget."""
+    from ..environment import SCENERY_CATALOG, GARDEN_FEATURE_CATALOG
+    from ..ui.reviewer_hud import project_reviewer_hud
+    from ..ui.reviewer_hud_widget import ReviewGardenHud
+
+    state = runner.app.storage.state
+    original_loadout = deepcopy(state.loadout)
+    hud = ReviewGardenHud(runner.app.dashboard, animations_enabled=False)
+    output = runner.session_dir / "appearance-effects" / "reviewer-details"
+    output.mkdir(parents=True, exist_ok=True)
+    checks = []
+    try:
+        for item in (*SCENERY_CATALOG.values(), *GARDEN_FEATURE_CATALOG.values()):
+            state.selected_background = item.item_id if item.kind == "scenery" else "default"
+            state.selected_garden_feature = item.item_id if item.kind == "garden_feature" else "seedling_sign"
+            hud.update_projection(project_reviewer_hud(runner.app.engine, state))
+            _settle()
+            hud._toggle_effect_details()
+            _settle()
+            detail = hud._effect_details
+            text = detail.text()
+            longest = max(detail.fontMetrics().horizontalAdvance(line) for line in text.splitlines())
+            passed = (detail.isVisible() and not detail.wordWrap()
+                      and f"{item.name}\n{item.effect}" in text
+                      and longest + 24 <= detail.width()
+                      and detail.screen().availableGeometry().contains(detail.frameGeometry()))
+            path = output / f"{item.item_id}.png"
+            checks.append({"item_id": item.item_id, "effect": item.effect, "fits": passed,
+                           "visible": detail.isVisible(), "text_matches": f"{item.name}\n{item.effect}" in text,
+                           "longest_line_width": longest,
+                           "within_screen": detail.screen().availableGeometry().contains(detail.frameGeometry()),
+                           "size": [detail.width(), detail.height()],
+                           "saved": detail.grab().save(str(path), "PNG"), "path": str(path)})
+            detail.hide()
+    finally:
+        state.loadout = original_loadout
+        hud.dispose()
+        hud.deleteLater()
+        _settle()
+    (output / "checks.json").write_text(json.dumps(checks, indent=2) + "\n")
+    if not all(row["fits"] and row["saved"] for row in checks):
+        raise RuntimeError(f"Reviewer appearance descriptions failed: {output / 'checks.json'}")
+
+
+def capture_appearance_effect_layouts(runner, route):
+    """Check every catalog effect at the supported macOS viewport sizes."""
+    from ..ui.dashboard import AppearanceEffectGroups
+    from aqt.qt import QScrollArea
+
+    dashboard = runner.app.dashboard
+    original_size = dashboard.size()
+    state = runner.app.storage.state
+    original_inventory = deepcopy(state.inventory)
+    if route.startswith("collection/"):
+        from ..environment import SCENERY_CATALOG, GARDEN_FEATURE_CATALOG
+        state.inventory["scenery"] = list(SCENERY_CATALOG)
+        state.inventory["garden_features"] = list(GARDEN_FEATURE_CATALOG)
+        dashboard.collectible_detail_dialog._rebuild_options()
+    output = runner.session_dir / "appearance-effects" / route.replace("/", "-")
+    output.mkdir(parents=True, exist_ok=True)
+    records = []
+    try:
+        for width, height in ((1280, 800), (1040, 720), (860, 580)):
+            dashboard.resize(width, height)
+            for _ in range(4):
+                _settle()
+            if route.startswith("collection/"):
+                page = dashboard.collectible_detail_dialog
+                original_kind = page._appearance_kind
+                shell_positions = []
+                for kind in ("scenery", "garden_feature", "scenery"):
+                    page.show_category(kind)
+                    for _ in range(4):
+                        _settle()
+                    shell_positions.append({
+                        name: [widget.mapTo(dashboard, widget.rect().topLeft()).x(),
+                               widget.mapTo(dashboard, widget.rect().topLeft()).y(),
+                               widget.width(), widget.height()]
+                        for name, widget in (("preview", page.preview_scene),
+                                             ("preview_header", page.setup_preview_title),
+                                             ("tabs", page.option_tabs.tabBar()),
+                                             ("equipped", page.equipped_panel))
+                    })
+                page.show_category(original_kind)
+                for _ in range(4):
+                    _settle()
+                switch_path = output / f"{width}x{height}-category-switch.png"
+                records.append({"item_id": "category-switch", "effect": "Preview and tabs stay in place",
+                                "size": [dashboard.width(), dashboard.height()], "requested_size": [width, height],
+                                "fits": shell_positions[0] == shell_positions[1] == shell_positions[2],
+                                "positions": shell_positions,
+                                "saved": dashboard.grab().save(str(switch_path), "PNG"), "path": str(switch_path)})
+                page.body_scroll.verticalScrollBar().setValue(0)
+                _settle()
+                viewport = page.body_scroll.viewport()
+                from aqt.qt import QPoint, QRect
+                fits = all(viewport.rect().contains(QRect(card.mapTo(viewport, QPoint(0, 0)), card.size()))
+                           for kind, card in page.equipped_cards.items() if kind in {"scenery", "garden_feature"})
+                path = output / f"{width}x{height}-equipped.png"
+                records.append({"item_id": "equipped-viewport", "effect": "Both equipped items visible",
+                                "size": [dashboard.width(), dashboard.height()], "requested_size": [width, height],
+                                "fits": fits, "saved": dashboard.grab().save(str(path), "PNG"), "path": str(path)})
+            groups = [group for group in dashboard.findChildren(AppearanceEffectGroups)
+                      if group.isVisibleTo(dashboard)]
+            for index, group in enumerate(groups):
+                scroll = group.parentWidget()
+                while scroll is not None and not isinstance(scroll, QScrollArea):
+                    scroll = scroll.parentWidget()
+                if scroll is not None:
+                    scroll.ensureWidgetVisible(group, 0, 8)
+                    _settle()
+                labels = group.findChildren(QLabel)
+                passed = bool(labels) and all(
+                    text.contentsRect().width() > 0
+                    and (text.heightForWidth(text.width()) <= text.height() if text.wordWrap()
+                         else text.fontMetrics().horizontalAdvance(text.text()) <= text.contentsRect().width())
+                    for text in labels
+                )
+                path = output / f"{width}x{height}-{index:02d}.png"
+                saved = dashboard.grab().save(str(path), "PNG")
+                records.append({"item_id": group._item_id, "effect": group.text(),
+                                "size": [dashboard.width(), dashboard.height()],
+                                "requested_size": [width, height], "fits": passed,
+                                "saved": saved, "path": str(path)})
+            for scroll in dashboard.findChildren(QScrollArea):
+                if scroll.isVisibleTo(dashboard):
+                    scroll.verticalScrollBar().setValue(0)
+        if route == "shop/decorations":
+            capture_reviewer_appearance_effects(runner)
+            from ..purchases import PurchaseKind
+            from ..ui.dashboard import PurchaseConfirmationDialog
+            for kind, item_id, inventory_key in (
+                (PurchaseKind.GARDEN_FEATURE, "herbalist_hourglass", "garden_features"),
+                (PurchaseKind.SCENERY, "snowy", "scenery"),
+            ):
+                state.inventory[inventory_key] = [value for value in state.inventory[inventory_key] if value != item_id]
+                quote = runner.app.engine.quote_purchase(kind, item_id)
+                dialog = PurchaseConfirmationDialog(dashboard, runner.app.engine, quote)
+                dialog.show()
+                _settle()
+                effect = dialog.fact_value_labels.get("effect")
+                passed = effect is not None and not effect.wordWrap() and (
+                    effect.fontMetrics().horizontalAdvance(effect.text()) <= effect.contentsRect().width())
+                path = output / f"confirmation-{item_id}.png"
+                saved = dialog.grab().save(str(path), "PNG")
+                records.append({"item_id": item_id, "effect": effect.text() if effect else "",
+                                "size": [dialog.width(), dialog.height()],
+                                "requested_size": [dialog.width(), dialog.height()],
+                                "fits": passed, "saved": saved, "path": str(path)})
+                dialog.close()
+                dialog.deleteLater()
+    finally:
+        state.inventory = original_inventory
+        if route.startswith("collection/"):
+            dashboard.collectible_detail_dialog._rebuild_options()
+        dashboard.resize(original_size)
+        _settle()
+    (output / "checks.json").write_text(json.dumps(records, indent=2) + "\n")
+    if not records or not all(row["fits"] and row["saved"] and row["size"] == row["requested_size"]
+                              for row in records):
+        raise RuntimeError(f"Appearance effect layout failed: {output / 'checks.json'}")
 
 
 def capture_workspace_surface(runner, label, route, capture_and_advance):
@@ -439,6 +767,33 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             if route == "starter-placement":
                 dashboard._starter_continue.click()
                 _settle()
+                pending_species = state.onboarding.pending_species
+                dashboard.scene.lockedBedActivated.emit(2)
+                _settle()
+                guidance_visible = dashboard.locked_bed_card.isVisible()
+                guidance_path = runner.session_dir / "locked-bed-guidance.png"
+                dashboard.locked_bed_card.grab().save(str(guidance_path), "PNG")
+                dashboard.locked_bed_card.view_achievement.click()
+                _settle()
+                navigation_checks = {
+                    "guidance_visible": guidance_visible,
+                    "bed_progress_destination": (dashboard._workspace_section == "progress"
+                                                 and dashboard.progress_dialog.current_page_key() == "plant_beds"),
+                    "movement_ended": not dashboard.scene._interaction.placing,
+                    "starter_retained": state.onboarding.pending_species == pending_species,
+                }
+                dashboard.open_section("garden")
+                _settle()
+                dashboard._starter_continue.click()
+                _settle()
+                navigation_checks["starter_placement_resumed"] = (
+                    dashboard.scene._interaction.placing
+                    and state.onboarding.pending_species == pending_species
+                    and not state.plants
+                )
+                runner._capture_annotations.setdefault(label, {})["locked_target_navigation"] = navigation_checks
+                if not all(navigation_checks.values()):
+                    raise RuntimeError(f"Locked target navigation failed: {navigation_checks}")
                 dashboard.scene._interaction.destination_slot = 0
                 dashboard._on_placement_destination_changed(0)
         elif "/" in route:
@@ -455,6 +810,8 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             dashboard.open_section(section, subsection)
             if section == "progress" and subsection == "achievements":
                 capture_progress_narrow(runner)
+                dashboard.achievement_list.scroll.verticalScrollBar().setValue(0)
+                _settle()
             if section == "collection" and subsection == "scenery":
                 capture_garden_setup_supplement(runner)
                 if landmarks_enabled():
@@ -507,7 +864,16 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             widget.prepare_to_show()
             if route == "diagnostics":
                 widget.diagnostics_toggle.setChecked(True)
-        elif route == "today-details":
+        elif route == "study-rewards-retained":
+            engine._ensure_achievements()
+            for achievement_id in ("streak_7", "streak_30"):
+                state.achievements[achievement_id].unlocked = True
+                state.achievements[achievement_id].progress = 1.0
+            for achievement_id in ("streak_100", "streak_365"):
+                state.achievements[achievement_id].unlocked = False
+                state.achievements[achievement_id].progress = 0.0
+            state.streak_days = 6
+            state.last_active_day = state.daily_stats.day
             dashboard.open_section("progress", "today")
         elif route == "purchase-fertilizer":
             plant.fertilizer_card_batches = [CardEffectBatch("fertilizer_basic", 100, 100, 100)]
@@ -529,15 +895,9 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             dashboard._shop._show_purchase_receipt(outcome)
         else:
             raise ValueError(f"Unknown workspace capture route: {route}")
-        if route in {"progress/activity", "today-details"}:
-            from ..ui.dashboard import DisclosureRow
-
+        if route in {"progress/activity", "study-rewards-retained"}:
+            dashboard.progress_dialog._refresh_metric_page("today")
             dashboard.resize(1440, 1000)
-            _settle()
-            for disclosure in dashboard.progress_dialog.findChildren(DisclosureRow):
-                if disclosure.property("semanticId") in {"progress.today-details", "progress.streak-rewards"}:
-                    if not disclosure.button.isChecked():
-                        disclosure.button.click()
             _settle()
             dashboard.progress_dialog.body_scrolls["today"].verticalScrollBar().setValue(0)
         if widget is not dashboard:
@@ -548,6 +908,10 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
     def capture(widget, cleanup):
         widget.setProperty("captureWorkspaceRoute", route)
         _settle()
+        if route in {"collection/scenery", "collection/decorations", "shop/scenery", "shop/decorations"}:
+            capture_appearance_effect_layouts(runner, route)
+        if route in {"progress/activity", "study-rewards-retained"}:
+            capture_study_reward_layouts(runner, route)
         if route == "diagnostics":
             if widget._diagnostic_check_pending:
                 QTimer.singleShot(20, lambda: capture(widget, cleanup))
@@ -562,6 +926,62 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
         )
 
     runner._with_dashboard(ready, failure_label=label)
+
+
+def capture_study_reward_layouts(runner, route):
+    """Supplement existing Activity fixtures with minimum-size and link evidence."""
+    import json
+    from aqt.qt import QPushButton
+    from ..ui.activity_page import ActivityPage
+
+    dashboard = runner.app.dashboard
+    original_size = dashboard.size()
+    output = runner.session_dir / "study-rewards-layouts"
+    output.mkdir(exist_ok=True)
+    records = []
+    try:
+        for size_name, width, height in (
+            ("reference", original_size.width(), original_size.height()),
+            ("minimum", dashboard.minimumWidth(), dashboard.minimumHeight()),
+        ):
+            dashboard.resize(width, height)
+            _settle()
+            page = next(page for page in dashboard.findChildren(ActivityPage)
+                        if page.isVisibleTo(dashboard))
+            card = page.study_rewards_card
+            labels = [label for label in card.findChildren(QLabel) if label.text()]
+            visible_text = " ".join(label.text() for label in labels)
+            checks = {
+                "labels_fit": all(label.width() > 0 and label.height() >= max(
+                    0, label.heightForWidth(label.width())) for label in labels),
+                "single_panel": visible_text.count("Study rewards") == 1,
+                "retired_copy_absent": all(text not in visible_text for text in (
+                    "Garden Rhythm", "View details", "Reward details", "New Anki day", "qualifying days")),
+                "no_horizontal_scroll": dashboard.progress_dialog.body_scrolls["today"].horizontalScrollBar().maximum() == 0,
+            }
+            path = output / f"{route.replace('/', '-')}-{size_name}.png"
+            checks["saved"] = dashboard.grab().save(str(path), "PNG")
+            records.append({"size": [dashboard.width(), dashboard.height()],
+                            "screenshot": str(path), "checks": checks})
+            if not all(checks.values()):
+                raise AssertionError(f"Study rewards layout failed: {records[-1]}")
+        before = runner.app.storage.state.to_dict()
+        target_id = runner.app.engine.study_rewards_summary()["achievement_id"]
+        button = next(button for button in card.findChildren(QPushButton)
+                      if button.property("semanticId") == "progress.study-rewards-achievements")
+        button.click()
+        _settle()
+        focused = dashboard.focusWidget()
+        link_check = (focused is not None and focused.property("achievementId") == target_id)
+        if not link_check or before != runner.app.storage.state.to_dict():
+            raise AssertionError("Study rewards achievement link failed or changed reward state")
+        records.append({"achievement_id": target_id, "link_reveals_achievement": link_check,
+                        "navigation_preserves_state": True})
+    finally:
+        (output / f"{route.replace('/', '-')}.json").write_text(json.dumps(records, indent=2))
+        dashboard.resize(original_size)
+        dashboard.open_section("progress", "today")
+        _settle()
 
 
 def compact_reward_audit(runner, card):

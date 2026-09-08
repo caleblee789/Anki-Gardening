@@ -235,7 +235,8 @@ def streak_presentation(
     days = _nonnegative_int(streak_days)
     reviewed = _nonnegative_int(reviewed_today)
 
-    if reviewed > 0 or last_day == current_day:
+    # Fresh state carries an activity-date placeholder, not a proven study day.
+    if reviewed > 0 or (last_day == current_day and days > 0):
         active_days = max(1, days)
         return StreakPresentation(
             StreakPresentationState.ACTIVE,
@@ -254,7 +255,7 @@ def streak_presentation(
             "warning",
         )
 
-    if last_day is not None:
+    if last_day is not None and last_day != current_day:
         missed_day = last_day + timedelta(days=1) if last_day < current_day else None
         return StreakPresentation(
             StreakPresentationState.ENDED,

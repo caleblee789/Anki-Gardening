@@ -591,10 +591,10 @@ def test_first_garden_receipt_preserves_all_paid_history_without_replaying_study
     assert view.achievement_count == 10
     assert "100,000" in view.history_intro
     assert {row.item_id or row.label: row.amount for row in view.history} == {
-        "Coins": 1785, "growth_charge_small": 1, "growth_charge_standard": 2,
+        "Coins": 1775, "growth_charge_small": 1, "growth_charge_standard": 2,
         "growth_charge_grand": 1, "golden_trowel": 1,
     }
-    assert storage.state.currency_balance == 1785
+    assert storage.state.currency_balance == 1775
     assert storage.state.streak_days == 0
     assert storage.state.daily_stats.reviewed == 0
     assert storage.state.stored_growth_units == 0
@@ -602,7 +602,7 @@ def test_first_garden_receipt_preserves_all_paid_history_without_replaying_study
     assert not engine.peek_feedback()
     assert engine.reconcile_reward_history()[0]
     assert storage.state.welcome_receipt == receipt
-    assert storage.state.currency_balance == 1785
+    assert storage.state.currency_balance == 1775
 
     # A paused setup retains its receipt even after the general cache expires.
     storage.state.recent_reward_receipts.clear()
@@ -615,7 +615,7 @@ def test_first_garden_receipt_preserves_all_paid_history_without_replaying_study
     assert engine.finish_onboarding()[0]
     ready = storage.state.welcome_receipt
     assert ready.history_rewards == receipt.history_rewards
-    assert storage.state.currency_balance == 1836
+    assert storage.state.currency_balance == 1826
     assert plant.growth_points == 100
     assert engine.reconcile_reward_history()[0]
     assert storage.state.welcome_receipt == ready
@@ -885,7 +885,7 @@ def test_suppressed_sync_restores_the_preexisting_stage_transition_queue() -> No
     assert engine.peek_stage_transitions() == [existing]
 
 
-def test_first_post_activation_answer_can_start_the_current_weekly_cycle():
+def test_first_post_activation_answer_unlocks_the_current_streak_achievement():
     engine, storage = make_engine()
     storage.state.reward_state_initialized = True
     storage.state.reward_activation_ms = storage.now_ms
@@ -902,13 +902,12 @@ def test_first_post_activation_answer_can_start_the_current_weekly_cycle():
 
     answer(engine, storage)
 
-    assert storage.state.currency_balance == 14
+    assert storage.state.currency_balance == 4
     assert storage.state.achievements["streak_7"].unlocked
     assert {
         tx.event_key for tx in storage.state.currency_transactions
     } == {
         f"daily_activity:{storage.day}",
-        "achievement:streak_7",
     }
 
 
@@ -1014,16 +1013,22 @@ def test_day_one_answers_award_base_growth_without_a_streak_bonus():
 @pytest.mark.parametrize(
     ("streak_days", "expected_bonus"),
     [
-        (0, 0), (1, 0), (6, 0), (7, 5), (13, 5),
-        (14, 10), (29, 10), (30, 15), (99, 15),
-        (100, 20), (364, 20), (365, 25),
+        (0, 0), (1, 0), (6, 0), (7, 5), (14, 5),
+        (29, 5), (30, 10), (99, 10), (100, 15),
+        (364, 15), (365, 20), (366, 20),
     ],
 )
 def test_streak_bonus_tiers_are_exact(streak_days, expected_bonus):
-    assert GardenGameEngine.streak_bonus_percent(streak_days) == expected_bonus
+    engine, storage = make_engine()
+    if streak_days:
+        storage.state.streak_days = streak_days - 1
+        storage.state.last_active_day = "2026-08-07"
+        award = answer(engine, storage, ease=1)
+        assert award.bonus_percent == expected_bonus
+    assert engine.current_streak_bonus_percent() == expected_bonus
 
 
-def test_day_14_streak_grants_the_weekly_reward_once():
+def test_day_14_streak_does_not_grant_a_recurring_reward():
     engine, storage = make_engine()
     storage.state.streak_days = 13
     storage.state.last_active_day = "2026-08-07"
@@ -1035,10 +1040,9 @@ def test_day_14_streak_grants_the_weekly_reward_once():
     )
 
     assert storage.state.streak_days == 14
-    assert storage.state.currency_balance == 10
-    assert [tx.event_key for tx in storage.state.currency_transactions] == [
-        f"weekly_streak:{storage.day}",
-    ]
+    assert storage.state.currency_balance == 0
+    assert storage.state.currency_transactions == []
+    assert engine.current_streak_bonus_percent() == 5
 
 
 def test_retrospective_streak_read_failure_preserves_saved_state():
@@ -1058,32 +1062,36 @@ def test_retrospective_streak_read_failure_preserves_saved_state():
     assert storage.state.to_dict() == before
 
 
-def test_missed_day_resets_streak_before_awarding_growth():
+def test_missed_day_retains_unlocked_growth_and_next_tier_after_reopening():
     engine, storage = make_engine()
-    storage.state.streak_days = 10
+    storage.state.achievements["streak_100"].unlocked = True
+    storage.state.streak_days = 100
     award = answer(engine, storage)
 
     assert storage.state.streak_days == 1
-    assert engine.current_streak_bonus_percent() == 0
+    assert engine.current_streak_bonus_percent() == 15
     assert award.base_growth == 10
-    assert award.bonus_growth == 0
+    assert award.streak_growth_units == 150
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    reopened = GardenGameEngine(FakeConfig(), storage)
+    summary = reopened.study_rewards_summary()
+    assert summary["growth_percent"] == 15
+    assert summary["next_tier_days"] == 365
+    assert summary["achievement_id"] == "streak_365"
 
 
-def test_garden_rhythm_bonus_is_fractional_and_never_reduces_base():
+def test_retained_growth_bonus_is_fractional_and_never_reduces_base():
     engine, storage = make_engine()
-    storage.eligible_study_days = tuple(
-        f"2026-08-{day:02d}" for day in range(1, 8)
-    )
-    storage.today_cards_completion_days = set(storage.eligible_study_days[:3])
+    storage.state.achievements["streak_7"].unlocked = True
 
     first = answer(engine, storage)
     second = answer(engine, storage)
 
-    assert first.bonus_percent == second.bonus_percent == 4
+    assert first.bonus_percent == second.bonus_percent == 5
     assert first.base_growth == second.base_growth == 10
-    assert first.streak_growth_units == second.streak_growth_units == 40
-    assert first.total_growth_units == second.total_growth_units == 1_040
-    assert storage.state.plants[0].growth_units == 2_080
+    assert first.streak_growth_units == second.streak_growth_units == 50
+    assert first.total_growth_units == second.total_growth_units == 1_050
+    assert storage.state.plants[0].growth_units == 2_100
 
 
 def test_growth_routes_full_to_active_and_passive_to_other_planted_plants():
@@ -1130,7 +1138,7 @@ def test_one_through_six_planted_beds_create_exact_ten_percent_lanes(
     )
 
 
-def test_shared_growth_preserves_exact_hundredth_units_from_garden_rhythm() -> None:
+def test_shared_growth_preserves_exact_hundredth_units_from_retained_bonus() -> None:
     engine, storage = make_engine()
     storage.state.plants.extend(
         Plant(
@@ -1141,18 +1149,15 @@ def test_shared_growth_preserves_exact_hundredth_units_from_garden_rhythm() -> N
         )
         for index in range(2, 6)
     )
-    storage.eligible_study_days = tuple(
-        f"2026-08-{day:02d}" for day in range(1, 8)
-    )
-    storage.today_cards_completion_days = set(storage.eligible_study_days[:3])
+    storage.state.achievements["streak_7"].unlocked = True
 
     award = answer(engine, storage)
 
-    assert award.bonus_percent == 4
-    assert award.total_growth_units == 1_040
-    assert award.shared_growth_units == 5 * 104
+    assert award.bonus_percent == 5
+    assert award.total_growth_units == 1_050
+    assert award.shared_growth_units == 5 * 105
     assert all(
-        (plant.growth_points, plant.growth_remainder_units) == (1, 4)
+        (plant.growth_points, plant.growth_remainder_units) == (1, 5)
         for plant in storage.state.plants[1:]
     )
 
@@ -1173,27 +1178,14 @@ def test_full_bloom_shared_lane_routes_whole_lane_in_bed_order() -> None:
     assert continuation.growth_units == 200
 
 
-def test_garden_rhythm_uses_prior_seven_eligible_days_without_a_reset_cliff() -> None:
+def test_separate_streaks_do_not_combine_or_repeat_achievement_rewards() -> None:
     engine, storage = make_engine()
-    storage.eligible_study_days = (
-        "2026-08-01",
-        "2026-08-03",
-        "2026-08-04",
-        "2026-08-08",
-        "2026-08-11",
-        "2026-08-12",
-        "2026-08-20",
-    )
-    storage.today_cards_completion_days = set(storage.eligible_study_days[:6])
-    assert engine._garden_rhythm_percent_for_day("2026-08-21") == 10
-
-    storage.today_cards_completion_days.remove("2026-08-01")
-    assert engine._garden_rhythm_percent_for_day("2026-08-21") == 8
-
-    first = answer(engine, storage)
-    assert first.bonus_percent == 8
-    assert storage.state.daily_economy_snapshot is not None
-    assert storage.state.daily_economy_snapshot.garden_rhythm_percent == 8
+    for day in ("2026-07-15", "2026-08-08"):
+        engine._apply_streak_rewards(scheduler_day=day, correlation_id=day, streak_days=15)
+    assert engine.current_streak_bonus_percent() == 5
+    assert not storage.state.achievements["streak_30"].unlocked
+    assert storage.state.currency_balance == 0
+    assert engine.study_rewards_summary()["next_tier_days"] == 30
 
 
 @pytest.mark.parametrize("answer_number", [1, 101])
@@ -1245,7 +1237,7 @@ def test_historical_reviews_use_current_equipment_and_preserve_unknown_rhythm(an
 def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
     modifier_bits = ("streak", "fertilizer", "booster", "weather", "scenery")
     expected_units = {
-        "streak": 40,
+        "streak": 50,
         "fertilizer": 200,
         "booster": 500,
         "weather": 100,
@@ -1261,13 +1253,7 @@ def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
         passive_two = Plant("p3", "lavender", "Violet", 2)
         storage.state.plants.append(passive_two)
         storage.state.daily_stats.reviewed = 1
-        storage.eligible_study_days = tuple(
-            f"2026-08-{day:02d}" for day in range(1, 8)
-        )
-        storage.today_cards_completion_days = (
-            set(storage.eligible_study_days[:3])
-            if "streak" in enabled else set()
-        )
+        storage.state.achievements["streak_7"].unlocked = "streak" in enabled
         if "fertilizer" in enabled:
             nurtured.fertilizer_card_batches = [CardEffectBatch(
                 "fertilizer_quality", 200, 200, 200
@@ -1667,12 +1653,12 @@ def test_stage_completion_uses_the_final_checkpoint_split_and_is_durable():
     )
     assert any(memory.memory_id == "stage:sprout" for memory in plant.memories)
     assert any(
-        event.message == "Bonsai reached sprout. +2 Garden Coins"
+        event.message == "Bonsai reached Sprout. +2 Garden Coins"
         for event in engine.peek_feedback()
     )
 
 
-def test_day_7_achievement_and_weekly_reward_are_one_integrated_payout() -> None:
+def test_day_7_achievement_unlocks_growth_without_a_coin_payout() -> None:
     engine, storage = make_engine()
     storage.state.streak_days = 6
     storage.state.last_active_day = "2026-08-07"
@@ -1680,11 +1666,12 @@ def test_day_7_achievement_and_weekly_reward_are_one_integrated_payout() -> None
     engine._start_study_day()
 
     assert storage.state.streak_days == 7
-    assert storage.state.currency_balance == 10
+    assert storage.state.currency_balance == 0
     assert storage.state.achievements["streak_7"].unlocked
     assert "achievement:streak_7" in storage.state.applied_reward_event_keys
-    assert f"weekly_streak:{storage.day}" in storage.state.applied_reward_event_keys
-    assert [tx.delta for tx in storage.state.currency_transactions] == [10]
+    assert f"weekly_streak:{storage.day}" not in storage.state.applied_reward_event_keys
+    assert storage.state.currency_transactions == []
+    assert engine.current_streak_bonus_percent() == 5
 
 
 def test_twenty_five_fifty_and_seventy_five_percent_feedback_uses_stage_interval():
@@ -2001,7 +1988,7 @@ def test_todays_cards_completion_is_verified_live_and_claimed_once():
     assert storage.state.currency_balance == balance
 
 
-def test_garden_cycle_cadence_is_visible_nonconsecutive_and_idempotent():
+def test_daily_completion_pays_once_each_day_without_a_global_cycle():
     engine, storage = make_engine()
     initial_day = datetime.fromisoformat(storage.day)
     for offset in (0, 1, 3, 4, 7):
@@ -2028,28 +2015,15 @@ def test_garden_cycle_cadence_is_visible_nonconsecutive_and_idempotent():
             by_source.get(transaction.source, 0) + transaction.delta
         )
     assert by_source["first_eligible_answer"] == 5 * 4
-    assert by_source["todays_cards"] == 5 * 8
-    assert by_source["completion_cycle_5"] == 30
-    assert storage.state.garden_cycle_remainder == 0
+    assert by_source["todays_cards"] == 5 * 16
+    assert "completion_cycle_5" not in by_source
     reward = engine.today_cards_reward_summary()
-    assert reward["completion_coins"] == 8
-    assert reward["cycle_coins"] == 30
-    assert reward["cycle_earned"] is True
-    assert reward["cycle_progress"] == reward["cycle_goal"] == 5
+    assert reward["completion_coins"] == 16
     balance = storage.state.currency_balance
     engine.today_cards_status(DueObligationStatus(review_count=3))
     assert engine.today_cards_reward_summary()["earned"] is True
-    assert engine.today_cards_reward_summary()["completion_coins"] == 8
+    assert engine.today_cards_reward_summary()["completion_coins"] == 16
     assert storage.state.currency_balance == balance
-    cycle = next(
-        receipt for receipt in storage.state.recent_reward_receipts
-        if receipt.source == "completion_cycle_5"
-    )
-    assert (cycle.title, cycle.description, cycle.amount) == (
-        "Garden Cycle complete",
-        "5 completed review days",
-        30,
-    )
 
     next_day = initial_day + timedelta(days=9)
     storage.day = next_day.date().isoformat()
@@ -2061,12 +2035,11 @@ def test_garden_cycle_cadence_is_visible_nonconsecutive_and_idempotent():
     assert engine.evaluate_today_cards(
         DueObligationStatus(), record_completed_delta=True
     )[0]
-    assert storage.state.garden_cycle_remainder == 1
     assert sum(
         transaction.delta
         for transaction in storage.state.currency_transactions
         if transaction.source == "completion_cycle_5"
-    ) == 30
+    ) == 0
 
 
 def test_no_due_baseline_remains_not_eligible_on_later_live_refresh():
@@ -2387,6 +2360,7 @@ def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
     plant = storage.state.plants[0]
     storage.state.daily_stats.reviewed = 1
     storage.state.streak_days = 7
+    storage.state.achievements["streak_7"].unlocked = True
     storage.state.selected_weather = "breeze"
     storage.state.selected_background = "spring"
     plant.fertilizer_card_batches = [
@@ -2558,7 +2532,7 @@ def test_booster_count_pauses_without_a_target_and_resumes_when_growth_applies()
 
 
 @pytest.mark.parametrize("hourglass,moon", [(False, False), (True, False), (False, True), (True, True)])
-def test_booster_combines_owned_extensions_for_new_doses(hourglass, moon):
+def test_booster_duration_is_independent_of_owned_appearance_items(hourglass, moon):
     engine, storage = make_engine()
     state = storage.state
     state.inventory["garden_features"] = ["seedling_sign"] + (["herbalist_hourglass"] if hourglass else [])
@@ -2566,7 +2540,7 @@ def test_booster_combines_owned_extensions_for_new_doses(hourglass, moon):
     state.loadout.display_decoration_id = "seedling_sign"
     state.loadout.display_scenery_id = "default"
     state.consumables["booster_potion"] = 2
-    expected = 100 + 25 * (hourglass + moon)
+    expected = 100
     assert engine.consumable_use_projection("booster_potion").cards_added == expected
     assert engine.use_booster_potion()[0]
     batch = state.plants[0].booster_card_batches[0]
@@ -2580,7 +2554,7 @@ def test_booster_combines_owned_extensions_for_new_doses(hourglass, moon):
     assert engine.equip_environment("scenery", "full_moon")[0]
     assert engine.use_booster_potion()[0]
     restored = GardenState.from_dict(state.to_dict())
-    assert [batch.total_cards for batch in restored.plants[0].booster_card_batches] == [expected, 150]
+    assert [batch.total_cards for batch in restored.plants[0].booster_card_batches] == [expected, 100]
 
 
 def test_equipment_controls_artwork_and_next_reward_without_rewriting_daily_rhythm() -> None:
@@ -3337,14 +3311,14 @@ def test_currency_is_never_awarded_per_review():
     } == {"stage:p1:sprout"}
 
 
-def test_day_7_integrated_reward_remains_once_ever_when_visible_history_is_cleared():
+def test_day_7_unlock_remains_once_ever_when_visible_history_is_cleared():
     engine, storage = make_engine()
     storage.state.streak_days = 6
     storage.state.last_active_day = "2026-08-07"
 
     engine._start_study_day()
 
-    assert storage.state.currency_balance == 10
+    assert storage.state.currency_balance == 0
     assert storage.state.achievements["streak_7"].unlocked
     storage.state.currency_transactions.clear()
     storage.state.streak_days = 6
@@ -3352,7 +3326,8 @@ def test_day_7_integrated_reward_remains_once_ever_when_visible_history_is_clear
 
     engine._start_study_day()
 
-    assert storage.state.currency_balance == 10
+    assert storage.state.currency_balance == 0
+    assert engine.current_streak_bonus_percent() == 5
     assert storage.state.currency_transactions == []
 
 
@@ -3372,6 +3347,41 @@ def completed_collection_engine(*, displayed=True):
     engine = GardenGameEngine(FakeConfig(), storage)
     engine._update_achievements()
     return engine, storage
+
+
+def test_plant_beds_share_species_progress_and_grant_bonus_once():
+    from ankigarden.plant_beds import plant_bed_progress
+    from ankigarden.reward_presentation import achievement_presentations
+
+    engine, storage = make_engine()
+    state = storage.state
+    state.plants = [Plant(f"stored-{i}", CURRENT_CATALOG_SPECIES_ORDER[0], "Stored", None,
+                          growth_points=GROWTH_THRESHOLDS[-1]) for i in range(2)]
+    engine._update_achievements()
+    rows = plant_bed_progress(state)
+    assert [row.unlocked for row in rows] == [True, True, True, True, False, False]
+    assert rows[4].current == rows[5].current == 1
+    assert rows[4].next_bed and not rows[5].next_bed
+    assert rows[2].current == 1  # Full Bloom still satisfies Mature.
+    state.plants = [Plant(f"stored-{i}", species, species, None,
+                          growth_points=GROWTH_THRESHOLDS[-1])
+                    for i, species in enumerate(CURRENT_CATALOG_SPECIES_ORDER[:6])]
+    before_bonus = state.consumables["growth_charge_standard"]
+    engine._update_achievements()
+    assert state.consumables["growth_charge_standard"] == before_bonus + 1
+    assert all(row.unlocked for row in plant_bed_progress(state))
+    assert not any(row.next_bed for row in plant_bed_progress(state))
+    state.consumables["growth_charge_standard"] -= 1  # Consuming the item retains its receipt.
+    snapshot = state.to_dict()
+    assert plant_bed_progress(state)[5].bonus_received
+    assert len(achievement_presentations(state)) == 16
+    assert state.to_dict() == snapshot  # Rendering does not commit rewards.
+    engine._update_achievements()
+    assert state.consumables["growth_charge_standard"] == before_bonus
+    reloaded = GardenState.from_dict(state.to_dict())
+    assert all(row.unlocked for row in plant_bed_progress(reloaded))
+    assert plant_bed_progress(reloaded)[5].bonus_received
+    assert [plant.slot_index for plant in reloaded.plants] == [None] * 6
 
 
 @pytest.mark.parametrize("displayed", [False, True])
@@ -3451,13 +3461,13 @@ def test_completed_garden_supplies_contribute_once_and_preserve_paid_cards(displ
     assert first.stored_growth_units == first.total_growth_units + ((first.total_growth_units * 15 // 100) * 5 if displayed else 0)
     baseline = engine.sync_reward_baseline()
     assert baseline["fertilizer_cards_remaining"] == engine.FERTILIZERS[tier].card_count - 1
-    assert baseline["booster_cards_remaining"] == 149
+    assert baseline["booster_cards_remaining"] == 99
     before = storage.state.to_dict()
     assert answer(engine, storage, revlog_id=storage.now_ms).total_growth_units == 0
     assert storage.state.garden_card_effects.to_dict() == before["garden_card_effects"]
     storage.state = GardenState.from_dict(storage.state.to_dict())
     engine = GardenGameEngine(FakeConfig(), storage)
-    assert engine.sync_reward_baseline()["booster_cards_remaining"] == 149
+    assert engine.sync_reward_baseline()["booster_cards_remaining"] == 99
     # Buying and applying uses the same explicit garden destination.
     storage.state.currency_balance = 1000
     quote = engine.quote_purchase(PurchaseKind.FERTILIZER, tier, target_id=engine.GARDEN_SUPPLY_TARGET)

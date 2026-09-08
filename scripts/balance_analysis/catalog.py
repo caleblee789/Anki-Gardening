@@ -154,6 +154,7 @@ class AchievementFact:
     progress_target: int
     minimum_answers: int
     rewards: Tuple[GrantFact, ...]
+    permanent_growth_percent: int = 0
 
 
 @dataclass(frozen=True)
@@ -262,11 +263,7 @@ class CatalogFacts:
     shared_growth_denominator: int
     daily_activity_coins: int
     completion_coins: int
-    weekly_streak_coins: int
-    garden_cycle_completions: int
-    garden_cycle_coins: int
     stages: Tuple[StageFact, ...]
-    rhythm_tiers: Tuple[Tuple[int, int], ...]
     species_ids: Tuple[str, ...]
     purchase_options: Tuple[PurchaseOption, ...]
     consumables: Tuple[ConsumableFact, ...]
@@ -306,13 +303,6 @@ class CatalogFacts:
                 return band.minimum_tier
         return ""
 
-    def rhythm_percent(self, completed_days: int) -> int:
-        result = 0
-        for threshold, percent in self.rhythm_tiers:
-            if completed_days >= threshold:
-                result = percent
-        return result
-
     @property
     def environment_discovery_ids(self) -> Tuple[str, ...]:
         return tuple(item.item_id for item in self.environment_discoveries)
@@ -321,7 +311,6 @@ class CatalogFacts:
 _REGISTRY_NAMES = (
     ("stage", "STAGES"),
     ("species", "SPECIES"),
-    ("rhythm", "RHYTHM_TIERS"),
     ("consumable", "CONSUMABLES"),
     ("garden_bonus", "GARDEN_BONUSES"),
     ("scenery", "SCENERIES"),
@@ -385,22 +374,6 @@ def _stage_facts(module: Any) -> Tuple[StageFact, ...]:
     ):
         raise ValueError("balance catalog stage thresholds must be strictly increasing")
     return tuple(stages)
-
-
-def _rhythm_tiers(module: Any) -> Tuple[Tuple[int, int], ...]:
-    rows = []
-    for item in _registry(module, "RHYTHM_TIERS"):
-        threshold = _integer(
-            item,
-            "completed_days",
-            "minimum_completed_days",
-            "minimum_days",
-            "start_day",
-            "days",
-        )
-        percent = _integer(item, "bonus_percent", "growth_percent")
-        rows.append((threshold, percent))
-    return tuple(sorted(rows))
 
 
 def _reward_facts(module: Any) -> Tuple[RewardFact, ...]:
@@ -553,6 +526,7 @@ def _achievement_facts(module: Any) -> Tuple[AchievementFact, ...]:
             progress_target=_integer(item, "progress_target", default=0),
             minimum_answers=_integer(item, "minimum_answers", default=0),
             rewards=rewards,
+            permanent_growth_percent=_integer(item, "permanent_growth_percent", default=0),
         ))
     return tuple(rows)
 
@@ -602,7 +576,7 @@ def _purchase_options(
     )
     for category, registry_name in _REGISTRY_NAMES:
         if category in {
-            "stage", "rhythm", "standard_find", "environment_tier",
+            "stage", "standard_find", "environment_tier",
             "environment_discovery", "achievement", "coin_source",
             "garden_legacy",
         }:
@@ -776,13 +750,7 @@ def load_catalog_facts() -> CatalogFacts:
         shared_growth_denominator=int(module.SHARED_GROWTH_DENOMINATOR),
         daily_activity_coins=int(module.DAILY_ACTIVITY_COINS),
         completion_coins=int(module.ALL_DUE_BASE_COINS),
-        weekly_streak_coins=int(module.WEEKLY_STREAK_COINS),
-        garden_cycle_completions=int(
-            getattr(module, "GARDEN_CYCLE_COMPLETIONS", 5)
-        ),
-        garden_cycle_coins=int(getattr(module, "GARDEN_CYCLE_COINS", 30)),
         stages=_stage_facts(module),
-        rhythm_tiers=_rhythm_tiers(module),
         species_ids=tuple(
             _identifier(item, "species", index)
             for index, item in enumerate(_registry(module, "SPECIES"))

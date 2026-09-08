@@ -375,8 +375,7 @@ def test_completion_and_booster_values_match_shipped_engine_balance() -> None:
     storage.state.consumables["booster_potion"] = 1
     ok, _message = hourglass.use_booster_potion("p1")
     assert ok
-    assert storage.state.plants[0].booster_card_batches[-1].total_cards == 125
-    assert hourglass.last_booster_result.hourglass_bonus_cards == 25
+    assert storage.state.plants[0].booster_card_batches[-1].total_cards == 100
 
 
 def test_schema24_splits_display_and_bonus_without_losing_hidden_selection() -> None:
@@ -471,32 +470,31 @@ def test_legacy_prism_bank_is_inert_across_answers_and_cutoff() -> None:
     assert storage.state.prism_pending_growth_units == 3_700
 
 
-def test_equipment_changes_preserve_owned_potion_bonuses() -> None:
+def test_equipment_changes_do_not_change_potion_duration() -> None:
     engine, storage = _engine("wind_chime")
     storage.state.inventory["garden_features"].append("herbalist_hourglass")
     storage.state.consumables["booster_potion"] = 2
     _answer(engine, storage, 1)
     assert engine.use_booster_potion("p1")[0]
-    assert engine.last_booster_result.total_cards_added == 125
+    assert engine.last_booster_result.total_cards_added == 100
     assert engine.equip_environment("garden_feature", "herbalist_hourglass")[0]
     assert engine.use_booster_potion("p1")[0]
-    assert engine.last_booster_result.total_cards_added == 125
+    assert engine.last_booster_result.total_cards_added == 100
     assert engine.equip_environment("garden_feature", "wind_chime")[0]
-    assert sum(batch.remaining_cards for batch in storage.state.plants[0].booster_card_batches) == 250
+    assert sum(batch.remaining_cards for batch in storage.state.plants[0].booster_card_batches) == 200
 
 
-def test_hourglass_multiple_uses_extend_only_each_new_potion_dose() -> None:
+def test_hourglass_multiple_uses_preserve_normal_potion_doses() -> None:
     engine, storage = _engine("herbalist_hourglass")
     storage.state.consumables["booster_potion"] = 2
     assert engine.use_booster_potion("p1")[0]
     assert engine.use_booster_potion("p1")[0]
     plant = storage.state.plants[0]
-    assert sum(batch.total_cards for batch in (*plant.booster_card_batches, *plant.booster_card_queue)) == 250
+    assert sum(batch.total_cards for batch in (*plant.booster_card_batches, *plant.booster_card_queue)) == 200
     assert engine.last_booster_result == engine.last_booster_result.__class__(
         base_cards_added=100,
-        hourglass_bonus_cards=25,
-        total_cards_added=125,
-        remaining_booster_cards=250,
+        total_cards_added=100,
+        remaining_booster_cards=200,
         target_id="p1",
     )
 

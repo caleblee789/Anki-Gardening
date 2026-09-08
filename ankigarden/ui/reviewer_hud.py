@@ -19,8 +19,8 @@ from typing import Any
 from ..growth import GROWTH_UNITS_PER_POINT, stage_presentation, stage_progress
 from ..presentation import PlantIdentity
 from .plant_display import growth_display, plant_growth_points
-from ..environment import GARDEN_FEATURE_CATALOG
-from ..garden_features import FEATURE_EFFECT_KEYS
+from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
+from ..bonus_copy import appearance_effect_copy
 from .formatters import format_approximate_cards, format_garden_coins, format_quantity
 
 
@@ -50,6 +50,22 @@ FULL_BLOOM_GROWTH_ROUTE_COPY = (
     "Future Growth will go to other unfinished plants. "
     "Any remainder becomes Stored Growth."
 )
+
+
+def study_growth_route(award: Any) -> str:
+    """Describe the existing engine's projected allocation, without re-routing it."""
+    destinations = []
+    if int(getattr(award, "applied_growth_units", 0) or 0):
+        destinations.append("plants")
+    if tuple(getattr(award, "project_allocations", ()) or ()):
+        destinations.append("your project")
+    if int(getattr(award, "stored_growth_units", 0) or 0):
+        destinations.append("storage")
+    if destinations == ["storage"]:
+        return "Study Growth is stored."
+    if destinations:
+        return "Study Growth goes to " + ", ".join(destinations[:-1]) + (" and " if len(destinations) > 1 else "") + destinations[-1] + "."
+    return "Study Growth follows your Growth target."
 
 
 STAGE_NAMES = {
@@ -158,6 +174,7 @@ class NurtureProjection:
     fully_grown: bool = False
     all_plants_full_bloom: bool = False
     growth_destination: GrowthDestinationProjection | None = None
+    study_growth_route: str = ""
 
     @property
     def next_answer_value(self) -> str:
@@ -421,7 +438,6 @@ def _active_effect_rows(
     """Return compact effect copy paired with canonical item artwork refs."""
 
     rows: list[tuple[str, str]] = []
-    state = getattr(engine, "state", None)
     active_feature_resolver = getattr(engine, "active_garden_feature_id", None)
     try:
         active_id = str(
@@ -432,43 +448,9 @@ def _active_effect_rows(
     except Exception:
         active_id = ""
     active_item = GARDEN_FEATURE_CATALOG.get(active_id)
-    effect = FEATURE_EFFECT_KEYS.get(active_id, "none")
-    progress_copy = {
-        "growth_every_10_plus_1": (
-            f"{max(0, int(getattr(state, 'wind_chime_progress', 0) or 0))} / 5 cards to next +1 Growth"
-        ),
-        "growth_every_5_plus_1": (
-            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 2 cards to next +1 Growth"
-        ),
-        "growth_every_5_first_100_plus_1": (
-            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 2 cards to next +1 Growth"
-        ),
-        "growth_every_4_plus_3": (
-            f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 4 cards to next +3 Growth"
-        ),
-        "instant_growth_every_5_plus_3_nurtured": (
-            f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 5 cards to next +3 Growth"
-        ),
-        "completion_coins_plus_5": (
-            f"{format_garden_coins(5, signed=True)} when Today’s cards are complete"
-        ),
-        "booster_cards_multiplier_1_25": "Booster Potions add 25% more cards",
-        "hourglass_completion_booster": (
-            f"{max(0, int(getattr(state, 'hourglass_completion_progress', 0) or 0))} / 30 completions to a Booster Potion"
-        ),
-        "none": "No bonus",
-    }.get(effect, "")
-    if effect == "prism_completion_growth_100":
-        progress_copy = "+100 Growth when Today’s Cards is complete"
-
-    feature_row = (
-        (
-            f"{active_item.name} · {progress_copy}",
-            f"garden_feature_{active_id}",
-        )
-        if active_item is not None and progress_copy
-        else None
-    )
+    scenery_resolver = getattr(engine, "locked_environment_id", None)
+    scenery_id = str(scenery_resolver("scenery")) if callable(scenery_resolver) else ""
+    scenery_item = SCENERY_CATALOG.get(scenery_id)
     owner_resolver = getattr(engine, "_effect_owner", None)
     fertilizer_owner = owner_resolver(plant, "fertilizer") if callable(owner_resolver) else plant
     booster_owner = owner_resolver(plant, "booster") if callable(owner_resolver) else plant
@@ -509,8 +491,8 @@ def _active_effect_rows(
     # so they precede the derived streak bonus while remaining behind
     # card-counted Fertilizer and Booster effects.
     for label, units in (
-        ("Garden decoration", getattr(award, "weather_growth_units", 0)),
-        ("Scenery", getattr(award, "scenery_growth_units", 0)),
+        ("Garden decoration", 0 if active_item else getattr(award, "weather_growth_units", 0)),
+        ("Scenery", 0 if scenery_item else getattr(award, "scenery_growth_units", 0)),
         ("Gardening Trophy", getattr(award, "trophy_growth_units", 0)),
     ):
         normalized_units = max(0, int(units or 0))
@@ -520,23 +502,19 @@ def _active_effect_rows(
                 "",
             ))
 
-    # Named mechanical features remain useful when they affect a later card or
-    # completion rather than this answer. Avoid duplicating the active feature
-    # when its direct Growth is already represented above.
-    if feature_row is not None and (
-        effect != "none"
-        and max(0, int(getattr(award, "weather_growth_units", 0) or 0)) == 0
+    for item, artwork_ref in (
+        (active_item, f"garden_feature_{active_id}"),
+        (scenery_item, "garden_background" if scenery_id == "default" else f"garden_{scenery_id}"),
     ):
-        rows.append(feature_row)
+        if item is not None:
+            rows.append((f"{item.name}\n{appearance_effect_copy(item.item_id)}", artwork_ref))
 
     streak_units = max(0, int(getattr(award, "streak_growth_units", 0) or 0))
     if streak_units:
         rows.append((
-            f"Garden Rhythm · {format_growth_units(streak_units, signed=True)} Growth",
+            f"Permanent Growth bonus · {format_growth_units(streak_units, signed=True)} Growth",
             "",
         ))
-    if feature_row is not None and effect == "none":
-        rows.append(feature_row)
     return tuple(rows)
 
 
@@ -874,7 +852,7 @@ def project_nurture(
 
     award = None
     projector = getattr(engine, "project_review_growth", None)
-    if callable(projector) and not fully_grown:
+    if callable(projector):
         try:
             award = projector(target)
         except Exception:
@@ -983,6 +961,7 @@ def project_nurture(
         art_placement=art_placement,
         environment_tone=" ".join(value for value in (weather_id, scenery_id) if value),
         fully_grown=fully_grown,
+        study_growth_route=study_growth_route(award),
         all_plants_full_bloom=all_plants_full_bloom,
         growth_destination=(
             full_bloom_destination

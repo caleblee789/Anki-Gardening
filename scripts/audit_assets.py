@@ -52,7 +52,7 @@ EXPECTED_COUNTS = {
     "mastery": 4,
     "backgrounds": 9,
     "plants": 60,
-    "ui": 20,
+    "ui": 27,
     "garden_features": 7,
 }
 RUNTIME_ROOTS = (
@@ -406,8 +406,15 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
             variants = house.get("variants") if isinstance(house, dict) else None
             if not isinstance(variants, dict) or set(variants) != set(expected_sizes):
                 raise ValueError("autumn cottage contour override is incomplete")
-        elif landmark_overrides:
-            raise ValueError(f"unexpected scenery landmark override: {item_id}")
+        if landmark_overrides:
+            # Scenery-specific building contours inherit the canonical identities.
+            known_landmarks = {landmark["landmark_id"] for landmark in actual_profile["landmarks"]}
+            if not isinstance(landmark_overrides, dict) or not set(landmark_overrides) <= known_landmarks:
+                raise ValueError(f"unknown scenery landmark override: {item_id}")
+            for override in landmark_overrides.values():
+                variants = override.get("variants") if isinstance(override, dict) else None
+                if not isinstance(variants, dict) or not variants or not set(variants) <= set(expected_sizes):
+                    raise ValueError(f"invalid scenery landmark viewport: {item_id}")
         surface_files = row.get("surface_files")
         if not isinstance(surface_files, dict) or set(surface_files) != set(expected_sizes):
             raise ValueError(f"scenery viewport family is incomplete: {item_id}")
@@ -609,6 +616,13 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
         "ui_stored_growth": "assets/v6_storybook_gouache/ui/stored_growth.webp",
         "ui_checkpoint_badge": "assets/v6_storybook_gouache/ui/checkpoint_badge.webp",
         "ui_garden_placeholder": "assets/v6_storybook_gouache/ui/garden_placeholder.webp",
+        "ui_find_buried_coin_cache": "assets/v6_storybook_gouache/ui/find_buried_coin_cache.webp",
+        "ui_find_coin_sprout": "assets/v6_storybook_gouache/ui/find_coin_sprout.webp",
+        "ui_find_garden_treasury": "assets/v6_storybook_gouache/ui/find_garden_treasury.webp",
+        "ui_find_growth_burst": "assets/v6_storybook_gouache/ui/find_growth_burst.webp",
+        "ui_find_hidden_coin_cache": "assets/v6_storybook_gouache/ui/find_hidden_coin_cache.webp",
+        "ui_find_sun_patch": "assets/v6_storybook_gouache/ui/find_sun_patch.webp",
+        "ui_garden_reward": "assets/v6_storybook_gouache/ui/garden_reward.webp",
     }
     observed_ui = {
         str(row.get("asset_id", "")): str(row.get("file", "")) for row in ui_rows

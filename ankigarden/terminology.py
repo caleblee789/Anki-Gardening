@@ -39,17 +39,17 @@ ACTIVE_PLANT_EXPLANATION = (
 )
 
 ANKI_STREAK_EXPLANATION = (
-    "Your Anki streak counts study days in a row and can add up to "
-    f"{MAX_STREAK_BONUS_PERCENT}% Growth."
+    "Study on consecutive days to unlock a permanent bonus of up to "
+    f"{MAX_STREAK_BONUS_PERCENT}% to base Growth from card answers."
 )
 
 ALL_DUE_EXPLANATION = (
-    "Complete today’s cards."
+    "Finish all cards due today."
 )
 
 GARDEN_CURRENCY_EXPLANATION = (
-    "Earn Garden Coins from cards, streaks, achievements, and Garden Finds. "
-    "Spend them in the Nursery."
+    "Earn Coins from cards, achievements, and Garden Finds. "
+    "Spend them in the Shop."
 )
 
 FERTILIZER_EXPLANATION = (

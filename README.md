@@ -34,11 +34,11 @@ Plants grow through **Seed → Sprout → Young → Mature → Flowering → Ful
 
 Your first two beds are included. More beds unlock when a plant reaches Mature and when one, three, and six different species reach Full Bloom, giving you up to six beds.
 
-**Coins** buy plants, supplies, scenery, and decorations. Earn them from daily study, completed review days, streaks, achievements, plant milestones, and Garden Finds.
+**Coins** buy plants, supplies, scenery, and decorations. Earn them from daily study, completed review days, achievements, plant milestones, and Garden Finds.
 
 **Garden Finds** bring Coins, Growth, and supplies as you study, with no daily Find limit. Discoveries can also unlock new scenery and decorations.
 
-**Garden Rhythm** adds up to 10% to base Growth based on recent study days when you finished all due cards. It is separate from your Anki streak.
+**Streak achievements** permanently unlock a total bonus to base Growth from card answers: +5% at 7 consecutive study days, +10% at 30, +15% at 100, and +20% at 365. You keep the highest unlocked bonus after a streak ends.
 
 ## Follow your study rewards
 
@@ -46,14 +46,12 @@ Your first two beds are included. More beds unlock when a plant reaches Mature a
 
 **Card answers** includes repeat answers to the same card. **Coins earned** counts what you received that day; the header balance shows what you have left after spending.
 
-The reward cards show what you have earned and what comes next:
+The **Study rewards** panel shows what you have earned and your next Growth tier:
 
 | Study milestone | Base reward |
 |---|---|
-| Answer your first card of the day | 4 Coins |
-| Finish all due cards across your decks | 8 Coins |
-| Complete every fifth qualifying review day | 30 extra Coins |
-| Reach every seventh day of your Anki study streak | 10 Coins |
+| Study 1 card | 4 Coins, once daily |
+| Finish all cards due today | 16 Coins, once daily |
 
 Completed review days do **not** need to be consecutive. Your Anki streak does count consecutive study days. Finishing all due cards earns the daily reward once; more cards becoming due later do not take it away. Each day follows Anki’s configured next-day cutoff.
 

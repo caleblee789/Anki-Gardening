@@ -605,7 +605,7 @@ def test_todays_cards_environment_rewards_use_locked_mechanics_and_normal_accoun
         record_completed_delta=True,
     )
     assert ok
-    assert cloudy_storage.state.currency_balance == 22
+    assert cloudy_storage.state.currency_balance == 30
     assert "today’s cards" in message.lower()
     assert_concise_player_copy(message)
 
@@ -624,31 +624,29 @@ def test_todays_cards_environment_rewards_use_locked_mechanics_and_normal_accoun
     assert rainbow.last_completion_result.prism_growth_released_units == 10_000
     assert rainbow_storage.state.daily_stats.instant_growth_units == 10_000
     # Prism also crosses the next one-Coin Growth checkpoint.
-    assert rainbow_storage.state.currency_balance == 18
+    assert rainbow_storage.state.currency_balance == 26
     assert rainbow.last_completion_result.prism_growth_destination == "plant_growth"
     assert_concise_player_copy(message)
 
 
-def test_autumn_carries_fractional_bonus_across_checkpoint_payouts():
+def test_autumn_carries_fractional_bonus_across_earned_rewards_without_replay():
     engine, storage = make_engine()
     own_and_equip(engine, scenery="autumn")
-    plant = storage.state.plants[0]
-    for before in (99, 199, 299, 399):
-        plant.growth_points = before
-        answer(engine, storage)
-
-    milestone_payouts = [
-        tx.delta for tx in storage.state.currency_transactions
-        if tx.source == "plant_milestone"
-    ]
-    autumn_payouts = [
-        tx.delta for tx in storage.state.currency_transactions
-        if tx.source == "autumn_hearth"
-    ]
-    assert milestone_payouts == [1, 1, 1, 2]
-    assert autumn_payouts == [1, 1]
-    assert sum((*milestone_payouts, *autumn_payouts)) == 7
-    assert storage.state.checkpoint_coin_carry_units == 50
+    engine.begin_review_session()
+    before = storage.state.currency_balance
+    sources = ("plant_milestone", "standard_find", "achievement", "harvest_bell")
+    for index in range(20):
+        engine._grant_reward_bundle(f"earned:{index}", source=sources[index % 4],
+                                    source_id="test", reason="test", coins=1)
+    assert storage.state.currency_balance - before == 23
+    assert storage.state.autumn_coin_carry_units == 0
+    assert sum(tx.delta for tx in storage.state.currency_transactions
+               if tx.source == "autumn_hearth") == 3
+    snapshot = storage.state.to_dict()
+    engine._grant_reward_bundle("earned:0", source="plant_milestone",
+                                source_id="test", reason="test", coins=1)
+    engine.quote_completion_coins()
+    assert storage.state.to_dict() == snapshot
 
 
 def test_growth_charges_purchase_apply_transitions_without_losing_overflow():
@@ -665,7 +663,7 @@ def test_growth_charges_purchase_apply_transitions_without_losing_overflow():
     assert "100 Growth" in message
     assert plant.growth_points == 490
     assert storage.state.daily_stats.charge_growth == 100
-    assert storage.state.currency_balance == 73
+    assert storage.state.currency_balance == 72
 
     plant.growth_points = 34_950
     continuation = storage.state.plants[1]
@@ -680,21 +678,35 @@ def test_growth_charges_purchase_apply_transitions_without_losing_overflow():
     assert grand_purchase[1] == "This item is unavailable right now."
 
 
-def test_owned_decoration_and_scenery_extend_booster_card_count_additively():
+def test_owned_decoration_and_scenery_leave_potion_duration_unchanged():
     engine, storage = make_engine()
     own_and_equip(engine, weather="snow_flurry", scenery="full_moon")
     storage.state.consumables["booster_potion"] = 1
     assert engine.use_booster_potion()[0]
 
     batch = storage.state.plants[0].booster_card_batches[0]
-    assert batch.total_cards == batch.remaining_cards == 150
+    assert batch.total_cards == batch.remaining_cards == 100
+
+
+@pytest.mark.parametrize("item_id,interval", [("herbalist_hourglass", 15), ("full_moon", 4)])
+def test_completion_potions_repeat_without_duplicate_day_progress(item_id, interval):
+    engine, storage = make_engine()
+    own_and_equip(engine, **({"weather": item_id} if item_id == "herbalist_hourglass"
+                            else {"scenery": item_id}))
+    engine.begin_review_session()
+    for index in range(interval * 2):
+        # Gaps deliberately prove that the requirement is not a streak.
+        from datetime import date, timedelta
+        day = (date(2026, 1, 1) + timedelta(days=index * 2)).isoformat()
+        engine._grant_completion_environment_gift(scheduler_day=day, correlation_id=day)
+        engine._grant_completion_environment_gift(scheduler_day=day, correlation_id=day)
+        assert storage.state.consumables["booster_potion"] == (index + 1) // interval
 
 
 def test_todays_cards_scenery_gift_is_independent_of_answer_find_pools():
     engine, storage = make_engine()
     engine.initialize_reward_state()
     own_and_equip(engine, scenery="snowy")
-    storage.state.snow_completion_progress = 1
     storage.state.garden_find_daily_counts[storage.day] = 3
     storage.state.garden_find_drought_count = 40
     first_id = storage.now_ms + 1_000
@@ -721,7 +733,9 @@ def test_todays_cards_scenery_gift_is_independent_of_answer_find_pools():
     assert "today’s cards" in message.lower()
     assert_concise_player_copy(message)
     assert storage.state.daily_environment_claims == {"snowy": storage.day}
-    assert storage.state.consumables["growth_charge_small"] == 1
+    assert storage.state.consumables["growth_charge_small"] == 0
+    assert sum(receipt.amount for receipt in storage.state.recent_reward_receipts
+               if receipt.source_id == "snowy" and receipt.reward_type == "growth") == 50
     assert storage.state.garden_find_drought_count == drought_after_answer
     assert list(storage.state.garden_find_outcomes.values()) == first_outcomes
 
@@ -781,3 +795,33 @@ def test_every_scenery_resolves_its_own_art_with_shared_surface_geometry():
             else:
                 assert f"backgrounds/{item_id}/" in variant["file"]
                 assert f"backgrounds/{item_id}/" in variant["occlusion_file"]
+
+
+@pytest.mark.parametrize("item", [*SCENERY_CATALOG.values(), *GARDEN_FEATURE_CATALOG.values()], ids=lambda item: item.item_id)
+def test_appearance_descriptions_match_across_public_projections(item):
+    from ankigarden.bonus_copy import appearance_effect_copy
+    from ankigarden.presentation import project_garden_setup
+    from ankigarden.purchases import PurchaseKind, purchase_presentation
+    from ankigarden.ui.copy import garden_bonus_effect_copy, scenery_effect_copy
+    from ankigarden.ui.economy_presenters import catalog_item_projections
+    from ankigarden.ui.reviewer_hud import project_nurture
+
+    engine, storage = make_engine()
+    expected = appearance_effect_copy(item.item_id)
+    assert expected and "\n" not in expected
+    assert item.effect == item.descriptor.buff == expected
+    assert garden_bonus_effect_copy(item.item_id) == scenery_effect_copy(item.item_id) == expected
+    assert next(row for row in catalog_item_projections()
+                if row.item_id == item.item_id).effect_description == expected
+    assert next(row for row in collectible_registry()
+                if row.source_id == item.item_id).descriptor.buff == expected
+    if item.purchasable:
+        storage.state.currency_balance = 10_000
+        quote = engine.quote_purchase(PurchaseKind(item.kind), item.item_id)
+        assert next(fact for fact in purchase_presentation(quote).facts
+                    if fact.key == "effect").value == expected
+    own_and_equip(engine, **({"scenery": item.item_id} if item.kind == "scenery"
+                            else {"weather": item.item_id}))
+    setup = project_garden_setup(engine, storage)
+    assert next(row for row in setup.items if row.kind == item.kind).effect == expected
+    assert f"{item.name}\n{expected}" in project_nurture(engine, storage.state).effect_chips

@@ -42,7 +42,7 @@ def test_fertilizer_status_is_card_counted_fifo_and_time_invariant() -> None:
     assert "cards queued after this dose" in early.accessible_text
 
 
-def test_reviewer_effect_rows_use_cards_and_garden_rhythm() -> None:
+def test_reviewer_effect_rows_use_cards_and_permanent_growth_bonus() -> None:
     plant = SimpleNamespace(
         fertilizer_card_batches=(batch("fertilizer_basic", 23, 100),),
         booster_card_batches=(),
@@ -54,7 +54,7 @@ def test_reviewer_effect_rows_use_cards_and_garden_rhythm() -> None:
     award = SimpleNamespace(
         weather_growth_units=0,
         scenery_growth_units=0,
-        streak_growth_units=20,
+        streak_growth_units=50,
     )
 
     rows = _active_effect_rows(engine, plant, award, now_ms=1)
@@ -63,7 +63,7 @@ def test_reviewer_effect_rows_use_cards_and_garden_rhythm() -> None:
         "Basic Fertilizer · 23 cards remaining",
         "fertilizer_basic",
     ) in rows
-    assert ("Garden Rhythm · +0.2 Growth", "") in rows
+    assert ("Permanent Growth bonus · +0.5 Growth", "") in rows
     assert not any(" h" in label or " min" in label for label, _asset in rows)
 
 
@@ -87,8 +87,8 @@ def test_beds_are_presented_as_earned_milestones() -> None:
     rows = bed_unlock_rows(state)
 
     assert [row.unlocked for row in rows] == [True, True, True, False, False, False]
-    assert rows[3].requirement == "First unique species reaches Full Bloom"
-    assert rows[5].requirement == "6 unique species reach Full Bloom"
+    assert rows[3].requirement == "Grow 1 species to Full Bloom"
+    assert rows[5].requirement == "Grow 6 different species to Full Bloom"
     assert rows[2].action_text == "Unlock Bed 3"
     assert rows[2].artwork_id == "bg_verdant_twilight_any_soil_master_v6"
     assert rows[2].unlock_policy == "automatic_achievement"

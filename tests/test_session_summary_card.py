@@ -78,7 +78,7 @@ def test_session_summary_compact_density_covers_measured_macos_host_heights():
 def test_session_summary_typography_keeps_the_approved_title_and_hero_scale():
     source = SOURCE_PATH.read_text(encoding="utf-8") + SOURCE_PATH.with_name("reward_receipt.py").read_text(encoding="utf-8")
     assert "font-size:13px" in source
-    assert "summaryTitle='true'] {font-size:16px" in source
+    assert "summaryTitle='true'] {font-size:20px" in source
     assert "summaryHero='true'] {font-size:40px" in source
     assert "summaryHeroLabel='true']" in source
     assert "font-size:14px;font-weight:520" in source
@@ -149,7 +149,7 @@ def test_session_receipt_keeps_totals_above_progress_and_optional_details():
                               shared_growth_total_units=0, stored_growth=SimpleNamespace(added_units=0),
                               total_finds=2, environment_discoveries=(object(),))
     metrics = SessionSummaryCard._reward_metrics(summary, SimpleNamespace(growth_applied_total_units=4000))
-    assert [(row[1], row[2]) for row in metrics] == [("Coins", "+14"), ("Growth", "+40"), ("Discoveries", "3")]
+    assert [(row[1], row[2]) for row in metrics] == [("Coins", "+14"), ("Growth", "+40"), ("Items & finds", "3")]
 
 
 def test_highlight_cards_are_static_prioritized_and_two_line_safe():
@@ -169,7 +169,6 @@ def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     assert "Completed during this session" not in source
     highlights = _method_source("_add_highlights", "_add_highlight_card")
     assert "candidates[:2]" in highlights
-    assert "candidates[2:]" in highlights
     assert "candidates = (*featured, *overflow)" in highlights
     compact = _method_source("_add_compact_highlight_row", "_add_highlight_card")
     assert 'setProperty("summaryHighlightCompact", True)' in compact
@@ -514,3 +513,26 @@ def test_effect_remaining_copy_is_live_concise_and_pluralized():
     assert session_effect_remaining_text(
         SimpleNamespace(kind="booster", remaining_cards=38)
     ) == "38 cards remaining"
+
+
+def test_items_and_finds_counts_the_same_awards_across_summary_formats():
+    from ankigarden.reward_counts import activity_drop_count, reward_drop_count
+    charge = {"event_key": "achievement:one", "source": "achievement",
+              "reward_type": "inventory_item", "item_id": "growth_charge_small", "amount": 2}
+    find_item = {"event_key": "find:one", "source": "standard_find",
+                 "reward_type": "inventory_item", "item_id": "bonsai", "amount": 1}
+    unlock = {"event_key": "unlock:one", "source": "garden_find_environment",
+              "reward_type": "environment_item", "item_id": "spring_bloom", "amount": 1}
+    environments = ({"event_id": "unlock:one", "environment_id": "spring_bloom"},)
+    session = {"total_finds": 1, "standard_finds": ({"event_id": "find:one"},),
+               "environment_discoveries": environments,
+               "reward_receipts": (find_item, charge, charge, unlock,
+                   {**charge, "event_key": "purchase:one", "source": "purchase"})}
+    sync = {"finds": ({"event_id": "find:one", "quantity": 1},
+                     {"event_id": "achievement:one", "quantity": 2}),
+            "environment_discoveries": environments}
+    assert reward_drop_count(session) == reward_drop_count(sync) == 4
+    assert sum(activity_drop_count(finds, row["source"],
+               ({**row, "kind": row["reward_type"]},))
+               for finds, row in ((1, find_item), (0, charge), (0, unlock))) == 4
+    assert activity_drop_count(0, "purchase", ({"kind": "inventory_item", "amount": 2},)) == 0

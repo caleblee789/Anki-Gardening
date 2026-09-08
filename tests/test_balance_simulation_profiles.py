@@ -201,10 +201,7 @@ def test_release_report_exposes_policy_accounting_and_item_level_evidence(short_
     ]
     assert concentration["behavioral_family_totals"][
         "todays_cards_completion"
-    ] == sum(
-        concentration["source_totals"][source]
-        for source in ("todays_cards", "completion_cycle_5")
-    )
+    ] == concentration["source_totals"]["todays_cards"]
 
 
 def test_seed_shards_merge_to_the_exact_monolithic_report(tmp_path):

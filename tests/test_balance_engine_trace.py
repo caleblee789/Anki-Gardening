@@ -7,6 +7,7 @@ import pytest
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import ActivePlantPeriod, DailyStats, GardenState, Plant, STATE_VERSION
+from ankigarden.reward_ledger import LEDGER_SCHEMA_VERSION
 from ankigarden.storage import DueObligationStatus
 from scripts.balance_analysis.catalog import load_catalog_facts
 from scripts.balance_analysis.kernel import DayEvents, generate_event_stream, simulate_scenario
@@ -239,7 +240,7 @@ def test_complete_release_manifest_matches_the_real_engine():
     assert focused["case_count"] == 9
     assert focused["checkpoint_count"] == 27
     assert focused["state_schema_version"] == STATE_VERSION
-    assert focused["ledger_schema_version"] == 3
+    assert focused["ledger_schema_version"] == LEDGER_SCHEMA_VERSION
     assert "booster_activation" in focused["covered_behaviors"]
     assert "garden_legacy_level" in focused["covered_behaviors"]
     assert "undo_and_reanswer_lineage" in focused["covered_behaviors"]
@@ -252,7 +253,7 @@ def test_complete_release_manifest_matches_the_real_engine():
     assert durable["status"] == "pass"
     assert durable["storage_adapter"] == "GardenStorage+RewardLedger(SQLite)"
     assert durable["state_schema_version"] == STATE_VERSION
-    assert durable["ledger_schema_version"] == 3
+    assert durable["ledger_schema_version"] == LEDGER_SCHEMA_VERSION
     assert durable["kernel_equivalence_claimed"] is False
     assert durable["pre_bloom_completion_counters_preserved"] is True
     assert len(durable["checkpoint_sha256"]) == 64

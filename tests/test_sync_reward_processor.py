@@ -81,7 +81,7 @@ def _all_clear_receipt(event_id: str, scheduler_day: str, amount: int) -> Reward
     return RewardReceipt(
         event_key=f"all_due:{scheduler_day}",
         reward_type="coins",
-        source="all_due",
+        source="todays_cards",
         source_id=scheduler_day,
         scheduler_day=scheduler_day,
         correlation_id=event_id,
@@ -266,6 +266,19 @@ def test_sync_named_finds_keep_canonical_art_and_single_receipt_payouts() -> Non
     assert [(row["reward_id"], row["quantity"]) for row in summary.finds] == [
         ("find_morning_dew", 1), ("find_small_charge", 1),
     ]
+    # A retained Find identity may also be an inventory item ID. Distinct
+    # achievement and Find awards remain counted without inventing one cause.
+    mixed = replace(result,
+        garden_find_outcomes=(replace(item_outcome, reward_id="growth_charge_small"),),
+        reward_receipts=(RewardReceipt(
+            "achievement:streak_7", "inventory_item", "achievement", "streak_7",
+            CURRENT_DAY, "answer:100", f"{CURRENT_DAY}T12:00:00+00:00",
+            amount=1, item_id="growth_charge_small",
+        ),))
+    mixed_summary = build_sync_reward_summary("mixed", (mixed,), baseline={}, engine=engine)
+    assert mixed_summary is not None
+    assert mixed_summary.finds[0]["quantity"] == 2
+    assert mixed_summary.finds[0]["source"] == "mixed"
 
 
 def test_sync_active_boosts_keep_canonical_item_art_in_pending_summary() -> None:

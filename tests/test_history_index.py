@@ -257,6 +257,18 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     drain()
     assert completions == [True]
     assert not storage.runtime_pending
+    # A collection callback during sync must not release the suspension or
+    # let an already queued query commit against the in-flight collection.
+    runtime.invalidate("sync start", suspended=True)
+    runtime.invalidate("collection reload")
+    runtime.operation_finished(SimpleNamespace(card=True), None)
+    drain()
+    assert runtime.suspended and storage.runtime_pending
+    assert completions == [True]
+    runtime.invalidate("sync completion", suspended=False)
+    drain()
+    assert not runtime.suspended and not storage.runtime_pending
+    completions.pop()
     before = storage.lifetime_economy_aggregates()
     storage.mw.col.db.connection.execute("DELETE FROM revlog WHERE id=?", (rows[-1][0],))
     runtime.review_undone(now + 30)
@@ -285,6 +297,71 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     assert storage.runtime_pending
     drain()
     assert completions == [True, True, True]
+    # Reviews made while replacement history is being verified must earn
+    # rewards, while imported replacement history remains a nonpaying baseline.
+    reviewed_before = storage.state.total_reviews
+    runtime.invalidate("collection replacement", suspended=True, replacement=True)
+    remote_rows = [(now + 60 + i, 2, 3, 10, 5, 2500, 500, 1) for i in range(12)]
+    storage.mw.col.db.connection.executemany("INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", remote_rows)
+    runtime.invalidate("collection reopened", suspended=False, replacement=True)
+    local = (now + 100, 3, 3, 10, 5, 2500, 500, 1)
+    storage.mw.col.db.connection.execute("INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", local)
+    runtime.defer_answer(SimpleNamespace(id=3), 3, "replacement-window")
+    drain()
+    assert storage.state.total_reviews == reviewed_before + 1
+    assert ledger.deferred_review_context(local[0]) == {}
+    runtime.invalidate("repeat sync", suspended=False)
+    drain()
+    assert storage.state.total_reviews == reviewed_before + 1
     runtime.close()
     drain()
     ledger.close()
+
+
+@pytest.mark.parametrize("missing_obligations", [0, 1])
+def test_batched_sync_completion_matches_unbatched_after_restart(tmp_path, missing_obligations):
+    from ankigarden.storage import DueObligationStatus
+    from ankigarden.sync_reward_processor import SyncRewardProcessor
+    from ankigarden.sync_review_detector import SyncAttemptSnapshot
+
+    now = int(datetime(2026, 8, 1, 12).timestamp() * 1000)
+    rows = [(now + i, i + 1, 3, 10, 5, 2500, 500, 1) for i in range(20)]
+    engines = [_engine_at(tmp_path / name, rows, indexed=indexed)
+               for name, indexed in (("reference", False), ("batched", True))]
+    # The first two rows precede activation; 18 new answers complete the queue.
+    for engine, storage in engines:
+        engine.observe_due_start(DueObligationStatus(review_count=18 + missing_obligations))
+        storage.due_obligations = lambda: DueObligationStatus()
+    reference, reference_storage = engines[0]
+    engine, storage = engines[1]
+    storage._history_batch_limit = 7
+
+    def process(engine, storage, batch):
+        processor = SyncRewardProcessor(engine, storage, SimpleNamespace())
+        return processor.process(SyncAttemptSnapshot(
+            batch_id=batch, scheduler_day=storage.current_scheduler_day(),
+            reward_baseline=engine.sync_reward_baseline(),
+        ), raise_on_failure=True)
+
+    process(reference, reference_storage, "reference")
+    process(engine, storage, "batch-0")
+    assert not storage.state.daily_completion.reward_claimed
+    storage._reward_ledger.close()
+    storage.state = storage._load_authoritative_state()
+    engine = GardenGameEngine(storage.config, storage)
+    for batch in range(1, 4):
+        process(engine, storage, f"batch-{batch}")
+    actual = storage.state.daily_completion
+    expected = reference_storage.state.daily_completion
+    assert actual.reward_claimed == expected.reward_claimed == (missing_obligations == 0)
+    assert actual.starting_required_cards_completed == expected.starting_required_cards_completed == 18
+    assert actual.unresolved_obligation_disappearances == expected.unresolved_obligation_disappearances == missing_obligations
+    assert storage.lifetime_economy_aggregates() == reference_storage.lifetime_economy_aggregates()
+    if not missing_obligations:
+        summary = storage.state.pending_sync_reward_summary
+        assert summary["all_clear_earned"]
+    before = storage._ledger_revision
+    process(engine, storage, "repeat")
+    assert storage._ledger_revision == before
+    for _, owner in engines:
+        owner._reward_ledger.close()

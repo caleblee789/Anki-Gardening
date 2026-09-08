@@ -268,8 +268,8 @@ def _load_current_contract_payload(
         ]
         active_ids = {str(row.get("id", "")) for row in active}
         retired_ids = set(payload.get("retired_ids", ()))
-        if len(active) != 50 or payload.get("surface_count") != 50:
-            issues.append("compiled v29 contract must contain 50 active surfaces")
+        if len(active) != 53 or payload.get("surface_count") != 53:
+            issues.append("compiled v29 contract must contain 53 active surfaces")
         if "nursery-weather-scenery" not in retired_ids:
             issues.append("compiled v29 contract did not reserve the retired nursery ID")
         for index, row in enumerate(surfaces):
@@ -285,8 +285,8 @@ def _load_current_contract_payload(
                 issues.append(f"compiled surface {index} has invalid scenario_step")
     if isinstance(profiles, dict):
         for profile, expected in {
-            "representative": (22, 5),
-            "full": (50, 5),
+            "representative": (23, 6),
+            "full": (53, 6),
         }.items():
             raw_profile = profiles.get(profile)
             if not isinstance(raw_profile, dict) or (
@@ -302,8 +302,8 @@ def _load_current_contract_payload(
             acquisition = [label for group in profile.get("groups", []) for label in group.get("labels", [])]
             pages = profile.get("contact_sheets", [])
             assigned = [label for page in pages for label in page.get("labels", [])]
-            if len(pages) != 5 or [p.get("sheet") for p in pages] != list(range(1, 6)):
-                issues.append(f"compiled {name} requires five ordered sheet assignments")
+            if len(pages) != 6 or [p.get("sheet") for p in pages] != list(range(1, 7)):
+                issues.append(f"compiled {name} requires six ordered sheet assignments")
             if len(assigned) != len(set(assigned)) or set(assigned) != set(acquisition):
                 issues.append(f"compiled {name} sheets must cover acquisition surfaces exactly once")
     if issues:
@@ -4066,14 +4066,14 @@ def growth_charge_rendered_value_issue_codes(
         "impact_value": "+100 Growth",
         "growth_label": "Total Growth",
         "growth_value": "350 → 450",
-        "inventory_label": "Owned",
+        "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
-        "progress_label": "Progress toward Young",
+        "progress_label": "After use · Growth to Young",
         "stage_progress": "50 / 1,600 Growth",
         "progress_minimum": 0,
         "progress_maximum": 1_600,
         "progress_value": 50,
-        "reward_label": "Reward earned for reaching Sprout" if label == "growth-charge-success-stage-reward" else "Reward for reaching Sprout",
+        "reward_label": "Stage reward earned" if label == "growth-charge-success-stage-reward" else "Stage reward after use",
         "reward_value": "+2 Coins",
         "reward_visible": True,
         "charge_artwork_fallback": False,
@@ -4109,9 +4109,9 @@ def growth_charge_rendered_value_issue_codes(
             "after_label": "Seed → Sprout",
             "impact_name": "Growth applied",
             "growth_value": "450",
-            "inventory_label": "Owned",
+            "inventory_label": "Small Growth Charges remaining",
             "inventory_value": "1",
-            "progress_label": "Progress toward Young",
+            "progress_label": "Growth to Young",
             "transition_arrow_visible": False,
             "data_source": "engine-confirmed",
             "dialog_title": "Bonsai reached Sprout",
@@ -4961,8 +4961,7 @@ def appearance_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
         [
             "Active garden bonus",
             (
-                "Watering Station · Earn +1 bonus Growth every 5 cards during "
-                "your first 100 cards each day."
+                "Watering Station · First 200 cards daily: +1 Growth per 2 cards"
             ),
         ],
     ]

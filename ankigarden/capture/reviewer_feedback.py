@@ -73,7 +73,7 @@ def capture_reward_feed(runner, label, handler, bundle, live_session, cleanup, c
         (art := feed.delegate.artwork_for(item)) is not None and not art.isNull() for item in items
     )
     checks["item_reward_headers_present"] = all(
-        feed.delegate._parts(entry, feed.view.viewport().width())[3]
+        feed.delegate._parts(entry, feed.view.viewport().width())[2]
         for entry in feed.model.entries if entry.item.inventory_items
     )
     toggle = hud._session_history_toggle
@@ -131,7 +131,7 @@ def capture_reward_feed(runner, label, handler, bundle, live_session, cleanup, c
 def capture_correction_details(runner, handler):
     """Capture the user's corrected states in the real disposable Anki host."""
     from aqt import mw
-    from aqt.qt import QLabel, QFrame, QToolButton, QAbstractItemView
+    from aqt.qt import QLabel, QFrame, QToolButton, QAbstractItemView, QPoint
     from ..garden_finds import STANDARD_FIND_REGISTRY, standard_find_artwork_ref
     from ..reward_presentation import RewardHero, RewardItemProjection, RewardBundleProjection
     from ..ui.reviewer_hud import project_reviewer_hud
@@ -153,6 +153,20 @@ def capture_correction_details(runner, handler):
     checks = {}
     artwork_sources = {}
     visible = lambda widget: [label.text() for label in widget.findChildren(QLabel) if label.isVisibleTo(widget)]
+
+    def progress_cards(receipt):
+        return [frame for frame in receipt.findChildren(QFrame)
+                if frame.property("receiptProgressCard") and frame.isVisibleTo(receipt)]
+
+    def cumulative_growth_find(receipt):
+        rows = [frame for frame in receipt.findChildren(QFrame)
+                if frame.property("summaryFindId") == "find_growth_burst"
+                or frame.property("syncRewardIdentity") == "find_growth_burst"]
+        # Resource units are now conveyed by the adjacent icon. Verify the
+        # exact cumulative amount and quantity in the identified Find row.
+        return len(rows) == 1 and all(text in visible(rows[0])
+                                     for text in ("Growth Burst", "+200", "×2"))
+
     try:
         hud.update_projection(project_reviewer_hud(runner.app.engine, runner.app.engine.storage.state))
         hud.set_collapsed(True)
@@ -235,37 +249,43 @@ def capture_correction_details(runner, handler):
         card = SessionSummaryCard(mw.web, payload, engine=runner.app.engine, animations_enabled=False)
         card.show()
         QTest.qWait(50)
-        checks["progress_visible_initially"] = any(text.startswith("You grew Bonsai") for text in visible(card))
-        checks["cumulative_find_amount"] = "+200 Growth" in visible(card)
+        checks["progress_visible_initially"] = any("Bonsai reached Sprout" in visible(row) for row in progress_cards(card))
+        checks["cumulative_find_amount"] = cumulative_growth_find(card)
         checks["summary_theme_is_green"] = (lambda c: c.green() > c.red())(card.grab().toImage().pixelColor(5, 100))
         card.grab().save(str(output / "session-default.png"))
         disclosure = card.findChild(QToolButton, "ankiGardenSessionProgressDisclosure")
-        checks["no_empty_session_disclosure"] = disclosure is None
+        details = card.findChild(QFrame, "ankiGardenSessionBreakdown")
+        checks["no_empty_session_disclosure"] = disclosure is not None and details is not None and any(
+            frame.property("growthBreakdownEarnedUnits") == 82000
+            and frame.property("growthBreakdownAllocatedUnits") == 82000
+            for frame in details.findChildren(QFrame))
+        checks["session_details_start_collapsed"] = details is not None and not details.isVisibleTo(card)
         if disclosure is not None:
             disclosure.click()
         QTest.qWait(40)
         copy = visible(card)
-        checks["single_progress_journey"] = sum(text.startswith("You grew Bonsai") for text in copy) == 1
+        checks["single_progress_journey"] = len(progress_cards(card)) == 1 and copy.count("Bonsai reached Sprout") == 1
         checks["one_progress_coin_total"] = [w.property("receiptProgressCoins") for w in card.findChildren(QFrame) if w.property("receiptProgressCoins")] == [6]
         checks["no_duplicate_progress_coin_row"] = "Bonsai progression" not in copy
-        checks["journey_omits_next_stage"] = not any("toward Young" in text for text in copy)
-        checks["totals_stay_pinned"] = all(text in copy for text in ("Coins", "Growth", "Discoveries"))
+        checks["journey_has_recorded_stage_progress"] = "Seed → Sprout\n540 / 1,600 Growth to Young" in copy
+        checks["session_details_show_shared_growth"] = all(text in copy for text in ("Growth breakdown", "To plants", "Includes 100 Shared Growth"))
+        checks["totals_stay_pinned"] = all(text in visible(card._summary_fixed) for text in ("Coins", "Growth", "Items & finds")) and not card._scroll.isAncestorOf(card._summary_fixed)
         card.grab().save(str(output / "session-expanded.png"))
         card.close()
         model = SyncRewardSummary(batch_id="correction-sync", anki_days=("2026-09-06",), eligible_answer_count=72, growth_total_units=82000, garden_coin_delta=6,
-            finds=({"reward_id":"find_growth_burst", "display_name":"Growth Burst", "rarity":"Uncommon", "quantity":2, "reward_type":"growth", "reward_amount_total":200},),
+            finds=({"reward_id":"find_growth_burst", "display_name":"Growth Burst", "rarity":"Uncommon", "quantity":2, "reward_type":"growth", "reward_amount_total":200, "source":"standard_find"},),
             plant_growth=({"plant_id":"correction-bonsai", "species":"bonsai", "stage_before":"seed", "stage_after":"sprout", "growth_after_units":94000, "growth_delta_units":82000, "progression_coins":6, "stage_progress_after":33, "next_stage":"young"},))
         sync = SyncRewardSummaryCard(mw.web, model, engine=runner.app.engine, animations_enabled=False)
         sync.show()
         QTest.qWait(40)
-        checks["sync_cumulative_find_amount"] = "+200 Growth" in visible(sync)
-        checks["sync_progress_visible_initially"] = any(text.startswith("You grew Bonsai") for text in visible(sync))
+        checks["sync_cumulative_find_amount"] = cumulative_growth_find(sync)
+        checks["sync_progress_visible_initially"] = any("Bonsai reached Sprout" in visible(row) for row in progress_cards(sync))
         sync.grab().save(str(output / "sync-rewards.png"))
         checks["no_empty_sync_disclosure"] = sync._disclosure is None
         if sync._disclosure is not None:
             sync._toggle_expanded()
         QTest.qWait(40)
-        checks["sync_single_progress_journey"] = sum(text.startswith("You grew Bonsai") for text in visible(sync)) == 1
+        checks["sync_single_progress_journey"] = len(progress_cards(sync)) == 1 and visible(sync).count("Bonsai reached Sprout") == 1
         checks["sync_totals_outside_scrolling_body"] = not sync._body_scroll.isAncestorOf(sync._summary_fixed)
         checks["sync_progress_coins_inside_card"] = [w.property("receiptProgressCoins") for w in sync.findChildren(QFrame) if w.property("receiptProgressCoins")] == [6]
         sync.grab().save(str(output / "sync-expanded.png"))
@@ -274,7 +294,6 @@ def capture_correction_details(runner, handler):
         # A long committed receipt verifies real scrolling and item boundaries,
         # not just the short two-card example supplied in the feedback.
         from dataclasses import replace
-        from aqt.qt import QPoint
         from ..growth import stage_progress, GROWTH_THRESHOLDS
         finds = tuple(StandardFind(
             f"long-{find.reward_id}", find.reward_id, find.display_name, find.tier,
@@ -292,14 +311,17 @@ def capture_correction_details(runner, handler):
         card = SessionSummaryCard(mw.web, replace(payload, segments=(segment,)),
                                   engine=runner.app.engine, animations_enabled=False)
         card.show()
-        checks["find_coins_not_repeated_in_details"] = card.findChild(QToolButton, "ankiGardenSessionProgressDisclosure") is None
+        details = card.findChild(QFrame, "ankiGardenSessionBreakdown")
+        checks["find_coins_not_repeated_in_details"] = details is not None and not any(
+            str(frame.property("summaryBreakdownRowKey") or "").startswith("coin_source:")
+            for frame in details.findChildren(QFrame))
         total_growth = 72000 + growth_units
         after = stage_progress((12000 + total_growth) // 100)
         sync = SyncRewardSummaryCard(mw.web, replace(model,
             growth_total_units=total_growth, garden_coin_delta=segment.garden_coins_earned,
             finds=tuple({"reward_id":find.find_id, "display_name":find.find_name,
                          "rarity":find.rarity, "quantity":1, "reward_type":find.reward_type,
-                         "reward_amount_total":find.reward_amount} for find in finds),
+                         "reward_amount_total":find.reward_amount, "source":"standard_find"} for find in finds),
             plant_growth=({**model.plant_growth[0], "growth_delta_units":total_growth,
                            "growth_after_units":12000 + total_growth, "stage_after":after.stage,
                            "stage_progress_after":round(after.progress * 100)},)),
@@ -310,11 +332,16 @@ def capture_correction_details(runner, handler):
         ):
             receipt.show()
             QTest.qWait(50)
-            rows = sorted((w for w in body.findChildren(QFrame)
-                           if w.property("receiptEvent") or w.property("receiptProgressCard")),
-                          key=lambda w: w.mapTo(body, QPoint()).y())
-            gaps = [b.mapTo(body, QPoint()).y() - a.mapTo(body, QPoint()).y() - a.height()
-                    for a, b in zip(rows, rows[1:])]
+            groups = {}
+            for row in body.findChildren(QFrame):
+                if row.property("receiptEvent"):
+                    groups.setdefault(row.parentWidget(), []).append(row)
+            # Section headings intentionally separate Find and plant cards.
+            # Compare adjacent event rows within each section instead.
+            gaps = []
+            for rows in groups.values():
+                rows.sort(key=lambda row: row.y())
+                gaps.extend(b.y() - a.y() - a.height() for a, b in zip(rows, rows[1:]))
             checks[f"{name}_clear_item_breaks"] = bool(gaps) and all(6 <= gap <= 8 for gap in gaps)
             bar = scroll.verticalScrollBar()
             checks[f"{name}_long_list_scrolls"] = bar.maximum() > 0
@@ -353,7 +380,13 @@ def capture_correction_details(runner, handler):
         for name, receipt in (("session", card), ("sync", sync)):
             receipt.show()
             QTest.qWait(40)
-            checks[f"{name}_full_bloom_once"] = sum(w.property("receiptProgressCard") is True for w in receipt.findChildren(QFrame)) == 1 and visible(receipt).count("Full Bloom") == 1
+            checks[f"{name}_full_bloom_once"] = (
+                len(progress_cards(receipt)) == 1
+                and visible(receipt).count("Bonsai reached Full Bloom") == 1
+                and visible(receipt).count("Flowering → Full Bloom") == 1
+                and not any(w.text() == "Full Bloom" and w.isVisibleTo(receipt)
+                            for w in receipt.findChildren(QLabel))
+            )
             checks[f"{name}_full_bloom_coins_once"] = [w.property("receiptProgressCoins") for w in receipt.findChildren(QFrame) if w.property("receiptProgressCoins")] == [6]
             receipt.grab().save(str(output / f"{name}-full-bloom.png"))
             receipt.hide()

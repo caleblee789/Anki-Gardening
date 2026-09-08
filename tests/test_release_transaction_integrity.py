@@ -281,7 +281,7 @@ def test_purchase_quotes_share_exact_current_terms(
             "Buy Wind Chime?",
             PurchaseAction.PURCHASE,
             "Buy",
-            set(),
+            {"effect"},
         ),
     ),
 )
@@ -1131,6 +1131,7 @@ def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> N
 
     status = _Status()
     toast_result: dict[str, Any] = {}
+    lifetime_calls = []
 
     class _SemanticObject:
         def __init__(self) -> None:
@@ -1159,12 +1160,19 @@ def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> N
             "_set_button_variant": lambda *_args: None,
             "BUTTON_VARIANT_PRIMARY": "primary",
             "QTimer": SimpleNamespace(singleShot=lambda *_args: None),
+            "Qt": SimpleNamespace(FocusReason=SimpleNamespace(OtherFocusReason=0)),
         },
     )
     show_receipt(
         SimpleNamespace(
             _status_generation=0,
             _receipt_outcome=None,
+            _receipt_lifetime=SimpleNamespace(
+                cancel=lambda: lifetime_calls.append("cancel"),
+                start=lambda **_kwargs: lifetime_calls.append("start"),
+            ),
+            _dialog_owner=SimpleNamespace(),
+            catalog_tabs=SimpleNamespace(setFocus=lambda *_args: None),
             status=status,
             nursery_toast=toast,
             _follow_receipt_action=lambda: None,
@@ -1183,7 +1191,8 @@ def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> N
     assert toast_result["action_text"] == "View in collection"
     assert toast_result["dismiss_text"] == "Continue browsing"
     assert callable(toast_result["dismiss_callback"])
-    assert toast_result["duration_ms"] == 6_000
+    assert toast_result["duration_ms"] == 0
+    assert lifetime_calls == ["cancel", "start"]
     assert toast_result["dismissible"] is True
 
 
