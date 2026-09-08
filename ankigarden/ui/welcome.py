@@ -115,7 +115,7 @@ class WelcomeCard(QFrame):
             rows.setContentsMargins(0, 0, 0, 0)
             rows.setSpacing(8)
             rows.setAlignment(Qt.AlignmentFlag.AlignTop)
-            rows.addWidget(self._label(title, TextRole.CARD_TITLE))
+            rows.addWidget(self._label(title, TextRole.SECTION_HEADING))
             layout.addWidget(panel, 0, Qt.AlignmentFlag.AlignTop)
             self._reward_columns.append(panel)
             return rows
@@ -124,7 +124,7 @@ class WelcomeCard(QFrame):
         for reward in presentation.gift:
             gift.addWidget(self._reward_row(reward))
         if presentation.show_history:
-            history = column("Past Anki study")
+            history = column("Past study rewards")
             intro = self._label(presentation.history_intro, TextRole.SECONDARY)
             intro.setObjectName("gardenWelcomePastStudy")
             history.addWidget(intro)

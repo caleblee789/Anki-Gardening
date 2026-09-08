@@ -131,7 +131,7 @@ def capture_handoff_surface(runner, label, route, capture_and_advance):
                 checks["unlockable_beds_in_order"] = list(page.cards) == [f"bed_{number}" for number in range(3, 7)]
                 checks["starter_summary"] = page.starter_summary.text() == "Beds 1 and 2 are available from the start."
                 checks["unlocked_count"] = sum(row.unlocked for row in plant_bed_progress(state)) == unlocked_count
-                checks["counter_includes_starters"] = page.count.text() == f"{unlocked_count} of 6 unlocked"
+                checks["counter_includes_starters"] = page.count.text() == ("All 6 beds unlocked" if unlocked_count == 6 else f"{unlocked_count} of 6 beds unlocked")
                 checks["page_visible"] = page.isVisibleTo(dashboard)
                 checks["no_scroll_at_normal_size"] = page.verticalScrollBar().maximum() == 0
                 from .workspace import capture_plant_beds_layouts

@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 import json
 from typing import Any, Iterable, Mapping
 
+from .reward_counts import activity_drop_count
+
 
 ACTIVITY_SCHEMA = (
     """CREATE TABLE IF NOT EXISTS activity_event (
@@ -135,7 +137,7 @@ def source_name(source: str, source_id: str = "", reason: str = "",
         "legacy": "Earlier Coin activity", "garden_find_environment": "Garden discovery",
         "environment_completion_gift": "Scenery gift",
         "garden_decoration": "Garden bonus", "growth_charge": "Growth Charge used",
-        "charge": "Growth Charge used", "answer_growth": "Review Growth",
+        "charge": "Growth Charge used", "answer_growth": "Card Growth",
         "prism_harvest": "Prism Trellis", "adjustment": "Coin adjustment",
     }
     if source in names:
@@ -175,7 +177,7 @@ def event_from_economy(record: Any, *, state: Any = None,
     if receipts:
         payload["items"] = [
             {"kind": r.reward_type, "item_id": r.item_id, "amount": r.amount,
-             "name": r.title}
+             "name": r.title, "source": r.source, "event_key": r.event_key}
             for r in receipts if r.reward_type in {"inventory_item", "environment_item"}
         ]
     metrics = dict(record.metric_deltas or {})
@@ -196,16 +198,36 @@ def event_from_economy(record: Any, *, state: Any = None,
         if purchase is not None:
             payload["reason"] = purchase.item_name + (f" ×{purchase.quantity:,}" if purchase.quantity > 1 else "")
             payload["purchase_named"] = True
+    find_count = sum(int(v) for v in dict(metrics.get("finds_by_outcome", {})).values())
+    payload["standard_find_count"] = find_count
+    payload["drop_count_version"] = 1
+    drops = activity_drop_count(find_count, source, payload.get("items", ()))
     growth = int(record.growth_generated_units)
     if earlier and not growth and record.growth_flow_kind == "legacy_unreconciled":
         payload["growth_unavailable"] = True
     return ActivityEvent(
         key, key, str(record.scheduler_day), str(record.occurred_at), source,
         correlation_id, coin_delta, growth, 0,
-        sum(int(v) for v in dict(metrics.get("finds_by_outcome", {})).values()),
+        drops,
         source in {"migration", "refund", "adjustment"} or record.event_kind == "migration",
         payload,
     )
+
+
+def updated_activity_drop_counts(connection: Any) -> Iterable[ActivityEvent]:
+    """Upgrade only the disposable display projection, preserving grant facts."""
+    for row in connection.execute("SELECT * FROM activity_event"):
+        payload = json.loads(row["payload_json"])
+        if payload.get("drop_count_version") == 1:
+            continue
+        find_count = int(payload.get("standard_find_count", row["finds"]))
+        payload.update(standard_find_count=find_count, drop_count_version=1)
+        yield ActivityEvent(
+            row["event_key"], row["group_id"], row["scheduler_day"], row["occurred_at"],
+            row["source"], row["correlation_id"], row["coins"], row["growth_units"],
+            row["card_answers"], activity_drop_count(find_count, row["source"], payload.get("items", ())),
+            bool(row["adjustment"]), payload,
+        )
 
 
 def transaction_event_key(tx: Any) -> str:

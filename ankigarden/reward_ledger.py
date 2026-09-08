@@ -1885,6 +1885,11 @@ class RewardLedger:
             raw['growth_units'], raw['card_answers'], raw['finds'], bool(raw['adjustment']),
             json.loads(raw['payload_json']))
 
+    def stage_activity_drop_count_upgrade(self) -> None:
+        from .activity import updated_activity_drop_counts
+        for event in updated_activity_drop_counts(self._connection):
+            self.stage_activity_event(event)
+
     def pending_activity_events(self) -> tuple[ActivityEvent, ...]:
         return tuple(self._pending_activity_events.values())
 

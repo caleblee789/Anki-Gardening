@@ -35384,15 +35384,15 @@ class _UiFaceCaptureRunner:
             and rendered_values["impact_value"] == "+100 Growth"
             and rendered_values["growth_label"] == "Total Growth"
             and rendered_values["growth_value"] == ("450" if variant == "success" else "350 → 450")
-            and rendered_values["inventory_label"] == "Owned"
+            and rendered_values["inventory_label"] == ("Small Growth Charges remaining" if variant == "success" else "Charges remaining")
             and rendered_values["inventory_value"] == ("1" if variant == "success" else "2 → 1")
-            and rendered_values["progress_label"] == "Progress toward Young"
+            and rendered_values["progress_label"] == ("Growth to Young" if variant == "success" else "After use · Growth to Young")
             and rendered_values["stage_progress"]
             == "50 / 1,600 Growth"
             and rendered_values["progress_minimum"] == 0
             and rendered_values["progress_maximum"] == 1_600
             and rendered_values["progress_value"] == 50
-            and rendered_values["reward_label"] == ("Reward earned for reaching Sprout" if variant == "success" else "Reward for reaching Sprout")
+            and rendered_values["reward_label"] == ("Stage reward earned" if variant == "success" else "Stage reward after use")
             and rendered_values["reward_value"] == "+2 Coins"
             and rendered_values["reward_visible"] is True
             and rendered_values["charge_artwork_fallback"] is False

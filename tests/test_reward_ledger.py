@@ -471,7 +471,8 @@ def test_activity_groups_exact_rewards_and_survives_rollback_and_restart(tmp_pat
             ActivityEvent("growth", session, day, time, "answer_growth", growth_units=2200),
             ActivityEvent("daily", session, day, time, "first_eligible_answer", coins=4),
             ActivityEvent("achievement:streak_30", session, day, time, "achievement", coins=100,
-                          payload={"source_id": "streak_30"}),
+                          payload={"source_id": "streak_30", "items": [
+                              {"kind": "inventory_item", "item_id": "growth_charge_small", "amount": 2}]}),
             ActivityEvent("purchase", "purchase", day, time, "purchase", coins=-30),
             ActivityEvent("refund", "refund", day, time, "refund", coins=30, adjustment=True),
         )
@@ -501,6 +502,18 @@ def test_activity_groups_exact_rewards_and_survives_rollback_and_restart(tmp_pat
         entry, = ledger.activity_entries(filter_key="study")
         assert (entry.earned, entry.growth_units, entry.status) == (100, 2200, "ended")
         assert ledger.activity_day_totals(day)["coins"] == 104
+        checkpoint = ledger.checkpoint()
+        ledger.stage_activity_drop_count_upgrade()
+        ledger.rollback(checkpoint)
+        assert ledger.activity_day_totals(day)["finds"] == 0
+        ledger.stage_activity_drop_count_upgrade()
+        ledger.commit_state({}, schema_version=30, expected_revision=2)
+    with RewardLedger(path) as ledger:
+        entry, = ledger.activity_entries(filter_key="study")
+        assert (entry.finds, entry.earned, entry.growth_units) == (2, 100, 2200)
+        assert ledger.activity_day_totals(day)["finds"] == 2
+        ledger.stage_activity_drop_count_upgrade()
+        assert ledger.pending_activity_events() == ()
 
 
 def test_activity_pagination_retains_more_than_500_transactions(tmp_path):

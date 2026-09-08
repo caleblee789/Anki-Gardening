@@ -79,7 +79,7 @@ class CollapsedRewardFeedback(QWidget):
         layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
         self.idle = _FadingLabel(self)
         self.idle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.idle.setStyleSheet(f"color:{GARDEN_THEME['text_secondary']};font-size:11px;font-weight:400;")
+        self.idle.setStyleSheet(f"color:{GARDEN_THEME['text_secondary']};font-size:12px;font-weight:400;")
         self.idle.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.idle_effect = self.idle
         layout.addWidget(self.idle)
@@ -195,7 +195,7 @@ class CollapsedRewardFeedback(QWidget):
         else:
             self.metric_icon.hide()
             text = str(frame.get("caption", "Reward")).replace("\nReached", "").replace("\n", " ")
-            self.amount.setStyleSheet(f"color:{color};font-size:11px;font-weight:600;")
+            self.amount.setStyleSheet(f"color:{color};font-size:12px;font-weight:600;")
             if "Discovery" in text:
                 text = "Discovery"
             elif "Find" in text:

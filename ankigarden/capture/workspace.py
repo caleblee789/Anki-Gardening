@@ -452,7 +452,7 @@ def capture_garden_setup_supplement(runner):
 
 
 def capture_progress_narrow(runner):
-    """Review three-column achievements, the minimum size, and the final row."""
+    """Review two-column achievements, the minimum size, and the final row."""
     from aqt.qt import QWidget
     from ..ui.dashboard import achievement_presentations
 
@@ -467,7 +467,7 @@ def capture_progress_narrow(runner):
     try:
         for _ in range(8):
             _settle()
-        checks["reference_three_columns"] = grid._columns == 3
+        checks["reference_two_columns"] = grid._columns == 2
         def achievement_text_fits():
             labels = [label for label in grid.container.findChildren(QLabel)
                       if label.text() and label.isVisibleTo(grid.container)]
@@ -488,7 +488,7 @@ def capture_progress_narrow(runner):
                       if card.property("achievementId")}
         checks["all_achievements_present"] = actual_ids == expected_ids
         checks["all_growth_tiers_described"] = all(
-            any(f"Total permanent Growth bonus: +{view.permanent_growth_percent}%" in label.text()
+            any(f"Permanent Growth bonus: +{view.permanent_growth_percent}%" in label.text()
                 for card in grid.container.findChildren(QWidget)
                 if card.property("achievementId") == view.achievement_id
                 for label in card.findChildren(QLabel))
@@ -502,6 +502,10 @@ def capture_progress_narrow(runner):
         last = grid._entries[-1][0]
         bottom = last.mapTo(scroll.viewport(), last.rect().bottomRight()).y()
         checks["final_row_reachable"] = 0 <= bottom < scroll.viewport().height()
+        checks["no_trailing_scroll_space"] = (
+            scroll.viewport().height() - 1 - bottom
+            <= grid.grid.contentsMargins().bottom() + 2
+        )
         checks["end_saved"] = dashboard.grab().save(str(output / "achievements-end.png"), "PNG")
         result = {"passed": all(checks.values()), "window": [dashboard.width(), dashboard.height()],
                   "columns": grid._columns, "last_row_bottom": bottom,
@@ -538,7 +542,13 @@ def capture_plant_beds_layouts(runner, route):
         checks[f"{width}_no_horizontal_scroll"] = page.horizontalScrollBar().maximum() == 0
         checks[f"{width}_four_pixel_bars"] = all(bar.height() == 4 for bar in page.findChildren(QProgressBar))
         checks[f"{width}_content_driven_cards"] = all(card.minimumHeight() < 136 for card in cards)
-        checks[f"{width}_row_heights_independent"] = rects[0].height() < rects[2].height()
+        # Equal content can legitimately produce equal rows. Check that each
+        # row fits its own content instead of requiring an arbitrary inequality.
+        checks[f"{width}_row_heights_independent"] = all(
+            abs(rects[i].height() - max(cards[j].heightForWidth(rects[j].width())
+                                       for j in (i, i + 1))) <= 2
+            for i in (0, 2)
+        )
         measurements[str(width)] = {"card_heights": [rect.height() for rect in rects],
                                     "heading_to_grid_bottom": rects[-1].bottom() + 1}
         page.reveal_bed("bed_6")
@@ -680,9 +690,10 @@ def capture_appearance_effect_layouts(runner, route):
                     scroll.ensureWidgetVisible(group, 0, 8)
                     _settle()
                 labels = group.findChildren(QLabel)
-                passed = len(labels) == 1 and all(
-                    not text.wordWrap()
-                    and text.fontMetrics().horizontalAdvance(text.text()) <= text.contentsRect().width()
+                passed = bool(labels) and all(
+                    text.contentsRect().width() > 0
+                    and (text.heightForWidth(text.width()) <= text.height() if text.wordWrap()
+                         else text.fontMetrics().horizontalAdvance(text.text()) <= text.contentsRect().width())
                     for text in labels
                 )
                 path = output / f"{width}x{height}-{index:02d}.png"
@@ -799,6 +810,8 @@ def capture_workspace_surface(runner, label, route, capture_and_advance):
             dashboard.open_section(section, subsection)
             if section == "progress" and subsection == "achievements":
                 capture_progress_narrow(runner)
+                dashboard.achievement_list.scroll.verticalScrollBar().setValue(0)
+                _settle()
             if section == "collection" and subsection == "scenery":
                 capture_garden_setup_supplement(runner)
                 if landmarks_enabled():

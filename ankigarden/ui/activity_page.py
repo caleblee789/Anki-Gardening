@@ -38,7 +38,7 @@ def _icon(name: str, size: int = 16, *, gold: bool = False) -> QLabel:
     label.setPixmap(garden_icon(name, color=GARDEN_THEME[
         "coin_accent" if gold else "growth_accent"]).pixmap(size, size))
     label.setAccessibleName({"reviews": STUDY_COUNT_LABEL, "coin": "Coins",
-        "growth": "Growth", "find": "Garden Finds", "streak": "Anki streak"}.get(name, ""))
+        "growth": "Growth", "find": "Items & finds", "streak": "Anki streak"}.get(name, ""))
     return label
 
 
@@ -133,10 +133,10 @@ class ActivityPage(QWidget):
             color = colors["text_secondary" if name in {"secondary", "body"} else "text_primary"]
             rules.append(f"QWidget#agActivity QLabel[activityRole='{name}'] {{font-size:{token.font_size_px}px; font-weight:{token.font_weight}; color:{color};}}")
         rules.append("""
-            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='title'] {font-size:14px; font-weight:600;}
+            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='title'] {font-size:16px; font-weight:600;}
             QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='body'],
-            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='value'] {font-size:13px;}
-            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='secondary'] {font-size:12px;}
+            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='value'] {font-size:14px;}
+            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='secondary'] {font-size:13px;}
         """)
         self.setStyleSheet("\n".join(rules))
         self.body = QVBoxLayout(self)
@@ -167,7 +167,7 @@ class ActivityPage(QWidget):
             ("reviews", STUDY_COUNT_LABEL, f"{state.daily_stats.reviewed:,}"),
             ("growth", "Growth earned", _growth(totals["growth_units"]) if totals is not None else "—"),
             ("coin", "Coins earned", f"{totals['coins']:,}" if totals is not None else "—"),
-            ("find", "Garden Finds", f"{totals['finds']:,}" if totals is not None else "—"),
+            ("find", "Items & finds", f"{totals['finds']:,}" if totals is not None else "—"),
         ):
             tile = SectionCard()
             tile.setMinimumHeight(80)
@@ -264,14 +264,14 @@ class ActivityPage(QWidget):
 
         box.addSpacing(6)
         percent = reward["growth_percent"]
-        _line(box, "Permanent Growth bonus" if percent else "Growth bonus",
+        _line(box, "Permanent bonus earned" if percent else "Permanent Growth bonus",
               f"+{percent}%", "growth")
         _line(box, "Current streak", format_streak(streak.current_days))
         if reward["next_tier_days"] is None:
             box.addWidget(_label("All Growth tiers unlocked", "secondary"))
         else:
-            _line(box, "Next tier",
-                  f"+{reward['next_tier_percent']}% at {reward['next_tier_days']:,} days")
+            _line(box, "Next permanent tier",
+                  f"+{reward['next_tier_percent']}% after a {reward['next_tier_days']:,}-day streak")
         achievements = QPushButton("View achievements")
         achievements.setProperty("semanticId", "progress.study-rewards-achievements")
         achievements.setEnabled(callable(self.owner.open_achievement))
@@ -427,7 +427,7 @@ class ActivityPage(QWidget):
             if delta:
                 metrics.append(("coin", _coins(delta)))
             if entry.finds:
-                metrics.append(("find", format_quantity(entry.finds, "Find")))
+                metrics.append(("find", format_quantity(entry.finds, "item or find", "items & finds")))
             for icon, text in metrics:
                 inline.addWidget(ActivityStat(icon, text, lambda icon=icon: self._stat_details(icon, saved_events())))
             box.addWidget(facts)
@@ -483,4 +483,4 @@ class ActivityPage(QWidget):
             return "\n".join(names)
         finds = [recorded_event_presentation(event).title
                  for event in events if event.finds]
-        return "\n".join(dict.fromkeys(finds + names)) or "No Garden Finds in this session."
+        return "\n".join(dict.fromkeys(finds + names)) or "No items or finds in this session."

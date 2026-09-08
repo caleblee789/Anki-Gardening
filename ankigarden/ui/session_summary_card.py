@@ -863,7 +863,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             f"QLabel {{color:{t['text_primary']};font-size:13px;"
             "font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', "
             "'Helvetica Neue', sans-serif;}"
-            "QLabel[summaryTitle='true'] {font-size:16px;font-weight:600;}"
+            "QLabel[summaryTitle='true'] {font-size:20px;font-weight:600;}"
             "QLabel[summaryHero='true'] {font-size:40px;font-weight:700;}"
             "QLabel[summaryHeroLabel='true'] {"
             f"color:{t['text_secondary']};font-size:14px;font-weight:520;}}"
@@ -879,24 +879,24 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             "QLabel[summaryDetailCoin='true'] {"
             f"color:{t['coin_accent']};font-size:13px;font-weight:650;}}"
             "QLabel[summaryCoinChipValue='true'] {"
-            f"color:{t['coin_accent']};font-size:11px;font-weight:600;}}"
+            f"color:{t['coin_accent']};font-size:12px;font-weight:600;}}"
             "QLabel[summaryMuted='true'] {"
-            f"color:{t['text_muted']};font-size:11px;font-weight:500;}}"
+            f"color:{t['text_muted']};font-size:12px;font-weight:500;}}"
             "QLabel[summaryMetricLabel='true'] {"
-            f"color:{t['metric_label']};font-size:11px;font-weight:520;}}"
+            f"color:{t['metric_label']};font-size:12px;font-weight:520;}}"
             "QLabel[summarySupporting='true'] {"
             f"color:{t['text_secondary']};font-size:12px;font-weight:500;}}"
-            "QLabel[summaryStatusTitle='true'] {font-size:12px;font-weight:600;}"
+            "QLabel[summaryStatusTitle='true'] {font-size:14px;font-weight:600;}"
             "QLabel[summaryMilestone='true'] {font-size:15px;font-weight:650;}"
-            "QLabel[summaryEyebrow='true'] {font-size:10px;font-weight:700;}"
+            "QLabel[summaryEyebrow='true'] {font-size:12px;font-weight:700;}"
             "QLabel[summaryFind='true'] {"
             f"color:{t['find_accent']};font-size:20px;font-weight:700;}}"
             "QLabel[summaryLongMetric='true'] {font-size:17px;}"
             "QLabel[summaryRarity='true'] {"
-            f"color:{t['text_secondary']};font-size:11px;font-weight:650;}}"
+            f"color:{t['text_secondary']};font-size:12px;font-weight:650;}}"
             "QLabel[summarySourceBadge='true'] {"
             f"color:{t['find_accent']};background:{t['chip_surface']};"
-            "border:0;border-radius:7px;padding:2px 6px;font-size:10px;font-weight:650;}"
+            "border:0;border-radius:7px;padding:2px 6px;font-size:12px;font-weight:650;}"
             "QLabel[summaryFindName='true'] {font-size:13px;font-weight:580;}"
             "QLabel[summaryBoostName='true'] {font-size:13px;font-weight:550;}"
             "QLabel[summaryFindQuantity='true'], QLabel[summaryBoostValue='true'] {"
@@ -1054,8 +1054,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             len(tuple(getattr(summary, "project_allocations", ()) or ())),
         )
         self.setProperty("summaryProjectProgressPlacement", "headline")
-        self._add_reward_strip(self._summary_fixed_layout, metrics)
         self._add_hero(self._summary_fixed_layout, projection)
+        self._add_reward_strip(self._summary_fixed_layout, metrics)
         self._summary_fixed_layout.addWidget(self._divider())
         # Rebuilding a visible receipt must make the replacement totals
         # measurable before its pinned region is resized.
@@ -1158,7 +1158,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _add_hero(self, layout: Any, projection: Any) -> None:
         count = self._current_summary().cards_completed
-        hero = QLabel(cards_studied_text(count))
+        hero = QLabel(cards_studied_text(count) + " this session")
         hero.setWordWrap(True)
         hero.setObjectName("ankiGardenSessionHeroValue")
         hero.setProperty("receiptEventTitle", True)
@@ -1491,7 +1491,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         return (
             ("garden_coins", "Coins", f"+{summary.garden_coins_total:,}" if summary.garden_coins_total else "0", "coin"),
             ("growth_applied", "Growth", format_growth_units(applied, signed=bool(applied)), "growth"),
-            ("discoveries", "Finds & items", str(reward_discovery_count(summary)), "environment-discovery"),
+            ("discoveries", "Items & finds", str(reward_discovery_count(summary)), "environment-discovery"),
         )
 
     @staticmethod

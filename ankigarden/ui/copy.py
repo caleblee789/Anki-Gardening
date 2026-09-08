@@ -27,7 +27,7 @@ def cards_studied_text(count: int) -> str:
 GARDEN_TITLE = "Anki Garden"
 FALLBACK_GARDEN_NAME = DEFAULT_GARDEN_NAME
 
-WELCOME_TITLE = "Welcome to your new Anki Garden!"
+WELCOME_TITLE = "Welcome to Anki Garden"
 WELCOME_BODY = (
     "Study each day to earn rewards and help your plants grow."
 )

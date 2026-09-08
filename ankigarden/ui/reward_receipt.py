@@ -29,15 +29,16 @@ def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
     heading = QHBoxLayout()
     name = QLabel(title, frame)
     name.setWordWrap(True)
-    name.setStyleSheet(f"color:{palette['text_primary']};font-size:12px;font-weight:650;background:transparent;border:0;")
+    name.setStyleSheet(f"color:{palette['text_primary']};font-size:14px;font-weight:600;background:transparent;border:0;")
     heading.addWidget(name, 1)
     if full_bloom:
         treatment = reward_treatment(full_bloom=True)
         apply_reward_treatment(frame, treatment, artwork=artwork)
-        badge = QLabel(treatment.label, frame)
-        badge.setProperty("receiptRarityBadge", True)
-        badge.setStyleSheet(rarity_badge_style(treatment))
-        heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
+        if treatment.label.casefold() not in title.casefold():
+            badge = QLabel(treatment.label, frame)
+            badge.setProperty("receiptRarityBadge", True)
+            badge.setStyleSheet(rarity_badge_style(treatment))
+            heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
     if coins > 0:
         reward = receipt_resource_values(frame, coins=coins, compact=True)
         reward.setProperty("receiptProgressCoins", coins)
@@ -46,7 +47,7 @@ def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
     description = QLabel(text, frame)
     description.setWordWrap(True)
     description.setTextFormat(Qt.TextFormat.PlainText)
-    description.setStyleSheet(f"color:{palette['text_secondary']};font-size:12px;font-weight:400;background:transparent;border:0;")
+    description.setStyleSheet(f"color:{palette['text_secondary']};font-size:13px;font-weight:400;background:transparent;border:0;")
     copy.addWidget(description)
     progress = QProgressBar(frame)
     progress.setRange(0, 100)
@@ -79,7 +80,7 @@ def receipt_resource_values(parent: Any, *, coins: int = 0, growth_units: int = 
         icon.setPixmap(garden_icon(kind).pixmap(14, 14))
         row.addWidget(icon, 0, Qt.AlignmentFlag.AlignVCenter)
         value = QLabel(text, frame)
-        value.setStyleSheet(f"color:{GARDEN_THEME['coin_accent' if kind == 'coin' else 'growth_accent']};font-size:12px;font-weight:600;")
+        value.setStyleSheet(f"color:{GARDEN_THEME['coin_accent' if kind == 'coin' else 'growth_accent']};font-size:14px;font-weight:600;")
         apply_tabular_numerals(value)
         row.addWidget(value)
     row.addStretch(1)
@@ -149,19 +150,9 @@ def receipt_button(parent: Any, text: str, callback: Any, *, primary: bool) -> A
 
 
 def reward_discovery_count(source: Any) -> int:
-    """Count committed Finds and Garden unlocks, without recounting their items."""
-    def read(key: str, default: Any = None) -> Any:
-        return source.get(key, default) if isinstance(source, dict) else getattr(source, key, default)
-
-    finds = None
-    for key in ("footer_find_count", "total_finds", "find_count"):
-        value = read(key)
-        if value is not None:
-            finds = max(0, int(value or 0))
-            break
-    if finds is None:
-        finds = len(tuple(read("standard_finds", ()) or ()))
-    return finds + len(tuple(read("environment_discoveries", ()) or ()))
+    """Compatibility entrypoint for the shared Items & finds counter."""
+    from ..reward_counts import reward_drop_count
+    return reward_drop_count(source)
 
 
 def receipt_growth_breakdown(parent: Any, *, total_units: int, plant_units: int,
@@ -195,6 +186,7 @@ def receipt_growth_breakdown(parent: Any, *, total_units: int, plant_units: int,
             detail = QLabel(f"Includes {format_growth_units(shared_units)} Shared Growth", frame)
             detail.setProperty("receiptEventDetail", True)
             detail.setWordWrap(True)
+            detail.setContentsMargins(16, 0, 0, 2)
             box.addWidget(detail)
     if transferred_units:
         detail = QLabel(f"{format_growth_units(transferred_units)} Stored Growth applied from reserve", frame)
@@ -239,7 +231,7 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
     tile.setMinimumWidth(0)
     tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
     tile.setAccessibleName(f"{label}: {value}")
-    if label == "Finds & items":
+    if label == "Items & finds":
         tile.setToolTip("Find events and item or unlock awards")
     tile.setStyleSheet(
         f"QFrame[receiptMetric='true'] {{background:{palette['raised_surface']};"
@@ -253,7 +245,7 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
     caption.setMinimumWidth(0)
     caption.setWordWrap(True)
     caption.setTextFormat(Qt.TextFormat.PlainText)
-    caption.setStyleSheet(f"color:{palette['text_secondary']};font-size:11px;font-weight:500;background:transparent;border:0;")
+    caption.setStyleSheet(f"color:{palette['text_secondary']};font-size:13px;font-weight:500;background:transparent;border:0;")
     if compact:
         caption.setMinimumHeight(caption.fontMetrics().lineSpacing() * 2)
         caption.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -323,7 +315,7 @@ def receipt_metrics_layout(parent: Any = None) -> Any:
 
 def reward_section_heading_style() -> str:
     """One small heading treatment for receipt and reviewer reward sections."""
-    return f"color:{GARDEN_THEME['text_primary']};font-size:12px;font-weight:650;background:transparent;border:0;"
+    return f"color:{GARDEN_THEME['text_primary']};font-size:14px;font-weight:600;background:transparent;border:0;"
 
 
 def receipt_section_heading(parent: Any, text: str) -> Any:
@@ -357,7 +349,8 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
     name.setMinimumWidth(0)
     name.setTextFormat(Qt.TextFormat.PlainText)
     heading.addWidget(name, 1)
-    if (rarity_badge or milestone or treatment.notable) and treatment.label:
+    if ((rarity_badge or milestone or treatment.notable) and treatment.label
+            and treatment.label.casefold() not in title.casefold()):
         badge = QLabel(treatment.label, frame)
         badge.setProperty("receiptRarityBadge", True)
         badge.setStyleSheet(rarity_badge_style(treatment))
@@ -386,7 +379,7 @@ def receipt_style(p: dict[str, str]) -> str:
     QFrame[rewardReceipt='true'] {{ background:{p['receipt_panel']}; border:1px solid {p['receipt_border']}; border-radius:16px; }}
     QFrame[receiptHeader='true'], QFrame[receiptFooter='true'] {{ background:transparent; border:0; }}
     QFrame[receiptFooter='true'] {{ border-top:1px solid {p['divider']}; }}
-    QLabel[receiptTitle='true'] {{ color:{p['text_primary']}; font-size:16px; font-weight:600; }}
+    QLabel[receiptTitle='true'] {{ color:{p['text_primary']}; font-size:20px; font-weight:600; }}
     QPushButton[receiptClose='true'] {{ padding:0; border:0; background:transparent; }}
     QPushButton[receiptPrimary='true'] {{ color:{p['action_text']}; background:{p['action_accent']}; border:0; border-radius:9px; padding:0 12px; font-size:13px; font-weight:600; }}
     QPushButton[receiptPrimary='true']:hover {{ background:{p['action_hover']}; }}
@@ -395,10 +388,10 @@ def receipt_style(p: dict[str, str]) -> str:
     QPushButton[receiptSecondary='true']:hover {{ background:{p['selected_surface']}; }}
     QPushButton[receiptSecondary='true']:pressed {{ background:{p['strong_border']}; }}
     QFrame[receiptMetric='true'], QFrame[receiptEvent='true'] {{ background:transparent; border:0; }}
-    QLabel[receiptMetricLabel='true'] {{ color:{p['text_secondary']}; font-size:11px; font-weight:500; }}
+    QLabel[receiptMetricLabel='true'] {{ color:{p['text_secondary']}; font-size:12px; font-weight:500; }}
     QLabel[receiptMetricValue='true'] {{ font-size:18px; font-weight:600; }}
-    QLabel[receiptEventTitle='true'] {{ color:{p['text_primary']}; font-size:13px; font-weight:600; }}
-    QLabel[receiptEventDetail='true'] {{ color:{p['text_secondary']}; font-size:12px; }}
+    QLabel[receiptEventTitle='true'] {{ color:{p['text_primary']}; font-size:14px; font-weight:600; }}
+    QLabel[receiptEventDetail='true'] {{ color:{p['text_secondary']}; font-size:13px; }}
     """
 
 

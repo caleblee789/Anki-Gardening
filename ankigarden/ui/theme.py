@@ -14,7 +14,7 @@ from enum import Enum, IntEnum
 from typing import Any
 
 
-MIN_LEGIBLE_TEXT_SIZE = 11
+MIN_LEGIBLE_TEXT_SIZE = 12
 MIN_BODY_TEXT_SIZE = 14
 
 
@@ -60,11 +60,11 @@ class TypographyToken:
 # action copy have intentionally larger defaults so platform font substitution
 # does not force them below a practical reading size.
 TEXT_ROLE_TOKENS: dict[TextRole, TypographyToken] = {
-    TextRole.BRAND_EYEBROW: TypographyToken(11, 16, 650, 0.88),
+    TextRole.BRAND_EYEBROW: TypographyToken(12, 16, 600, 0.3),
     TextRole.DISPLAY_TITLE: TypographyToken(24, 30, 700, -0.1),
     TextRole.SCREEN_TITLE: TypographyToken(20, 26, 650),
     TextRole.SECTION_HEADING: TypographyToken(16, 22, 600),
-    TextRole.CARD_TITLE: TypographyToken(14, 20, 600),
+    TextRole.CARD_TITLE: TypographyToken(16, 22, 600),
     TextRole.BODY: TypographyToken(14, 20, 400),
     TextRole.SECONDARY: TypographyToken(13, 18, 400),
     TextRole.METADATA: TypographyToken(12, 16, 500, 0.1),

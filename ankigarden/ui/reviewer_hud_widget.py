@@ -1922,7 +1922,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QLabel[hudCoin='true'] {color:" + t["reviewer_hud_coin"] + ";font-weight:650;}"
             "QLabel[hudCoinDelta='true'] {color:" + t["reviewer_hud_coin"] + ";font-size:12px;font-weight:700;}"
             "QLabel[coinPulse='true'] {background:" + t["reviewer_hud_coin_soft"] + ";border-radius:8px;}"
-            "QLabel[hudMuted='true'] {color:" + t["text_secondary"] + ";font-size:12px;}"
+            "QLabel[hudMuted='true'] {color:" + t["text_secondary"] + ";font-size:13px;}"
             "QLabel#reviewerHudTodayDetail[nearComplete='true'] {color:"
             + t["reviewer_hud_growth_strong"] + ";}"
             "QLabel[hudPlantName='true'] {font-size:18px;font-weight:650;}"
@@ -1930,7 +1930,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QLabel[hudStage='true'][fullBloomAccent='true'] {color:" + t["reviewer_hud_coin"] + ";}"
             "QLabel[hudRewardTitle='true'] {font-size:14px;font-weight:600;}"
             "QLabel[hudGrowth='true'] {color:" + t["reviewer_hud_growth_strong"] + ";font-weight:700;}"
-            "QLabel[hudEyebrow='true'] {color:" + t["text_secondary"] + ";font-size:11px;font-weight:700;}"
+            "QLabel[hudEyebrow='true'] {color:" + t["text_secondary"] + ";font-size:12px;font-weight:700;}"
             "QLabel#reviewerHudRewardArt {background:rgba(103,220,169,18);border:0;border-radius:12px;}"
             "QLabel#reviewerHudRewardArt[milestoneMedallion='true'] {"
             "background:qradialgradient(cx:0.5,cy:0.5,radius:0.62,"
@@ -1944,13 +1944,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QLabel[hudRarity='true'][rarityTone='exceptional'] {background:" + t["reviewer_hud_coin_soft"] + ";color:" + t["reviewer_hud_coin"] + ";}"
             "QFrame[hudEffectChip='true'] {background:" + t["reviewer_hud_surface_raised"] + ";"
             "color:" + t["text_primary"] + ";border:0;border-radius:8px;padding:0;font-size:12px;}"
-            "QLabel[hudEffectLabel='true'] {font-size:12px;}"
+            "QLabel[hudEffectLabel='true'] {font-size:13px;}"
             "QFrame[hudRewardMetric='true'] {background:rgba(255,255,255,10);border:0;border-radius:7px;}"
             "QLabel[hudRewardChip='true'] {background:transparent;color:" + t["text_primary"] + ";"
-            "border:0;padding:0;font-size:11px;}"
+            "border:0;padding:0;font-size:12px;}"
             "QLabel[hudRewardChip='true'][metricTone='growth'] {color:" + t["reviewer_hud_growth_strong"] + ";}"
             "QLabel[hudCollapsedNext='true'] {color:" + t["reviewer_hud_growth_strong"] + ";"
-            "font-size:9px;font-weight:700;}"
+            "font-size:12px;font-weight:700;}"
             "QLabel[metricChanged='true'] {background:rgba(103,220,169,24);border-radius:6px;}"
             "QProgressBar#reviewerHudTodayProgress {background:" + t["reviewer_hud_growth_track"] + ";"
             "border:0;border-radius:3px;min-height:6px;max-height:6px;}"
@@ -2456,7 +2456,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
         self._consumables = QFrame(self._body_contents)
         self._consumables.setObjectName("reviewerHudConsumables")
-        effects = QHBoxLayout(self._consumables)
+        effects = QVBoxLayout(self._consumables)
         effects.setContentsMargins(12, 0, 12, 6)
         effects.setSpacing(6)
         effects.addStretch(1)
@@ -2470,7 +2470,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             pill.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
             pill.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             pill.setCursor(Qt.CursorShape.PointingHandCursor)
-            pill.setStyleSheet(f"QToolButton {{background:{GARDEN_THEME['raised_surface']};color:{GARDEN_THEME['text_secondary']};border:1px solid {GARDEN_THEME['subtle_border']};border-radius:12px;padding:0 6px;font-size:11px;}} QToolButton:hover {{background:{GARDEN_THEME['secondary_hover']};}}")
+            pill.setStyleSheet(f"QToolButton {{background:{GARDEN_THEME['raised_surface']};color:{GARDEN_THEME['text_secondary']};border:1px solid {GARDEN_THEME['subtle_border']};border-radius:12px;padding:0 6px;font-size:12px;}} QToolButton:hover {{background:{GARDEN_THEME['secondary_hover']};}}")
             pill.clicked.connect(lambda _checked=False, group=family: _call(self._on_open_supplies, group))
             apply_tabular_numerals(pill)
             effects.addWidget(pill)
@@ -2486,7 +2486,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             pill.setVisible(effect is not None)
             if effect is None:
                 continue
-            pill.setText(f"{effect.remaining_cards:,} {'card' if effect.remaining_cards == 1 else 'cards'} left")
+            pill.setText(f"{family.capitalize()} · {effect.remaining_cards:,} cards remaining")
             pill.setIcon(QIcon(self._effect_art_pixmap(effect.artwork_ref, 18)))
             description = f"{effect.name} · {effect.remaining_cards:,} cards remaining. Open Plant supplies."
             pill.setToolTip(description)
@@ -2835,7 +2835,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         palette = session_summary_palette()
         for key, caption, icon_name in (("coins", "Coins", "coin"),
                                          ("growth", "Growth", "growth"),
-                                         ("finds", "Finds & items", "environment-discovery")):
+                                         ("finds", "Items & finds", "environment-discovery")):
             metric = receipt_metric(self._session_footer, caption, "0", icon_name, palette, compact=True)
             metric.widget.setProperty("hudSessionTile", key)
             metric.value.setProperty("hudSessionMetric", True)
@@ -3652,7 +3652,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         """Refresh the idle layer without replacing active reward feedback."""
         self._collapsed_next.clear()
         self._collapsed_next.hide()
-        self._collapsed_tab.setToolTip("Click to expand · Drag to move")
+        nurture = self._projection.nurture if self._projection is not None else None
+        target = format_status_label(nurture.next_stage_key) if nurture is not None and nurture.next_stage_key else ""
+        name = str(getattr(nurture, "plant_name", "") or getattr(nurture, "display_name", "") or "Plant")
+        progress = str(getattr(nurture, "progress_percent", 0))
+        description = f"{name} · {progress}% to {target}. " if target else ""
+        self._collapsed_tab.setToolTip(description + "Click to expand · Drag to move")
         self._collapsed_tab.setAccessibleName("Expand Anki Garden review panel")
         self._collapsed_tab.setProperty("collapsedNextValueCopy", "")
         self._collapsed_tab.setProperty("collapsedNextVisibleCopy", "")
@@ -3917,8 +3922,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.setProperty("fullBloomAccent", bool(nurture.fully_grown))
         _repolish(self._stage)
         self._stage.hide()
-        self._percent.setText(format_growth(nurture.stage_points, nurture.stage_goal) if nurture.next_stage_key else "Full Bloom")
-        self._progress_destination.setText(f"Next: {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else "")
+        self._percent.setText(format_growth(nurture.stage_points, nurture.stage_goal, include_unit=False) if nurture.next_stage_key else "Full Bloom")
+        self._progress_destination.setText(f"Growth to {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else "")
         self._progress_destination.setVisible(normal)
         self._checkpoint_track.setProperty("showMarkers", bool(nurture.next_checkpoint_reward_coins))
         self._checkpoint_track.setToolTip(

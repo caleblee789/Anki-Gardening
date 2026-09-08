@@ -48,8 +48,8 @@ ALL_DUE_EXPLANATION = (
 )
 
 GARDEN_CURRENCY_EXPLANATION = (
-    "Earn Garden Coins from cards, achievements, and Garden Finds. "
-    "Spend them in the Nursery."
+    "Earn Coins from cards, achievements, and Garden Finds. "
+    "Spend them in the Shop."
 )
 
 FERTILIZER_EXPLANATION = (

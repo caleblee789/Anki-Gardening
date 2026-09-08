@@ -62,7 +62,7 @@ class PlantBedProgress:
 
     @property
     def status(self) -> str:
-        return "Unlocked" if self.unlocked else "Next bed" if self.next_bed else "Locked"
+        return "Unlocked" if self.unlocked else "Next unlock" if self.next_bed else "Locked"
 
 
 def plant_bed_progress(state: object) -> tuple[PlantBedProgress, ...]:

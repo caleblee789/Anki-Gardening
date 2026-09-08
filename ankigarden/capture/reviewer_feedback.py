@@ -269,7 +269,7 @@ def capture_correction_details(runner, handler):
         checks["no_duplicate_progress_coin_row"] = "Bonsai progression" not in copy
         checks["journey_has_recorded_stage_progress"] = "Seed → Sprout\n540 / 1,600 Growth to Young" in copy
         checks["session_details_show_shared_growth"] = all(text in copy for text in ("Growth breakdown", "To plants", "Includes 100 Shared Growth"))
-        checks["totals_stay_pinned"] = all(text in visible(card._summary_fixed) for text in ("Coins", "Growth", "Finds & items")) and not card._scroll.isAncestorOf(card._summary_fixed)
+        checks["totals_stay_pinned"] = all(text in visible(card._summary_fixed) for text in ("Coins", "Growth", "Items & finds")) and not card._scroll.isAncestorOf(card._summary_fixed)
         card.grab().save(str(output / "session-expanded.png"))
         card.close()
         model = SyncRewardSummary(batch_id="correction-sync", anki_days=("2026-09-06",), eligible_answer_count=72, growth_total_units=82000, garden_coin_delta=6,
@@ -380,7 +380,13 @@ def capture_correction_details(runner, handler):
         for name, receipt in (("session", card), ("sync", sync)):
             receipt.show()
             QTest.qWait(40)
-            checks[f"{name}_full_bloom_once"] = sum(w.property("receiptProgressCard") is True for w in receipt.findChildren(QFrame)) == 1 and visible(receipt).count("Full Bloom") == 1
+            checks[f"{name}_full_bloom_once"] = (
+                len(progress_cards(receipt)) == 1
+                and visible(receipt).count("Bonsai reached Full Bloom") == 1
+                and visible(receipt).count("Flowering → Full Bloom") == 1
+                and not any(w.text() == "Full Bloom" and w.isVisibleTo(receipt)
+                            for w in receipt.findChildren(QLabel))
+            )
             checks[f"{name}_full_bloom_coins_once"] = [w.property("receiptProgressCoins") for w in receipt.findChildren(QFrame) if w.property("receiptProgressCoins")] == [6]
             receipt.grab().save(str(output / f"{name}-full-bloom.png"))
             receipt.hide()

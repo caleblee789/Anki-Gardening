@@ -2124,6 +2124,7 @@ class GardenStorage:
         self._ledger_revision = 0
         self.state = self._load_authoritative_state()
         self._initialize_activity_history()
+        self._initialize_activity_drop_counts()
         if self._reward_ledger is not None and self._reward_ledger.interrupt_activity_sessions():
             committed = self._reward_ledger.commit_state(self._bounded_state_payload(self.state),
                 schema_version=STATE_VERSION, expected_revision=self._ledger_revision)
@@ -2151,6 +2152,25 @@ class GardenStorage:
             for transaction in self.state.currency_transactions:
                 if ledger.activity_event(transaction_event_key(transaction)) is None:
                     ledger.stage_activity_event(event_from_transaction(transaction))
+            ledger.stage_idempotency_record(IdempotencyRecord(
+                "migration", operation_id, operation_id, {"status": "applied"},
+                datetime.now(timezone.utc).isoformat()))
+            committed = ledger.commit_state(self._bounded_state_payload(self.state),
+                schema_version=STATE_VERSION, expected_revision=self._ledger_revision)
+            self._ledger_revision = committed.revision
+        except Exception:
+            ledger.rollback(checkpoint)
+            raise
+
+    def _initialize_activity_drop_counts(self) -> None:
+        """Upgrade saved display totals once without changing earned rewards."""
+        ledger = self._reward_ledger
+        operation_id = "activity-items-and-finds-v1"
+        if ledger is None or ledger.idempotency_record("migration", operation_id) is not None:
+            return
+        checkpoint = ledger.checkpoint()
+        try:
+            ledger.stage_activity_drop_count_upgrade()
             ledger.stage_idempotency_record(IdempotencyRecord(
                 "migration", operation_id, operation_id, {"status": "applied"},
                 datetime.now(timezone.utc).isoformat()))

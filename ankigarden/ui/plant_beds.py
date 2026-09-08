@@ -46,12 +46,12 @@ class PlantBedCard(QFrame):
             f"QFrame[plantBedCard='true']:focus {{border-color:{GARDEN_THEME['focus_ring']};}}"
         )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(0)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         heading = QHBoxLayout()
         heading.setSpacing(8)
-        heading.addWidget(_label(f"Bed {row.bed_number}", 14, 600, 20), 1)
+        heading.addWidget(_label(f"Bed {row.bed_number}", 16, 600, 22), 1)
         badge = QFrame(self)
         badge.setAccessibleName(row.status)
         badge.setMinimumHeight(22)
@@ -70,10 +70,14 @@ class PlantBedCard(QFrame):
         heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(heading)
         layout.addSpacing(6)
-        layout.addWidget(_label(row.requirement, 13, line_height=18))
+        requirement = row.requirement
+        if row.unlocked:
+            requirement = "Unlocked by growing " + requirement.removeprefix("Grow ").removesuffix(".") + "."
+        layout.addWidget(_label(requirement, 14, line_height=20, secondary=row.unlocked))
         if not row.unlocked:
             layout.addSpacing(4)
-            layout.addWidget(_label(f"{row.current} of {row.target} species", 12, 500))
+            stage = "Mature" if "Mature" in row.requirement else "Full Bloom"
+            layout.addWidget(_label(f"{row.current} of {row.target} species at {stage}", 14, line_height=20))
             layout.addSpacing(6)
             bar = QProgressBar(self)
             bar.setProperty("semanticId", f"progress.plant_beds.{row.bed_id}")
@@ -89,15 +93,19 @@ class PlantBedCard(QFrame):
                 f"QProgressBar::chunk {{background:{GARDEN_THEME['action_accent']};border-radius:2px;}}"
             )
             layout.addWidget(bar)
+            if row.next_bed:
+                layout.addSpacing(6)
+                remaining = max(0, row.target - row.current)
+                layout.addWidget(_label(f"{remaining} more species needed", 13, line_height=18, secondary=True))
         for item_id, quantity in row.bonus_items:
             layout.addSpacing(4)
             reward = QHBoxLayout()
             reward.setSpacing(6)
-            reward.addWidget(_label("Bonus received" if row.bonus_received else "Bonus reward", 12, 500),
+            reward.addWidget(_label("Unlock reward received" if row.bonus_received else "Unlock reward", 12, 500),
                              0, Qt.AlignmentFlag.AlignTop)
             item = CONSUMABLE_BY_ID[item_id]
             reward.addWidget(artwork(item_id, item.display_name), 0, Qt.AlignmentFlag.AlignTop)
-            reward.addWidget(_label(f"{quantity} × {item.display_name}", 12, 500), 1)
+            reward.addWidget(_label(f"{quantity} × {item.display_name}", 14, line_height=20), 1)
             layout.addLayout(reward)
         if row.unlocked and row.unlocked_at:
             layout.addSpacing(4)
@@ -147,13 +155,13 @@ class PlantBedsPage(QScrollArea):
         body.setSpacing(0)
         heading = QHBoxLayout()
         heading.setSpacing(12)
-        title = _label("Plant beds", 16, 600, 22)
+        title = _label("Plant beds", 20, 600, 26)
         self.count = _label("", 13, 500, 18, secondary=True)
         heading.addWidget(title, 1)
         heading.addWidget(self.count)
         body.addLayout(heading)
         body.addSpacing(4)
-        self.starter_summary = _label("", 12, secondary=True)
+        self.starter_summary = _label("", 13, line_height=18, secondary=True)
         self.starter_summary.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         body.addWidget(self.starter_summary)
         body.addSpacing(10)
@@ -177,7 +185,8 @@ class PlantBedsPage(QScrollArea):
             card.deleteLater()
         self.cards = {row.bed_id: PlantBedCard(row, self.artwork, self.content)
                       for row in rows if not row.starter}
-        self.count.setText(f"{sum(row.unlocked for row in rows)} of {len(rows)} unlocked")
+        unlocked = sum(row.unlocked for row in rows)
+        self.count.setText(f"All {len(rows)} beds unlocked" if unlocked == len(rows) else f"{unlocked} of {len(rows)} beds unlocked")
         starters = [str(row.bed_number) for row in rows if row.starter]
         numbers = " and ".join(starters) if len(starters) <= 2 else ", ".join(starters[:-1]) + " and " + starters[-1]
         self.starter_summary.setText(

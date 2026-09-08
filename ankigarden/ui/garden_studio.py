@@ -61,8 +61,8 @@ STUDIO_TEXT = {
     "asset_quality_label": "Artwork detail",
     "home_widget_label": "Show garden on Anki home",
     "reviewer_hud_label": "Show garden while studying",
-    "progress_notifications_label": "Reward notifications",
-    "sync_rewards_label": "Rewards after syncing",
+    "progress_notifications_label": "Show reward notifications",
+    "sync_rewards_label": "Show rewards after syncing",
 }
 
 SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 190
@@ -137,6 +137,7 @@ class ToggleSettingRow(QFrame):
         copy.setSpacing(2)
         heading = QLabel(title)
         heading.setProperty("settingsHeading", True)
+        heading.setStyleSheet("font-size:14px;font-weight:500;")
         heading.setWordWrap(True)
         heading.setMinimumWidth(0)
         heading.setSizePolicy(
@@ -424,7 +425,7 @@ class GardenStudioWidget(QWidget):
     def _build_ui(self) -> None:
         t = GARDEN_THEME
         self.setStyleSheet(f"""
-            QLabel[settingsHeading='true'] {{ color:{t['text_primary']}; font-size:15px; font-weight:600; }}
+            QLabel[settingsHeading='true'] {{ color:{t['text_primary']}; font-size:16px; font-weight:600; }}
             QLabel[settingsNote='true'] {{ color:{t['text_muted']}; font-size:13px; }}
             QLabel[settingValue='true'] {{ color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }}
             QFrame[settingsSection='true'] {{ border:0; }}

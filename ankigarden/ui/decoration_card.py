@@ -38,7 +38,7 @@ class DecorationInfoCard(QFrame):
         self.name.setMinimumWidth(0)
         self.name.setWordWrap(True)
         self.name.setTextFormat(Qt.TextFormat.PlainText)
-        self.name.setStyleSheet("font-size:17px;font-weight:600;")
+        self.name.setStyleSheet("font-size:16px;font-weight:600;")
         self.heading = self.name
         header.addWidget(self.name, 1)
         self.close_button = QPushButton(self)
@@ -51,9 +51,9 @@ class DecorationInfoCard(QFrame):
         header.addWidget(self.close_button, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
         self.bonus = QLabel(self)
-        self.bonus.setWordWrap(False)
+        self.bonus.setWordWrap(True)
         self.bonus.setTextFormat(Qt.TextFormat.PlainText)
-        self.bonus.setStyleSheet(f"font-size:13px;color:{GARDEN_THEME['text_secondary']};")
+        self.bonus.setStyleSheet(f"font-size:14px;color:{GARDEN_THEME['text_secondary']};")
         self.obtained = QLabel(self)
         self.obtained.setWordWrap(True)
         self.obtained.setTextFormat(Qt.TextFormat.PlainText)
@@ -91,6 +91,11 @@ class DecorationInfoCard(QFrame):
         self.show()
         self.setFocus(Qt.FocusReason.PopupFocusReason)
 
+    def showEvent(self, event: Any) -> None:
+        super().showEvent(event)
+        # Native popup placement can adjust the first requested geometry.
+        self._schedule_position()
+
     def _schedule_position(self) -> None:
         if self.isVisible() and not self._position_pending:
             self._position_pending = True
@@ -125,7 +130,7 @@ class DecorationInfoCard(QFrame):
         canvas = canvas.adjusted(12, 12, -12, -12)
         self.bonus.ensurePolished()
         required_width = self.bonus.fontMetrics().horizontalAdvance(self.bonus.text()) + 34
-        preferred_width = max(304, required_width)
+        preferred_width = min(round(canvas.width()), max(304, min(360, required_width)))
         geometry = self.scene.geometry_layout()
         obstacles = [QRectF(bounds.x, bounds.y, bounds.width, bounds.height)
                      for bed in geometry.beds
@@ -164,7 +169,9 @@ class DecorationInfoCard(QFrame):
         rect = min(candidates, key=lambda candidate: candidate[0])[1]
         self.setFixedSize(round(rect.width()), round(rect.height()))
         self.move(self.scene.mapToGlobal(QPoint(round(rect.x()), round(rect.y()))))
-        self.scene.set_inspector_connector_geometry(rect, anchor)
+        actual_origin = self.scene.mapFromGlobal(self.mapToGlobal(QPoint(0, 0)))
+        actual_rect = QRectF(actual_origin.x(), actual_origin.y(), self.width(), self.height())
+        self.scene.set_inspector_connector_geometry(actual_rect, anchor)
 
     def hideEvent(self, event: Any) -> None:
         self.scene.set_decoration_inspected(False)

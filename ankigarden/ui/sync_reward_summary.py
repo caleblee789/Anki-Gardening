@@ -183,11 +183,12 @@ def sync_reward_metric_plan(
             "sync_review_cards",
         ),
     ]
-    discoveries = sum(_quantity(row) for row in summary.finds) + len(summary.environment_discoveries)
+    from ..reward_counts import reward_drop_count
+    discoveries = reward_drop_count(summary)
     metrics.extend((
         (f"+{summary.garden_coin_delta:,}" if summary.garden_coin_delta else "0", "Coins", "garden_coin"),
         (format_growth_units(summary.growth_total_units, signed=bool(summary.growth_total_units)), "Growth", "growth_resource"),
-        (f"{discoveries:,}", "Finds & items", "garden_discovery"),
+        (f"{discoveries:,}", "Items & finds", "garden_discovery"),
     ))
     return tuple(metrics)
 
@@ -671,7 +672,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 color:{p['receipt_text_muted']}; font-size:13px; font-weight:600;
             }}
             QLabel[syncEyebrow='true'] {{font-size:16px;font-weight:600;}}
-            QLabel[syncTitle='true'] {{font-size:14px;font-weight:600;}}
+            QLabel[syncTitle='true'] {{font-size:20px;font-weight:600;}}
             QLabel[syncSubtitle='true'] {{ color:{p['receipt_text_secondary']}; font-size:13px; }}
             QFrame[syncMetric='true'], QFrame[syncPrimaryCard='true'] {{
                 background:{p['receipt_primary_surface']};
@@ -688,11 +689,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             }}
             QLabel[syncMetricValue='true'] {{ font-size:20px; font-weight:700; }}
             QLabel[syncMetricLabel='true'] {{
-                color:{p['receipt_text_secondary']}; font-size:11px; font-weight:600;
+                color:{p['receipt_text_secondary']}; font-size:12px; font-weight:600;
             }}
             QLabel[syncPrimary='true'] {{ font-size:14px; font-weight:600; }}
-            QLabel[syncSecondary='true'] {{ color:{p['receipt_text_secondary']}; font-size:12px; }}
-            QLabel[syncMuted='true'] {{ color:{p['receipt_text_muted']}; font-size:12px; }}
+            QLabel[syncSecondary='true'] {{ color:{p['receipt_text_secondary']}; font-size:13px; }}
+            QLabel[syncMuted='true'] {{ color:{p['receipt_text_muted']}; font-size:13px; }}
             QLabel[syncAdditional='true'] {{
                 color:{p['receipt_text_secondary']}; font-size:12px;
                 background:{p['receipt_secondary_surface']}; border-radius:8px; padding:6px 8px;
@@ -1384,8 +1385,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                                   motion=metric_motion.get(label)),
                 1,
             )
-        self._summary_fixed_layout.addWidget(metrics_frame)
         self._summary_fixed_layout.addWidget(headline)
+        self._summary_fixed_layout.addWidget(metrics_frame)
         divider = self._divider(self._summary_fixed)
         self._summary_fixed_layout.addWidget(divider)
         metrics_frame.show()

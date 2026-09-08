@@ -90,7 +90,7 @@ def test_metric_plan_matches_session_totals_and_preserves_source_rewards() -> No
         ("42", "cards", "sync_review_cards"),
         ("+12", "Coins", "garden_coin"),
         ("+520", "Growth", "growth_resource"),
-        ("0", "Finds & items", "garden_discovery"),
+        ("0", "Items & finds", "garden_discovery"),
     )
     assert sync_reward_metric_plan(_summary(garden_coin_delta=0))[1] == (
         "0", "Coins", "garden_coin"
@@ -126,11 +126,11 @@ def test_metric_plan_matches_session_totals_and_preserves_source_rewards() -> No
         ("42", "cards", "sync_review_cards"),
         ("+12", "Coins", "garden_coin"),
         ("+520", "Growth", "growth_resource"),
-        ("5", "Finds & items", "garden_discovery"),
+        ("5", "Items & finds", "garden_discovery"),
     )
     assert sync_reward_metric_plan(
         _summary(environment_discoveries=discovery_rows[:1])
-    )[-1] == ("1", "Finds & items", "garden_discovery")
+    )[-1] == ("1", "Items & finds", "garden_discovery")
     restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
 
     assert restored is not None
