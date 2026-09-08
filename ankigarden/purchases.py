@@ -611,6 +611,7 @@ def purchase_presentation(
     elif quote.kind in {PurchaseKind.GARDEN_FEATURE, PurchaseKind.SCENERY}:
         title = f"Buy {item_name}?"
         outcome = "Adds it to garden decorations and scenery."
+        facts.append(PurchaseFact("effect", "", quote.descriptor.buff))
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
         next_actions = ("View in collection", "Keep browsing")

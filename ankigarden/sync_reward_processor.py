@@ -317,9 +317,13 @@ def build_sync_reward_summary(
 
     receipts = _new_receipts(engine, results, before_facts)
     progression_coins: dict[str, int] = defaultdict(int)
+    milestone_keys = {str(receipt.event_key) for receipt in receipts
+                      if str(receipt.source) == "plant_milestone"}
     for receipt in receipts:
         if (str(getattr(receipt, "reward_type", "")) == "coins"
-                and str(getattr(receipt, "source", "")) in {"plant_milestone", "autumn_hearth"}
+                and (str(getattr(receipt, "source", "")) == "plant_milestone"
+                     or (str(getattr(receipt, "source", "")) == "autumn_hearth"
+                         and str(receipt.event_key).removeprefix("autumn_hearth:") in milestone_keys))
                 and bool(getattr(receipt, "included_in_total", True))):
             progression_coins[str(getattr(receipt, "plant_id", "") or "")] += max(0, int(getattr(receipt, "amount", 0) or 0))
     if "garden_coin_balance" in before_facts and "garden_coin_balance" in after_facts:
@@ -359,6 +363,7 @@ def build_sync_reward_summary(
                 continue
             row = finds_by_id.setdefault(reward_id, {
                 "reward_id": reward_id,
+                "source": "standard_find",
                 "display_name": str(outcome.display_name or reward_id),
                 "quantity": 0,
                 "rarity": str(outcome.tier or ""),
@@ -370,6 +375,8 @@ def build_sync_reward_summary(
                 "reward_type": str(outcome.reward_type or ""),
                 "reward_amount_total": 0,
             })
+            if row.get("source") != "standard_find":
+                row["source"] = "mixed"
             quantity = (
                 max(1, int(outcome.amount or 1))
                 if str(outcome.reward_type) == "inventory_item" else 1
@@ -401,9 +408,16 @@ def build_sync_reward_summary(
         name, rarity = _item_name_rarity(item_id)
         row = finds_by_id.setdefault(item_id, {
             "reward_id": item_id, "display_name": name, "quantity": 0,
+            "source": source,
+            "source_id": str(getattr(receipt, "source_id", "") or ""),
             "rarity": rarity, "image_asset": _item_art(engine, item_id, item_id),
             "reward_type": "inventory_item",
         })
+        if row.get("source") != source:
+            row["source"] = "mixed"
+            row["source_id"] = ""
+        elif row.get("source_id") != str(getattr(receipt, "source_id", "") or ""):
+            row["source_id"] = ""
         if not has_consumable_conservation:
             row["quantity"] = int(row["quantity"]) + max(
                 1, int(getattr(receipt, "amount", 1) or 1)

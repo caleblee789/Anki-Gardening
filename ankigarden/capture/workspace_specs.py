@@ -44,7 +44,7 @@ GROUPS = (
     )),
     ("Progress and Settings", (
         ("progress-today-page", "GardenDashboard", "progress/activity", True),
-        ("progress-today-details", "GardenDashboard", "today-details", False),
+        ("progress-today-details", "GardenDashboard", "study-rewards-retained", False),
         ("progress-achievements-page", "GardenDashboard", "progress/achievements", False),
         ("progress-coins-page", "GardenDashboard", "progress/currency", False),
         ("garden-settings", "GardenSettingsDialog", "settings", True),
@@ -179,15 +179,24 @@ def workspace_surface_rows():
             row["state_contract"]["reviewable_native_ui_issues"] = ("reviewer-collapsed-status-width",)
         rows.append(row)
     for row in rows:
+        if row.get("active"):
+            row["owned_module_dependencies"] += ("ui/plant_beds.py", "plant_beds.py", "achievements.py")
+        if row["id"].startswith("progress-plant-beds-"):
+            row["workflow_revision"] = "Starter-bed summary and compact content-driven two-by-two grid for Beds 3 through 6; shared eligibility and independent bonus receipts."
         if row.get("active") and row["id"] in {
             "progress-today-page", "progress-today-details", "progress-coins-page",
         }:
             row["owned_module_dependencies"] += ("ui/activity_page.py", "activity.py", "reward_ledger.py")
-            row["workflow_revision"] = "Activity combines study, daily and streak rewards, and saved review sessions."
+            row["workflow_revision"] = "Activity has one Study rewards panel with two daily Coin rewards and permanent achievement Growth tiers."
         if row.get("active") and row["id"] in {"progress-today-page", "progress-today-details"}:
-            row["workflow_revision"] += " Capture both Today and streak reward details expanded at 100 percent."
-            row["state_contract"]["required_facts"] += ("activity_details_expanded",)
-            row["state_contract"]["expected_fact_values"]["activity_details_expanded"] = True
+            retained = row["id"] == "progress-today-details"
+            row["workflow_revision"] += (
+                " Capture a retained 10 percent Growth tier after a broken streak, current streak six days, next tier 100 days."
+                if retained else " Capture Study rewards at 100 percent."
+            )
+            row["state_contract"]["required_facts"] += ("study_rewards_panel", "retained_growth_after_break")
+            row["state_contract"]["expected_fact_values"].update(
+                study_rewards_panel=True, retained_growth_after_break=retained)
         if row.get("active") and row["id"] == "active-deck-browser-home-after-nurture":
             row["owned_module_dependencies"] += ("capture/reviewer_feedback.py",)
         if row.get("active") and row["id"] in {

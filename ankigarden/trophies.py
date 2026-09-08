@@ -7,9 +7,11 @@ from typing import Any
 from .balance_catalog import (
     ACHIEVEMENT_BY_ID,
     ACHIEVEMENT_TROPHIES,
+    COMPLETION_TRIGGER_COPY,
     SHARED_GROWTH_DENOMINATOR,
     SHARED_GROWTH_NUMERATOR,
 )
+from .achievements import achievement_objective, achievement_progress_units
 
 
 @dataclass(frozen=True)
@@ -76,15 +78,20 @@ class TrophyPresentation:
 
     @property
     def progress_text(self) -> str:
-        return f"{self.progress:,} / {self.target:,}"
+        return f"{self.progress:,} of {self.target:,} {achievement_progress_units(self.achievement_id)}"
+
+
+def trophy_effect_description(trophy: Any) -> str:
+    """Describe catalog effect values, including the resulting sharing rate."""
+    if trophy.review_growth:
+        return f"+{trophy.review_growth:,} Growth per card"
+    if trophy.completion_coins:
+        return f"{COMPLETION_TRIGGER_COPY}: +{trophy.completion_coins:,} Coins"
+    percent = 100 * trophy.shared_growth_numerator // trophy.shared_growth_denominator
+    return f"{percent}% Shared Growth per other planted plant\nFull Bloom shares move to unfinished plants."
 
 
 def trophy_presentations(state: Any) -> tuple[TrophyPresentation, ...]:
-    requirements = {
-        "botanists_plaque": "All 10 species at Full Bloom",
-        "garden_journal": "Complete today’s cards on 365 days",
-        "golden_trowel": "100,000 study answers",
-    }
     result = []
     for trophy in ACHIEVEMENT_TROPHIES:
         trophy_id = str(trophy.cosmetic_id)
@@ -98,9 +105,9 @@ def trophy_presentations(state: Any) -> tuple[TrophyPresentation, ...]:
             obtained_at = obtained_at[:10]
         result.append(TrophyPresentation(
             trophy_id, achievement_id, trophy.display_name, trophy.asset_id,
-            unlocked, requirements[trophy_id],
+            unlocked, achievement_objective(achievement_id),
             min(definition.progress_target, max(0, round(fraction * definition.progress_target))),
-            definition.progress_target, trophy.buff_description,
+            definition.progress_target, trophy_effect_description(trophy),
             obtained_at,
         ))
     return tuple(result)

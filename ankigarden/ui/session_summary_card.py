@@ -27,6 +27,7 @@ from ..reward_presentation import project_growth_allocations
 from .accessibility import read_system_reduced_motion
 from .environment_art import environment_preview_pixmap
 from .formatters import format_garden_coins, format_quantity
+from .copy import cards_studied_text
 from .icons import garden_icon
 from .reward_rarity import apply_reward_treatment, reward_treatment
 from .reward_receipt import fit_receipt_chrome, receipt_metrics_layout, build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height, reward_discovery_count
@@ -290,13 +291,16 @@ class SessionEarnedItem:
     event_ids: tuple[str, ...] = ()
 
 
-def _session_item_source_label(source: Any) -> str:
+def _session_item_source_label(source: Any, source_id: str = "") -> str:
     normalized = str(source or "").replace("-", "_").casefold()
     if normalized in STANDARD_FIND_RECEIPT_SOURCES or normalized.startswith("garden_find"):
         return "Garden Find"
     if "full_bloom" in normalized:
         return "Full Bloom"
     if "achievement" in normalized:
+        from ..achievements import BED_MILESTONES
+        if source_id in BED_MILESTONES:
+            return f"Bed {BED_MILESTONES[source_id]} unlocked"
         return "Achievement"
     if "checkpoint" in normalized or normalized.startswith("stage"):
         return "Stage reward"
@@ -424,7 +428,7 @@ def session_earned_item_plan(summary: Any) -> tuple[SessionEarnedItem, ...]:
             name=name,
             art_reference=item_id,
             quantity=amount,
-            source_label=_session_item_source_label(source),
+            source_label=_session_item_source_label(source, source_id),
             event_ids=(event_key or correlation_id,),
         )
 
@@ -986,6 +990,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             child = item.widget()
             child_layout = item.layout()
             if child is not None:
+                child.hide()
                 child.deleteLater()
             elif child_layout is not None:
                 SessionSummaryCard._clear_layout(child_layout)
@@ -1153,7 +1158,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _add_hero(self, layout: Any, projection: Any) -> None:
         count = self._current_summary().cards_completed
-        hero = QLabel(f"{format_quantity(count, 'card')} studied this session")
+        hero = QLabel(cards_studied_text(count))
         hero.setWordWrap(True)
         hero.setObjectName("ankiGardenSessionHeroValue")
         hero.setProperty("receiptEventTitle", True)
@@ -1162,9 +1167,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         layout.addWidget(hero)
 
     def _section_heading(self, text: str) -> Any:
-        heading = QLabel(str(text or ""))
-        heading.setProperty("summarySection", True)
-        return heading
+        from .reward_receipt import receipt_section_heading
+        return receipt_section_heading(self, str(text or ""))
 
     @staticmethod
     def _has_highlights(summary: SessionDaySummary, projection: Any) -> bool:
@@ -1322,29 +1326,15 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if not candidates:
             container.deleteLater()
             return
-        if not self._details_expanded:
-            for highlight in candidates[:1]:
-                self._add_compact_highlight_row(container_layout, summary, highlight)
-        elif self._compact_density:
-            for highlight in candidates:
-                self._add_compact_highlight_row(
-                    container_layout,
-                    summary,
-                    highlight,
-                )
-        else:
-            for highlight in featured:
-                if (isinstance(self._highlight_source(summary, highlight), (PlantMilestone, EnvironmentDiscovery, StandardFind))
-                        or self._highlight_kind(highlight) == "full_bloom"):
+        for heading, grouped in (
+            ("New discoveries", tuple(item for item in candidates if isinstance(self._highlight_source(summary, item), EnvironmentDiscovery))),
+            ("Plant progress", tuple(item for item in candidates if isinstance(self._highlight_source(summary, item), PlantMilestone))),
+            ("Other rewards", tuple(item for item in candidates if not isinstance(self._highlight_source(summary, item), (EnvironmentDiscovery, PlantMilestone)))),
+        ):
+            if grouped:
+                container_layout.addWidget(self._section_heading(heading))
+                for highlight in grouped:
                     self._add_compact_highlight_row(container_layout, summary, highlight)
-                else:
-                    self._add_highlight_card(container_layout, summary, highlight)
-            for highlight in candidates[2:]:
-                self._add_compact_highlight_row(
-                    container_layout,
-                    summary,
-                    highlight,
-                )
         layout.addWidget(container)
 
     def _add_compact_highlight_row(self, layout: Any, summary: SessionDaySummary, highlight: Any) -> None:
@@ -1359,7 +1349,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             art = self._reward_art_label(source, 44)
         detail = supporting
         if reward and self._details_expanded:
-            detail = " · ".join(filter(None, (supporting, reward)))
+            detail = "\n".join(filter(None, (supporting, reward)))
         category = ("Checkpoint" if source.milestone_type == "checkpoint" else "Growth milestone") if isinstance(source, PlantMilestone) else eyebrow if isinstance(source, (EnvironmentDiscovery, StandardFind)) else ""
         event = receipt_event_row(self, art, title, detail=detail, milestone=kind == "full_bloom", reward=source,
                                   eyebrow=category,
@@ -1501,7 +1491,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         return (
             ("garden_coins", "Coins", f"+{summary.garden_coins_total:,}" if summary.garden_coins_total else "0", "coin"),
             ("growth_applied", "Growth", format_growth_units(applied, signed=bool(applied)), "growth"),
-            ("discoveries", "Discoveries", str(reward_discovery_count(summary)), "environment-discovery"),
+            ("discoveries", "Finds & items", str(reward_discovery_count(summary)), "environment-discovery"),
         )
 
     @staticmethod
@@ -1604,6 +1594,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             for item in self._find_items(summary)
             if item[0] not in inventory_find_ids
         )
+        if find_items or any(item.source_find_ids for item in inventory_rewards):
+            card_layout.addWidget(self._section_heading("Garden Finds"))
         if find_items and (self._details_expanded or not inventory_rewards):
             self._add_find_summary(card_layout, find_items)
             has_content = True
@@ -1611,8 +1603,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if inventory_rewards:
             self._add_inventory_rewards(
                 card_layout,
-                inventory_rewards if self._details_expanded else inventory_rewards[:1],
+                tuple(item for item in inventory_rewards if item.source_find_ids),
             )
+            other_items = tuple(item for item in inventory_rewards if not item.source_find_ids)
+            if other_items:
+                card_layout.addWidget(self._section_heading("Items earned"))
+                self._add_inventory_rewards(card_layout, other_items)
             has_content = True
 
         section_layout.addWidget(card)
@@ -1634,7 +1630,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             find_source = next((find for find in self._current_summary().standard_finds
                                 if find.find_id in item.source_find_ids), None) if len(item.source_find_ids) == 1 else None
             title = find_source.find_name if find_source is not None else item.name or "Earned item"
-            detail = ""
+            detail = "\n".join(item.source_labels) if find_source is None else ""
             if find_source is not None:
                 from ..reward_presentation import RewardLine
                 detail = RewardLine("inventory_item", item.quantity, item.item_id).learner_text
@@ -1644,7 +1640,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             row_widget.setProperty("summaryItemRewardKey", f"{item.item_id}:{index}")
             row_widget.setProperty("summaryItemRewardEventIds", item.event_ids)
             row_widget.setProperty("summaryItemRewardSources", item.source_labels)
-            if not detail:
+            if find_source is None:
                 quantity = QLabel(f"+{item.quantity:,}", row_widget)
                 quantity.setProperty("summaryValue", True)
                 apply_tabular_numerals(quantity)
@@ -1665,7 +1661,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             metric.widget.setProperty("summaryMetricKey", key)
             metric.value.setProperty("summaryGrowth" if key == "growth_applied" else "summaryCoin" if key == "garden_coins" else "summaryFind", True)
             if key == "discoveries":
-                metric.widget.setToolTip("Garden Finds and new Garden unlocks")
+                metric.widget.setToolTip("Find events and item or unlock awards")
             row.addWidget(metric.widget, 1)
         layout.addWidget(container)
 
@@ -1714,7 +1710,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         coins = sum(find.reward_amount * find.quantity for find in finds if find.reward_type == "coins")
         growth = sum(find.reward_amount * find.quantity * 100 for find in finds if find.reward_type == "growth")
         if coins or growth:
-            event.copy.addWidget(receipt_resource_values(row_widget, coins=coins, growth_units=growth))
+            event.copy.addWidget(receipt_resource_values(row_widget, coins=coins, growth_units=growth, compact=True))
         value = QLabel(f"×{max(1, int(quantity)):,}")
         value.setProperty("summaryFindQuantity", True)
         apply_tabular_numerals(value)
@@ -1740,7 +1736,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _has_breakdown(self, summary: SessionDaySummary, projection: Any) -> bool:
         progress_ids = {item.plant_id for item in (*summary.plant_growth_by_plant, *summary.shared_growth_by_plant)}
-        return bool(summary.stored_growth.added_units or any(
+        return bool(summary.stored_growth.added_units or summary.shared_growth_total_units or summary.project_growth_total_units or summary.stored_growth.used_units or any(
             plant_id not in progress_ids for plant_id, _label, _amount in session_coin_groups(
                 summary, represented_find_ids={item[0] for item in self._find_items(summary)},
             )
@@ -1844,6 +1840,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         coin_groups = session_coin_groups(summary)
         progression_coins = {plant_id: amount for plant_id, _label, amount in coin_groups if plant_id}
         if growth:
+            layout.addWidget(self._section_heading("Plant progress"))
             from types import SimpleNamespace
             from ..growth import stage_progress
             from .reward_receipt import receipt_progress_card
@@ -1861,9 +1858,23 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     plant_id=plant_id, species_name=item.species_name, art_asset=item.art_asset,
                     new_stage="rare" if full_bloom else after.stage if after is not None else "",
                 ), 48)
+                transitioned = bool(before is not None and after is not None and after.stage != before.stage)
+                title = plant_stage_event(name, "rare" if full_bloom else after.stage) if full_bloom or transitioned else name
+                if transitioned:
+                    from .sync_reward_summary import _plant_progress_copy
+                    from ..growth import stage_presentation
+                    old_stage = stage_presentation(before.stage).display_name
+                    new_stage = stage_presentation(after.stage).display_name
+                    text = old_stage + " → " + new_stage
+                    progress_copy = _plant_progress_copy({"stage_after": after.stage, "next_stage": after.next_stage,
+                        "growth_after_units": before_units + units, "stage_progress_after": round(after.progress * 100)})
+                    if progress_copy:
+                        text += "\n" + progress_copy
+                elif full_bloom:
+                    text = ""
                 progress = receipt_progress_card(layout.parentWidget(), artwork,
-                    "GROWTH MILESTONE" if full_bloom else "Growth milestone" if before is not None and after.stage != before.stage else "Progress details",
-                    text, progress_percent=round(after.progress * 100) if after is not None else None,
+                    title,
+                    text, progress_percent=round(after.progress * 100) if after is not None and not full_bloom else None,
                     coins=progression_coins.get(plant_id, 0), palette=self._summary_theme, full_bloom=full_bloom)
                 progress.widget.setProperty("summaryBreakdownRowKey", f"plant_progress:{plant_id}")
                 progress.widget.setProperty("summaryHighlightKind", "full_bloom" if full_bloom else "plant_progress")
@@ -1871,12 +1882,14 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 layout.addWidget(progress.widget)
 
     def _add_breakdown_details(self, layout: Any, summary: SessionDaySummary, projection: Any) -> None:
-        if summary.stored_growth.added_units > 0:
-            self._breakdown_total_row(
-                layout, "stored_growth_added", "Stored Growth added",
-                format_growth_units(summary.stored_growth.added_units, signed=True),
-                art_reference="stored_growth",
-            )
+        from .reward_receipt import receipt_growth_breakdown
+        layout.addWidget(receipt_growth_breakdown(self,
+            total_units=int(projection.growth_applied_total_units),
+            plant_units=int(summary.growth_applied_total_units or 0),
+            shared_units=summary.shared_growth_total_units,
+            stored_units=summary.stored_growth.added_units,
+            project_units=summary.project_growth_total_units,
+            transferred_units=summary.stored_growth.used_units))
         progress_ids = {item.plant_id for item in (*summary.plant_growth_by_plant, *summary.shared_growth_by_plant)}
         coins = tuple((label, amount) for plant_id, label, amount in session_coin_groups(
                           summary, represented_find_ids={item[0] for item in self._find_items(summary)},

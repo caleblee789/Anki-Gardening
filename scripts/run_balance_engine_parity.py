@@ -756,9 +756,6 @@ def run_durable_persistence_checks() -> dict[str, object]:
         root = Path(temporary)
 
         reward_state = deepcopy(_ParityStorage().state)
-        reward_state.garden_cycle_remainder = 4
-        reward_state.garden_cycle_history_complete = True
-        reward_state.garden_cycle_migration_version = STATE_VERSION
         reward_session = _DurableParitySession(root / "reward", reward_state)
         try:
             engine = reward_session.engine()
@@ -775,7 +772,7 @@ def run_durable_persistence_checks() -> dict[str, object]:
                 raise AssertionError("durable answer did not grant exact base Growth")
             trace_prefix.append({
                 "case_id": "reward_duplicate_restart",
-                "event_identity": "reward:fifth_completion",
+                "event_identity": "reward:daily_completion",
                 "operation": "evaluate_today_cards",
                 "remaining_due": 0,
             })
@@ -784,8 +781,8 @@ def run_durable_persistence_checks() -> dict[str, object]:
                 record_completed_delta=True,
                 emit_feedback=False,
             )
-            if not completed or engine.state.garden_cycle_remainder != 0:
-                raise AssertionError("durable fifth completion did not close its cycle")
+            if not completed:
+                raise AssertionError("durable daily completion did not grant its reward")
             first_revlog_id = int(answer_payload["revlog_id"])
             lineage = str(answer_payload["answer_identity"])
             reward_session.review_history.append(HistoricalReviewEntry(
@@ -811,13 +808,13 @@ def run_durable_persistence_checks() -> dict[str, object]:
                 raise AssertionError(
                     "pre-bloom completion pacing counters were not recorded"
                 )
-            if "completion_cycle_5" not in committed["coin_source_ids"]:
-                raise AssertionError("durable Garden Cycle ledger source is absent")
+            if "todays_cards" not in committed["coin_source_ids"]:
+                raise AssertionError("durable daily completion ledger source is absent")
             if (
-                "completion_cycle_5:2026-08-30"
+                "all_due:2026-08-30"
                 not in committed["reward_identities"]
             ):
-                raise AssertionError("durable Garden Cycle identity is absent")
+                raise AssertionError("durable daily completion identity is absent")
             engine = assert_restart(
                 reward_session,
                 engine,
@@ -1116,7 +1113,7 @@ def run_durable_persistence_checks() -> dict[str, object]:
         "behaviors": [
             "duplicate_sync_delivery",
             "application_restart",
-            "fifth_garden_cycle_completion",
+            "todays_cards_completion",
             "insufficient_coin_purchase",
             "stale_purchase_quote",
             "failed_persistence_rollback",
@@ -1130,7 +1127,6 @@ def run_durable_persistence_checks() -> dict[str, object]:
             "coin_source_ids",
             "plant_exact_growth_units",
             "achievement_ownership",
-            "garden_cycle_remainder",
             "todays_cards_completion_state",
             "equipped_items",
             "reward_identities",
@@ -1931,8 +1927,7 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
             "herbalist_hourglass"
         )
         completion_state.loadout.active_scenery_effect_id = "snowy"
-        completion_state.hourglass_completion_progress = 29
-        completion_state.snow_completion_progress = 1
+        completion_state.hourglass_completion_progress = 14
         completion_session = _DurableParitySession(
             root / "completion-counters", completion_state
         )
@@ -1953,7 +1948,6 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                 item.consumable_id.value: 0 for item in CONSUMABLES
             }
             inventory["booster_potion"] = 1
-            inventory["growth_charge_small"] = 1
             recorder.compare(
                 case_id="effect_counters",
                 event_identity="focused:completion:hourglass-snowy",
@@ -1968,11 +1962,9 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                         "hourglass_completion": 0,
                     },
                     "scenery_counters": {
-                        "snow_completion": 0,
                         "full_moon_completion": 0,
                         "prism_released_anki_day_id": "",
                     },
-                    "garden_cycle_remainder": 1,
                     "todays_cards_completion_state": {
                         "scheduler_day": "2026-08-30",
                         "status": "complete",
@@ -1990,13 +1982,12 @@ def run_focused_kernel_equivalence_checks() -> dict[str, object]:
                     "consumable_inventory",
                     "garden_bonus_counters",
                     "scenery_counters",
-                    "garden_cycle_remainder",
                     "todays_cards_completion_state",
                     "equipped_items",
                     "state_revision",
                 ),
                 operation=(
-                    "valid completion advances Hourglass and Snowy counters"
+                    "valid completion grants Hourglass Potion and immediate Snowy Growth"
                 ),
             )
         finally:

@@ -29,15 +29,14 @@ from .balance_catalog import (
     COSMETIC_BY_ID,
     DAILY_ACTIVITY_COINS as CATALOG_DAILY_ACTIVITY_COINS,
     EFFECT_DOSE_CAP as CATALOG_EFFECT_DOSE_CAP,
-    GARDEN_CYCLE_COINS as CATALOG_GARDEN_CYCLE_COINS,
-    GARDEN_CYCLE_COMPLETIONS as CATALOG_GARDEN_CYCLE_COMPLETIONS,
     SHARED_GROWTH_DENOMINATOR as CATALOG_SHARED_GROWTH_DENOMINATOR,
     SPECIES as BALANCE_SPECIES,
     STAGES as BALANCE_STAGES,
-    WEEKLY_STREAK_COINS as CATALOG_WEEKLY_STREAK_COINS,
     ConsumableKind as BalanceConsumableKind,
     StageId as BalanceStageId,
 )
+from .plant_beds import species_progress_counts
+from .achievements import milestone_unlocked_text
 from .economy_progression import (
     LANDMARK_BY_ID,
     LANDMARK_CUMULATIVE_GROWTH_THRESHOLDS_UNITS,
@@ -100,6 +99,7 @@ from .achievements import (
     HistoricalReview,
     RewardBundle,
     STREAK_ACHIEVEMENTS,
+    streak_growth_progress,
     achievement_progress_value,
     analyze_history,
 )
@@ -176,7 +176,6 @@ from .models.state import (
     PlantMemory,
     RewardReceipt,
     STATE_VERSION,
-    STREAK_BONUS_TIERS,
     bounded_reward_receipts,
     utc_now_iso,
 )
@@ -299,10 +298,8 @@ class DecorationResult:
 @dataclass(frozen=True)
 class BoosterResult:
     base_cards_added: int = 0
-    hourglass_bonus_cards: int = 0
     total_cards_added: int = 0
     remaining_booster_cards: int = 0
-    full_moon_bonus_cards: int = 0
     target_id: str = ""
     destination_kind: str = "plant"
 
@@ -326,8 +323,6 @@ class CompletionResult:
     base_coins: int = 0
     harvest_bell_coins: int = 0
     trophy_coins: int = 0
-    garden_cycle_coins: int = 0
-    garden_cycle_remainder: int = 0
     prism_growth_released_units: int = 0
     prism_growth_destination: str = ""
     prism_growth_destination_kind: str = ""
@@ -604,9 +599,6 @@ class GardenGameEngine:
     EFFECT_DOSE_CAP = CATALOG_EFFECT_DOSE_CAP
     ALL_DUE_BASE_COINS = CATALOG_ALL_DUE_BASE_COINS
     DAILY_ACTIVITY_COINS = CATALOG_DAILY_ACTIVITY_COINS
-    GARDEN_CYCLE_COINS = CATALOG_GARDEN_CYCLE_COINS
-    GARDEN_CYCLE_COMPLETIONS = CATALOG_GARDEN_CYCLE_COMPLETIONS
-    WEEKLY_STREAK_COINS = CATALOG_WEEKLY_STREAK_COINS
     CLOUDY_ALL_DUE_BONUS_COINS = 5
     RAINBOW_ALL_DUE_GROWTH = 100
     DIRECT_SOIL_SLOTS = frozenset(range(MAX_GARDEN_SLOTS))
@@ -1216,6 +1208,15 @@ class GardenGameEngine:
         correlation = str(correlation_id or key)
         occurred_at = utc_now_iso()
         coin_amount = max(0, int(coins))
+        autumn_bonus = 0
+        if coin_amount and source != "autumn_hearth":
+            from .earned_coins import quote_earned_coins
+            quote = quote_earned_coins(
+                coin_amount, active_scenery_id=self.locked_environment_id("scenery"),
+                carry_units=self.state.autumn_coin_carry_units,
+            )
+            autumn_bonus = quote.bonus_coins
+            self.state.autumn_coin_carry_units = quote.next_carry_units
         item_grants = {
             str(item_id): max(0, int(quantity))
             for item_id, quantity in (inventory_items or {}).items()
@@ -1374,7 +1375,41 @@ class GardenGameEngine:
             scheduler_day=day_value,
             occurred_at=occurred_at,
         )
+        if autumn_bonus:
+            receipts.extend(self._grant_reward_bundle(
+                f"autumn_hearth:{key}", source="autumn_hearth", source_id="autumn",
+                reason=f"Autumn Hearth bonus for {reason}", scheduler_day=day_value,
+                correlation_id=correlation, coins=autumn_bonus,
+                title="Autumn Hearth", description=f"+{autumn_bonus} Coins",
+            ))
         return tuple(receipts)
+
+    def earned_coin_total(self, event_key: str) -> int | None:
+        """Read committed base and Autumn Coins without applying the modifier."""
+        ledger = getattr(self.storage, "_reward_ledger", None)
+        lookup = getattr(ledger, "activity_event", None)
+        total = 0
+        for key in (event_key, f"autumn_hearth:{event_key}"):
+            event = lookup(key) if callable(lookup) else None
+            if event is not None:
+                total += max(0, int(event.coins))
+                continue
+            transactions = [tx for tx in self.state.currency_transactions if tx.event_key == key]
+            if not transactions and (key == event_key or self._reward_applied(key)):
+                return None
+            total += sum(max(0, int(tx.delta)) for tx in transactions)
+        return total
+
+    def quote_completion_coins(self, core_coins: int | None = None):
+        from .earned_coins import quote_completion_coins
+        return quote_completion_coins(
+            self.ALL_DUE_BASE_COINS if core_coins is None else core_coins,
+            harvest_bell_coins=(self.CLOUDY_ALL_DUE_BONUS_COINS
+                               if self.active_garden_feature_id() == "harvest_bell" else 0),
+            trophy_coins=trophy_effects(self.state, event_ms=self._now_ms()).completion_coins,
+            active_scenery_id=self.locked_environment_id("scenery"),
+            carry_units=self.state.autumn_coin_carry_units,
+        )
 
     def rollover_if_needed(self, *, persist: bool = True) -> None:
         runtime = getattr(self.storage, "runtime_coordinator", None)
@@ -1512,20 +1547,6 @@ class GardenGameEngine:
             return plant
         return None
 
-    def booster_card_bonuses(self) -> dict[str, int]:
-        """Resolve activation benefits from catalog ownership/equipment rules."""
-        bonuses = {}
-        for kind, catalog in (("garden_feature", GARDEN_FEATURE_CATALOG), ("scenery", SCENERY_CATALOG)):
-            equipped = self.active_garden_feature_id() if kind == "garden_feature" else self.locked_environment_id("scenery")
-            for item_id, item in catalog.items():
-                if not self.owns_environment(kind, item_id):
-                    continue
-                amount = sum(effect.amount for effect in item.effects
-                             if effect.trigger == "booster_activation" and effect.value_kind == "booster_cards"
-                             and (not effect.active_only or equipped == item_id))
-                if amount:
-                    bonuses[item_id] = amount
-        return bonuses
 
     def consumable_use_projection(self, item_id: str, target_id: str | None = None) -> ConsumableUseProjection:
         resolved = self.consumable_target_id() if target_id is None else str(target_id)
@@ -1533,8 +1554,8 @@ class GardenGameEngine:
         garden = isinstance(target, GardenCardEffects)
         family = "booster" if item_id == "booster_potion" else "fertilizer"
         spec = self.FERTILIZERS.get(item_id.removeprefix("fertilizer_")) if family == "fertilizer" else None
-        cards = (self.BOOSTER_CARD_COUNT + sum(self.booster_card_bonuses().values())
-                 if family == "booster" else spec.card_count if spec else 0)
+        cards = (self.BOOSTER_CARD_COUNT if family == "booster"
+                 else spec.card_count if spec else 0)
         batches = sum((list(part) for part in self._card_effect_lists(target, family)), []) if target else []
         live = [batch for batch in batches if batch.remaining_cards > 0]
         name = "Garden" if garden else PlantIdentity.from_plant(target).display_name if target else ""
@@ -1970,66 +1991,9 @@ class GardenGameEngine:
             float(period.expires_at),
         )
 
-    @staticmethod
-    def streak_bonus_percent(streak_days: int) -> int:
-        """Legacy streak projection retained for schema-25 compatibility UI."""
-
-        days = max(0, int(streak_days))
-        bonus = 0
-        for threshold, percent in STREAK_BONUS_TIERS:
-            if days >= threshold:
-                bonus = percent
-            else:
-                break
-        return bonus
-
     def current_streak_bonus_percent(self) -> int:
-        """Return today's Garden Rhythm tier through the legacy UI accessor."""
-
-        snapshot = getattr(self.state, "daily_economy_snapshot", None)
-        if (
-            snapshot is not None
-            and snapshot.anki_day == self.state.daily_stats.day
-        ):
-            return max(0, int(snapshot.garden_rhythm_percent))
-        return self._garden_rhythm_percent_for_day(self.state.daily_stats.day)
-
-    @staticmethod
-    def garden_rhythm_percent(completed_eligible_days: int) -> int:
-        """Map verified completions among the last seven study days to Rhythm."""
-
-        completed = max(0, min(7, int(completed_eligible_days)))
-        if completed <= 1:
-            return 0
-        return min(10, completed * 2 - 2)
-
-    def _garden_rhythm_percent_for_day(self, scheduler_day: str) -> int:
-        eligible_resolver = getattr(
-            self.storage, "eligible_study_days_before", None
-        )
-        completion_resolver = getattr(
-            self.storage,
-            "verified_today_cards_completion_days_before",
-            None,
-        )
-        if not callable(eligible_resolver) or not callable(completion_resolver):
-            return 0
-        try:
-            eligible_days = tuple(
-                eligible_resolver(str(scheduler_day), limit=7)
-            )
-            completion_days = frozenset(
-                completion_resolver(str(scheduler_day))
-            )
-        except Exception:
-            logger.exception(
-                "Anki Garden: Garden Rhythm history could not be read"
-            )
-            return 0
-        completed = sum(
-            1 for day_value in eligible_days if day_value in completion_days
-        )
-        return self.garden_rhythm_percent(completed)
+        """Highest permanent base-card Growth tier unlocked by achievements."""
+        return streak_growth_progress(self.state)[0]
 
     @staticmethod
     def _state_economy_snapshot(
@@ -2037,7 +2001,6 @@ class GardenGameEngine:
     ) -> DailyEconomySnapshot:
         return DailyEconomySnapshot(
             anki_day=str(record.anki_day),
-            garden_rhythm_percent=max(0, int(record.garden_rhythm_percent)),
             active_garden_bonus_id=str(record.active_garden_bonus_id),
             active_scenery_effect_id=str(record.active_scenery_effect_id),
             snapshot_source=str(record.snapshot_source),
@@ -2051,11 +2014,7 @@ class GardenGameEngine:
         historical_sync: bool,
         event_ms: int,
     ) -> DailyEconomySnapshot:
-        """Stage immutable daily Rhythm; recorded equipment is metadata only.
-
-        Unknown historical Rhythm remains zero. Equipment is resolved from
-        the current selection independently for every reward transaction.
-        """
+        """Record daily equipment metadata; each transaction resolves its rewards."""
 
         day_value = str(scheduler_day)
         state_snapshot = getattr(self.state, "daily_economy_snapshot", None)
@@ -2075,12 +2034,10 @@ class GardenGameEngine:
             current_day = self.state.daily_stats.day
         fail_closed = bool(historical_sync and day_value < str(current_day))
         if fail_closed:
-            rhythm = 0
             garden_bonus = DEFAULT_GARDEN_FEATURE_ID
             scenery_effect = DEFAULT_SCENERY_ID
             source = "sync_fail_closed"
         else:
-            rhythm = self._garden_rhythm_percent_for_day(day_value)
             garden_bonus = self.active_garden_feature_id()
             scenery_effect = self.locked_environment_id("scenery")
             source = "first_eligible_answer"
@@ -2094,7 +2051,6 @@ class GardenGameEngine:
         ).hexdigest()
         record = DailyEconomySnapshotRecord(
             anki_day=day_value,
-            garden_rhythm_percent=rhythm,
             active_garden_bonus_id=garden_bonus,
             active_scenery_effect_id=scenery_effect,
             snapshot_source=source,
@@ -2408,10 +2364,6 @@ class GardenGameEngine:
                     achievement.reward_event_key = event_key
                     achievement.historical_backfill = True
                 self._append_reward_event_key(event_key)
-                if definition.achievement_id == "streak_7":
-                    self._append_reward_event_key(
-                        f"weekly_streak:{completion_day}"
-                    )
             streak_by_day = (history_snapshot.streaks() if hasattr(history_snapshot, "streaks")
                              else self._streak_by_scheduler_day(entries))
             activation = max(
@@ -2445,15 +2397,6 @@ class GardenGameEngine:
                     current_revlogs.append(int(entry.revlog_id))
             for day_value in post_activation_days:
                 self._append_reward_event_key(f"daily_activity:{day_value}")
-            for day_value, streak_days in streak_by_day.items():
-                if streak_days <= 0 or streak_days % 7:
-                    continue
-                if (history_snapshot.active_after(day_value, activation)
-                    if hasattr(history_snapshot, "active_after") else any(
-                        str(entry.scheduler_day) == day_value and int(entry.answer_ms) >= activation
-                        for entry in entries
-                    )):
-                    self._append_reward_event_key(f"weekly_streak:{day_value}")
             if hasattr(history_snapshot, "days"):
                 current_revlogs.extend(self.state.processed_revlog_ids)
             self.state.processed_revlog_ids = sorted({
@@ -3457,6 +3400,8 @@ class GardenGameEngine:
     @staticmethod
     def _reward_bundle_description(bundle: RewardBundle) -> str:
         parts: list[str] = []
+        if bundle.permanent_growth_percent:
+            parts.append(f"Total permanent Growth bonus: +{bundle.permanent_growth_percent}%")
         if bundle.coins:
             parts.append(_garden_coin_amount(bundle.coins, signed=True))
         if bundle.small_growth_charges:
@@ -3499,12 +3444,14 @@ class GardenGameEngine:
             event_key,
             source="achievement",
             source_id=definition.achievement_id,
-            reason=f"Achievement: {definition.name}",
+            reason=(milestone_unlocked_text(definition.achievement_id)
+                    if definition.reward.bed_unlocks else f"Achievement: {definition.name}"),
             scheduler_day=completion_day,
             correlation_id=correlation_id,
             coins=definition.reward.coins,
             inventory_items=dict(definition.reward.inventory_items),
-            title=definition.name,
+            title=(milestone_unlocked_text(definition.achievement_id)
+                   if definition.reward.bed_unlocks else definition.name),
             description=definition.description,
         )
         for bed_number in definition.reward.bed_unlocks:
@@ -3533,9 +3480,6 @@ class GardenGameEngine:
             self.state.trophy_activation_ms.setdefault(
                 str(trophy.cosmetic_id), max(1, self._now_ms())
             )
-        if definition.achievement_id == "streak_7":
-            # Integrate the first badge payout with the first weekly cycle.
-            self._append_reward_event_key(f"weekly_streak:{completion_day}")
         return True
 
     def _apply_streak_rewards(
@@ -3547,31 +3491,13 @@ class GardenGameEngine:
         allow_recurring_reward: bool = True,
     ) -> None:
         days = max(0, int(self.state.streak_days if streak_days is None else streak_days))
-        definition = next(
-            (
-                candidate
-                for candidate in STREAK_ACHIEVEMENTS
-                if candidate.progress_target == days
-            ),
-            None,
-        )
-        if definition is not None:
-            self._unlock_achievement(
-                definition.achievement_id,
-                completion_day=scheduler_day,
-                correlation_id=correlation_id,
-            )
-        if allow_recurring_reward and days > 0 and days % 7 == 0:
-            self._grant_reward_bundle(
-                f"weekly_streak:{scheduler_day}",
-                source="seven_day_streak_cycle",
-                source_id=f"day_{days}",
-                reason=f"Day {days} seven-day streak cycle",
-                scheduler_day=scheduler_day,
-                correlation_id=correlation_id,
-                coins=self.WEEKLY_STREAK_COINS,
-                title="Seven-day streak reward",
-            )
+        for definition in STREAK_ACHIEVEMENTS:
+            if days >= definition.progress_target:
+                self._unlock_achievement(
+                    definition.achievement_id,
+                    completion_day=scheduler_day,
+                    correlation_id=correlation_id,
+                )
 
     @staticmethod
     def _normalized_review(payload: Any) -> tuple[int, int, Optional[int], float, int]:
@@ -3653,7 +3579,7 @@ class GardenGameEngine:
         return item_id if item_id in GARDEN_FEATURE_CATALOG else DEFAULT_GARDEN_FEATURE_ID
 
     def _lock_daily_loadout(self, *, event_ms: int | None = None) -> bool:
-        """Compatibility hook that establishes daily Rhythm only."""
+        """Establish daily equipment metadata."""
         existing = self.state.daily_economy_snapshot
         self._ensure_daily_economy_snapshot(
             self.state.daily_stats.day, historical_sync=False,
@@ -4608,13 +4534,7 @@ class GardenGameEngine:
     ) -> tuple[ReviewAward, int]:
         """Project one review award without mutating plant or daily state."""
         del streak_days
-        snapshot = getattr(self.state, "daily_economy_snapshot", None)
-        bonus_percent = (
-            max(0, int(snapshot.garden_rhythm_percent))
-            if snapshot is not None
-            and snapshot.anki_day == self.state.daily_stats.day
-            else 0
-        )
+        bonus_percent = self.current_streak_bonus_percent()
         base_units = self.BASE_GROWTH_PER_REVIEW * GROWTH_UNITS_PER_POINT
         streak_units = self.BASE_GROWTH_PER_REVIEW * bonus_percent
         proposed_fertilizer_bonus = (
@@ -5072,7 +4992,8 @@ class GardenGameEngine:
                     0,
                     int(getattr(self.state, "hourglass_completion_progress", 0)),
                 ) + 1
-                reward_due = progress >= 30
+                interval = GARDEN_FEATURE_CATALOG["herbalist_hourglass"].effects[0].every_nth_completion
+                reward_due = progress >= interval
                 self.state.hourglass_completion_progress = 0 if reward_due else progress
                 hourglass_receipts = self._grant_reward_bundle(
                     hourglass_key,
@@ -5095,17 +5016,19 @@ class GardenGameEngine:
         if self._reward_applied(event_key):
             return granted
         if scenery == "snowy":
-            progress = max(
-                0, int(getattr(self.state, "snow_completion_progress", 0))
-            ) + 1
-            reward_due = progress >= 2
-            self.state.snow_completion_progress = 0 if reward_due else progress
-            consumable_id = "growth_charge_small" if reward_due else ""
+            receipts = self._grant_reward_bundle(
+                event_key, source="environment_completion_gift", source_id=scenery,
+                reason="Snow-Covered Garden reward", scheduler_day=scheduler_day,
+                correlation_id=correlation_id, growth=SCENERY_CATALOG[scenery].effects[0].amount,
+                plant=self.active_plant(), title="Snow-Covered Garden",
+            )
+            self.state.daily_environment_claims[scenery] = scheduler_day
+            return granted or bool(receipts)
         elif scenery == "full_moon":
             progress = max(
                 0, int(getattr(self.state, "full_moon_completion_progress", 0))
             ) + 1
-            reward_due = progress >= 6
+            reward_due = progress >= SCENERY_CATALOG["full_moon"].effects[0].every_nth_completion
             self.state.full_moon_completion_progress = 0 if reward_due else progress
             consumable_id = "booster_potion" if reward_due else ""
         else:
@@ -5566,12 +5489,12 @@ class GardenGameEngine:
         ))
         if visible_achievement_ids:
             names = [
-                ACHIEVEMENTS_BY_ID[item].name
+                milestone_unlocked_text(item)
                 for item in visible_achievement_ids
                 if item in ACHIEVEMENTS_BY_ID
             ]
             if names:
-                parts.append("Unlocked " + ", ".join(names))
+                parts.append(", ".join(names))
         if find_receipts:
             find_names = [receipt.title for receipt in find_receipts if receipt.title]
             title = (
@@ -5628,18 +5551,17 @@ class GardenGameEngine:
             if after >= threshold
         )
         projected: list[tuple[str, str, StageRewardProjection]] = []
-        carry = max(
-            0,
-            int(getattr(self.state, "checkpoint_coin_carry_units", 0) or 0),
-        )
+        from .earned_coins import quote_earned_coins
+        carry = self.state.autumn_coin_carry_units
         for stage_index in range(previous_index + 1, new_index + 1):
             previous_stage = GROWTH_STAGES[stage_index - 1]
             new_stage = GROWTH_STAGES[stage_index]
             base_reward = self.STAGE_REWARD_SPLITS[new_stage][3]
-            if self.locked_environment_id("scenery") == "autumn":
-                reward, carry = divmod(base_reward * 150 + carry, 100)
-            else:
-                reward = base_reward
+            quote = quote_earned_coins(
+                base_reward, active_scenery_id=self.locked_environment_id("scenery"),
+                carry_units=carry,
+            )
+            reward, carry = quote.total_coins, quote.next_carry_units
             projected.append((
                 previous_stage,
                 new_stage,
@@ -5652,17 +5574,11 @@ class GardenGameEngine:
         return "Full Bloom" if str(stage) == "rare" else str(stage).title()
 
     def _checkpoint_reward_amount(self, base_reward: int) -> int:
-        base = max(0, int(base_reward))
-        if self.locked_environment_id("scenery") != "autumn":
-            return base
-        carry = max(
-            0,
-            int(getattr(self.state, "checkpoint_coin_carry_units", 0) or 0),
-        )
-        reward, remainder = divmod(base * 150 + carry, 100)
-        if hasattr(self.state, "checkpoint_coin_carry_units"):
-            self.state.checkpoint_coin_carry_units = remainder
-        return reward
+        from .earned_coins import quote_earned_coins
+        return quote_earned_coins(
+            base_reward, active_scenery_id=self.locked_environment_id("scenery"),
+            carry_units=self.state.autumn_coin_carry_units,
+        ).total_coins
 
     def project_checkpoint_reward(self, next_stage: str, percent: int) -> int:
         """Return the next milestone payout without spending Autumn carry."""
@@ -5673,14 +5589,7 @@ class GardenGameEngine:
             base = max(0, int(splits[index]))
         except (ValueError, TypeError, IndexError):
             return 0
-        if self.locked_environment_id("scenery") != "autumn":
-            return base
-        carry = max(
-            0,
-            int(getattr(self.state, "checkpoint_coin_carry_units", 0) or 0),
-        )
-        reward, _remainder = divmod(base * 150 + carry, 100)
-        return reward
+        return self._checkpoint_reward_amount(base)
 
     def _record_growth_crossings(
         self,
@@ -5731,17 +5640,6 @@ class GardenGameEngine:
                 source_id=plant.plant_id,
                 included_in_total=True,
             )
-            autumn_bonus = max(0, int(total_reward) - int(base_reward))
-            if autumn_bonus:
-                self._credit_currency(
-                    f"autumn_hearth:{event_key}",
-                    f"Autumn Hearth bonus for {reason}",
-                    autumn_bonus,
-                    plant_id=plant.plant_id,
-                    source="autumn_hearth",
-                    source_id="autumn",
-                    included_in_total=True,
-                )
 
         for _point, order, next_stage, kind, percent in sorted(crossings):
             base_reward = self.STAGE_REWARD_SPLITS[next_stage][order]
@@ -5888,34 +5786,40 @@ class GardenGameEngine:
         return coins, 0
 
     def today_cards_reward_summary(self) -> dict[str, Any]:
-        """Project the completion reward and five-completion bonus without granting them."""
+        """Quote the daily completion reward, or read its committed Coin amounts."""
         day = self.state.daily_stats.day
         earned = bool(self.state.daily_completion.reward_claimed)
-        bonus = self.active_garden_feature_id()
-        scenery = self.locked_environment_id("scenery")
-        def applies(key: str, active: bool) -> bool:
-            return self._reward_applied(f"{key}:{day}") if earned else active
-        coins = self.ALL_DUE_BASE_COINS
-        if applies("harvest-bell", bonus == "harvest_bell"):
-            coins += self.CLOUDY_ALL_DUE_BONUS_COINS
-        if applies("autumn-hearth", scenery == "autumn"):
-            coins += 4
-        journal = trophy_effects(self.state).completion_coins
-        if applies("achievement-trophy:garden_journal", journal > 0):
-            coins += journal
-        completion_coins = coins
-        cycle = max(0, int(self.state.garden_cycle_remainder))
-        cycle_earned = earned and self._reward_applied(f"completion_cycle_5:{day}")
-        if cycle_earned or (not earned and cycle + 1 == self.GARDEN_CYCLE_COMPLETIONS):
-            coins += self.GARDEN_CYCLE_COINS
-        prism = (self.state.prism_released_anki_day_id == day if earned else bonus == "prism_trellis")
+        if earned:
+            keys = [f"all_due:{day}"]
+            keys.extend(key for key in (f"harvest-bell:{day}",
+                        f"achievement-trophy:garden_journal:{day}") if self._reward_applied(key))
+            amounts = [self.earned_coin_total(key) for key in keys]
+            coins = sum(amounts) if all(value is not None for value in amounts) else None
+        else:
+            coins = self.quote_completion_coins().total_coins
+        prism = (self.state.prism_released_anki_day_id == day if earned
+                 else self.active_garden_feature_id() == "prism_trellis")
         growth = next(item.amount for item in GARDEN_FEATURE_CATALOG["prism_trellis"].effects
                       if item.effect_id == "prism_completion_growth_100") if prism else 0
-        return {"earned": earned, "coins": coins, "completion_coins": completion_coins,
-                "cycle_earned": cycle_earned, "growth": growth,
-                "cycle_progress": self.GARDEN_CYCLE_COMPLETIONS if cycle_earned else cycle,
-                "cycle_goal": self.GARDEN_CYCLE_COMPLETIONS, "cycle_coins": self.GARDEN_CYCLE_COINS,
-                "rhythm_percent": self.current_streak_bonus_percent()}
+        return {"earned": earned, "coins": coins, "completion_coins": coins, "growth": growth}
+
+    def study_rewards_summary(self) -> dict[str, Any]:
+        """Read-only daily reward amounts and achievement-owned Growth progress."""
+        from .earned_coins import quote_earned_coins
+
+        day = self.state.daily_stats.day
+        first_earned = self._reward_applied(f"daily_activity:{day}")
+        first_coins = (self.earned_coin_total(f"daily_activity:{day}") if first_earned
+                       else quote_earned_coins(self.DAILY_ACTIVITY_COINS,
+                            active_scenery_id=self.locked_environment_id("scenery"),
+                            carry_units=self.state.autumn_coin_carry_units).total_coins)
+        percent, next_tier = streak_growth_progress(self.state)
+        return {"first_earned": first_earned, "first_coins": first_coins,
+                "completion": self.today_cards_reward_summary(),
+                "growth_percent": percent,
+                "next_tier_days": next_tier.progress_target if next_tier else None,
+                "next_tier_percent": next_tier.reward.permanent_growth_percent if next_tier else None,
+                "achievement_id": next_tier.achievement_id if next_tier else "streak_365"}
 
     @staticmethod
     def _cards_remaining_copy(count: int) -> str:
@@ -6281,9 +6185,6 @@ class GardenGameEngine:
             coin_reward, configured_growth = self.all_due_rewards()
             active_effect = FEATURE_EFFECT_KEYS[self.active_garden_feature_id()]
             harvest_coins = 5 if active_effect == "completion_coins_plus_5" else 0
-            autumn_coins = (
-                4 if self.locked_environment_id("scenery") == "autumn" else 0
-            )
             reward_correlation_id = (
                 str(correlation_id).strip() or f"today-cards:{stats.day}"
             )
@@ -6315,29 +6216,6 @@ class GardenGameEngine:
                     title="Garden Journal",
                     description="Today’s Cards completed",
                 )
-            cycle_before = max(
-                0,
-                min(
-                    self.GARDEN_CYCLE_COMPLETIONS - 1,
-                    int(getattr(self.state, "garden_cycle_remainder", 0) or 0),
-                ),
-            )
-            cycle_after = (cycle_before + 1) % self.GARDEN_CYCLE_COMPLETIONS
-            self.state.garden_cycle_remainder = cycle_after
-            if cycle_after == 0:
-                self._grant_reward_bundle(
-                    f"completion_cycle_5:{stats.day}",
-                    source="completion_cycle_5",
-                    source_id="completion_cycle_5",
-                    reason="Garden Cycle complete",
-                    scheduler_day=stats.day,
-                    correlation_id=reward_correlation_id,
-                    coins=self.GARDEN_CYCLE_COINS,
-                    title="Garden Cycle complete",
-                    description=(
-                        f"{self.GARDEN_CYCLE_COMPLETIONS} completed review days"
-                    ),
-                )
             if harvest_coins:
                 self._grant_reward_bundle(
                     f"harvest-bell:{stats.day}",
@@ -6348,18 +6226,6 @@ class GardenGameEngine:
                     correlation_id=reward_correlation_id,
                     coins=harvest_coins,
                     title="Harvest Bell",
-                    description="Today’s Cards completed",
-                )
-            if autumn_coins:
-                self._grant_reward_bundle(
-                    f"autumn-hearth:{stats.day}",
-                    source="autumn_hearth",
-                    source_id="autumn",
-                    reason="Autumn Hearth",
-                    scheduler_day=stats.day,
-                    correlation_id=reward_correlation_id,
-                    coins=autumn_coins,
-                    title="Autumn Hearth",
                     description="Today’s Cards completed",
                 )
             prism_units = 0
@@ -6446,12 +6312,8 @@ class GardenGameEngine:
                 self.state.prism_released_anki_day_id = stats.day
             self.last_completion_result = CompletionResult(
                 base_coins=self.ALL_DUE_BASE_COINS,
-                harvest_bell_coins=harvest_coins + autumn_coins,
+                harvest_bell_coins=harvest_coins,
                 trophy_coins=journal_coins,
-                garden_cycle_coins=(
-                    self.GARDEN_CYCLE_COINS if cycle_after == 0 else 0
-                ),
-                garden_cycle_remainder=cycle_after,
                 prism_growth_released_units=prism_units,
                 prism_growth_destination=prism_destination,
                 prism_growth_destination_kind=prism_destination_kind,
@@ -9956,10 +9818,7 @@ class GardenGameEngine:
         try:
             self._lock_scenery_loadout(event_ms=self._now_ms())
             base_cards = self.BOOSTER_CARD_COUNT
-            bonuses = self.booster_card_bonuses()
-            hourglass_bonus = bonuses.get("herbalist_hourglass", 0)
-            full_moon_bonus = bonuses.get("full_moon", 0)
-            card_count = base_cards + sum(bonuses.values())
+            card_count = base_cards
             event_key = f"booster:{projection.target_id}:{uuid.uuid4().hex}"
             self.state.consumables["booster_potion"] -= 1
             action = self._add_card_effect_batch(
@@ -9980,10 +9839,8 @@ class GardenGameEngine:
             )
             self.last_booster_result = BoosterResult(
                 base_cards_added=base_cards,
-                hourglass_bonus_cards=hourglass_bonus,
                 total_cards_added=card_count,
                 remaining_booster_cards=remaining_cards,
-                full_moon_bonus_cards=full_moon_bonus,
                 target_id=projection.target_id,
                 destination_kind=projection.destination_kind,
             )
@@ -10635,20 +10492,7 @@ class GardenGameEngine:
             streak_days = int(history.current_streak_days)
             lifetime_answers = int(history.lifetime_answers)
             non_again_run = int(history.current_non_again_tail)
-        current_species = set(CURRENT_CATALOG_SPECIES_ORDER)
-        mature_species = len({
-            plant.species
-            for plant in self.state.plants
-            if plant.species in current_species
-            and self._plant_growth_units(plant)
-            >= GROWTH_THRESHOLDS[GROWTH_STAGES.index("mature")]
-                * GROWTH_UNITS_PER_POINT
-        })
-        full_bloom_species = len({
-            plant.species
-            for plant in self.state.plants
-            if plant.species in current_species and plant.fully_grown
-        })
+        mature_species, full_bloom_species = species_progress_counts(self.state)
         valid_completions = max(
             0,
             int(

@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
+from ..plant_beds import plant_bed_progress
 from ..feature_availability import garden_legacy_enabled, landmarks_enabled, mastery_enabled
 
 from ..balance_catalog import (
@@ -131,8 +132,6 @@ def coin_reward_receipt(
         artwork_id={
             CoinSourceId.FIRST_ELIGIBLE_ANSWER: "sync_review_cards",
             CoinSourceId.TODAYS_CARDS: "sync_review_cards",
-            CoinSourceId.COMPLETION_CYCLE_5: "garden_reward",
-            CoinSourceId.SEVEN_DAY_STREAK_CYCLE: "checkpoint_badge",
             CoinSourceId.ACHIEVEMENT: "checkpoint_badge",
             CoinSourceId.PLANT_MILESTONE: "checkpoint_badge",
             CoinSourceId.STANDARD_FIND: "garden_reward",
@@ -322,12 +321,12 @@ class BedUnlockRow:
 
 
 def bed_unlock_rows(state: Any) -> tuple[BedUnlockRow, ...]:
-    unlocked = max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0)))
+    progression = {row.bed_number: row for row in plant_bed_progress(state)}
     return tuple(
         BedUnlockRow(
             int(item.bed_number),
-            int(item.bed_number) <= unlocked,
-            str(item.requirement_copy),
+            progression[item.bed_number].unlocked,
+            progression[item.bed_number].requirement,
             f"bed_{int(item.bed_number)}",
             f"Garden Bed {int(item.bed_number)}",
             str(BED_ARTWORK_IDS[f"bed_{int(item.bed_number)}"]),
@@ -338,7 +337,7 @@ def bed_unlock_rows(state: Any) -> tuple[BedUnlockRow, ...]:
             False,
             (
                 "unlocked"
-                if int(item.bed_number) <= unlocked
+                if progression[item.bed_number].unlocked
                 else "included"
                 if bool(item.included)
                 else "progression_locked"

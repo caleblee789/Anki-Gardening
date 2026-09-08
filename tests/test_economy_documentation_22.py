@@ -31,7 +31,7 @@ def test_current_economy_docs_identify_current_schema_and_catalog_authority() ->
     assert f"schema-{STATE_VERSION} Anki Garden 2.2.0" in docs_index
     assert "Anki Garden 2.2.0 release notes" in release_notes
     assert "release-notes-2.2.0.md" in docs_index
-    assert "Garden Cycle" in reference and "30 Garden Coins" in reference
+    assert "Study rewards" in reference and "16 Garden Coins" in reference
     assert "Garden Legacy" in reference and "500,000 Growth" in reference
 
 
@@ -86,8 +86,6 @@ def test_current_reference_and_readme_exclude_retired_balance_rules() -> None:
 
 def test_release_notes_preserve_review_required_boundary() -> None:
     release_notes = _text(RELEASE_NOTES)
-    assert "four-completion cadence" in release_notes
-    assert "six-completion cadence" in release_notes
     assert "do not replace exact-package" in release_notes
     assert "human" in release_notes
     assert "release candidate" in release_notes

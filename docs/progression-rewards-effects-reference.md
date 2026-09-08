@@ -45,7 +45,7 @@ hundredth-Growth units:
 
 ```text
 10 base Growth
-+ Garden Rhythm applied to the 10 base Growth only
++ retained streak achievement percentage applied to the 10 base Growth only
 + active Fertilizer Growth
 + active Booster Potion Growth
 + snapshotted Garden Bonus Growth
@@ -66,7 +66,7 @@ primary Answer Growth.
   140%, or 150% total output while a valid unfinished target exists.
 
 Garden Finds, Growth Charges, Prism Trellis completion rewards, Firefly Lantern, and other
-fixed awards grant **Instant Growth**. Instant Growth receives no Rhythm,
+fixed awards grant **Instant Growth**. Instant Growth receives no streak percentage,
 Fertilizer, Booster, Garden Bonus, Scenery, or Shared Growth fan-out.
 
 Plant routing always finishes first. In this release, the entire final remainder
@@ -97,62 +97,54 @@ matches its negative Stored Growth change.
 - A single Growth transaction may cross several checkpoints or stages. Stable
   event identities prevent any checkpoint, stage, or completion from paying
   twice.
-- Autumn Hearth adds 50% to checkpoint and first-time stage Garden Coins. Fractional
-  bonus Garden Coins carry between payouts instead of rounding independently.
+- Autumn Hearth adds 15% to all newly earned gameplay Coins, including checkpoints
+  and stages. Fractional bonus Coins carry between payouts.
 - Full Bloom grants one Small Growth Charge, a permanent Full Bloom record,
   collection and achievement progress, and the next valid nurtured target.
 - The durable artwork identifier `rare` is accepted only as a compatibility
   alias. Player-facing and catalog copy use **Full Bloom**.
 
-## Garden Rhythm
+## Permanent streak Growth bonus
 
-Anki streak remains visible and continues to power streak Garden Coins and streak
-achievements, but it is not a Growth multiplier. **Garden Rhythm** supplies the
-only routine percentage bonus.
+The existing streak achievements unlock one retained percentage. Each value is
+the total bonus, not an addition to an earlier tier.
 
-At the first eligible answer of an Anki day, the engine counts verified
-Today’s Cards completions among the prior seven eligible study days and stores
-an immutable daily snapshot:
-
-| Completed eligible days | Base Growth bonus |
+| Consecutive study days | Total permanent base-card Growth bonus |
 |---:|---:|
-| 0–1 | 0% |
-| 2 | 2% |
-| 3 | 4% |
-| 4 | 6% |
-| 5 | 8% |
-| 6–7 | 10% |
+| Fewer than 7 | 0% |
+| 7 | 5% |
+| 30 | 10% |
+| 100 | 15% |
+| 365 | 20% |
 
-- An eligible study day contains at least one eligible committed answer.
-- Days without an eligible answer are excluded rather than counted as a
-  failure.
-- Today’s completion can affect a future day; it does not rewrite the current
-  day’s snapshot.
-- One incomplete study day can lower the rolling result by only one tier. There
-  is no total-reset cliff.
-- Garden Rhythm applies only to the 10 base Growth.
-- If historical sync cannot prove a closed day’s snapshot, Rhythm and permanent
-  loadout effects fail closed for that day. Ordinary Growth and card-counted
-  consumables still apply.
+A study day needs at least one eligible committed answer, without an accuracy
+or completion requirement. The achievement unlock records are the persistent
+authority for the highest earned tier. A broken streak resets progress toward
+the next achievement but never removes an unlocked bonus. Separate streaks do
+not combine, and reaching an unlocked milestone again grants nothing extra.
 
-## Today’s Cards and recurring Garden Coins
+The percentage applies once to the 10 base Growth from each answer, before
+independent equipment and supply additions. Shared Growth distributes the
+result without applying the percentage again. Direct Growth rewards, including
+Growth Charges and completion rewards, receive no streak percentage.
+
+## Study rewards and daily Garden Coins
 
 An Anki day follows Anki’s configured next-day cutoff.
 
 | Trigger | Reward | Conditions |
 |---|---:|---|
-| First eligible committed answer | 4 Garden Coins | Once per Anki day |
-| Every seventh Anki streak day | 10 Garden Coins | Days 7, 14, 21, and so on |
-| Today’s Cards complete | 8 Garden Coins | Once per verified eligible Anki day |
-| Garden Cycle | 30 Garden Coins | Every fifth valid Today’s Cards completion |
-| Harvest Bell completion | 5 Garden Coins | Garden Bonus must be in that day’s snapshot |
-| Autumn Hearth completion | 4 Garden Coins | Scenery Effect must be in that day’s snapshot |
+| Study 1 card | 4 Garden Coins | First eligible committed answer, once per Anki day |
+| Finish all cards due today | 16 Garden Coins | Once per verified eligible Anki day |
 
-The first seventh-day recurring event and the 7-Day Anki Streak achievement
-share one integrated payout of 10 Garden Coins. Garden Cycle completions do not
-need to be consecutive: a missing day does not reset progress, while a no-card
-day does not count. The fifth completion reward commits automatically with
-Today’s Cards and is never modified by Harvest Bell or Autumn Hearth.
+These are core amounts. The shared earned-Coin pipeline applies equipped item
+effects and supplies both the pure display quote and the committed amount.
+Opening, refreshing, or syncing a display never reapplies a modifier. Earned
+states and their actual amounts come from persistent reward records, even if
+more cards appear or the equipped item changes later.
+
+There is no global five-completion cycle or recurring weekly streak payout.
+Completion history, cumulative achievements, and item-owned counters remain.
 
 Today’s Cards is collection-wide and fail-closed. It includes scheduler-
 available New, Learning, Relearning, and Review obligations under Anki’s active
@@ -161,8 +153,15 @@ inflate the obligation count. Suspended and buried cards remain excluded while
 unavailable. If verification fails, the completion reward is withheld while
 normal Garden Growth continues.
 
-Approved compact copy uses **cards left** and **Today’s Cards Complete**. A user
-who cannot finish retains every card’s Growth and every Find already committed.
+The requirement is named **Finish all cards due today**. Multi-day requirements
+use **Finish all cards due on 15 days**, with the actual interval supplied by
+the catalog. A visible zero-due count is not proof that a reward was earned.
+Empty workloads say **No cards due today**. A user who cannot finish retains
+every card’s Growth and every Find already committed.
+
+Activity has one content-sized Study rewards panel with the two daily rows,
+retained Growth percentage, current streak, next higher tier, and a link that
+reveals that achievement. The complete ladder remains in Achievements.
 Answers after completion still grow plants and remain eligible for Finds.
 
 ## Plants and earned beds
@@ -222,9 +221,7 @@ cannot repeat these rewards.
   a plant. A rejected dose remains in inventory.
 - A Booster may run concurrently with one active Fertilizer. Another Booster
   extends its remaining card count rather than increasing potency.
-- Owning Herbalist’s Hourglass adds 25 cards to each new Potion. Owning Full Moon
-  Garden adds another 25: 100, 125, or 150 cards per dose. Equipment does not
-  affect these ownership bonuses; existing doses keep their recorded duration.
+- Potions provide 100 cards per dose, independent of scenery and decoration ownership.
 - A Full Bloom transition transfers remaining effects to the next eligible
   nurtured plant. Once every current catalog species is Full Bloom, remaining
   doses move to persistent garden-wide queues, including plants in Collection.
@@ -244,7 +241,7 @@ cannot repeat these rewards.
   After all catalog species bloom, Charges use this garden route
   without a plant selection. Quotes and receipts identify the actual allocation.
 
-## Equipment and daily Rhythm
+## Equipment and daily reward context
 
 `display_decoration_id` and `display_scenery_id` are the two equipped selections.
 Each item supplies both its artwork and its catalog effect. Cosmetic decorations
@@ -253,8 +250,8 @@ Selections may change throughout the day. Subsequent reward events use the
 newly equipped item, without recalculating previously awarded rewards. Purchases
 never auto-equip. Hiding artwork preserves the equipped item and its effect.
 
-Daily snapshots preserve Garden Rhythm; their equipment IDs are historical
-metadata, not reward authorities. Sync reconciliation captures the equipped
+Daily snapshot equipment IDs are historical metadata, not reward authorities.
+Sync reconciliation captures the equipped
 items once per batch and uses them for unseen eligible reviews, including
 past-day reviews. First-N limits use each review's original Anki day and card
 position. Today’s Cards completion still requires the current-day live transition.
@@ -267,13 +264,13 @@ The equipped decoration supplies at most one Garden Bonus.
 
 | Decoration | Acquisition | Garden Bonus |
 |---|---|---|
-| Seedling Sign | Included | None |
-| Wind Chime | 100 Garden Coins | Every 5 eligible answers, +1 Answer Growth; remainder persists across days |
-| Harvest Bell | 175 Garden Coins | +5 Garden Coins when Today’s Cards is complete |
-| Watering Station | 250 Garden Coins | Every second eligible answer among the first 200 of the Anki day, +1 Answer Growth |
-| Herbalist’s Hourglass | 350 Garden Coins | Every 30 equipped completion days, gain 1 Booster Potion; owning it adds 25 cards to new Potions |
-| Firefly Lantern | Rare discovery | Every fifth eligible answer, +3 Instant Growth to the nurtured plant with normal overflow |
-| Prism Trellis | Very Rare discovery | +100 direct Growth on each valid Today’s Cards completion while equipped, with normal overflow and no Shared Growth |
+| Seedling Sign | Included | Appearance only |
+| Wind Chime | 100 Garden Coins | +1 Growth every 5 cards |
+| Harvest Bell | 175 Garden Coins | Finish all cards due today: +5 Coins |
+| Watering Station | 250 Garden Coins | First 200 cards daily: +1 Growth per 2 cards |
+| Herbalist’s Hourglass | 350 Garden Coins | Finish all cards due on 15 days: +1 Booster Potion |
+| Firefly Lantern | Rare discovery | +3 Growth every 5 cards |
+| Prism Trellis | Very Rare discovery | Finish all cards due today: +100 Growth |
 
 Wind Chime and Hourglass progress persists while unequipped, but advances only
 when the bonus is active. Watering Station’s first-200 allowance resets at the
@@ -286,17 +283,17 @@ The equipped scenery supplies its Scenery Effect.
 
 | Scenery | Acquisition | Scenery Effect |
 |---|---|---|
-| Verdant Twilight | Included | None |
-| Spring Bloom | 400 Garden Coins | +2 Answer Growth on the first 20 eligible cards each Anki day |
-| Golden Summer | 600 Garden Coins | +1 Answer Growth on every second eligible card among the first 120 each Anki day |
-| Autumn Hearth | 500 Garden Coins | +4 Garden Coins on Today’s Cards completion and +50% checkpoint/stage Garden Coins |
-| Snow-Covered Garden | 1,200 Garden Coins | Every second active Today’s Cards completion grants 1 Small Growth Charge |
-| Rainbow Horizon | Rare discovery | +1 Answer Growth on the first 75 eligible cards each Anki day |
-| Halloween Garden | Very Rare discovery | Completion gift: Small Charge 95%, Standard Charge 4%, Booster Potion 1% |
-| Full Moon Garden | Ultra Rare discovery | Every sixth equipped Today’s Cards completion grants 1 Booster Potion; owning it adds 25 cards to new Potions |
-| Celestial Eclipse | Ultra Rare discovery | +1 Answer Growth on the first 125 eligible cards each Anki day |
+| Verdant Twilight | Included | Appearance only |
+| Spring Bloom | 400 Garden Coins | First 20 cards daily: +2 Growth each |
+| Golden Summer | 600 Garden Coins | First 120 cards daily: +1 Growth per 2 cards |
+| Autumn Hearth | 500 Garden Coins | Earn 15% more Coins |
+| Snow-Covered Garden | 1,200 Garden Coins | Finish all cards due today: +50 Growth |
+| Rainbow Horizon | Rare discovery | First 75 cards daily: +1 Growth each |
+| Halloween Garden | Very Rare discovery | Finish all cards due today: 1 mystery gift |
+| Full Moon Garden | Ultra Rare discovery | Finish all cards due on 4 days: +1 Booster Potion |
+| Celestial Eclipse | Ultra Rare discovery | First 125 cards daily: +1 Growth each |
 
-Snow and Full Moon completion remainders pause instead of disappearing while a
+Hourglass and Full Moon completion remainders pause instead of disappearing while a
 different effect is active. Halloween outcomes are deterministic from the
 committed reward identity and cannot reroll on retry, sync, undo lineage,
 rerender, or restart.
@@ -363,10 +360,10 @@ Achievements do not reward answer rating, accuracy, speed, or avoiding Again.
 
 | Achievement | Requirement | Reward |
 |---|---|---|
-| 7-Day Anki Streak | 7-day streak | 10 Garden Coins |
-| 30-Day Anki Streak | 30-day streak | 100 Garden Coins + Small Charge |
-| 100-Day Anki Streak | 100-day streak | 300 Garden Coins |
-| 365-Day Anki Streak | 365-day streak | 1,000 Garden Coins |
+| 7-Day Anki Streak | 7-day streak | Total permanent base-card Growth bonus: +5% |
+| 30-Day Anki Streak | 30-day streak | Total permanent base-card Growth bonus: +10%; 100 Garden Coins + Small Charge |
+| 100-Day Anki Streak | 100-day streak | Total permanent base-card Growth bonus: +15%; 300 Garden Coins |
+| 365-Day Anki Streak | 365-day streak | Total permanent base-card Growth bonus: +20%; 1,000 Garden Coins |
 | Century Day | 100 eligible cards in one Anki day | 25 Garden Coins |
 | Deep Roots | 1,000 lifetime eligible answers | Standard Charge |
 | Review Day | First Today’s Cards completion | 5 Garden Coins |
@@ -491,10 +488,10 @@ uncommitted projections.
 
 ## Persistence, migration, and replay authority
 
-Schema 28 stores exact hundredth-Growth units, Stored Growth, card-counted
-Fertilizer and Booster queues, Garden Rhythm snapshots, unified equipment choices, persistent effect counters, dual environment pity,
+Schema 30 stores exact hundredth-Growth units, Stored Growth, card-counted
+Fertilizer and Booster queues, daily reward records, unified equipment choices, persistent effect counters, dual environment pity,
 earned beds, active Growth target acknowledgement, cumulative Landmark and
-Mastery funding and claims, Garden Legacy, Garden Cycle, and
+Mastery funding and claims, Garden Legacy, retained achievement unlocks, and
 provenance-qualified lifetime economy aggregates.
 
 The player-facing Garden Coin history remains bounded to the newest 500 entries.
@@ -507,8 +504,6 @@ Lifetime aggregates retain source/sink totals without replaying UI history.
 Schema-26 migration preserves every plant, wallet balance, and Stored Growth
 unit and:
 
-- adds Garden Cycle without retroactive rewards of 30 Garden Coins, deriving only
-  a trustworthy completion-history remainder and otherwise starting at zero;
 - raises claimed Landmark and Mastery tracks to their cumulative funded floors
   without revoking claims or charging Growth or Garden Coins again;
 - preserves partial endgame funding, selectable claimed Landmark appearances,
@@ -526,11 +521,6 @@ Earlier supported migrations still:
 - preserves every plant, refunds only a recorded amount above 250 Garden Coins, and
   never debits a cheaper historical purchase;
 - converts retained Rich Compost inventory into Basic Fertilizer;
-- derives Garden Rhythm only from reliable committed history and otherwise
-  starts it at zero without retroactive Growth;
-- carries the old Full Moon four-completion remainder into the new
-  six-completion cadence at the same fractional position, rounding up so a
-  positive earned fraction is never erased;
 - preserves card pity, starts completion-day pity at zero, and never removes an
   owned environment or grants retroactive pity;
 - preserve existing Stored Growth without automatically contributing it to a
@@ -545,10 +535,10 @@ or duplicate an already resolved outcome.
 
 Before normal sync, Garden establishes a clean boundary from review history
 already present on the desktop. Newly unseen supported post-activation answers
-then process exactly once under their original Anki day. A historical day uses
-its immutable economy snapshot; when that snapshot cannot be proven, permanent
-Rhythm/loadout effects fail closed rather than being inferred from current
-choices. Today’s Cards completion is granted only when the current live
+then process exactly once under their original Anki day. The retained achievement
+tier applies to base card Growth, and sync captures current equipment for the
+batch. Existing committed rewards are not recalculated. Completion is granted
+only when the current live
 collection-wide transition can be verified.
 
 Rewards and one pending nonmodal Sync Rewards receipt commit atomically.

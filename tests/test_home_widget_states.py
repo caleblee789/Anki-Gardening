@@ -766,6 +766,7 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
 ])
 def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(points, stage, name, progress, mode) -> None:
     state = SimpleNamespace(
+        achievements={},
         daily_stats=SimpleNamespace(
             growth_earned=0,
             base_growth=0,
@@ -823,6 +824,7 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
 
 def test_home_keeps_scenery_and_equipment_state_but_omits_decoration_art() -> None:
     state = SimpleNamespace(
+        achievements={},
         daily_stats=SimpleNamespace(
             growth_earned=0,
             base_growth=0,

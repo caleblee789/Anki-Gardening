@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import runpy
 import tempfile
 import zipfile
 import zlib
@@ -31,9 +32,20 @@ EXCLUDED_NAMES = {"meta.json", "garden_state.json", "asset_metadata.json", ".DS_
 
 
 def runtime_asset_manifest() -> dict[str, Any]:
-    """Keep dormant background layouts and authoring assets in the source only."""
+    """Keep dormant features, layouts, and authoring assets in the source only."""
 
     payload = json.loads((ADDON / "assets" / "manifest.json").read_text("utf-8"))
+    # Read the standalone release flags without importing the add-on entrypoint.
+    # Apply the same manifest to production and capture so shared bytes match.
+    availability = runpy.run_path(str(ADDON / "feature_availability.py"))
+    disabled_categories = {
+        category
+        for category, flag in (
+            ("landmarks", "LANDMARKS_ENABLED"),
+            ("mastery", "MASTERY_ENABLED"),
+        )
+        if not availability[flag]
+    }
 
     def active_layouts(value: Any) -> Any:
         if isinstance(value, dict):
@@ -49,6 +61,7 @@ def runtime_asset_manifest() -> dict[str, Any]:
     payload["assets"] = [
         active_layouts(row) if row.get("category") == "backgrounds" else row
         for row in payload["assets"]
+        if row.get("category") not in disabled_categories
     ]
     return payload
 

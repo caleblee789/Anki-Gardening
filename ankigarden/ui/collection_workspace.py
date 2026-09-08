@@ -12,6 +12,7 @@ class CollectionPlantWorkspace(QWidget):
         self.gallery = gallery
         self.owner = owner
         self.selected_species = ""
+        self.selected_plant_id = None
         self.species_page = None
         self.detail_dialog = None
         self._wide = None
@@ -68,7 +69,8 @@ class CollectionPlantWorkspace(QWidget):
             if selected not in species:
                 selected = species[0]
         scroll_value = self.species_page.collection_scroll.verticalScrollBar().value() if self.species_page else 0
-        self.show_species(selected, present=False, force=force)
+        self.show_species(selected, present=False, force=force,
+                          plant_id=self.selected_plant_id if selected == self.selected_species else None)
         if self.species_page:
             scroll = self.species_page.collection_scroll.verticalScrollBar()
             QTimer.singleShot(0, lambda: scroll.setValue(min(scroll_value, scroll.maximum())))
@@ -82,17 +84,19 @@ class CollectionPlantWorkspace(QWidget):
                 if reveal and selected:
                     self.gallery.scroll.ensureWidgetVisible(card, 0, 8)
 
-    def show_species(self, species, *, present=True, force=False):
+    def show_species(self, species, *, present=True, force=False, plant_id=None):
         self.show_feedback("")
-        if force or self.species_page is None or species != self.selected_species:
+        if (force or self.species_page is None or species != self.selected_species
+                or plant_id != self.selected_plant_id):
             self._remove_page(self.species_page)
             self.species_page = self.owner._build_species_overview_dialog(
-                str(species), parent=self.detail_host, embedded=True)
+                str(species), parent=self.detail_host, embedded=True, plant_id=plant_id)
             if self.species_page is None:
                 return
             self.species_page.finished.connect(self.close_details)
             self.stack.addWidget(self.species_page)
         self.selected_species = str(species)
+        self.selected_plant_id = plant_id
         self.stack.setCurrentWidget(self.species_page)
         self._select_card(reveal=present)
         self._sync_close_buttons()
@@ -103,7 +107,7 @@ class CollectionPlantWorkspace(QWidget):
         if plant is None:
             self.refresh_selection()
             return
-        self.show_species(str(plant.species), present=present, force=True)
+        self.show_species(str(plant.species), present=present, force=True, plant_id=plant.plant_id)
 
     def close_details(self, *_args):
         if self.detail_dialog is not None:

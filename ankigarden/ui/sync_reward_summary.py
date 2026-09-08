@@ -25,6 +25,7 @@ from .formatters import (
 from .garden_asset_thumbnail import GardenAssetThumbnail
 from .icons import garden_icon, garden_icon_pixmap
 from .session_summary import format_growth_units, plant_growth_journey
+from .copy import cards_studied_text
 from .reward_rarity import apply_reward_treatment, reward_treatment
 from .reward_receipt import fit_receipt_chrome, receipt_metrics_layout, build_receipt_shell, receipt_button, receipt_metric, receipt_event_row, receipt_style, receipt_body_height
 from .session_summary_card import session_summary_palette
@@ -169,12 +170,10 @@ def sync_reward_visibility_plan(
 def sync_reward_metric_plan(
     summary: SyncRewardSummary,
 ) -> tuple[tuple[str, str, str], ...]:
-    """Return required totals plus independently labelled reward metrics.
+    """Preserve the receipt's mixed Find/item count without calling it discovery.
 
-    ``finds`` and ``environment_discoveries`` are separate committed streams.
-    Keeping their projections separate prevents a Garden discovery from being
-    presented as a Garden Find without changing either stream's persisted
-    reward or event identity.
+    The retained finds stream also carries other inventory awards. Its count
+    stays unchanged; row source metadata determines the truthful category.
     """
 
     metrics: list[tuple[str, str, str]] = [
@@ -188,7 +187,7 @@ def sync_reward_metric_plan(
     metrics.extend((
         (f"+{summary.garden_coin_delta:,}" if summary.garden_coin_delta else "0", "Coins", "garden_coin"),
         (format_growth_units(summary.growth_total_units, signed=bool(summary.growth_total_units)), "Growth", "growth_resource"),
-        (f"{discoveries:,}", "Discoveries", "garden_discovery"),
+        (f"{discoveries:,}", "Finds & items", "garden_discovery"),
     ))
     return tuple(metrics)
 
@@ -197,8 +196,7 @@ def sync_reward_subtitle(summary: SyncRewardSummary) -> str:
     """Describe the committed sync quantity in the same unit shown elsewhere."""
 
     count = max(0, int(summary.eligible_answer_count or 0))
-    noun = "review" if count == 1 else "reviews"
-    return f"From {count:,} synced {noun}"
+    return f"From {cards_studied_text(count)}" if count > 0 else ""
 
 
 @dataclass(frozen=True)
@@ -809,10 +807,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         return layout
 
     def _section_heading(self, text: str, parent: Any) -> QLabel:
-        label = QLabel(text, parent)
-        label.setProperty("syncSection", True)
-        label.setTextFormat(Qt.TextFormat.PlainText)
-        return label
+        from .reward_receipt import receipt_section_heading
+        return receipt_section_heading(parent, text)
 
     def _divider(self, parent: Any) -> QFrame:
         line = QFrame(parent)
@@ -991,18 +987,19 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         stage_changed = bool(row.get("stage_event_id")) or bool(
             row.get("stage_before") and row.get("stage_after") != row.get("stage_before")
         )
-        gained_units = max(0, int(row.get("growth_delta_units", 0) or 0))
-        after_units = row.get("growth_after_units")
-        before_units = max(0, int(after_units) - gained_units) if after_units is not None else None
         art = self._art_label(parent, kind="plant", identity=species, stage=stage,
                               explicit=str(row.get("artwork_asset", "") or ""), width=48, height=48)
         progress_target = max(0, min(100, int(row.get("stage_progress_after", 0) or 0)))
-        journey = plant_growth_journey(species.replace("_", " ").title() or name, before_units, gained_units)
-        if full_bloom and before_units is None:
-            journey = plant_stage_event(species, "rare")
-        card = receipt_progress_card(parent, art,
-            "GROWTH MILESTONE" if full_bloom else "Growth milestone" if stage_changed else "Progress details",
-            journey, progress_percent=progress_target, coins=max(0, int(row.get("progression_coins", 0) or 0)),
+        title = plant_stage_event(species or str(row.get("display_name") or "Plant"), "rare" if full_bloom else stage) if stage_changed or full_bloom else name
+        before_stage = stage_presentation(row.get("stage_before"))
+        after_stage = stage_presentation(stage)
+        journey = (f"{before_stage.display_name} → {after_stage.display_name}"
+                   if stage_changed and before_stage is not None and after_stage is not None else "")
+        progress_copy = _plant_progress_copy(row) if not full_bloom else ""
+        journey = "\n".join(filter(None, (journey, progress_copy)))
+        card = receipt_progress_card(parent, art, title,
+            journey, progress_percent=None if full_bloom else progress_target,
+            coins=max(0, int(row.get("progression_coins", 0) or 0)),
             palette=self._palette, full_bloom=full_bloom)
         frame = card.widget
         frame.setProperty("syncPrimaryCard", True)
@@ -1148,18 +1145,23 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if kind == "inventory_item" and definition is not None and definition.inventory_item_id:
             from ..reward_presentation import RewardLine
             detail = RewardLine("inventory_item", amount or _quantity(row), definition.inventory_item_id).learner_text
+        source = str(row.get("source", "") or "")
+        if source and source not in {"standard_find", "garden_find", "mixed"}:
+            from ..reward_presentation import recorded_event_presentation
+            source_text = recorded_event_presentation(row).title
+            detail = "\n".join(filter(None, (source_text, detail)))
         event = receipt_event_row(parent, artwork, title,
             detail=detail, reward=row, eyebrow="Garden Find" if definition is not None else "Item earned", rarity_badge=True)
         frame = event.widget
         frame.setProperty("syncRow", True)
-        frame.setProperty("syncRewardKind", "standard_find")
+        frame.setProperty("syncRewardKind", "standard_find" if source in {"standard_find", "garden_find"} else "item_reward")
         frame.setProperty("syncRewardIdentity", reward_id)
         frame.setProperty("syncRewardEventId", str(row.get("event_id", "") or ""))
         quantity = _quantity(row)
         if amount and kind in {"growth", "coins"}:
             from .reward_receipt import receipt_resource_values
             event.copy.addWidget(receipt_resource_values(frame, coins=amount if kind == "coins" else 0,
-                                                        growth_units=amount * 100 if kind == "growth" else 0))
+                                                        growth_units=amount * 100 if kind == "growth" else 0, compact=True))
         if quantity > 1:
             badge = QLabel(f"×{quantity:,}", frame)
             badge.setProperty("syncQuantity", True)
@@ -1250,74 +1252,13 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         return tuple(entries)
 
     def _growth_allocation_strip(self, parent: Any) -> QFrame:
-        strip = QFrame(parent)
-        strip.setProperty("syncAllocationStrip", True)
-        layout = QGridLayout(strip)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        allocations = self._growth_allocation_entries()
-        columns = 2 if len(allocations) > 2 else max(1, len(allocations))
-        strip.setProperty("syncAllocationColumnCount", columns)
-        for column in range(columns):
-            layout.setColumnStretch(column, 1)
-        for index, (
-            asset_id,
-            units,
-            label_text,
-            detail_text,
-            target_type,
-            target_id,
-            accessible_detail,
-        ) in enumerate(allocations):
-            item = QFrame(strip)
-            item.setProperty("syncAllocationItem", True)
-            item.setMinimumWidth(0)
-            item.setSizePolicy(
-                QSizePolicy.Policy.Ignored,
-                QSizePolicy.Policy.Preferred,
-            )
-            item.setProperty("syncProjectTargetType", target_type)
-            item.setProperty("syncProjectTargetId", target_id)
-            item.setProperty("syncProjectGrowthUnits", int(units))
-            if accessible_detail:
-                item.setAccessibleDescription(accessible_detail)
-            item_layout = QHBoxLayout(item)
-            item_layout.setContentsMargins(8, 6, 8, 6)
-            item_layout.setSpacing(8)
-            item_layout.addWidget(self._art_label(
-                item,
-                kind="ui",
-                identity=asset_id,
-                width=22,
-                height=22,
-            ))
-            copy = QVBoxLayout()
-            copy.setContentsMargins(0, 0, 0, 0)
-            copy.setSpacing(0)
-            amount = QLabel(format_growth_units(units, signed=True), item)
-            amount.setProperty("syncPrimary", True)
-            amount.setTextFormat(Qt.TextFormat.PlainText)
-            apply_tabular_numerals(amount)
-            copy.addWidget(amount)
-            caption = QLabel(label_text, item)
-            caption.setProperty("syncSecondary", True)
-            caption.setMinimumWidth(0)
-            caption.setWordWrap(True)
-            caption.setSizePolicy(
-                QSizePolicy.Policy.Ignored,
-                QSizePolicy.Policy.Preferred,
-            )
-            caption.setTextFormat(Qt.TextFormat.PlainText)
-            copy.addWidget(caption)
-            if detail_text:
-                detail = QLabel(detail_text, item)
-                detail.setProperty("syncMuted", True)
-                detail.setWordWrap(True)
-                detail.setTextFormat(Qt.TextFormat.PlainText)
-                copy.addWidget(detail)
-            item_layout.addLayout(copy, 1)
-            layout.addWidget(item, index // columns, index % columns)
-        return strip
+        from .reward_receipt import receipt_growth_breakdown
+        return receipt_growth_breakdown(parent,
+            total_units=self._summary.growth_total_units,
+            plant_units=sum(result.growth_delta_units for result in self._summary.grouped_plant_results),
+            shared_units=self._summary.shared_growth_delta_units,
+            stored_units=self._summary.stored_growth_delta_units,
+            project_units=(self._summary.landmark_growth_delta_units + self._summary.mastery_growth_delta_units + self._summary.legacy_growth_delta_units))
 
     def _rewards_section(
         self,
@@ -1334,10 +1275,14 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
         section_layout.setSpacing(8)
-        for row in finds:
-            section_layout.addWidget(self._find_card(row, section))
-        for row in environments:
-            section_layout.addWidget(self._environment_row(row, section))
+        known_finds = tuple(row for row in finds if str(row.get("source", "")) in {"standard_find", "garden_find"} or str(row.get("event_id", "")).startswith(("standard-find:", "garden_find:")))
+        other_items = tuple(row for row in finds if row not in known_finds)
+        for heading, records, renderer in (("New discoveries", environments, self._environment_row),
+                ("Garden Finds", known_finds, self._find_card), ("Items earned", other_items, self._find_card)):
+            if records:
+                section_layout.addWidget(self._section_heading(heading, section))
+                for row in records:
+                    section_layout.addWidget(renderer(row, section))
         return section
 
     def _simple_row(
@@ -1401,9 +1346,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
         if self._additional_line_visible and self._summary.additional_answer_count > 0:
             count = self._summary.additional_answer_count
-            noun = "review was" if count == 1 else "reviews were"
             additional = QLabel(
-                f"{count:,} additional {noun} added",
+                f"{cards_studied_text(count)} added to this receipt",
                 self._body_widget,
             )
             additional.setProperty("syncAdditional", True)
@@ -1445,7 +1389,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         divider = self._divider(self._summary_fixed)
         self._summary_fixed_layout.addWidget(divider)
         metrics_frame.show()
-        headline.show()
+        headline.setVisible(bool(headline.text()))
         divider.show()
         self._summary_fixed_layout.activate()
 
@@ -1459,6 +1403,8 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         allocation_entries = self._growth_allocation_entries()
         effects = _effect_lines(self._summary)
         featured = tuple(row for row in plan.plant_growth if row.get("full_bloom"))
+        if plan.plant_growth:
+            layout.addWidget(self._section_heading("Plant progress", self._body_widget))
         for row in featured:
             plant_frame = self._plant_row(row, self._body_widget, motion=progress_motion.get(_plant_motion_key(row)))
             layout.addWidget(plant_frame)
@@ -1490,11 +1436,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         else:
             self._disclosure = None
 
-        if self._expanded and allocation_entries:
+        if self._expanded and (allocation_entries or self._summary.growth_total_units):
             layout.addWidget(self._growth_allocation_strip(self._body_widget))
 
         if self._expanded and self._summary.all_clear_earned:
-            layout.addWidget(self._section_heading("TODAY’S CARDS", self._body_widget))
+            layout.addWidget(self._section_heading("Today’s cards", self._body_widget))
             detail = "All due cards are complete."
             if self._summary.all_clear_coin_reward > 0:
                 detail = (
@@ -1513,7 +1459,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             ))
 
         if self._expanded and effects:
-            layout.addWidget(self._section_heading("CURRENT BOOSTS", self._body_widget))
+            layout.addWidget(self._section_heading("Current boosts", self._body_widget))
             for icon_name, art_identity, text, art_asset in effects:
                 layout.addWidget(self._simple_row(
                     text,

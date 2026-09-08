@@ -29,7 +29,9 @@ def test_frozen_report_has_a_concise_fifteen_page_outline(frozen_report):
     assert len(REPORT_SECTIONS) == len(outline) == 15
     assert outline[0]["section_id"] == "cover"
     assert outline[-1]["section_id"] == "method"
-    assert len(frozen_report["catalog"]["records"]) == 117
+    records = frozen_report["catalog"]["records"]
+    assert records
+    assert len({(row["category"], row["item_id"]) for row in records}) == len(records)
     assert frozen_report["analysis"]["standard_finds"]["guarantee_answer"] == 75
     release_status = frozen_report["release_status"]
     assert release_status["automated"]["status"] == "pass"

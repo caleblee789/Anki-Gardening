@@ -1,9 +1,9 @@
 {
-  "contract_digest": "400150acc2df678b623fc44cba3f00387fcf439323108b3f9cbe46d3dd2b30a7",
+  "contract_digest": "0c0306af3a772db8b68f613c55510e05e6129dfb2c2708e9abbb5153a9adddc1",
   "contract_version": 29,
   "profiles": {
     "full": {
-      "contact_sheet_page_count": 5,
+      "contact_sheet_page_count": 6,
       "contact_sheets": [
         {
           "labels": [
@@ -84,6 +84,15 @@
           ],
           "name": "Anki integration and rewards",
           "sheet": 5
+        },
+        {
+          "labels": [
+            "progress-plant-beds-starting",
+            "progress-plant-beds-partial",
+            "progress-plant-beds-unlocked"
+          ],
+          "name": "Plant beds",
+          "sheet": 6
         }
       ],
       "groups": [
@@ -168,16 +177,19 @@
             "workspace-settings-unsaved",
             "workspace-diagnostics-warning-details",
             "workspace-reviewer-collapsed",
-            "workspace-reviewer-rewards-list"
+            "workspace-reviewer-rewards-list",
+            "progress-plant-beds-starting",
+            "progress-plant-beds-partial",
+            "progress-plant-beds-unlocked"
           ],
           "name": "Refinement views"
         }
       ],
-      "surface_count": 50,
-      "topology_digest": "cef84d63553c6293dab9747445817bbe5f5858ed8e5d99e4477751d76fbbe369"
+      "surface_count": 53,
+      "topology_digest": "01608985821173b94abf438fcd4b68f29235eb3224cc738ed090ce63d075ffb3"
     },
     "representative": {
-      "contact_sheet_page_count": 5,
+      "contact_sheet_page_count": 6,
       "contact_sheets": [
         {
           "labels": [
@@ -230,6 +242,13 @@
           ],
           "name": "Anki integration and rewards",
           "sheet": 5
+        },
+        {
+          "labels": [
+            "progress-plant-beds-partial"
+          ],
+          "name": "Plant beds",
+          "sheet": 6
         }
       ],
       "groups": [
@@ -286,13 +305,14 @@
             "workspace-decoration-inspector",
             "workspace-collection-plant-menu",
             "workspace-trophy-room",
-            "workspace-reviewer-rewards-list"
+            "workspace-reviewer-rewards-list",
+            "progress-plant-beds-partial"
           ],
           "name": "Refinement views"
         }
       ],
-      "surface_count": 22,
-      "topology_digest": "754acd3b824f8237328729d47dff47cfc26fcddae6c2801fa08d43591a63fdd8"
+      "surface_count": 23,
+      "topology_digest": "48f5cb51f1647c5495330816d71c0924e74095e690a605430e3e47c494bfc16a"
     }
   },
   "retired_ids": [
@@ -424,7 +444,7 @@
   ],
   "scenario_schema_version": 3,
   "schema_version": 2,
-  "surface_count": 50,
+  "surface_count": 53,
   "surfaces": [
     {
       "acquisition_policy": "qt-shell-webview-verified",
@@ -9438,7 +9458,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "937bae24a9cd7b88a6293f27c590095f16d250749ef20145e336eec50a3a398e",
+      "dependency_digest": "3324f6583a49beb49b80232510da0c8b2865601bc0daf32de0ec928521bb91d5",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9460,7 +9480,10 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
-        "ui/home_widget.py"
+        "ui/home_widget.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -9529,7 +9552,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "66068482a6baa5da1c550be7537c03ec902777200a8776ebe7ad0ecfa5f73510",
+      "dependency_digest": "d4dc2f81b53046d9c7dffe07932f190901e1b509aef38f13eabf31d72a397710",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9558,7 +9581,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -9635,7 +9661,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "17c4124bbbaedecdb51fbd820d85046e42a1605bef59ae55bc7ece0b0a79482e",
+      "dependency_digest": "cbfc89ca6c555cccf051e011458d79f21cb4294a7624f0f2f02b98761974d58c",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9664,7 +9690,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -9735,7 +9764,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "d691d1b6790dd7557693903eb75f7e45f52cd6e615352904bf0eb846f353f6d9",
+      "dependency_digest": "8ec28906b3d2843e9a7e040494322529254ccadff77def8b047eb659d438660f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9764,7 +9793,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -9843,7 +9875,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "29e21984a5da9220ad3684d8e385619468a2dd22af7d5252683fc0a849659643",
+      "dependency_digest": "e6dce2b052c75be930e0bb4d3665f121725b86fa22a5ac1f2abb4896f0e854fd",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9872,7 +9904,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -9947,7 +9982,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "f3cb05ee8148fd79b1b1f6c105d44c60d5648105c613518ec8fabc7b50ddf976",
+      "dependency_digest": "50f43d59cebe55ed35831665a97c00850a877ba15c816eaa0e450720a6933d5e",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -9976,7 +10011,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10051,7 +10089,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "2483e415269ec233326fc5a2f92031fa340273147f11de78bbd174e609f61744",
+      "dependency_digest": "a3a9660dba2c399f022843666488380e54028ba5146000a6bd81b5aa08f9ffe5",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10080,7 +10118,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10148,7 +10189,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "6ac8e0ad0d498b8c65a720ee50c5aba4d9d8f28d64d33fcdd416c94f3eb31eaf",
+      "dependency_digest": "2d88c37a5ab6eca269963948015389a035ce469345132f393fbca04a3d5b2c76",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10177,7 +10218,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10245,7 +10289,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4a19b19c29f1aa8b4778510bfc5d8635bf7fc7e023114b3aae80ecd51b799b96",
+      "dependency_digest": "83131efa09e101562d8796cb50dc4dcb47bcb83853e7820ea9340b5c2a41286f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10274,7 +10318,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10349,7 +10396,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "75d3ca3702e9328755f5cfb0282190ccf8e64c0207b337afec686147f94fb86b",
+      "dependency_digest": "a71322c5ae0b7fd0666a95bbb96aace7e7fca908e27c71ccb08cc4fbb327d46e",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10378,7 +10425,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10446,7 +10496,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "8c431d97b13ef1a702e9371f83d39e80ce896cd3dbca703e02ec7ef8f91915a2",
+      "dependency_digest": "707e141dcab7a39fcdb8b230f1d380a826f98e9ac200448eeb41537709f14888",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10476,7 +10526,10 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
-        "ui/collection_workspace.py"
+        "ui/collection_workspace.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10551,7 +10604,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "a662210ccafc057c75a18aa19e1c3018fa5e131694f7a7f4ff428eb3290b6775",
+      "dependency_digest": "52dd824cff69871902918d06a34c7eff992e44868b94ef08c6f7a37909f0b97e",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10581,7 +10634,10 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
-        "ui/collection_workspace.py"
+        "ui/collection_workspace.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10649,7 +10705,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "db2466e4a30e39a48bc360099133fed6af341d8c67dcfc0d16538bc8b50c9bb9",
+      "dependency_digest": "683fd85a9880731febfb1431d09c0ac4415e856caf5807a958ca471e08dad336",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10679,7 +10735,10 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
-        "ui/collection_workspace.py"
+        "ui/collection_workspace.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10754,7 +10813,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "80a43ec11bf1c50a12a8e007ea431a9602173769f06b25654ed2e33fd8c2805b",
+      "dependency_digest": "3b1663e7f297d0e76029ba16fa261ea5b357d1a758b4d302ccef39ad69ccea8c",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10784,7 +10843,10 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
-        "ui/collection_workspace.py"
+        "ui/collection_workspace.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10859,7 +10921,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c4c71bf9a4c6f3e983e3708e8496da6fe6f74028c1bb2aa05214b750e171ac28",
+      "dependency_digest": "a46deccce5534d4db855ad8c9072edb447b357df7ca4ea315d382df3c6ea1eaf",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10889,7 +10951,10 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
-        "ui/collection_workspace.py"
+        "ui/collection_workspace.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -10957,7 +11022,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "6a2251d5f5d0363ddce1057bf61eb675621f7169886848cd090c254d671be6c6",
+      "dependency_digest": "f578d8a04b66eae48ae31473915a446b76ce175ecd2e29297d6d94ecea556b99",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -10986,7 +11051,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -11054,7 +11122,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "63f11f64cd108e2ffbae1f75821a0f4884b2dadf4ba40d98e24b5a20b5d3eb5d",
+      "dependency_digest": "f8971c17133109ac36d570caa73fc698afccbb0161d2a92ac474639a94959559",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11083,7 +11151,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -11158,7 +11229,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "8af975538bbc1887e491b7f97ae0c2b9a04b0ac40419f9f097cfd86f9ef1bb6f",
+      "dependency_digest": "e0bb9fea971db4da3e4aa4e73ba4e072995065452fb2206e66e320a327846544",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11188,7 +11259,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -11256,7 +11330,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "9d0629ecf86a437fc62ddd800fdd2af569cda1401f392d197558f13e6b3c5a93",
+      "dependency_digest": "bfd57aae175e29522d0033a7f2109cb308f5fb74e78219a91c1f85009b4fe8a2",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11285,7 +11359,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -11360,7 +11437,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4d3c4f9291f4a1969b1cb4c54ad96f6b3e845941d5e336873900be578961294a",
+      "dependency_digest": "bdeafba96fbf2fee29d7c44bed9ddb7bb2ec099166776503d55e2353083d5897",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11389,7 +11466,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -11454,7 +11534,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "52af7edadf187110eee1aebef7778c8fb30a800aba49d24d37c1ff07bb66361f",
+      "dependency_digest": "2cec20519d833f022c56bb4824ab83cae1665059658a9453339c4e5e72992aa1",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11477,7 +11557,11 @@
       "owned_dependency_groups": [
         "growth-charge"
       ],
-      "owned_module_dependencies": [],
+      "owned_module_dependencies": [
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
+      ],
       "placements": [
         {
           "group": "Shop",
@@ -11544,7 +11628,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "cbf88f2937254b28734be52892c91f2853c9a745de05ea06d62b0eaa421cb62c",
+      "dependency_digest": "a6b339ae35dd373b59f7e5b8011bab2c9bd878d86a7a4c58c2a8f5a33bc70a4a",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11573,7 +11657,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -11641,7 +11728,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "d79aa59fdfaa69088d4ea286ac440ff1b7eb0d16805db229a5957c05be1c53cc",
+      "dependency_digest": "a5799ea7e09bad8964efc53d2b2bc40842c41eafef95589dd77c74f96fffb58b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11671,6 +11758,9 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/activity_page.py",
         "activity.py",
         "reward_ledger.py"
@@ -11703,14 +11793,15 @@
       "scenario_step": 1,
       "state_contract": {
         "expected_fact_values": {
-          "activity_details_expanded": true,
           "ordered_fixture_label": "progress-today-page",
           "plant_naming": {
             "custom_names_visible": [],
             "passed": true,
             "rename_visible": false
           },
+          "retained_growth_after_break": false,
           "state_profile_declared": "progress-today-page",
+          "study_rewards_panel": true,
           "visible_content": true,
           "window_family": "GardenDashboard",
           "workspace_route": "progress/activity"
@@ -11731,7 +11822,8 @@
           "workspace_route",
           "visible_content",
           "plant_naming",
-          "activity_details_expanded"
+          "study_rewards_panel",
+          "retained_growth_after_break"
         ]
       }
     },
@@ -11741,7 +11833,7 @@
       "allow_foreground_fallback": false,
       "arguments": [
         "progress-today-details",
-        "today-details"
+        "study-rewards-retained"
       ],
       "checkpoint": "development-stress",
       "checkpoint_cohort": "development-stress",
@@ -11750,7 +11842,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "ce271576cf3c1ca5367ec220376fdb28d560c736a092274302c76edd9d361be1",
+      "dependency_digest": "09bb0523e8825d907b2a1a7fb7f5a7eea4844aba759ab0e89e2a63d20269a441",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11780,6 +11872,9 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/activity_page.py",
         "activity.py",
         "reward_ledger.py"
@@ -11805,24 +11900,25 @@
       "scenario_step": 1,
       "state_contract": {
         "expected_fact_values": {
-          "activity_details_expanded": true,
           "ordered_fixture_label": "progress-today-details",
           "plant_naming": {
             "custom_names_visible": [],
             "passed": true,
             "rename_visible": false
           },
+          "retained_growth_after_break": true,
           "state_profile_declared": "progress-today-details",
+          "study_rewards_panel": true,
           "visible_content": true,
           "window_family": "GardenDashboard",
-          "workspace_route": "today-details"
+          "workspace_route": "study-rewards-retained"
         },
         "fact_constraints": {},
         "kind": "workspace",
         "profile": {
           "kind": "workspace",
           "profile_id": "progress-today-details",
-          "route": "today-details",
+          "route": "study-rewards-retained",
           "state": "progress-today-details",
           "window_family": "GardenDashboard"
         },
@@ -11833,7 +11929,8 @@
           "workspace_route",
           "visible_content",
           "plant_naming",
-          "activity_details_expanded"
+          "study_rewards_panel",
+          "retained_growth_after_break"
         ]
       }
     },
@@ -11852,7 +11949,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "69362a1e17c5c5ef16c4ac9ce65db2e0cb109d9ae55de5811e5ea14f18223c65",
+      "dependency_digest": "35385ba466ac8c7817dc3e70fc0593eb4493862a7fe41ea790b3fc64c541943f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11881,7 +11978,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -11949,7 +12049,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "9d533b01641e8b7d0946a32d1edf00050aa763b2d92ac9fd515ebe9b15e259a5",
+      "dependency_digest": "e043ba604ff423f731b3852f2a8de5e4c4cf37627ba7925463fd273e33905aad",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -11979,6 +12079,9 @@
         "ui/formatters.py",
         "ui/plant_display.py",
         "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/activity_page.py",
         "activity.py",
         "reward_ledger.py"
@@ -12049,7 +12152,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "59d098104782653521f33348b876593314f567043020c0134c3db78b16de93a3",
+      "dependency_digest": "32d02085aa70387c6ab97eda73cf0f20ddeae41ec119a0b922d76cb8a2799c4a",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12078,7 +12181,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -12153,7 +12259,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "1eecdfb7cb059a96d7616aae10a147447ca7bab94a332d7d4caf2ad109d66426",
+      "dependency_digest": "530d730fd30e12adcfe2c57cd3616e975fd9a0599ef6176ac15f903cb9319f33",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12182,7 +12288,10 @@
         "ui/garden_studio.py",
         "ui/formatters.py",
         "ui/plant_display.py",
-        "ui/scene.py"
+        "ui/scene.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -12247,7 +12356,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "f49826968925baa7397f213b7a62ccaf572ef5cdfca18464f4f429639029053e",
+      "dependency_digest": "feb16b0bac30b800ecc5546e4d1ba864cdf8acb63389117ae850f1fdb326c84a",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12270,6 +12379,9 @@
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
         "ui/home_widget.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "capture/reviewer_feedback.py"
       ],
       "placements": [
@@ -12339,7 +12451,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "83ce58f8e6b27386518aa166b6d9c8f5076d34143409097451a9ada4cbbb22a2",
+      "dependency_digest": "d3baa67878e7d94f70024d6c1c595d7dc22a7e1b50731e9e73fd3d12f86b8f98",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12372,6 +12484,9 @@
         "ui/session_summary_card.py",
         "reward_presentation.py",
         "garden_finds.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/reward_feed.py",
         "ui/active_consumables.py",
         "ui/reward_rarity.py",
@@ -12443,7 +12558,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "bc3d51ef38f3f4661d1b9664e2b01efe88c0570c4d0da39550b9bf9ae49fad34",
+      "dependency_digest": "f333f69b208dfe558c0e9131e35263c26936cfa0560ed2e70a36a35d0af89ba2",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12475,6 +12590,9 @@
         "ui/session_summary_card.py",
         "reward_presentation.py",
         "garden_finds.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/reward_feed.py",
         "ui/active_consumables.py",
         "ui/reward_rarity.py",
@@ -12546,7 +12664,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "6b6f71cd124d71c7c30e25aec235ebf16e998b26b3db00d0571add10f03079d1",
+      "dependency_digest": "eedde2bdb988bdc524bf1a86eaa327be8e925bd43b5bb30f467d32a0f93d17cb",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12579,6 +12697,9 @@
         "ui/session_summary.py",
         "ui/session_summary_card.py",
         "ui/sync_reward_summary.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/reward_feed.py",
         "ui/active_consumables.py",
         "ui/reward_rarity.py",
@@ -12650,7 +12771,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "53396e5623598f25692da523f2395a4b25af51c3455aeab19ff9ba1bf5b393c0",
+      "dependency_digest": "ac2cd571e5c0df51c875ed35dcb37050d476e6d965337a5d47ac29bdd3f04987",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12683,6 +12804,9 @@
         "ui/session_summary_card.py",
         "reward_presentation.py",
         "garden_finds.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/reward_feed.py",
         "ui/active_consumables.py",
         "ui/reward_rarity.py",
@@ -12747,7 +12871,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "b2d5defc44e6b8a3d275da88c8089b4f12a5f8069bb32eaf6f94817df33e5219",
+      "dependency_digest": "bbb5c778551a68e119213afe860ffff044db98afc1ab085f9d3450da37609e10",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12771,7 +12895,11 @@
         "growth-charge",
         "nursery-supplements"
       ],
-      "owned_module_dependencies": [],
+      "owned_module_dependencies": [
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
+      ],
       "placements": [
         {
           "group": "Anki and Rewards",
@@ -12834,7 +12962,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "a0032db2863b90fc4f6a285348e8ee5c872b628b3fb2e2cc4e9ed806624e304e",
+      "dependency_digest": "69cae4ece28c7106c6927ec4ffbb944efe36c1fe8c56bdde864631319923af14",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12858,7 +12986,11 @@
         "growth-charge",
         "nursery-supplements"
       ],
-      "owned_module_dependencies": [],
+      "owned_module_dependencies": [
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
+      ],
       "placements": [
         {
           "group": "Anki and Rewards",
@@ -12919,7 +13051,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "bfbf940d8669b38e322947edb687d08b279060e1b4b86d4e27d13d37f913507a",
+      "dependency_digest": "bc5406d8aa80104827d06f8d6ed597379c6133c5181a68efe7ead4c56a91eacc",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -12958,7 +13090,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13018,7 +13153,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "36b0405693df8bbef0578824ace43a845e565b7dd240d226dee49ec01e970e5b",
+      "dependency_digest": "54706961e3190fb83259c431af6edeee6ced233da6983e19235a37ecc22c0e4c",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13057,7 +13192,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13117,7 +13255,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "040550be51299cf20dede9cef2c6b3c91678b949e4cf060f51bd956c75ead386",
+      "dependency_digest": "eadd034681a43436f9e5951e97cdf23d40baa973974c83ab8d6be7e11c00dddc",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13156,7 +13294,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13223,7 +13364,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "573b62661f4304ac4b455609b40806d6267fe71901ff6a52c07033c2aa88856c",
+      "dependency_digest": "121a155035b826749c44ecd14211e7b7ab20ac60ced43aa55f72abb366dffb27",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13262,7 +13403,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13329,7 +13473,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "b0e34d466b03062f27311251ca56cb6a06081df0adee4e0045962b3cb9b166ed",
+      "dependency_digest": "f399ccd0aa2b91253c338c422b87fe1446d137430c41ef6ed204587771b2b8d1",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13369,7 +13513,10 @@
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
         "hooks/reviewer.py",
-        "ui/collection_workspace.py"
+        "ui/collection_workspace.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13436,7 +13583,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4a7150c3d02404775f05f274ed8c22f2501298b45bed7dcc868921f5025ff9dc",
+      "dependency_digest": "4224ae36e3b55cc58d5d8324f9353f88517df88a0b1d4d92c3f1a658d44e51d8",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13476,7 +13623,10 @@
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
         "hooks/reviewer.py",
-        "ui/collection_workspace.py"
+        "ui/collection_workspace.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13536,7 +13686,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "dad95024f02a8b1d12236b819c7bc7f7de905a8e5131ca2866d3fc8ca0a8c63f",
+      "dependency_digest": "127e01d158f60c05c389d05e908af635f8ef62db29c764e3b6b7cecb0288d082",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13575,7 +13725,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13635,7 +13788,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "881acd64bf4127b24a004ff2a1e271d65b158ba3506bebaf49e0793b3dd54680",
+      "dependency_digest": "b672e1e82803c9fac2d2dcf1edac58ad7f2602a9c03de0e879339602b48a02bf",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13674,7 +13827,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13821,7 +13977,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3fad127e63256e7ae6c8551aceb44693a6ac2211752644b566c6fc303993163d",
+      "dependency_digest": "a70b400c29cf017600227419fdd5c5adde6f432c52a0233a441b5c1946d1af1c",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13860,7 +14016,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -13920,7 +14079,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c75acbb76722be1dd40171425482fa340fd29414f80af80833df6318f1ef87de",
+      "dependency_digest": "91f338e08026334bc3092eaeb27a7ececa2915a647a240754d4618583223faf3",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -13959,7 +14118,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -14026,7 +14188,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "befaabc9917f28e69612985239c6f0414e22a12b63ebd2cd8e84324769319b55",
+      "dependency_digest": "df344f315029f5cf99e9b289cfffa23b34e41cb6d6d0c3c74f29769fc2f8db67",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -14065,7 +14227,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -14125,7 +14290,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c57578b8ffffc9daea1794c0752f58608faa6582edbc9dd4a477daf69d28c9d4",
+      "dependency_digest": "1c672697024e2580c55254b49da5f5a589b953665799977c508104eb75916c36",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -14164,7 +14329,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -14224,7 +14392,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "ccd3903759cb183b130afd9d35c0ddabfdb1c2960761c23fb2d40b503c669282",
+      "dependency_digest": "469a175a52b8cb0337fbd98bc424a105c98c52b9b241a0526a2b188dd6eb3889",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -14263,7 +14431,10 @@
         "trophies.py",
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
-        "hooks/reviewer.py"
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
       ],
       "placements": [
         {
@@ -14323,7 +14494,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "36d990f7a036e3164146facd61373641b6d1f31ad8b0e2447f879b3df112b243",
+      "dependency_digest": "7f620456fd50d324259d64ef345192d55d44b4ea9e4b855c86de574cb1da5b8f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -14363,6 +14534,9 @@
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
         "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/reward_feed.py",
         "ui/active_consumables.py",
         "ui/reward_rarity.py",
@@ -14433,7 +14607,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "761b27417f1f09746f5e7366a4e91e2116ed26d2a260c7100c5182252e2ecced",
+      "dependency_digest": "0c906f256d1dc0e6c67349566fff6f775636e78fc5fe8a74fe9301444eda41dc",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -14473,6 +14647,9 @@
         "ui/decoration_card.py",
         "ui/reviewer_hud_widget.py",
         "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py",
         "ui/reward_feed.py",
         "ui/active_consumables.py",
         "ui/reward_rarity.py",
@@ -14532,6 +14709,319 @@
         ],
         "reviewable_native_ui_issues": [
           "reviewer-collapsed-status-width"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [
+        "progress-plant-beds-starting",
+        "plant-beds-starting"
+      ],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "01a3013383ea3110ee9586bc940114420474419fb31a129aae6a67c7c1f82b5a",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels"
+      ],
+      "executor": "_capture_handoff_surface",
+      "fixture_id": "progress-plant-beds-starting-v1",
+      "handoff": {
+        "display_order": 1,
+        "sheet": 6,
+        "sheet_name": "Plant beds"
+      },
+      "id": "progress-plant-beds-starting",
+      "internal_setups": [
+        "development-stress"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "capture/workspace.py",
+        "feature_availability.py",
+        "ui/dashboard.py",
+        "ui/dialog_foundations.py",
+        "ui/theme.py",
+        "ui/copy.py",
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py",
+        "capture/handoff_runtime.py",
+        "ui/welcome.py",
+        "ui/welcome_animation.py",
+        "welcome_presentation.py",
+        "models/welcome.py",
+        "ui/trophy_room.py",
+        "trophies.py",
+        "ui/decoration_card.py",
+        "ui/reviewer_hud_widget.py",
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
+      ],
+      "placements": [
+        {
+          "group": "Refinement views",
+          "group_order": 6,
+          "order": 50,
+          "profile": "full",
+          "within_group_order": 15
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "GardenDashboard",
+      "retired_reason": "",
+      "scenario_id": "progress-plant-beds-starting",
+      "scenario_step": 1,
+      "state_contract": {
+        "expected_fact_values": {
+          "handoff_checks": true,
+          "ordered_fixture_label": "progress-plant-beds-starting",
+          "state_profile_declared": "progress-plant-beds-starting",
+          "window_family": "GardenDashboard"
+        },
+        "fact_constraints": {},
+        "kind": "workspace-handoff",
+        "profile": {
+          "kind": "workspace-handoff",
+          "profile_id": "progress-plant-beds-starting",
+          "route": "plant-beds-starting",
+          "state": "progress-plant-beds-starting",
+          "window_family": "GardenDashboard"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "handoff_checks"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [
+        "progress-plant-beds-partial",
+        "plant-beds-partial"
+      ],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "261cfb6187161b6ba2862edb60f8ae8072081df70c5bbb0601f228d7e102346f",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels"
+      ],
+      "executor": "_capture_handoff_surface",
+      "fixture_id": "progress-plant-beds-partial-v1",
+      "handoff": {
+        "display_order": 2,
+        "sheet": 6,
+        "sheet_name": "Plant beds"
+      },
+      "id": "progress-plant-beds-partial",
+      "internal_setups": [
+        "development-stress"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "capture/workspace.py",
+        "feature_availability.py",
+        "ui/dashboard.py",
+        "ui/dialog_foundations.py",
+        "ui/theme.py",
+        "ui/copy.py",
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py",
+        "capture/handoff_runtime.py",
+        "ui/welcome.py",
+        "ui/welcome_animation.py",
+        "welcome_presentation.py",
+        "models/welcome.py",
+        "ui/trophy_room.py",
+        "trophies.py",
+        "ui/decoration_card.py",
+        "ui/reviewer_hud_widget.py",
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
+      ],
+      "placements": [
+        {
+          "group": "Refinement views",
+          "group_order": 6,
+          "order": 51,
+          "profile": "full",
+          "within_group_order": 16
+        },
+        {
+          "group": "Refinement views",
+          "group_order": 6,
+          "order": 22,
+          "profile": "representative",
+          "within_group_order": 5
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "GardenDashboard",
+      "retired_reason": "",
+      "scenario_id": "progress-plant-beds-partial",
+      "scenario_step": 1,
+      "state_contract": {
+        "expected_fact_values": {
+          "handoff_checks": true,
+          "ordered_fixture_label": "progress-plant-beds-partial",
+          "state_profile_declared": "progress-plant-beds-partial",
+          "window_family": "GardenDashboard"
+        },
+        "fact_constraints": {},
+        "kind": "workspace-handoff",
+        "profile": {
+          "kind": "workspace-handoff",
+          "profile_id": "progress-plant-beds-partial",
+          "route": "plant-beds-partial",
+          "state": "progress-plant-beds-partial",
+          "window_family": "GardenDashboard"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "handoff_checks"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [
+        "progress-plant-beds-unlocked",
+        "plant-beds-unlocked"
+      ],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "2750d5dbd8ad6f802407d880d6e733148924da37ef9303213e3e62ce555a6229",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels"
+      ],
+      "executor": "_capture_handoff_surface",
+      "fixture_id": "progress-plant-beds-unlocked-v1",
+      "handoff": {
+        "display_order": 3,
+        "sheet": 6,
+        "sheet_name": "Plant beds"
+      },
+      "id": "progress-plant-beds-unlocked",
+      "internal_setups": [
+        "development-stress"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "capture/workspace.py",
+        "feature_availability.py",
+        "ui/dashboard.py",
+        "ui/dialog_foundations.py",
+        "ui/theme.py",
+        "ui/copy.py",
+        "ui/garden_studio.py",
+        "ui/formatters.py",
+        "ui/plant_display.py",
+        "ui/scene.py",
+        "capture/handoff_runtime.py",
+        "ui/welcome.py",
+        "ui/welcome_animation.py",
+        "welcome_presentation.py",
+        "models/welcome.py",
+        "ui/trophy_room.py",
+        "trophies.py",
+        "ui/decoration_card.py",
+        "ui/reviewer_hud_widget.py",
+        "hooks/reviewer.py",
+        "ui/plant_beds.py",
+        "plant_beds.py",
+        "achievements.py"
+      ],
+      "placements": [
+        {
+          "group": "Refinement views",
+          "group_order": 6,
+          "order": 52,
+          "profile": "full",
+          "within_group_order": 17
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "GardenDashboard",
+      "retired_reason": "",
+      "scenario_id": "progress-plant-beds-unlocked",
+      "scenario_step": 1,
+      "state_contract": {
+        "expected_fact_values": {
+          "handoff_checks": true,
+          "ordered_fixture_label": "progress-plant-beds-unlocked",
+          "state_profile_declared": "progress-plant-beds-unlocked",
+          "window_family": "GardenDashboard"
+        },
+        "fact_constraints": {},
+        "kind": "workspace-handoff",
+        "profile": {
+          "kind": "workspace-handoff",
+          "profile_id": "progress-plant-beds-unlocked",
+          "route": "plant-beds-unlocked",
+          "state": "progress-plant-beds-unlocked",
+          "window_family": "GardenDashboard"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "handoff_checks"
         ]
       }
     }

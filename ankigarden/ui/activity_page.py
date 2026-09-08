@@ -11,8 +11,8 @@ from aqt.qt import (
     QSizePolicy, Qt, QVBoxLayout, QWidget,
 )
 
-from ..activity import source_name
-from ..reward_presentation import recurring_reward_presentations, reward_content_visible
+from ..reward_presentation import reward_content_visible, recorded_event_presentation
+from .copy import STUDY_COUNT_LABEL, DAILY_COMPLETION_CONDITION, cards_studied_text
 from .controls import GardenFlowLayout, GardenWrappingLabel
 from .formatters import (
     format_garden_coins, format_growth, format_quantity, format_streak, GardenDateService,
@@ -37,7 +37,7 @@ def _icon(name: str, size: int = 16, *, gold: bool = False) -> QLabel:
     label.setFixedSize(size, size)
     label.setPixmap(garden_icon(name, color=GARDEN_THEME[
         "coin_accent" if gold else "growth_accent"]).pixmap(size, size))
-    label.setAccessibleName({"reviews": "Card answers", "coin": "Coins",
+    label.setAccessibleName({"reviews": STUDY_COUNT_LABEL, "coin": "Coins",
         "growth": "Growth", "find": "Garden Finds", "streak": "Anki streak"}.get(name, ""))
     return label
 
@@ -49,8 +49,8 @@ def _growth(units: int, *, signed: bool = False) -> str:
 def _coins(amount: int | None, *, earned: bool = False, signed: bool = True) -> str:
     # Keep each amount and its unit together; the earned state can wrap separately.
     if amount is None:
-        return "Earned · Amount unavailable" if earned else "Amount unavailable"
-    return format_garden_coins(amount, signed=signed).replace(" ", "\u00a0") + (" · Earned" if earned else "")
+        return "Earned\nAmount unavailable" if earned else "Amount unavailable"
+    return format_garden_coins(amount, signed=signed).replace(" ", "\u00a0") + ("\nEarned" if earned else "")
 
 
 def _line(layout, name: str, value: str = "", icon: str = ""):
@@ -132,6 +132,12 @@ class ActivityPage(QWidget):
             token = TEXT_ROLE_TOKENS[role]
             color = colors["text_secondary" if name in {"secondary", "body"} else "text_primary"]
             rules.append(f"QWidget#agActivity QLabel[activityRole='{name}'] {{font-size:{token.font_size_px}px; font-weight:{token.font_weight}; color:{color};}}")
+        rules.append("""
+            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='title'] {font-size:14px; font-weight:600;}
+            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='body'],
+            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='value'] {font-size:13px;}
+            QWidget#agActivity QFrame[studyRewards='true'] QLabel[activityRole='secondary'] {font-size:12px;}
+        """)
         self.setStyleSheet("\n".join(rules))
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(0, 0, 0, 0)
@@ -158,10 +164,10 @@ class ActivityPage(QWidget):
                                     allowed_columns=(1, 2, 4))
         metrics.grid.setHorizontalSpacing(16)
         for icon, title, value in (
-            ("reviews", "Card answers", f"{state.daily_stats.reviewed:,}"),
+            ("reviews", STUDY_COUNT_LABEL, f"{state.daily_stats.reviewed:,}"),
             ("growth", "Growth earned", _growth(totals["growth_units"]) if totals is not None else "—"),
             ("coin", "Coins earned", f"{totals['coins']:,}" if totals is not None else "—"),
-            ("find", "Garden Finds", f"{projection.finds_count:,}" if projection.finds_count is not None else "—"),
+            ("find", "Garden Finds", f"{totals['finds']:,}" if totals is not None else "—"),
         ):
             tile = SectionCard()
             tile.setMinimumHeight(80)
@@ -185,20 +191,14 @@ class ActivityPage(QWidget):
                 tile.setToolTip("Coins received today, before spending.")
             metrics.add_tile(tile)
         self.body.addWidget(metrics)
-        self.completion_card = self._completion_card(projection)
-        self.streak_card = self._streak_card()
-        sidebar = ResponsiveTileGrid(minimum_tile_width=320, maximum_columns=2)
-        sidebar.grid.setHorizontalSpacing(16)
-        sidebar.grid.setVerticalSpacing(16)
-        for card in (self.completion_card, self.streak_card):
-            host = QWidget()
-            column = QVBoxLayout(host)
-            column.setContentsMargins(0, 0, 0, 0)
-            column.setAlignment(Qt.AlignmentFlag.AlignTop)
-            column.addWidget(card)
-            sidebar.add_tile(host)
+        self.study_rewards_card = self._study_rewards_panel(projection)
+        sidebar = QWidget()
+        column = QVBoxLayout(sidebar)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setAlignment(Qt.AlignmentFlag.AlignTop)
+        column.addWidget(self.study_rewards_card)
         self.history_card = self._build_history()
-        self.columns = ResponsiveSplit(self.history_card, sidebar, stretches=(7, 3),
+        self.columns = ResponsiveSplit(self.history_card, sidebar, stretches=(13, 6),
                                        minimum_widths=(480, 320), stack_right_first=True)
         self.body.addWidget(self.columns)
 
@@ -215,126 +215,69 @@ class ActivityPage(QWidget):
         box.addWidget(_label(title, "title"))
         return card, box
 
-    def _completion_card(self, projection):
-        from .dashboard import DisclosureRow
-        status = projection.status
-        reward = self.engine.today_cards_reward_summary()
-        earned = bool(reward["earned"])
-        card, box = self._card("Today’s cards", "progress.today-cards-status")
-        card.setProperty("todayCardsStatus", status.status)
-        card.setProperty("completionRewardState", "earned" if earned else projection.claim_state)
-        amount = int(reward["completion_coins"])
-        cycle_coins = int(reward["cycle_coins"])
-        if earned:
-            amount, cycle_coins = self._completion_coins(cycle_coins, reward["cycle_earned"])
-        # Reward receipt and current workload are independent: new due work must
-        # never remove an already earned label, even if verification is unavailable.
-        if earned or status.status not in {"not_eligible", "unavailable"}:
-            _line(box, "Finish all due cards", _coins(amount, earned=earned), "coin")
-        if status.status == "unavailable":
-            box.addWidget(_label("Status unavailable", "secondary"))
-            retry = QPushButton("Try again")
-            retry.clicked.connect(lambda: self.owner._refresh_metric_page("today"))
-            box.addWidget(retry, 0, Qt.AlignmentFlag.AlignLeft)
-        elif status.status == "not_eligible" and not earned:
-            box.addWidget(_label("No cards due today", "secondary"))
-        elif projection.remaining_cards:
-            # This is the same exact obligation count and copy used by the engine.
-            box.addWidget(_label(self.engine._cards_remaining_copy(projection.remaining_cards), "secondary"))
-            if status.status == "waiting_for_learning":
-                box.addWidget(_label(status.primary, "secondary"))
-        if reward["growth"]:
-            _line(box, "Prism Trellis", format_growth(reward["growth"], signed=True), "growth")
-        box.addSpacing(4)
-        progress, goal = int(reward["cycle_progress"]), int(reward["cycle_goal"])
-        _line(box, "Completed days", f"{progress:,} / {goal:,}").setToolTip("A completed day means finishing all due cards. These days do not need to be consecutive.")
-        segments = QWidget()
-        segments.setAccessibleName(f"{progress} of {goal} completed days")
-        track = QHBoxLayout(segments)
-        track.setContentsMargins(0, 0, 0, 0)
-        track.setSpacing(4)
-        for index in range(goal):
-            segment = QFrame()
-            segment.setProperty("activitySegment", True)
-            segment.setProperty("filled", index < progress)
-            track.addWidget(segment, 1)
-        box.addWidget(segments)
-        _line(box, f"Every {goal:,} completed days", _coins(cycle_coins, earned=reward["cycle_earned"]), "coin")
-        disclosure = DisclosureRow("View details", [], semantic_id="progress.today-details")
-        details = disclosure.panel.layout()
-        details.addWidget(_label("Finish the cards due across your collection, including learning steps due later today.", "secondary"))
-        details.addWidget(_label("A completed day means finishing all due cards. These days do not need to be consecutive.", "secondary"))
-        details.addWidget(_label("Burying or suspending cards does not count as finishing them. An empty day does not earn this reward.", "secondary"))
-        if projection.cutoff_at_ms:
-            cutoff = datetime.fromtimestamp(projection.cutoff_at_ms / 1000).astimezone()
-            _line(details, "New Anki day", cutoff.strftime("%I:%M %p").lstrip("0"))
-        _line(details, "Garden Rhythm", f"+{reward['rhythm_percent']}% review Growth", "growth")
-        details.addWidget(_label("Garden Rhythm follows your recent completed days.", "secondary"))
-        box.addWidget(disclosure)
-        return card
-
-    def _completion_coins(self, cycle_fallback, cycle_earned):
-        """Keep historical amounts exact, even after equipment or catalog changes."""
-        keys = (f"all_due:{self.day}", f"achievement-trophy:garden_journal:{self.day}",
-                f"harvest-bell:{self.day}", f"autumn-hearth:{self.day}")
-        cycle_key = f"completion_cycle_5:{self.day}"
-        recorded = {tx.event_key: tx.delta for tx in self.storage.state.currency_transactions
-                    if tx.event_key in (*keys, cycle_key)}
-        ledger = getattr(self.storage, "_reward_ledger", None)
-        if ledger is not None:
-            try:
-                for key in (*keys, cycle_key):
-                    event = ledger.activity_event(key)
-                    if event is not None:
-                        recorded[key] = event.coins
-            except Exception:
-                logger.exception("Anki Garden: completion receipts unavailable")
-        required = [key for key in keys if key == keys[0] or self.engine._reward_applied(key)]
-        amount = sum(recorded[key] for key in required) if all(key in recorded for key in required) else None
-        return amount, recorded.get(cycle_key) if cycle_earned else cycle_fallback
-
-    def _streak_card(self):
-        from .dashboard import DisclosureRow
+    def _study_rewards_panel(self, projection):
         from .state_contracts import streak_presentation
-        state = self.storage.state
-        presentation = streak_presentation(state.streak_days, state.last_active_day,
-            state.daily_stats.reviewed, today=date.fromisoformat(self.day))
-        rules = {rule.rule_id: rule for rule in recurring_reward_presentations(
-            state, self.engine, current_streak_days=presentation.current_days)}
-        card, box = self._card("Daily & streak rewards", "progress.streak-hero")
-        card.setProperty("streakSemantic", presentation.semantic)
-        _line(box, "Anki streak", format_streak(presentation.current_days)).setToolTip(
-            "Answer at least one card each Anki day to continue your streak.")
-        try:
-            earned = self.storage.activity_streak_rewards(self.day) or None
-        except Exception:
-            earned = None
-        if earned is None:
-            _line(box, "First card today", "Status unavailable")
-        else:
-            daily = int(earned["daily"])
-            _line(box, "First card today", _coins(daily or rules["daily_activity"].reward_coins, earned=bool(daily)), "coin")
-        box.addSpacing(4)
-        streak = rules["weekly_streak"]
-        _line(box, f"{streak.next_streak_day:,}-day streak reward", _coins(streak.reward_coins), "coin")
-        box.addWidget(_label(f"{streak.streak_days_remaining:,} more consecutive study {'day' if streak.streak_days_remaining == 1 else 'days'}", "secondary"))
-        details = DisclosureRow("Reward details", [], semantic_id="progress.streak-rewards")
-        try:
-            all_rewards = self.storage.activity_streak_rewards() or None
-        except Exception:
-            all_rewards = None
-        if all_rewards is None:
-            details.panel.layout().addWidget(_label("Reward history is unavailable. Try refreshing Activity.", "secondary"))
-        else:
-            if earned and earned["streak"]:
-                _line(details.panel.layout(), "Streak reward today", _coins(earned["streak"], earned=True), "coin")
-            for key, name in (("daily", "First-card rewards"), ("streak", "Streak milestones"),
-                              ("achievements", "Other streak achievements")):
-                _line(details.panel.layout(), name, _coins(all_rewards[key], signed=False), "coin")
-            details.panel.layout().addWidget(_label("Totals from your available reward history. The first streak milestone and its achievement share one Coin reward.", "secondary"))
-        box.addWidget(details)
-        return card
 
+        reward = self.engine.study_rewards_summary()
+        completion = reward["completion"]
+        earned = bool(completion["earned"])
+        status = projection.status
+        state = self.storage.state
+        streak = streak_presentation(state.streak_days, state.last_active_day,
+            state.daily_stats.reviewed, today=date.fromisoformat(self.day))
+        card, box = self._card("Study rewards", "progress.study-rewards")
+        card.setProperty("studyRewards", True)
+        card.setProperty("streakSemantic", streak.semantic)
+        card.setProperty("completionRewardState", "earned" if earned else projection.claim_state)
+        card.setProperty("todayCardsStatus", status.status)
+        box.setContentsMargins(12, 12, 12, 12)
+        box.setSpacing(8)
+        box.addWidget(_label("Today", "secondary"))
+
+        def amount_text(amount, received):
+            if amount is None:
+                return "Earned · amount unavailable" if received else "Amount unavailable"
+            text = format_garden_coins(amount, signed=not received)
+            return f"{text} earned" if received else text
+
+        _line(box, "Study 1 card",
+              amount_text(reward["first_coins"], reward["first_earned"]), "coin")
+        due_box = QVBoxLayout()
+        due_box.setSpacing(4)
+        box.addLayout(due_box)
+        if status.status == "not_eligible" and not earned:
+            _line(due_box, DAILY_COMPLETION_CONDITION)
+            due_box.addWidget(_label("No cards due today", "secondary"))
+        else:
+            _line(due_box, DAILY_COMPLETION_CONDITION,
+                  amount_text(completion["coins"], earned), "coin")
+            if status.status == "unavailable":
+                due_box.addWidget(_label("Status unavailable", "secondary"))
+                retry = QPushButton("Try again")
+                retry.clicked.connect(lambda: self.owner._refresh_metric_page("today"))
+                due_box.addWidget(retry, 0, Qt.AlignmentFlag.AlignLeft)
+            elif not earned and projection.remaining_cards:
+                due_box.addWidget(_label(self.engine._cards_remaining_copy(
+                    projection.remaining_cards), "secondary"))
+                if status.status == "waiting_for_learning":
+                    due_box.addWidget(_label(status.primary, "secondary"))
+
+        box.addSpacing(6)
+        percent = reward["growth_percent"]
+        _line(box, "Permanent Growth bonus" if percent else "Growth bonus",
+              f"+{percent}%", "growth")
+        _line(box, "Current streak", format_streak(streak.current_days))
+        if reward["next_tier_days"] is None:
+            box.addWidget(_label("All Growth tiers unlocked", "secondary"))
+        else:
+            _line(box, "Next tier",
+                  f"+{reward['next_tier_percent']}% at {reward['next_tier_days']:,} days")
+        achievements = QPushButton("View achievements")
+        achievements.setProperty("semanticId", "progress.study-rewards-achievements")
+        achievements.setEnabled(callable(self.owner.open_achievement))
+        achievements.clicked.connect(lambda: self.owner.open_achievement(reward["achievement_id"]))
+        box.addWidget(achievements, 0, Qt.AlignmentFlag.AlignLeft)
+        return card
     def _build_history(self):
         card, body = self._card("Recent activity", "progress.activity-history")
         self.history_heading = body.takeAt(0).widget()
@@ -343,9 +286,12 @@ class ActivityPage(QWidget):
         header.addWidget(self.history_heading)
         segmented = QFrame()
         segmented.setProperty("activityFilters", True)
+        # Keep the segmented control intact when the outer header wraps. A
+        # nested flow advertises only its smallest button's minimum width.
+        segmented.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         filters = QHBoxLayout(segmented)
-        filters.setContentsMargins(2, 2, 2, 2)
         filters.setSpacing(0)
+        filters.setContentsMargins(2, 2, 2, 2)
         self.filters = {}
         self.filter_key = getattr(self.owner, "_transaction_filter", "all")
         if self.filter_key not in {"all", "study", "earned", "spent"}:
@@ -355,6 +301,7 @@ class ActivityPage(QWidget):
             button.setCheckable(True)
             button.setProperty("activityFilter", True)
             button.setFixedHeight(28)
+            button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             button.setChecked(key == self.filter_key)
             button.setAccessibleName(f"{name} activity")
             button.clicked.connect(lambda _checked=False, key=key: self._change_filter(key))
@@ -382,7 +329,7 @@ class ActivityPage(QWidget):
         if section in {"currency", "coins"}:
             scroll.ensureWidgetVisible(self.history_heading, 0, 16)
         elif section == "streak":
-            scroll.ensureWidgetVisible(self.streak_card, 0, 16)
+            scroll.ensureWidgetVisible(self.study_rewards_card, 0, 16)
         elif section in {"today", "activity", "overview"}:
             scroll.verticalScrollBar().setValue(0)
 
@@ -425,7 +372,7 @@ class ActivityPage(QWidget):
             self.history.addWidget(row)
         if not self.history.count():
             message = {"all": "No activity yet\nStudy cards to start earning Growth and rewards.",
-                       "study": "No study sessions yet", "earned": "No rewards yet", "spent": "No spending yet"}[self.filter_key]
+                       "study": "No study activity recorded yet", "earned": "No rewards recorded yet", "spent": "No spending recorded yet"}[self.filter_key]
             self.history_message = _label(message, "secondary")
             self.history.addWidget(self.history_message)
         self.more.setText("Show more")
@@ -446,14 +393,15 @@ class ActivityPage(QWidget):
                 events = visible_events()
             return events
         first = events[0] if events else None
+        event_presentation = recorded_event_presentation(first) if first else None
         title = {"session": "Study session", "sync": "Synced study", "study": "Study activity"}.get(entry.kind)
         if title is None:
-            title = source_name(first.source, str(first.payload.get("source_id", "")),
-                                str(first.payload.get("reason", ""))) if first else "Garden reward"
+            title = event_presentation.title if event_presentation else "Garden reward"
         if entry.kind == "purchase":
             if title == "Purchase":
                 title = self._stat_details("items", saved_events()).removesuffix(" ×1") or "garden item"
-            title = "Bought " + title
+            if not title.startswith("Bought "):
+                title = "Bought " + title
         card = SectionCard()
         card.setProperty("activityEntry", True)
         box = QVBoxLayout(card)
@@ -473,7 +421,7 @@ class ActivityPage(QWidget):
             box.addWidget(heading)
             facts = QWidget()
             inline = GardenFlowLayout(facts, spacing=16)
-            metrics = [("reviews", format_quantity(entry.card_answers, "card answer"))]
+            metrics = [("reviews", cards_studied_text(entry.card_answers))]
             if entry.growth_units:
                 metrics.append(("growth", _growth(entry.growth_units, signed=True)))
             if delta:
@@ -494,11 +442,14 @@ class ActivityPage(QWidget):
                 apply_tabular_numerals(money)
                 top.addWidget(money, 0, Qt.AlignmentFlag.AlignTop)
             box.addLayout(top)
+            source_detail = str(getattr(event_presentation, "detail", "") or "")
+            if source_detail and source_detail != title:
+                box.addWidget(_label(source_detail, "secondary"))
             box.addWidget(_label(self.dates._local_datetime(timestamp).strftime("%I:%M %p").lstrip("0"), "secondary"))
             details = self._stat_details("items", saved_events())
             if entry.growth_units:
                 _line(box, "Growth earned", _growth(entry.growth_units, signed=True), "growth")
-            if details and not entry.spent:
+            if details and details != source_detail and not entry.spent:
                 box.addWidget(_label(details, "secondary"))
         return card
     def _stat_details(self, kind, events):
@@ -507,7 +458,7 @@ class ActivityPage(QWidget):
         coin_rows, destinations, items = defaultdict(int), defaultdict(int), defaultdict(int)
         for event in events:
             if event.coins:
-                name = source_name(event.source, str(event.payload.get("source_id", "")), str(event.payload.get("reason", "")))
+                name = recorded_event_presentation(event).title
                 coin_rows[name] += event.coins
             for key, value in dict(event.payload.get("destinations", {})).items():
                 destinations[key] += int(value)
@@ -519,7 +470,7 @@ class ActivityPage(QWidget):
             return "\n".join(f"{name}: {format_garden_coins(amount, signed=True)}" for name, amount in coin_rows.items()) or "No Coins earned in this session."
         if kind == "growth":
             return "\n".join(f"{name}: +{_growth(destinations[key])} Growth" for key, name in (
-                ("plants", "Plants"), ("storage", "Stored Growth"), ("projects", "Growth projects"))
+                ("plants", "To plants (includes Shared Growth)"), ("storage", "Stored Growth"), ("projects", "Growth projects"))
                 if destinations[key]) or "No Growth earned in this session."
         from ..reward_presentation import _inventory_item_name, _environment_item_name
         names = []
@@ -529,7 +480,7 @@ class ActivityPage(QWidget):
                 name = _environment_item_name(item_id)
             names.append(f"{name} ×{amount:,}")
         if kind == "items":
-            return " · ".join(names)
-        finds = [source_name(event.source, reason=str(event.payload.get("reason", "")))
+            return "\n".join(names)
+        finds = [recorded_event_presentation(event).title
                  for event in events if event.finds]
         return "\n".join(dict.fromkeys(finds + names)) or "No Garden Finds in this session."

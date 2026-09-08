@@ -19,6 +19,39 @@ from typing import Any, Optional
 
 BALANCE_CATALOG_VERSION = "2.2.0"
 
+COMPLETION_TRIGGER_COPY = "Finish all cards due today"
+
+
+def format_appearance_effect(item) -> str:
+    if not item.effects:
+        return "Appearance only"
+    if len(item.effects) != 1:
+        raise ValueError(f"Appearance item must have one effect: {item.display_name}")
+    effect = item.effects[0]
+    cadence = effect.cadence
+    grant = effect.grant
+    if effect.weighted_grants:
+        return f"{COMPLETION_TRIGGER_COPY}: 1 mystery gift"
+    if grant is None:
+        raise ValueError(f"Missing appearance reward: {item.display_name}")
+    kind = str(grant.kind)
+    if kind == "earned_coin_percent":
+        return f"Earn {grant.amount:,}% more Coins"
+    if kind == "consumable":
+        reward = f"+{grant.amount:,} {CONSUMABLE_BY_ID[grant.item_id].display_name}"
+    else:
+        reward = f"+{grant.amount:,} {'Coins' if kind == 'coins' else 'Growth'}"
+    if str(effect.trigger) == "valid_completion":
+        trigger = (COMPLETION_TRIGGER_COPY if cadence.every_n == 1
+                   else f"Finish all cards due on {cadence.every_n:,} days")
+        return f"{trigger}: {reward}"
+    if str(effect.trigger) != "eligible_card":
+        raise ValueError(f"Unsupported appearance trigger: {effect.trigger}")
+    if cadence.first_n_per_day is not None:
+        rate = "each" if cadence.every_n == 1 else f"per {cadence.every_n:,} cards"
+        return f"First {cadence.first_n_per_day:,} cards daily: {reward} {rate}"
+    return f"{reward} every {cadence.every_n:,} cards"
+
 BASE_GROWTH_PER_REVIEW = 10
 SHARED_GROWTH_NUMERATOR = 1
 SHARED_GROWTH_DENOMINATOR = 10
@@ -30,10 +63,7 @@ STAGE_CHECKPOINT_PERCENTAGES = (25, 50, 75)
 STAGE_REWARD_CHECKPOINT_PERCENTAGES = (25, 50, 75, 100)
 
 DAILY_ACTIVITY_COINS = 4
-ALL_DUE_BASE_COINS = 8
-GARDEN_CYCLE_COMPLETIONS = 5
-GARDEN_CYCLE_COINS = 30
-WEEKLY_STREAK_COINS = 10
+ALL_DUE_BASE_COINS = 16
 BOOSTER_GROWTH_PER_ANSWER = 5
 BOOSTER_CARD_COUNT = 100
 EFFECT_DOSE_CAP = 5
@@ -194,8 +224,6 @@ class CoinSourceId(StableStringEnum):
 
     FIRST_ELIGIBLE_ANSWER = "first_eligible_answer"
     TODAYS_CARDS = "todays_cards"
-    COMPLETION_CYCLE_5 = "completion_cycle_5"
-    SEVEN_DAY_STREAK_CYCLE = "seven_day_streak_cycle"
     ACHIEVEMENT = "achievement"
     ACHIEVEMENT_TROPHY = "achievement_trophy"
     PLANT_MILESTONE = "plant_milestone"
@@ -258,8 +286,7 @@ class EnvironmentKind(StableStringEnum):
 class TriggerKind(StableStringEnum):
     ELIGIBLE_CARD = "eligible_card"
     VALID_COMPLETION = "valid_completion"
-    BOOSTER_ACTIVATION = "booster_activation"
-    PLANT_MILESTONE = "plant_milestone"
+    COIN_EARNED = "coin_earned"
 
 
 class CounterScope(StableStringEnum):
@@ -290,9 +317,8 @@ class RewardKind(StableStringEnum):
     CONSUMABLE = "consumable"
     COSMETIC = "cosmetic"
     BED_UNLOCK = "bed_unlock"
-    BOOSTER_CARD_LIMIT = "booster_card_limit"
     BANKED_GROWTH = "banked_growth"
-    MILESTONE_COIN_PERCENT = "milestone_coin_percent"
+    EARNED_COIN_PERCENT = "earned_coin_percent"
 
 
 class FindTier(StableStringEnum):
@@ -351,13 +377,6 @@ class StageDefinition:
     @property
     def total_coin_reward(self) -> int:
         return sum(self.checkpoint_coin_rewards)
-
-
-@dataclass(frozen=True)
-class RhythmTier:
-    minimum_completed_days: int
-    maximum_completed_days: int
-    bonus_percent: int
 
 
 @dataclass(frozen=True)
@@ -426,7 +445,9 @@ class GardenBonusDefinition:
     effects: tuple[EffectDefinition, ...]
     asset_id: str
     how_to_acquire: str
-    effect_description: str
+    @property
+    def effect_description(self) -> str:
+        return format_appearance_effect(self)
 
     @property
     def purchasable(self) -> bool:
@@ -443,7 +464,9 @@ class SceneryDefinition:
     effects: tuple[EffectDefinition, ...]
     asset_id: str
     how_to_acquire: str
-    effect_description: str
+    @property
+    def effect_description(self) -> str:
+        return format_appearance_effect(self)
 
     @property
     def purchasable(self) -> bool:
@@ -528,6 +551,7 @@ class AchievementDefinition:
     historical_backfill: bool = True
     minimum_answers: int = 0
     minimum_non_again_percent: int = 0
+    permanent_growth_percent: int = 0
 
     @property
     def name(self) -> str:
@@ -636,10 +660,8 @@ class BalanceCatalog:
     shared_growth_denominator: int
     daily_activity_coins: int
     completion_coins: int
-    weekly_streak_coins: int
     coin_sources: tuple[CoinSourceDefinition, ...]
     stages: tuple[StageDefinition, ...]
-    rhythm_tiers: tuple[RhythmTier, ...]
     species: tuple[SpeciesDefinition, ...]
     historical_species: tuple[SpeciesDefinition, ...]
     consumables: tuple[ConsumableDefinition, ...]
@@ -727,25 +749,6 @@ COIN_SOURCES = (
         receipt_detail="All due cards completed",
     ),
     CoinSourceDefinition(
-        CoinSourceId.COMPLETION_CYCLE_5,
-        "Garden Cycle",
-        CoinBehaviorFamily.TODAYS_CARDS_COMPLETION,
-        "Every fifth verified Today’s Cards completion; days need not be consecutive.",
-        fixed_amount_coins=GARDEN_CYCLE_COINS,
-        receipt_title="Garden Cycle complete",
-        receipt_detail="5 completed review days",
-        summary_policy=RewardSummaryPolicy.DETAIL_ROW_FEATURE_IF_ONLY_MAJOR,
-    ),
-    CoinSourceDefinition(
-        CoinSourceId.SEVEN_DAY_STREAK_CYCLE,
-        "Seven-day streak cycle",
-        CoinBehaviorFamily.STREAK,
-        "Every seventh Anki streak day.",
-        fixed_amount_coins=WEEKLY_STREAK_COINS,
-        receipt_title="Seven-day streak",
-        receipt_detail="7-day Anki streak cycle",
-    ),
-    CoinSourceDefinition(
         CoinSourceId.ACHIEVEMENT,
         "Achievements",
         CoinBehaviorFamily.ACHIEVEMENTS,
@@ -784,7 +787,7 @@ COIN_SOURCES = (
         CoinSourceId.AUTUMN_HEARTH,
         "Autumn Hearth",
         CoinBehaviorFamily.EQUIPPED_EFFECTS,
-        "Separate equipped-effect reward from completion or plant progression.",
+        "15% bonus on newly earned gameplay Coins while active.",
     ),
     CoinSourceDefinition(
         CoinSourceId.OTHER,
@@ -802,15 +805,6 @@ STAGES = (
     StageDefinition(StageId.MATURE, "Mature", 6_000, (4, 4, 4, 8)),
     StageDefinition(StageId.FLOWERING, "Flowering", 15_000, (7, 7, 7, 14)),
     StageDefinition(StageId.FULL_BLOOM, "Full Bloom", 35_000, (10, 10, 10, 20)),
-)
-
-RHYTHM_TIERS = (
-    RhythmTier(0, 1, 0),
-    RhythmTier(2, 2, 2),
-    RhythmTier(3, 3, 4),
-    RhythmTier(4, 4, 6),
-    RhythmTier(5, 5, 8),
-    RhythmTier(6, 7, 10),
 )
 
 SPECIES = (
@@ -932,7 +926,7 @@ CONSUMABLES = (
         instant_growth=2_000,
         rarity=Rarity.VERY_RARE,
         how_to_acquire=(
-            "Botanical Collection and Old Growth achievements; not purchasable."
+            "Earned from Botanical Collection and Old Growth achievements."
         ),
         effect_description="Adds 2,000 Growth instantly to an unfinished plant.",
     ),
@@ -949,7 +943,6 @@ GARDEN_BONUSES = (
         (),
         "garden_feature_seedling_sign",
         "Included.",
-        "Cosmetic Garden Decoration; no gameplay effect.",
     ),
     GardenBonusDefinition(
         GardenBonusId.WIND_CHIME,
@@ -968,7 +961,6 @@ GARDEN_BONUSES = (
         ),),
         "garden_feature_wind_chime",
         "Nursery for 100 Garden Coins.",
-        "Every 5 eligible cards while equipped: +1 Growth.",
     ),
     GardenBonusDefinition(
         GardenBonusId.HARVEST_BELL,
@@ -984,7 +976,6 @@ GARDEN_BONUSES = (
         ),),
         "garden_feature_harvest_bell",
         "Nursery for 175 Garden Coins.",
-        "+5 Garden Coins when Today’s Cards is complete.",
     ),
     GardenBonusDefinition(
         GardenBonusId.WATERING_STATION,
@@ -1004,7 +995,6 @@ GARDEN_BONUSES = (
         ),),
         "garden_feature_watering_station",
         "Nursery for 250 Garden Coins.",
-        "Every second eligible card among the first 200 each Anki day while equipped: +1 Growth.",
     ),
     GardenBonusDefinition(
         GardenBonusId.HERBALIST_HOURGLASS,
@@ -1019,21 +1009,13 @@ GARDEN_BONUSES = (
                 RewardKind.CONSUMABLE,
                 1,
                 item_id=ConsumableId.BOOSTER_POTION.value,
-                every_n=30,
+                every_n=15,
                 counter_scope=CounterScope.LIFETIME_ACTIVE,
                 target_policy=TargetPolicy.INVENTORY,
-            ),
-            _effect(
-                "booster_cards_plus_25",
-                TriggerKind.BOOSTER_ACTIVATION,
-                RewardKind.BOOSTER_CARD_LIMIT,
-                25,
-                active_only=False,
             ),
         ),
         "garden_feature_herbalist_hourglass",
         "Nursery for 350 Garden Coins.",
-        "While equipped: 1 Booster Potion every 30 Today’s Cards completions. Once owned: new Potions last 25 more cards.",
     ),
     GardenBonusDefinition(
         GardenBonusId.FIREFLY_LANTERN,
@@ -1052,7 +1034,6 @@ GARDEN_BONUSES = (
         ),),
         "garden_feature_firefly_lantern",
         "Rare Garden discovery.",
-        "Every fifth eligible card: +3 Instant Growth to the nurtured plant, with normal overflow.",
     ),
     GardenBonusDefinition(
         GardenBonusId.PRISM_TRELLIS,
@@ -1071,7 +1052,6 @@ GARDEN_BONUSES = (
         ),
         "garden_feature_prism_trellis",
         "Very Rare Garden discovery.",
-        "+100 Growth when Today’s Cards is complete while equipped, with normal overflow.",
     ),
 )
 
@@ -1086,7 +1066,6 @@ SCENERIES = (
         (),
         "garden_background",
         "Included.",
-        "Cosmetic Scenery; no gameplay effect.",
     ),
     SceneryDefinition(
         SceneryId.SPRING,
@@ -1105,7 +1084,6 @@ SCENERIES = (
         ),),
         "garden_spring",
         "Nursery for 400 Garden Coins.",
-        "+2 Growth on your first 20 cards each Anki day.",
     ),
     SceneryDefinition(
         SceneryId.SUMMER,
@@ -1125,7 +1103,6 @@ SCENERIES = (
         ),),
         "garden_summer",
         "Nursery for 600 Garden Coins.",
-        "+1 Growth on every second card among your first 120 each Anki day.",
     ),
     SceneryDefinition(
         SceneryId.AUTUMN,
@@ -1135,21 +1112,14 @@ SCENERIES = (
         500,
         (
             _effect(
-                "autumn_completion_coins",
-                TriggerKind.VALID_COMPLETION,
-                RewardKind.COINS,
-                4,
-            ),
-            _effect(
-                "autumn_milestone_coin_percent",
-                TriggerKind.PLANT_MILESTONE,
-                RewardKind.MILESTONE_COIN_PERCENT,
-                50,
+                "autumn_earned_coin_percent",
+                TriggerKind.COIN_EARNED,
+                RewardKind.EARNED_COIN_PERCENT,
+                15,
             ),
         ),
         "garden_autumn",
         "Nursery for 500 Garden Coins.",
-        "+4 Garden Coins when Today’s Cards is complete, plus +50% Garden Coins from plant checkpoints and first-time stage completion.",
     ),
     SceneryDefinition(
         SceneryId.SNOWY,
@@ -1158,18 +1128,14 @@ SCENERIES = (
         AcquisitionKind.PURCHASE,
         1_200,
         (_effect(
-            "snowy_small_charge_every_2_completions",
+            "snowy_completion_growth",
             TriggerKind.VALID_COMPLETION,
-            RewardKind.CONSUMABLE,
-            1,
-            item_id=ConsumableId.GROWTH_CHARGE_SMALL.value,
-            every_n=2,
-            counter_scope=CounterScope.LIFETIME_ACTIVE,
-            target_policy=TargetPolicy.INVENTORY,
+            RewardKind.INSTANT_GROWTH,
+            50,
+            target_policy=TargetPolicy.ACTIVE_PLANT,
         ),),
         "garden_snowy",
         "Nursery for 1,200 Garden Coins.",
-        "Every second Today’s Cards completion while active grants 1 Small Growth Charge.",
     ),
     SceneryDefinition(
         SceneryId.RAINBOW_HORIZON,
@@ -1188,7 +1154,6 @@ SCENERIES = (
         ),),
         "garden_rainbow_horizon",
         "Rare Garden discovery.",
-        "+1 Growth on your first 75 cards each Anki day.",
     ),
     SceneryDefinition(
         SceneryId.HALLOWEEN,
@@ -1215,7 +1180,6 @@ SCENERIES = (
         ),
         "garden_halloween",
         "Very Rare Garden discovery.",
-        "When Today’s Cards is complete: Small Charge 95%, Standard Charge 4%, or Booster Potion 1%.",
     ),
     SceneryDefinition(
         SceneryId.FULL_MOON,
@@ -1224,24 +1188,17 @@ SCENERIES = (
         AcquisitionKind.DISCOVERY,
         None,
         (_effect(
-            "full_moon_booster_every_6_completions",
+            "full_moon_booster_every_4_completions",
             TriggerKind.VALID_COMPLETION,
             RewardKind.CONSUMABLE,
             1,
             item_id=ConsumableId.BOOSTER_POTION.value,
-            every_n=6,
+            every_n=4,
             counter_scope=CounterScope.LIFETIME_ACTIVE,
             target_policy=TargetPolicy.INVENTORY,
-        ), _effect(
-            "full_moon_booster_cards_plus_25",
-            TriggerKind.BOOSTER_ACTIVATION,
-            RewardKind.BOOSTER_CARD_LIMIT,
-            25,
-            active_only=False,
-        )),
+        ),),
         "garden_full_moon",
         "Ultra Rare Garden discovery.",
-        "While equipped: 1 Booster Potion every 6 Today’s Cards completions. Once owned: new Potions last 25 more cards.",
     ),
     SceneryDefinition(
         SceneryId.ECLIPSE,
@@ -1260,7 +1217,6 @@ SCENERIES = (
         ),),
         "garden_eclipse",
         "Ultra Rare Garden discovery.",
-        "+1 Growth on your first 125 cards each Anki day.",
     ),
 )
 
@@ -1272,18 +1228,15 @@ KNOWN_EFFECT_RESOLVER_IDS = frozenset({
     "completion_coins_plus_5",
     "growth_every_5_first_100_plus_1",
     "hourglass_completion_booster",
-    "booster_cards_plus_25",
-    "full_moon_booster_cards_plus_25",
     "instant_growth_every_5_plus_3_nurtured",
     "prism_completion_growth_100",
     "spring_growth_first_20",
     "summer_growth_every_2_first_120",
-    "autumn_completion_coins",
-    "autumn_milestone_coin_percent",
-    "snowy_small_charge_every_2_completions",
+    "autumn_earned_coin_percent",
+    "snowy_completion_growth",
     "rainbow_horizon_growth_first_75",
     "halloween_completion_gift",
-    "full_moon_booster_every_6_completions",
+    "full_moon_booster_every_4_completions",
     "eclipse_growth_first_125",
 })
 
@@ -1524,42 +1477,46 @@ ACHIEVEMENTS = (
     AchievementDefinition(
         AchievementId.STREAK_7,
         "7-Day Anki Streak",
-        "Reach a 7-day Anki streak.",
+        "Reach a 7-day Anki streak. Permanently unlock a total +5% bonus to base Growth from card answers, retained after a streak ends.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
         7,
-        (_coins(10),),
+        (),
+        permanent_growth_percent=5,
     ),
     AchievementDefinition(
         AchievementId.STREAK_30,
         "30-Day Anki Streak",
-        "Reach a 30-day Anki streak.",
+        "Reach a 30-day Anki streak. Permanently unlock a total +10% bonus to base Growth from card answers, retained after a streak ends.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
         30,
         (_coins(100), _consumable(ConsumableId.GROWTH_CHARGE_SMALL)),
+        permanent_growth_percent=10,
     ),
     AchievementDefinition(
         AchievementId.STREAK_100,
         "100-Day Anki Streak",
-        "Reach a 100-day Anki streak.",
+        "Reach a 100-day Anki streak. Permanently unlock a total +15% bonus to base Growth from card answers, retained after a streak ends.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
         100,
         (_coins(300),),
+        permanent_growth_percent=15,
     ),
     AchievementDefinition(
         AchievementId.STREAK_365,
         "365-Day Anki Streak",
-        "Reach a 365-day Anki streak.",
+        "Reach a 365-day Anki streak. Permanently unlock a total +20% bonus to base Growth from card answers, retained after a streak ends.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
         365,
         (_coins(1_000),),
+        permanent_growth_percent=20,
     ),
     AchievementDefinition(
         AchievementId.REVIEWS_100_DAY,
@@ -1585,7 +1542,7 @@ ACHIEVEMENTS = (
     AchievementDefinition(
         AchievementId.ALL_DUE_DONE,
         "Review Day",
-        "Complete today's cards.",
+        "Finish all cards due today.",
         AchievementCategory.COMPLETION,
         AchievementEvaluationMode.LIVE_ONLY,
         AchievementProgressMetric.VALID_ALL_DUE_DAYS,
@@ -1649,7 +1606,7 @@ ACHIEVEMENTS = (
     AchievementDefinition(
         AchievementId.TEN_HARVESTS,
         "Ten Harvests",
-        "Complete today's cards on 10 days.",
+        "Finish all cards due on 10 days.",
         AchievementCategory.COMPLETION,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.VALID_COMPLETIONS,
@@ -1659,7 +1616,7 @@ ACHIEVEMENTS = (
     AchievementDefinition(
         AchievementId.FIFTY_HARVESTS,
         "Fifty Harvests",
-        "Complete today's cards on 50 days.",
+        "Finish all cards due on 50 days.",
         AchievementCategory.COMPLETION,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.VALID_COMPLETIONS,
@@ -1669,7 +1626,7 @@ ACHIEVEMENTS = (
     AchievementDefinition(
         AchievementId.HUNDRED_HARVESTS,
         "Hundred Harvests",
-        "Complete today's cards on 100 days.",
+        "Finish all cards due on 100 days.",
         AchievementCategory.COMPLETION,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.VALID_COMPLETIONS,
@@ -1679,7 +1636,7 @@ ACHIEVEMENTS = (
     AchievementDefinition(
         AchievementId.YEAR_OF_HARVESTS,
         "Year of Harvests",
-        "Complete today's cards on 365 days.",
+        "Finish all cards due on 365 days.",
         AchievementCategory.COMPLETION,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.VALID_COMPLETIONS,
@@ -2084,22 +2041,6 @@ def catalog_items(kind: object | None = None) -> tuple[Any, ...]:
     return (*GARDEN_BONUSES, *SCENERIES)
 
 
-def garden_rhythm_percent(completed_prior_eligible_days: int) -> int:
-    if isinstance(completed_prior_eligible_days, bool) or not isinstance(
-        completed_prior_eligible_days, int
-    ):
-        raise TypeError("completed prior eligible days must be an integer")
-    if not 0 <= completed_prior_eligible_days <= 7:
-        raise ValueError("completed prior eligible days must be between 0 and 7")
-    return next(
-        item.bonus_percent
-        for item in RHYTHM_TIERS
-        if item.minimum_completed_days
-        <= completed_prior_eligible_days
-        <= item.maximum_completed_days
-    )
-
-
 def standard_find_daily_cap(answers_today: int) -> Optional[int]:
     if isinstance(answers_today, bool) or not isinstance(answers_today, int):
         raise TypeError("answers_today must be an integer")
@@ -2127,10 +2068,8 @@ CATALOG = BalanceCatalog(
     shared_growth_denominator=SHARED_GROWTH_DENOMINATOR,
     daily_activity_coins=DAILY_ACTIVITY_COINS,
     completion_coins=ALL_DUE_BASE_COINS,
-    weekly_streak_coins=WEEKLY_STREAK_COINS,
     coin_sources=COIN_SOURCES,
     stages=STAGES,
-    rhythm_tiers=RHYTHM_TIERS,
     species=SPECIES,
     historical_species=HISTORICAL_SPECIES,
     consumables=CONSUMABLES,
@@ -2211,8 +2150,7 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
         (
             candidate.daily_activity_coins,
             candidate.completion_coins,
-            candidate.weekly_streak_coins,
-        ) == (4, 8, 10),
+        ) == (4, 16),
         "recurring Coin values drifted",
     )
 
@@ -2237,40 +2175,6 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
                 _positive_integer(source.fixed_amount_coins),
                 "fixed Coin source amount must be positive",
             )
-    cycle_source = next(
-        item
-        for item in candidate.coin_sources
-        if item.source_id is CoinSourceId.COMPLETION_CYCLE_5
-    )
-    _require(
-        (
-            GARDEN_CYCLE_COMPLETIONS,
-            cycle_source.fixed_amount_coins,
-            cycle_source.display_name,
-            cycle_source.receipt_title,
-            cycle_source.receipt_detail,
-            cycle_source.artwork_id,
-            cycle_source.behavioral_family,
-            cycle_source.summary_policy,
-        ) == (
-            5,
-            30,
-            "Garden Cycle",
-            "Garden Cycle complete",
-            "5 completed review days",
-            "ui_garden_coin",
-            CoinBehaviorFamily.TODAYS_CARDS_COMPLETION,
-            RewardSummaryPolicy.DETAIL_ROW_FEATURE_IF_ONLY_MAJOR,
-        ),
-        "Garden Cycle receipt contract drifted",
-    )
-    _require(
-        not cycle_source.affected_by_harvest_bell
-        and not cycle_source.affected_by_autumn_hearth
-        and not cycle_source.affected_by_plant_checkpoint_multiplier,
-        "Garden Cycle cannot be modified",
-    )
-
     stage_ids = unique_ids(candidate.stages, "stage_id", "stage")
     expected_stages = (
         ("seed", 0, ()),
@@ -2299,21 +2203,6 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
                 len(item.checkpoint_coin_rewards) == 4,
                 "rewarded stages require four checkpoint payouts",
             )
-
-    rhythm_days: dict[int, int] = {}
-    for tier in candidate.rhythm_tiers:
-        _require(
-            0 <= tier.minimum_completed_days <= tier.maximum_completed_days <= 7,
-            "Garden Rhythm tier is outside the seven-day window",
-        )
-        _require(0 <= tier.bonus_percent <= 10, "Garden Rhythm bonus outside range")
-        for day in range(tier.minimum_completed_days, tier.maximum_completed_days + 1):
-            _require(day not in rhythm_days, "overlapping Garden Rhythm tiers")
-            rhythm_days[day] = tier.bonus_percent
-    _require(
-        tuple(rhythm_days.get(day) for day in range(8)) == (0, 0, 2, 4, 6, 8, 10, 10),
-        "Garden Rhythm schedule drifted",
-    )
 
     species_ids = unique_ids(candidate.species, "species_id", "species")
     _require(
@@ -2577,24 +2466,21 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
         "growth_every_10_plus_1": ("eligible_card", ("growth", 1, None), 5, None, "lifetime_active", "active_plant", None, None, False),
         "completion_coins_plus_5": ("valid_completion", ("coins", 5, None), 1, None, "event", "none", None, None, False),
         "growth_every_5_first_100_plus_1": ("eligible_card", ("growth", 1, None), 2, 200, "anki_day", "active_plant", None, None, False),
-        "hourglass_completion_booster": ("valid_completion", ("consumable", 1, "booster_potion"), 30, None, "lifetime_active", "inventory", None, None, False),
-        "booster_cards_plus_25": ("booster_activation", ("booster_card_limit", 25, None), 1, None, "event", "none", None, None, False),
-        "full_moon_booster_cards_plus_25": ("booster_activation", ("booster_card_limit", 25, None), 1, None, "event", "none", None, None, False),
+        "hourglass_completion_booster": ("valid_completion", ("consumable", 1, "booster_potion"), 15, None, "lifetime_active", "inventory", None, None, False),
         "instant_growth_every_5_plus_3_nurtured": ("eligible_card", ("instant_growth", 3, None), 5, None, "lifetime_active", "active_plant", None, None, False),
         "prism_completion_growth_100": ("valid_completion", ("instant_growth", 100, None), 1, None, "event", "active_plant", None, None, False),
         "spring_growth_first_20": ("eligible_card", ("growth", 2, None), 1, 20, "anki_day", "active_plant", None, None, False),
         "summer_growth_every_2_first_120": ("eligible_card", ("growth", 1, None), 2, 120, "anki_day", "active_plant", None, None, False),
-        "autumn_completion_coins": ("valid_completion", ("coins", 4, None), 1, None, "event", "none", None, None, False),
-        "autumn_milestone_coin_percent": ("plant_milestone", ("milestone_coin_percent", 50, None), 1, None, "event", "none", None, None, False),
-        "snowy_small_charge_every_2_completions": ("valid_completion", ("consumable", 1, "growth_charge_small"), 2, None, "lifetime_active", "inventory", None, None, False),
+        "autumn_earned_coin_percent": ("coin_earned", ("earned_coin_percent", 15, None), 1, None, "event", "none", None, None, False),
+        "snowy_completion_growth": ("valid_completion", ("instant_growth", 50, None), 1, None, "event", "active_plant", None, None, False),
         "rainbow_horizon_growth_first_75": ("eligible_card", ("growth", 1, None), 1, 75, "anki_day", "active_plant", None, None, False),
         "halloween_completion_gift": ("valid_completion", None, 1, None, "event", "inventory", None, None, False),
-        "full_moon_booster_every_6_completions": ("valid_completion", ("consumable", 1, "booster_potion"), 6, None, "lifetime_active", "inventory", None, None, False),
+        "full_moon_booster_every_4_completions": ("valid_completion", ("consumable", 1, "booster_potion"), 4, None, "lifetime_active", "inventory", None, None, False),
         "eclipse_growth_first_125": ("eligible_card", ("growth", 1, None), 1, 125, "anki_day", "active_plant", None, None, False),
     }
     for effect_id, expected in expected_effect_signatures.items():
         _require(effect_signature(effect_id) == expected, f"{effect_id} balance drifted")
-    ownership_effects = {"booster_cards_plus_25", "full_moon_booster_cards_plus_25"}
+    ownership_effects = set()
     _require(
         all(effect.cadence.active_only == (effect_id not in ownership_effects)
             for effect_id, effect in effects_by_id.items()),
@@ -2731,7 +2617,7 @@ def validate_balance_catalog(catalog: Optional[BalanceCatalog] = None) -> None:
 
     achievement_ids = unique_ids(candidate.achievements, "achievement_id", "achievement")
     expected_achievement_rewards = {
-        "streak_7": (7, (("coins", 10, None),)),
+        "streak_7": (7, ()),
         "streak_30": (30, (("coins", 100, None), ("consumable", 1, "growth_charge_small"))),
         "streak_100": (100, (("coins", 300, None),)),
         "streak_365": (365, (("coins", 1_000, None),)),
@@ -3027,8 +2913,6 @@ def catalog_snapshot() -> dict[str, Any]:
         "booster_card_count": BOOSTER_CARD_COUNT,
         "effect_dose_cap": EFFECT_DOSE_CAP,
         "standard_guarantee_answer": STANDARD_GUARANTEE_ANSWER,
-        "garden_cycle_completions": GARDEN_CYCLE_COMPLETIONS,
-        "garden_cycle_coins": GARDEN_CYCLE_COINS,
     }
     snapshot["compatibility_aliases"] = {
         "stage_ids": dict(STAGE_ID_ALIASES),
@@ -3119,8 +3003,6 @@ __all__ = [
     "GARDEN_BONUS_BY_ID",
     "GARDEN_FEATURE_CATALOG",
     "GROWTH_CHARGES",
-    "GARDEN_CYCLE_COINS",
-    "GARDEN_CYCLE_COMPLETIONS",
     "GARDEN_LEGACY",
     "GROWTH_STAGES",
     "GROWTH_THRESHOLDS",
@@ -3151,7 +3033,6 @@ __all__ = [
     "PLANTS",
     "PLANT_BY_ID",
     "PLANT_CATALOG",
-    "RHYTHM_TIERS",
     "RICH_COMPOST_CONSUMABLE_ID",
     "Rarity",
     "RewardGrant",
@@ -3197,7 +3078,6 @@ __all__ = [
     "TargetTieBreak",
     "TriggerKind",
     "WEATHER_CATALOG",
-    "WEEKLY_STREAK_COINS",
     "WeightedGrant",
     "canonical_consumable_id",
     "canonical_environment_kind",
@@ -3206,7 +3086,6 @@ __all__ = [
     "catalog_items",
     "catalog_snapshot",
     "environment_item",
-    "garden_rhythm_percent",
     "standard_find_daily_cap",
     "standard_find_schedule_band",
     "validate_balance_catalog",

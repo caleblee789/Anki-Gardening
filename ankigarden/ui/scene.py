@@ -135,6 +135,7 @@ class GardenSceneWidget(QWidget):
     cardGeometryChanged = pyqtSignal()
     landmarkActivated = pyqtSignal(str)
     decorationActivated = pyqtSignal(str)
+    lockedBedActivated = pyqtSignal(int)
     landmarksChanged = pyqtSignal()
     HOVER_FADE_SECONDS = 0.100
 
@@ -198,6 +199,7 @@ class GardenSceneWidget(QWidget):
         self._plant_anchors: dict[str, tuple[float, float]] = {}
         self._card_connector_rect: QRectF | None = None
         self._card_connector_plant_id = ""
+        self._inspector_connector: tuple[QRectF, QRectF] | None = None
         self._card_popover_placement: PopoverPlacement | None = None
         self._status_rect: QRectF | None = None
         self._stats_help_visible = False
@@ -1225,6 +1227,27 @@ class GardenSceneWidget(QWidget):
         return QRectF(canvas.x() + layout.feature.x, canvas.y() + layout.feature.y,
                       layout.feature.width, layout.feature.height)
 
+    def decoration_visible_geometry(self) -> QRectF | None:
+        """Project the actual alpha silhouette into the rendered scene canvas."""
+        box = self.decoration_geometry()
+        if box is None:
+            return None
+        path, _placement = self._asset_record("garden_feature")
+        source = self._pixmap_for(path)
+        if source is None:
+            return box
+        bounds = QRegion(source.mask()).boundingRect()
+        if bounds.isEmpty():
+            return box
+        return QRectF(box.x() + bounds.x() * box.width() / source.width(),
+                      box.y() + bounds.y() * box.height() / source.height(),
+                      bounds.width() * box.width() / source.width(),
+                      bounds.height() * box.height() / source.height())
+
+    def set_inspector_connector_geometry(self, card: QRectF | None, anchor: QRectF | None = None) -> None:
+        self._inspector_connector = (QRectF(card), QRectF(anchor)) if card is not None and anchor is not None else None
+        self.update()
+
     def _sync_feature_hotspot(self) -> None:
         button = getattr(self, "_feature_hotspot", None)
         if button is None:
@@ -1882,7 +1905,7 @@ class GardenSceneWidget(QWidget):
                     )
                     transition = self._transition_for_plant(plant)
                     painter.save()
-                    if plant_id == self._interaction.dragged_id and self._drag_started:
+                    if self._interaction.placing and plant_id == self._interaction.dragged_id:
                         painter.setOpacity(0.78)
                     painter.translate(target_x - x, target_y - base_y)
                     if transition:
@@ -1970,15 +1993,16 @@ class GardenSceneWidget(QWidget):
                 self._draw_locked_bed_overlays(painter)
             else:
                 self._painted_locked_beds = {}
-            if self._interaction.placing:
-                # Move choices sit above a uniform 15% scene dimmer. This keeps
-                # the artwork legible while making destination states dominant.
+            if self._interaction.placing and self._starter_placement:
+                # Keep the first-run placement composition. Moving an existing
+                # plant changes only that plant's opacity, not its neighbours.
                 painter.fillRect(r, QColor(0, 0, 0, 38))
             self._draw_slot_placeholders(painter)
             self._draw_status_overlay(painter, r, growth, glow)
             if self._stats_help_visible:
                 self._draw_stats_help(painter, r)
             self._draw_card_connector(painter)
+            self._draw_inspector_connector(painter)
             if self._welcome_elapsed is not None:
                 for plant, layout in plant_rows:
                     if str(plant.get("plant_id", "")) == self._welcome_plant_id:
@@ -2121,6 +2145,36 @@ class GardenSceneWidget(QWidget):
         painter.drawPath(path)
         painter.restore()
 
+    def _draw_inspector_connector(self, painter: QPainter) -> None:
+        if self._inspector_connector is None:
+            return
+        card, anchor = self._inspector_connector
+        x, y = anchor.center().x(), anchor.center().y()
+        edge_x = max(card.left() + 14, min(x, card.right() - 14))
+        edge_y = max(card.top() + 14, min(y, card.bottom() - 14))
+        if anchor.right() <= card.left():
+            points = ((card.left() - 8, edge_y), (card.left(), edge_y - 5), (card.left(), edge_y + 5))
+        elif anchor.left() >= card.right():
+            points = ((card.right() + 8, edge_y), (card.right(), edge_y - 5), (card.right(), edge_y + 5))
+        elif anchor.bottom() <= card.top():
+            points = ((edge_x, card.top() - 8), (edge_x - 5, card.top()), (edge_x + 5, card.top()))
+        elif anchor.top() >= card.bottom():
+            points = ((edge_x, card.bottom() + 8), (edge_x - 5, card.bottom()), (edge_x + 5, card.bottom()))
+        else:
+            return
+        path = QPainterPath()
+        path.moveTo(QPointF(*points[0]))
+        for point in points[1:]:
+            path.lineTo(QPointF(*point))
+        path.closeSubpath()
+        painter.save()
+        border = QColor(GARDEN_THEME["focus_ring"])
+        border.setAlpha(72)
+        painter.setPen(QPen(border, 1.0))
+        painter.setBrush(QColor(GARDEN_THEME["plant_popover_bg"]))
+        painter.drawPath(path)
+        painter.restore()
+
     def _draw_status_overlay(self, painter: QPainter, rect: Any, growth: float, glow: int) -> None:
         status_geometry = status_overlay_rect(
             rect.width(),
@@ -2138,7 +2192,7 @@ class GardenSceneWidget(QWidget):
         elif streak_bonus > 0:
             streak_label = (
                 f"{streak_days}-day Anki streak · "
-                f"Garden Rhythm +{streak_bonus}% Growth"
+                f"Permanent Growth bonus +{streak_bonus}% Growth"
             )
         else:
             streak_label = f"{streak_days}-day Anki streak"
@@ -3354,6 +3408,17 @@ class GardenSceneWidget(QWidget):
             super().mousePressEvent(event)
             return
         position = self._event_position(event)
+        slot = self._slot_at(position)
+        if (
+            not self._drag_started and slot is not None
+            and slot >= int(self.scene.get("unlocked_slots", 0))
+            and slot in self.scene.get("achievement_locked_beds", ())
+        ):
+            self._press_position = None
+            self._press_plant_id = None
+            self.lockedBedActivated.emit(int(slot))
+            event.accept()
+            return
         if self._interaction.placing and not self._drag_started:
             slot = self._slot_at(position)
             if slot == self._interaction.drag_origin_slot:
@@ -4485,10 +4550,10 @@ class GardenSceneWidget(QWidget):
         profile["contrast"] = max(float(profile.get("contrast", 1.0)), 1.06 if depth_band == "rear" else 1.025)
         source = self._pixmap_for(str(path))
         if source is None:
-            return self._draw_asset_contain(painter, str(path), box, opacity=1.0)
+            return self._draw_asset_contain(painter, str(path), box, opacity=painter.opacity())
         identity = self._file_identity_for(str(path))
         if identity is None:
-            return self._draw_asset_contain(painter, str(path), box, opacity=1.0)
+            return self._draw_asset_contain(painter, str(path), box, opacity=painter.opacity())
         source_w, source_h = max(1, source.width()), max(1, source.height())
         scale = min(box.width() / source_w, box.height() / source_h)
         target = QRectF(
@@ -4557,7 +4622,6 @@ class GardenSceneWidget(QWidget):
             )
             self._graded_raster_cache[cache_key] = graded
         painter.save()
-        painter.setOpacity(1.0)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.drawPixmap(target, graded, QRectF(graded.rect()))
         painter.restore()
@@ -4589,7 +4653,7 @@ class GardenSceneWidget(QWidget):
             painter,
             path,
             box.adjusted(-padding_x, -padding_y, padding_x, padding_y),
-            opacity=0.96,
+            opacity=0.96 * painter.opacity(),
         )
         if drawn:
             self._feature_layer_trace.append(f"mastery-{rank_id}")

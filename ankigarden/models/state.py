@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from ..balance_catalog import STREAK_ACHIEVEMENTS
 from ..environment import (
     DEFAULT_GARDEN_FEATURE_ID,
     DEFAULT_SCENERY_ID,
@@ -157,8 +158,8 @@ MAX_ACTIVE_PERIODS = 64
 MAX_FERTILIZER_HISTORY = 64
 MAX_BOOSTER_HISTORY = 64
 MAX_PROCESSED_REVLOG_IDS = 100_000
-STREAK_REWARD_MILESTONES = {7, 14, 30, 100}
-STREAK_BONUS_TIERS = ((1, 0), (7, 5), (14, 10), (30, 15), (100, 20), (365, 25))
+STREAK_BONUS_TIERS = tuple((item.progress_target, item.permanent_growth_percent)
+                          for item in STREAK_ACHIEVEMENTS)
 GARDEN_FIND_OUTCOME_STATUSES = frozenset({"miss", "hit", "paused"})
 DAILY_COMPLETION_STATUSES = frozenset({
     "in_progress",
@@ -171,7 +172,6 @@ ENVIRONMENT_PITY_TIERS = ("rare", "very_rare", "ultra")
 STAGE_CHECKPOINT_PERCENTAGES = (25, 50, 75)
 MAX_CARD_EFFECT_BATCHES = 5
 MAX_ECONOMY_MIGRATION_GRANTS = 64
-GARDEN_RHYTHM_PERCENTAGES = frozenset({0, 2, 4, 6, 8, 10})
 GARDEN_PROJECT_IDS = (
     "mossy_stone_path",
     "birdbath_terrace",
@@ -219,11 +219,7 @@ CARD_EFFECT_SPECS = {
     "fertilizer_basic": (100, 100, 100),
     "fertilizer_quality": (200, 200, 200),
     "fertilizer_premium": (300, 400, 400),
-    "booster_potion": (500, 100, 100 + sum(
-        effect.amount for catalog in (GARDEN_FEATURE_CATALOG, SCENERY_CATALOG)
-        for item in catalog.values() for effect in item.effects
-        if effect.trigger == "booster_activation" and effect.value_kind == "booster_cards"
-    )),
+    "booster_potion": (500, 100, 100),
 }
 
 logger = logging.getLogger(__name__)
@@ -335,10 +331,9 @@ class CardEffectQueue:
 
 @dataclass(frozen=True)
 class DailyEconomySnapshot:
-    """Daily Rhythm authority; equipment IDs are historical metadata only."""
+    """Daily equipment metadata; amounts are resolved per reward transaction."""
 
     anki_day: str
-    garden_rhythm_percent: int = 0
     active_garden_bonus_id: str = DEFAULT_GARDEN_FEATURE_ID
     active_scenery_effect_id: str = DEFAULT_SCENERY_ID
     snapshot_source: str = ""
@@ -347,7 +342,6 @@ class DailyEconomySnapshot:
     def to_dict(self) -> dict[str, Any]:
         return {
             "anki_day": self.anki_day,
-            "garden_rhythm_percent": self.garden_rhythm_percent,
             "active_garden_bonus_id": self.active_garden_bonus_id,
             "active_scenery_effect_id": self.active_scenery_effect_id,
             "snapshot_source": self.snapshot_source,
@@ -1338,7 +1332,6 @@ class GardenState:
     prism_pending_growth_units: int = 0
     prism_released_anki_day_id: str = ""
     hourglass_completion_progress: int = 0
-    snow_completion_progress: int = 0
     full_moon_completion_progress: int = 0
     # Backing field retained for source compatibility. Schema 27 persists the
     # canonical ``stored_growth_balance_units`` key instead.
@@ -1362,20 +1355,16 @@ class GardenState:
     )
     garden_legacy_level: int = 0
     garden_legacy_progress_units: int = 0
-    garden_cycle_remainder: int = 0
-    garden_cycle_migration_version: int = 0
-    garden_cycle_history_complete: bool = False
     pending_economy_migration_grants: List[PendingEconomyMigrationGrant] = field(
         default_factory=list
     )
     streak_growth_remainder_units: int = 0
-    checkpoint_coin_carry_units: int = 0
+    autumn_coin_carry_units: int = 0
     first_daily_completion_reward_claimed: bool = False
     currency_balance: int = 0
     currency_transactions: List[CurrencyTransaction] = field(default_factory=list)
     completed_purchase_requests: List[CompletedPurchaseRequest] = field(default_factory=list)
     completed_growth_charge_requests: List[CompletedGrowthChargeRequest] = field(default_factory=list)
-    claimed_streak_rewards: List[int] = field(default_factory=list)
     pending_feedback: List[FeedbackEvent] = field(default_factory=list)
     reward_seed: str = field(default_factory=lambda: uuid.uuid4().hex)
     reward_drop_history: List[RewardDrop] = field(default_factory=list)
@@ -1582,8 +1571,14 @@ class GardenState:
             "background": self.loadout.scenery_id,
         }
 
-    def to_dict(self) -> dict[str, Any]:
-        return deepcopy({
+    def to_dict(self, *, detached: bool = True) -> dict[str, Any]:
+        """Build the state payload, detached by default for rollback and callers.
+
+        Synchronous JSON serialization may skip the final copy because the
+        encoder consumes the payload before state can change. That temporary
+        payload must not be retained or modified through its nested values.
+        """
+        payload = {
             "version": STATE_VERSION,
             "garden_name": self.garden_name,
             "garden_setup_version": self.garden_setup_version,
@@ -1677,13 +1672,10 @@ class GardenState:
             ),
             "prism_released_anki_day_id": str(self.prism_released_anki_day_id or ""),
             "hourglass_completion_progress": max(
-                0, min(29, int(self.hourglass_completion_progress))
-            ),
-            "snow_completion_progress": max(
-                0, min(1, int(self.snow_completion_progress))
+                0, min(14, int(self.hourglass_completion_progress))
             ),
             "full_moon_completion_progress": max(
-                0, min(5, int(self.full_moon_completion_progress))
+                0, min(3, int(self.full_moon_completion_progress))
             ),
             "stored_growth_balance_units": self.stored_growth_balance_units,
             "stored_growth_opening_balance_units": max(
@@ -1717,15 +1709,6 @@ class GardenState:
                     int(self.garden_legacy_progress_units),
                 ),
             ),
-            "garden_cycle_remainder": max(
-                0, min(4, int(self.garden_cycle_remainder))
-            ),
-            "garden_cycle_migration_version": max(
-                0, int(self.garden_cycle_migration_version)
-            ),
-            "garden_cycle_history_complete": bool(
-                self.garden_cycle_history_complete
-            ),
             "pending_economy_migration_grants": [
                 grant.to_dict()
                 for grant in self.pending_economy_migration_grants[
@@ -1733,7 +1716,7 @@ class GardenState:
                 ]
             ],
             "streak_growth_remainder_units": self.streak_growth_remainder_units,
-            "checkpoint_coin_carry_units": self.checkpoint_coin_carry_units,
+            "autumn_coin_carry_units": self.autumn_coin_carry_units,
             "first_daily_completion_reward_claimed": bool(
                 self.first_daily_completion_reward_claimed
             ),
@@ -1749,7 +1732,6 @@ class GardenState:
                     -MAX_COMPLETED_GROWTH_CHARGE_REQUESTS:
                 ]
             ],
-            "claimed_streak_rewards": sorted(set(self.claimed_streak_rewards)),
             "pending_feedback": [event.__dict__ for event in self.pending_feedback[-MAX_FEEDBACK_EVENTS:]],
             "reward_seed": self.reward_seed,
             "reward_drop_history": [
@@ -1833,7 +1815,8 @@ class GardenState:
                 self.pending_sync_reward_summary
             ),
             "scene_geometry_version": self.scene_geometry_version,
-        })
+        }
+        return deepcopy(payload) if detached else payload
 
     @staticmethod
     def from_dict(data: Any) -> "GardenState":
@@ -1907,23 +1890,15 @@ class GardenState:
             data.get("hourglass_completion_progress"),
             0,
             0,
-            29,
+            14,
             "hourglass_completion_progress",
-            issues,
-        )
-        state.snow_completion_progress = _bounded_int(
-            data.get("snow_completion_progress"),
-            0,
-            0,
-            1,
-            "snow_completion_progress",
             issues,
         )
         state.full_moon_completion_progress = _bounded_int(
             data.get("full_moon_completion_progress"),
             0,
             0,
-            5,
+            3,
             "full_moon_completion_progress",
             issues,
         )
@@ -1998,27 +1973,6 @@ class GardenState:
             "garden_legacy_progress_units",
             issues,
         )
-        state.garden_cycle_remainder = _bounded_int(
-            data.get("garden_cycle_remainder"),
-            0,
-            0,
-            4,
-            "garden_cycle_remainder",
-            issues,
-        )
-        state.garden_cycle_migration_version = _bounded_int(
-            data.get("garden_cycle_migration_version"),
-            0,
-            0,
-            STATE_VERSION,
-            "garden_cycle_migration_version",
-            issues,
-        )
-        raw_cycle_complete = data.get("garden_cycle_history_complete", False)
-        if not isinstance(raw_cycle_complete, bool):
-            issues.append("garden_cycle_history_complete: expected bool")
-            raw_cycle_complete = False
-        state.garden_cycle_history_complete = raw_cycle_complete
         state.pending_economy_migration_grants = _pending_migration_grants(
             data.get("pending_economy_migration_grants"), issues
         )
@@ -2030,12 +1984,12 @@ class GardenState:
             "streak_growth_remainder_units",
             issues,
         )
-        state.checkpoint_coin_carry_units = _bounded_int(
-            data.get("checkpoint_coin_carry_units"),
+        state.autumn_coin_carry_units = _bounded_int(
+            data.get("autumn_coin_carry_units"),
             0,
             0,
             GROWTH_UNITS_PER_POINT - 1,
-            "checkpoint_coin_carry_units",
+            "autumn_coin_carry_units",
             issues,
         )
         first_completion_claimed = data.get(
@@ -2082,6 +2036,13 @@ class GardenState:
         if data.get("welcome_receipt") is not None and state.welcome_receipt is None:
             issues.append("welcome_receipt: invalid presentation data ignored")
         state.achievements = _achievements(data.get("achievements"), issues)
+        # Retain bed access from older completion records even when the
+        # corresponding achievement is no longer in the visible catalog.
+        # This repairs entitlement only; bonus receipts remain independent.
+        from ..plant_beds import earned_bed_numbers
+        earned_beds = earned_bed_numbers(state)
+        state.earned_bed_unlocks = sorted(bed for bed in earned_beds if bed >= 3)
+        state.unlocked_slots = max(state.unlocked_slots, max(earned_beds, default=2))
         activations = data.get("trophy_activation_ms", {})
         if isinstance(activations, dict):
             state.trophy_activation_ms = {
@@ -2097,24 +2058,6 @@ class GardenState:
         state.completed_growth_charge_requests = _completed_growth_charge_requests(
             data.get("completed_growth_charge_requests"), issues
         )
-        claimed_streaks = data.get("claimed_streak_rewards", [])
-        if isinstance(claimed_streaks, list):
-            claimed_values = {
-                value
-                for value in claimed_streaks
-                if isinstance(value, int) and not isinstance(value, bool) and value in STREAK_REWARD_MILESTONES
-            }
-            for transaction in state.currency_transactions:
-                if transaction.event_key.startswith("streak:"):
-                    try:
-                        milestone = int(transaction.event_key.partition(":")[2])
-                    except ValueError:
-                        continue
-                    if milestone in STREAK_REWARD_MILESTONES:
-                        claimed_values.add(milestone)
-            state.claimed_streak_rewards = sorted(claimed_values)
-        else:
-            issues.append("claimed_streak_rewards: expected list")
         state.pending_feedback = _feedback_events(data.get("pending_feedback"), issues)
         state.reward_seed = _reward_seed(data.get("reward_seed"), state.reward_seed, issues)
         state.reward_drop_history = _reward_drop_history(data.get("reward_drop_history"), issues)
@@ -2856,17 +2799,6 @@ def _daily_economy_snapshot(
     )
     if not anki_day:
         return None
-    rhythm = _nonnegative_int(
-        value.get("garden_rhythm_percent"),
-        0,
-        "daily_economy_snapshot.garden_rhythm_percent",
-        issues,
-    )
-    if rhythm not in GARDEN_RHYTHM_PERCENTAGES:
-        issues.append(
-            "daily_economy_snapshot.garden_rhythm_percent: unsupported value"
-        )
-        rhythm = 0
     garden_bonus = canonical_garden_feature_id(
         value.get("active_garden_bonus_id")
     )
@@ -2891,7 +2823,6 @@ def _daily_economy_snapshot(
         return None
     return DailyEconomySnapshot(
         anki_day=anki_day,
-        garden_rhythm_percent=rhythm,
         active_garden_bonus_id=str(garden_bonus),
         active_scenery_effect_id=str(scenery_effect),
         snapshot_source=source.strip()[:80],

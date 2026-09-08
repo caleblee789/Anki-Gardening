@@ -93,7 +93,7 @@ def test_plant_titles_use_stage_and_species_and_ignore_custom_names(
         assert identity.display_name == expected_title
         assert format_plant_name(source) == expected_title
         assert plant_stage_title(source, stage) == expected_title
-        assert plant_stage_event(source, stage) == f"{species_name} reached {label.lower()}"
+        assert plant_stage_event(source, stage) == f"{species_name} reached {label}"
     assert plant["name"] == name
 
 
@@ -149,7 +149,7 @@ def test_garden_appearance_derives_effects_from_equipped_artwork() -> None:
         "displayed_decoration_id": "wind_chime",
         "active_bonus_decoration_id": "wind_chime",
         "active_bonus_effect": (
-            "+1 Growth every 5 cards."
+            "+1 Growth every 5 cards"
         ),
         "visual_effects_enabled": True,
     }
@@ -158,7 +158,7 @@ def test_garden_appearance_derives_effects_from_equipped_artwork() -> None:
         ("Displayed decoration", "Wind Chime"),
         (
             "Active garden bonus",
-            "Wind Chime · +1 Growth every 5 cards.",
+            "Wind Chime · +1 Growth every 5 cards",
         ),
         ("Visual effects", "Enabled"),
     )
@@ -198,3 +198,20 @@ def test_environment_pool_unlock_copy_never_calls_a_discovery_a_standard_find() 
         assert visible_copy.endswith("Garden discovery.")
         assert "standard" not in visible_copy.casefold()
         assert "Garden Find" not in visible_copy
+
+
+@pytest.mark.parametrize("kind,category", [("scenery", "scenery"), ("garden_feature", "garden_features")])
+def test_appearance_collection_counts_distinct_catalog_items_and_not_equipment(kind, category) -> None:
+    from ankigarden.presentation import project_appearance_collection
+
+    state = GardenState()
+    catalog = SCENERY_CATALOG if kind == "scenery" else GARDEN_FEATURE_CATALOG
+    default, acquired = tuple(catalog)[:2]
+    state.inventory[category] = [default, acquired, acquired, "capture-only-variant"]
+    before = state.to_dict()
+    summary = project_appearance_collection(state, kind)
+    assert (summary.owned, summary.total) == (2, len(catalog))
+    assert state.to_dict() == before
+    state.loadout.scenery_id = "spring"
+    state.loadout.displayed_garden_feature_id = "wind_chime"
+    assert project_appearance_collection(state, kind) == summary

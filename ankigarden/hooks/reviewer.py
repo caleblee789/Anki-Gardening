@@ -5123,13 +5123,14 @@ class ReviewerHookHandler:
                     [self._player_reward_copy(summary.learner_text)]
                     if summary.learner_text else []
                 )
+                from ..achievements import milestone_unlocked_text
                 achievement_names = [
-                    achievement_definitions[achievement_id].name
+                    milestone_unlocked_text(achievement_id)
                     for achievement_id in summary.achievement_ids
                     if achievement_id in achievement_definitions
                 ]
                 if achievement_names:
-                    typed_parts.append("Unlocked " + ", ".join(achievement_names))
+                    typed_parts.append(", ".join(achievement_names))
                 if typed_parts:
                     parts.append("; ".join(typed_parts))
                     rendered_correlations.add(correlation_id)

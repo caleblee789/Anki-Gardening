@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
 from .feature_availability import growth_target_enabled, landmarks_enabled
 
-from .achievements import ACHIEVEMENT_DEFINITIONS, ACHIEVEMENTS_BY_ID, AchievementDefinition
+from .achievements import ACHIEVEMENT_DEFINITIONS, ACHIEVEMENTS_BY_ID, VISIBLE_ACHIEVEMENT_DEFINITIONS, AchievementDefinition
 from .environment import (
     ENVIRONMENT_CATALOG,
     GROWTH_CHARGES,
@@ -43,6 +43,33 @@ from .ui.copy import learner_card_copy
 from .ui.economy_presenters import coin_reward_receipt
 from .ui.formatters import format_garden_coins, format_quantity
 from .ui.session_summary import CommittedSessionEvent, format_growth_units
+
+
+@dataclass(frozen=True)
+class RecordedEventPresentation:
+    title: str
+    detail: str = ""
+
+
+def recorded_event_presentation(record: Any) -> RecordedEventPresentation:
+    """Name an existing ledger event without guessing its cause or current state."""
+    from .activity import source_name
+
+    def read(key: str, default: Any = "") -> Any:
+        return record.get(key, default) if isinstance(record, Mapping) else getattr(record, key, default)
+
+    payload = read("payload", {})
+    payload = payload if isinstance(payload, Mapping) else {}
+    source = str(read("source") or read("event_type") or "")
+    source_id = str(payload.get("source_id") or read("source_id") or "")
+    reason = str(payload.get("reason") or read("display_text") or read("title") or "")
+    species = str(payload.get("species") or read("species") or "")
+    stage = str(payload.get("stage_after") or read("stage_after") or read("new_stage") or "")
+    if source in {"full_bloom", "stage_change", "plant_milestone"} and species and stage:
+        title = plant_stage_event(species, stage)
+    else:
+        title = source_name(source, source_id, reason)
+    return RecordedEventPresentation(title.replace(" · ", "\n"), str(payload.get("detail") or ""))
 
 
 @dataclass(frozen=True)
@@ -1960,111 +1987,19 @@ def recurring_reward_presentations(
     *,
     current_streak_days: int | None = None,
 ) -> tuple[RecurringRewardPresentation, ...]:
-    """Project exact recurring rules and today's committed receipt state."""
-
-    scheduler_day = str(getattr(state.daily_stats, "day", "") or "")
-    today_receipts = tuple(
-        receipt
-        for receipt in state.recent_reward_receipts
-        if receipt.scheduler_day == scheduler_day
-    )
-    today_sources = {receipt.source for receipt in today_receipts}
-    first_weekly_achievement = any(
-        receipt.source in {"achievement", "achievement_backfill"}
-        and receipt.source_id == "streak_7"
-        and not bool(
-            getattr(state.achievements.get("streak_7"), "historical_backfill", False)
-        )
-        for receipt in today_receipts
-    )
-
-    daily_coins = max(0, int(engine.DAILY_ACTIVITY_COINS))
-    weekly_coins = max(0, int(engine.WEEKLY_STREAK_COINS))
-    today_all_due_receipts = tuple(
-        receipt for receipt in today_receipts if receipt.source == "all_due"
-    )
-    if today_all_due_receipts:
-        # Once earned, the committed ledger remains authoritative even if the
-        # learner later changes the equipped Garden Decoration or Scenery.
-        all_due_coins = sum(
-            max(0, int(receipt.amount))
-            for receipt in today_all_due_receipts
-            if receipt.reward_type == "coins"
-        )
-        all_due_growth = sum(
-            max(0, int(receipt.amount))
-            for receipt in today_all_due_receipts
-            if receipt.reward_type == "growth"
-        )
-    else:
-        all_due_coins = max(0, int(getattr(engine, "ALL_DUE_BASE_COINS", 0)))
-        all_due_growth = max(0, int(getattr(engine, "ALL_DUE_BASE_GROWTH", 0)))
-        all_due_resolver = getattr(engine, "all_due_rewards", None)
-        if callable(all_due_resolver):
-            try:
-                resolved_coins, resolved_growth = all_due_resolver()
-                all_due_coins = max(0, int(resolved_coins))
-                all_due_growth = max(0, int(resolved_growth))
-            except Exception:
-                # Presentation must remain available if an injected or older
-                # engine cannot resolve its equipped all-due bonuses.
-                pass
-
-    projected_streak_days = (
-        getattr(state, "streak_days", 0) or 0
-        if current_streak_days is None
-        else current_streak_days
-    )
-    streak_days = max(0, int(projected_streak_days))
-    next_streak_day = ((streak_days // 7) + 1) * 7
-    streak_days_remaining = max(1, next_streak_day - streak_days)
-    weekly_awarded = (
-        "weekly_streak" in today_sources or first_weekly_achievement
-    )
-    day_label = "day" if streak_days_remaining == 1 else "days"
-
-    return (
+    """Present the two daily rewards from the shared engine projection."""
+    summary = engine.study_rewards_summary()
+    completion = summary["completion"]
+    return tuple(
         RecurringRewardPresentation(
-            rule_id="daily_activity",
-            source="daily_activity",
-            title="First card today",
-            trigger="Complete your first card today.",
-            reward_coins=daily_coins,
-            reward_growth=0,
-            awarded_today="daily_activity" in today_sources,
-            status=(
-                "Earned today" if "daily_activity" in today_sources else "Available"
-            ),
-        ),
-        RecurringRewardPresentation(
-            rule_id="all_due",
-            source="all_due",
-            title="Today’s Cards",
-            trigger="Complete today’s cards.",
-            reward_coins=all_due_coins,
-            reward_growth=all_due_growth,
-            awarded_today="all_due" in today_sources,
-            status=(
-                "Earned today" if "all_due" in today_sources else "Available"
-            ),
-        ),
-        RecurringRewardPresentation(
-            rule_id="weekly_streak",
-            source="weekly_streak",
-            title="Seven-day streak cycle",
-            trigger="Reach each 7-day Anki streak milestone.",
-            reward_coins=weekly_coins,
-            reward_growth=0,
-            awarded_today=weekly_awarded,
-            status=(
-                "Earned today"
-                if weekly_awarded else
-                f"Next on Day {next_streak_day:,}, "
-                f"{streak_days_remaining:,} streak {day_label} to go"
-            ),
-            next_streak_day=next_streak_day,
-            streak_days_remaining=streak_days_remaining,
-        ),
+            rule_id=key, source=key, title=title, trigger=title,
+            reward_coins=amount or 0, reward_growth=0, awarded_today=earned,
+            status="Earned today" if earned else "Available",
+        )
+        for key, title, amount, earned in (
+            ("daily_activity", "Study 1 card", summary["first_coins"], summary["first_earned"]),
+            ("all_due", "Finish all cards due today", completion["coins"], completion["earned"]),
+        )
     )
 
 
@@ -2372,6 +2307,7 @@ class AchievementPresentation:
     reward_coins: int
     reward_small_growth_charges: int
     reward_standard_growth_charges: int
+    permanent_growth_percent: int = 0
     persisted_requirement: str = ""
     persisted_reward_summary: str = ""
     condition_lines: tuple[str, ...] = ()
@@ -2405,9 +2341,11 @@ class AchievementPresentation:
 
     @property
     def reward_summary(self) -> str:
-        if self.persisted_reward_summary:
+        if self.persisted_reward_summary and not self.permanent_growth_percent:
             return learner_card_copy(self.persisted_reward_summary).replace("+", "")
         parts: list[str] = []
+        if self.permanent_growth_percent:
+            parts.append(f"Total permanent Growth bonus: +{self.permanent_growth_percent}%")
         if self.reward_coins:
             parts.append(format_garden_coins(self.reward_coins))
         if self.reward_small_growth_charges:
@@ -2547,6 +2485,7 @@ def achievement_presentation(
         reward_coins=definition.reward.coins,
         reward_small_growth_charges=definition.reward.small_growth_charges,
         reward_standard_growth_charges=definition.reward.standard_growth_charges,
+        permanent_growth_percent=definition.reward.permanent_growth_percent,
         persisted_requirement=persisted_requirement,
         persisted_reward_summary=persisted_reward_summary,
         condition_lines=_achievement_condition_lines(
@@ -2566,7 +2505,7 @@ def achievement_presentations(
     """Project definitions in registry order, joining any persisted records."""
 
     if definitions is None:
-        ordered = ACHIEVEMENT_DEFINITIONS
+        ordered = VISIBLE_ACHIEVEMENT_DEFINITIONS
     elif isinstance(definitions, Mapping):
         ordered = tuple(definitions.values())
     else:

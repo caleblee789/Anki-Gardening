@@ -22,10 +22,10 @@ CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v29.json")
 
 _IDENTITY_ID = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 _EXPECTED_PROFILE_TOTALS = {
-    "representative": (22, 5),
-    "full": (50, 5),
+    "representative": (23, 6),
+    "full": (53, 6),
 }
-_EXPECTED_ACTIVE_SURFACE_COUNT = 50
+_EXPECTED_ACTIVE_SURFACE_COUNT = 53
 _RENAMED_SURFACE = "nursery-garden-decorations-scenery"
 _RETIRED_SURFACE = "nursery-weather-scenery"
 _SCENARIO_OVERRIDES: dict[str, tuple[str, int]] = {
@@ -327,7 +327,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
         if len(sheet_labels) != len(set(sheet_labels)) or set(sheet_labels) != set(labels):
             issues.append(f"profile {profile!r} sheet assignments must cover every surface exactly once")
         if sheets != sheet_layout(labels):
-            issues.append(f"profile {profile!r} sheet assignments do not match the five review areas")
+            issues.append(f"profile {profile!r} sheet assignments do not match the review areas")
         page_count = len(sheets)
         if raw_profile.get("contact_sheet_page_count") != page_count:
             issues.append(f"profile {profile!r} contact-sheet page count is stale")

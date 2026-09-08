@@ -660,6 +660,7 @@ def test_current_origin_is_inert_and_escape_cancels_move() -> None:
     mouse_scene = _move_scene()
     mouse_scene.interactive = True
     mouse_scene._drag_started = False
+    mouse_scene.scene = {"unlocked_slots": 2, "achievement_locked_beds": (2, 3)}
     mouse_scene._event_position = lambda event: event.position()
     mouse_scene._slot_at = lambda _position: 0
     mouse_event = SimpleNamespace(button=lambda: "left", position=lambda: object())
@@ -668,6 +669,19 @@ def test_current_origin_is_inert_and_escape_cancels_move() -> None:
     assert mouse_scene._interaction.placing
     assert mouse_scene._allowed_move_slots == {0, 1}
     assert mouse_scene._inline_message == "Current bed."
+    assert mouse_scene.cancelPlacementRequested.values == []
+
+    # Unlock guidance is available during movement without choosing a locked
+    # destination, cancelling the move, or changing the committed selection.
+    mouse_scene.lockedBedActivated = _Signal()
+    mouse_scene._slot_at = lambda _position: 2
+    mouse_event.accept = lambda: None
+    previous_destination = mouse_scene._interaction.destination_slot
+    mouse_press(mouse_scene, mouse_event)
+    assert mouse_scene.lockedBedActivated.values == [(2,)]
+    assert mouse_scene._interaction.placing
+    assert mouse_scene._interaction.destination_slot == previous_destination
+    assert mouse_scene._allowed_move_slots == {0, 1}
     assert mouse_scene.cancelPlacementRequested.values == []
 
     keyboard_scene = _move_scene()

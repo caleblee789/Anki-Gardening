@@ -484,13 +484,14 @@ def test_serializer_omits_removed_parallel_progression_systems():
         assert key not in payload
 
 
-def test_claimed_streak_rewards_keep_only_supported_once_ever_milestones():
+def test_retired_streak_claims_do_not_reenter_current_state():
     payload = base_payload()
     payload["claimed_streak_rewards"] = [7, 7, 14, 15, 30, 100, True, "7"]
 
     state = GardenState.from_dict(payload)
 
-    assert state.claimed_streak_rewards == [7, 14, 30, 100]
+    assert "claimed_streak_rewards" not in state.to_dict()
+    assert state.currency_balance == 0
 
 
 def test_to_dict_returns_a_detached_payload():

@@ -8,6 +8,7 @@ paths and closes transient dialogs after each face to keep the sequence stable.
 from __future__ import annotations
 
 from ..presentation import PlantIdentity, plant_stage_title
+from ..bonus_copy import appearance_effect_copy
 
 import logging
 import hashlib
@@ -4484,8 +4485,7 @@ def appearance_state_matrix_issue_codes(
         [
             "Active garden bonus",
             (
-                "Watering Station · Earn +1 bonus Growth every 5 cards during "
-                "your first 100 cards each day."
+                f"Watering Station · {appearance_effect_copy('watering_station')}"
             ),
         ],
     ]
@@ -17574,7 +17574,7 @@ class _UiFaceCaptureRunner:
         }
         full_bloom["passed"] = bool(
             full_bloom["eyebrow"] == "MILESTONE REACHED"
-            and full_bloom["hero_title"] == "Bonsai reached full bloom"
+            and full_bloom["hero_title"] == "Bonsai reached Full Bloom"
             and full_bloom["hero_subtitle"] == ""
             and full_bloom["active_plant_identity_suppressed"]
             and full_bloom["class_label"] == "Bonsai"
@@ -22850,15 +22850,7 @@ class _UiFaceCaptureRunner:
                 projected_streak_days = int(
                     annotation.get("projected_streak_days", -1)
                 )
-                weekly_reward = next(
-                    rule
-                    for rule in recurring_reward_presentations(
-                        garden_state,
-                        self.app.engine,
-                        current_streak_days=projected_streak_days,
-                    )
-                    if rule.rule_id == "weekly_streak"
-                )
+                retained_growth = self.app.engine.current_streak_bonus_percent()
                 require(
                     "missed_day_streak",
                     bool(annotation.get("passed", False))
@@ -22869,10 +22861,9 @@ class _UiFaceCaptureRunner:
                     annotation,
                 )
                 require(
-                    "missed_day_weekly_reward_projection",
+                    "missed_day_retained_growth",
                     projected_streak_days == 0
-                    and annotation.get("weekly_reward_status")
-                    == weekly_reward.status
+                    and annotation.get("retained_growth_percent") == retained_growth
                     and bool(
                         visible_semantic_widgets.get("progress.streak-hero")
                     )
@@ -22884,7 +22875,7 @@ class _UiFaceCaptureRunner:
                     ) == "missed",
                     {
                         "projected_streak_days": projected_streak_days,
-                        "expected_status": weekly_reward.status,
+                        "retained_growth_percent": retained_growth,
                         "annotation": annotation,
                     },
                 )
@@ -23440,8 +23431,7 @@ class _UiFaceCaptureRunner:
                         [
                             "Active garden bonus",
                             (
-                                "Watering Station · Earn +1 bonus Growth every "
-                                "5 cards during your first 100 cards each day."
+                                f"Watering Station · {appearance_effect_copy('watering_station')}"
                             ),
                         ],
                         ["Visual effects", "Enabled"],
@@ -25527,6 +25517,8 @@ class _UiFaceCaptureRunner:
             "sectionCard",
             "catalogCard",
             "appearanceCard",
+            "environmentTile",
+            "gardenSetupRow",
             "emptyState",
             "toggleSettingRow",
             "disclosureRow",
@@ -27067,6 +27059,8 @@ class _UiFaceCaptureRunner:
         try:
             if before_capture is not None:
                 before_capture()
+            from .workspace import expand_contact_sheet_details
+            expand_contact_sheet_details(self, scheduled_label, widget)
         except Exception as exc:
             self._failures.append({
                 "label": scheduled_label,
@@ -27919,7 +27913,7 @@ class _UiFaceCaptureRunner:
         base_state_passed = bool(
             annotation.get("achievement_completed", False)
             and annotation.get("daily_reward_earned", False)
-            and annotation.get("weekly_reward_earned", False)
+            and annotation.get("growth_tier_unlocked", False)
             and next_reward.get("painted", False)
         )
         annotation["passed"] = bool(
@@ -30775,71 +30769,21 @@ class _UiFaceCaptureRunner:
         return snapshot, projections
 
     def _append_canonical_streak_reward_receipts(
-        self,
-        *,
-        streak_days: int,
+        self, *, streak_days: int,
     ) -> tuple[str, ...]:
-        """Record the exact current-day receipts shown by streak captures."""
-
-        from ..models.state import RewardReceipt
-
+        """Seed the real daily and achievement reward pipeline for capture."""
         state = self.app.storage.state
+        engine = self.app.engine
         day_value = str(state.daily_stats.day)
         correlation_id = f"answer:capture-streak-day-{max(0, int(streak_days))}"
-        occurred_at = f"{day_value}T12:00:00+00:00"
-        state.recent_reward_receipts = [
-            receipt
-            for receipt in state.recent_reward_receipts
-            if not (
-                receipt.scheduler_day == day_value
-                and (
-                    receipt.source in {"daily_activity", "weekly_streak"}
-                    or (
-                        receipt.source in {"achievement", "achievement_backfill"}
-                        and receipt.source_id == "streak_7"
-                    )
-                )
-            )
-        ]
-        receipts = [RewardReceipt(
-            event_key=f"daily_activity:{day_value}",
-            reward_type="coins",
-            source="daily_activity",
-            source_id=day_value,
-            scheduler_day=day_value,
-            correlation_id=correlation_id,
-            occurred_at=occurred_at,
-            amount=int(self.app.engine.DAILY_ACTIVITY_COINS),
-            title="Daily activity reward",
-        )]
-        days = max(0, int(streak_days))
-        if days > 0 and days % 7 == 0:
-            first_cycle = bool(
-                days == 7
-                and state.achievements.get("streak_7") is not None
-                and state.achievements["streak_7"].unlocked
-            )
-            receipts.append(RewardReceipt(
-                event_key=(
-                    "achievement:streak_7"
-                    if first_cycle else
-                    f"weekly_streak:{day_value}"
-                ),
-                reward_type="coins",
-                source="achievement" if first_cycle else "weekly_streak",
-                source_id="streak_7" if first_cycle else f"day_{days}",
-                scheduler_day=day_value,
-                correlation_id=correlation_id,
-                occurred_at=occurred_at,
-                amount=int(self.app.engine.WEEKLY_STREAK_COINS),
-                title=(
-                    "7-Day Anki Streak"
-                    if first_cycle else
-                    "Seven-day streak reward"
-                ),
-            ))
-        state.recent_reward_receipts.extend(receipts)
-        return tuple(receipt.source for receipt in receipts)
+        engine._apply_streak_rewards(scheduler_day=day_value,
+            correlation_id=correlation_id, streak_days=streak_days)
+        engine._grant_reward_bundle(f"daily_activity:{day_value}",
+            source="first_eligible_answer", source_id=day_value,
+            reason="Study 1 card", scheduler_day=day_value,
+            correlation_id=correlation_id, coins=engine.DAILY_ACTIVITY_COINS)
+        return tuple(receipt.source for receipt in state.recent_reward_receipts
+                     if receipt.scheduler_day == day_value)
 
     def _prepare_reward_history_capture_fixture(
         self,
@@ -31232,7 +31176,7 @@ class _UiFaceCaptureRunner:
                 "daily_answers": daily_answers,
                 "recurring_receipt_sources": list(receipt_sources),
                 "daily_reward_earned": reward_rules["daily_activity"].awarded_today,
-                "weekly_reward_earned": reward_rules["weekly_streak"].awarded_today,
+                "growth_tier_unlocked": self.app.engine.current_streak_bonus_percent() > 0,
                 "thirty_day_reward": next_reward_evidence,
                 "passed": bool(
                     streak_projection.completed
@@ -31242,7 +31186,7 @@ class _UiFaceCaptureRunner:
                     and streak_projection.reward_standard_growth_charges
                     == definition.reward.standard_growth_charges
                     and reward_rules["daily_activity"].awarded_today
-                    and reward_rules["weekly_streak"].awarded_today
+                    and self.app.engine.current_streak_bonus_percent() > 0
                     and next_projection.reward_coins
                     == thirty_day_definition.reward.coins == 100
                     and next_projection.reward_small_growth_charges
@@ -40590,21 +40534,13 @@ class _UiFaceCaptureRunner:
             })
         from ..reward_presentation import recurring_reward_presentations
 
-        weekly_reward = next(
-            rule
-            for rule in recurring_reward_presentations(
-                state,
-                self.app.engine,
-                current_streak_days=presentation.current_days,
-            )
-            if rule.rule_id == "weekly_streak"
-        )
+        retained_growth = self.app.engine.current_streak_bonus_percent()
         self._capture_annotations["streak-missed-day"] = {
             "previous_streak_days": previous_days,
             "daily_answers": 0,
             "presentation_state": presentation.state.value,
             "projected_streak_days": presentation.current_days,
-            "weekly_reward_status": weekly_reward.status,
+            "retained_growth_percent": retained_growth,
             "passed": bool(
                 presentation.state == StreakPresentationState.ENDED
                 and presentation.current_days == 0
@@ -40670,7 +40606,7 @@ class _UiFaceCaptureRunner:
             "next_growth_bonus_percent": next_bonus_percent,
             "days_until_next_growth_bonus": next_bonus_day - current_days,
             "daily_reward_earned": reward_rules["daily_activity"].awarded_today,
-            "weekly_reward_earned": reward_rules["weekly_streak"].awarded_today,
+            "growth_tier_unlocked": self.app.engine.current_streak_bonus_percent() > 0,
             "canonical_projection": True,
             "passed": bool(
                 completed.completed
@@ -40685,7 +40621,7 @@ class _UiFaceCaptureRunner:
                 and next_achievement.progress_target
                 == next_definition.progress_target
                 and reward_rules["daily_activity"].awarded_today
-                and reward_rules["weekly_streak"].awarded_today
+                and self.app.engine.current_streak_bonus_percent() > 0
             ),
         }
 
@@ -42711,7 +42647,6 @@ class _UiFaceCaptureRunner:
             38,
             source_event_key="capture-hud-booster",
         )]
-        state.stored_growth_units = 1_250
         day_value = str(state.daily_stats.day)
         completion = state.daily_completion
         completion.scheduler_day = day_value
@@ -44560,7 +44495,10 @@ class _UiFaceCaptureRunner:
         label = "reviewer-reward-dock-bundle"
         snapshot, plant_id = self._prepare_growth_capture_fixture(populated=True)
         state = self.app.storage.state
-        state.stored_growth_units = 1_250
+        # This is a pre-existing fixture reserve, not an earned reward. Keep
+        # its opening balance coherent with the exact ledger during teardown.
+        state.stored_growth_units += 1_250
+        state.stored_growth_opening_balance_units += 1_250
         plant = next(
             candidate for candidate in state.plants
             if str(getattr(candidate, "plant_id", "")) == plant_id
@@ -44573,9 +44511,8 @@ class _UiFaceCaptureRunner:
         state.active_growth_target_activation_identity = (
             "capture:reviewer-reward-bundle:mastery"
         )
-        state.cultivation_mastery.growth_units_funded_by_species[
-            project_species
-        ] = 2_000
+        # Project credits below are frozen receipt data. Do not synthesize
+        # current Mastery funding without a corresponding ledger event.
         try:
             full_bloom_art_asset = str(
                 getattr(
@@ -44730,7 +44667,7 @@ class _UiFaceCaptureRunner:
             and len(bundle.all_items) == 7
             and compact is not None
             and compact.eyebrow == "MILESTONE REACHED"
-            and compact.hero_title == "Bonsai reached full bloom"
+            and compact.hero_title == "Bonsai reached Full Bloom"
             and compact.hero_subtitle == ""
             and [summary.label for summary in compact.visible_summaries]
             == ["1 Garden Find", "2 Garden discoveries"]
@@ -44991,7 +44928,7 @@ class _UiFaceCaptureRunner:
                     and bundle_evidence["active_reveal_count"] == 1
                     and bundle_evidence["hero_count"] == 1
                     and bundle_evidence["eyebrow"] == "MILESTONE REACHED"
-                    and bundle_evidence["hero_title"] == "Bonsai reached full bloom"
+                    and bundle_evidence["hero_title"] == "Bonsai reached Full Bloom"
                     and bundle_evidence["projected_hero_subtitle"] == ""
                     and bundle_evidence["hero_subtitle"] == ""
                     and bundle_evidence[

@@ -19,6 +19,9 @@ ADDITIONS = (
     ("workspace-diagnostics-warning-details", "diagnostics-details", False),
     ("workspace-reviewer-collapsed", "reviewer-collapsed", False),
     ("workspace-reviewer-rewards-list", "reviewer-rewards-list", True),
+    ("progress-plant-beds-starting", "plant-beds-starting", False),
+    ("progress-plant-beds-partial", "plant-beds-partial", True),
+    ("progress-plant-beds-unlocked", "plant-beds-unlocked", False),
 )
 
 RETIRED_SURFACES = {
@@ -65,11 +68,16 @@ SHEETS = (
         "workspace-reviewer-rewards-list", "session-summary-after-review",
         "sync-rewards-summary",
     )),
+    # Append the new sheet so every existing review screenshot keeps its ID.
+    ("Plant beds", (
+        "progress-plant-beds-starting", "progress-plant-beds-partial",
+        "progress-plant-beds-unlocked",
+    )),
 )
 
 
 def sheet_layout(labels):
-    """Project the five review assignments onto one acquisition profile."""
+    """Project the stable review assignments onto one acquisition profile."""
     selected = set(labels)
     return [
         {"sheet": index, "name": name,

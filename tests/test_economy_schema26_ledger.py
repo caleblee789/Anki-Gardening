@@ -109,7 +109,6 @@ def test_schema2_records_share_checkpoint_commit_and_replay_boundaries(tmp_path)
     )
     snapshot = DailyEconomySnapshotRecord(
         "2026-08-30",
-        6,
         "wind_chime",
         "full_moon",
         "local_first_answer",

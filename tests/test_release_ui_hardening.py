@@ -253,7 +253,7 @@ def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -
     stage_change.variant = "confirmation"
     assert transition_copy(stage_change) == "Bonsai will reach sprout"
     stage_change.variant = "success"
-    assert transition_copy(stage_change) == "Bonsai reached sprout"
+    assert transition_copy(stage_change) == "Bonsai reached Sprout"
     same_stage.variant = "confirmation"
     assert transition_copy(same_stage) == "Bonsai Sprout will gain 100 Growth"
     same_stage.variant = "success"

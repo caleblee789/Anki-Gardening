@@ -4,14 +4,46 @@ from __future__ import annotations
 from collections import deque
 
 from aqt.qt import (
-    QEasingCurve, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QTimer,
-    QVariantAnimation, QVBoxLayout, QWidget, Qt,
+    QEasingCurve, QHBoxLayout, QLabel, QPainter, QPalette, QTimer,
+    QVariantAnimation, QStackedLayout, QWidget, Qt,
 )
 
 from .icons import garden_icon
 from .reward_rarity import reward_treatment
 from .session_summary import format_growth_units
 from .theme import GARDEN_THEME, apply_tabular_numerals
+
+
+class _FadingLabel(QLabel):
+    """Paint text opacity directly so stacked native grabs retain idle copy."""
+
+    def opacity(self):
+        return getattr(self, "_text_opacity", 1.0)
+
+    def setOpacity(self, value):
+        self._text_opacity = float(value)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setOpacity(self.opacity())
+        painter.setFont(self.font())
+        painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
+        pixmap = self.pixmap()
+        if pixmap is not None and not pixmap.isNull():
+            painter.drawPixmap(self.contentsRect(), pixmap)
+        else:
+            painter.drawText(self.contentsRect(), self.alignment(), self.text())
+
+
+class _FadingRow(QWidget):
+    def opacity(self):
+        return getattr(self, "_row_opacity", 1.0)
+
+    def setOpacity(self, value):
+        self._row_opacity = float(value)
+        for label in self.findChildren(_FadingLabel):
+            label.setOpacity(value)
 
 
 class CollapsedRewardFeedback(QWidget):
@@ -39,34 +71,38 @@ class CollapsedRewardFeedback(QWidget):
         self.setMinimumWidth(0)
         self.setMinimumHeight(0)
         self.setStyleSheet("background:transparent;border:0;")
-        layout = QVBoxLayout(self)
+        # These layers occupy the existing 18px reward line throughout every
+        # state. Only opacity changes; neither can intercept the tile click.
+        self.setFixedHeight(18)
+        layout = QStackedLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(3)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        self.art = QLabel(self)
-        self.art.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.art.setFixedHeight(32)
-        layout.addWidget(self.art)
-        self.metric_row = QWidget(self)
+        layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        self.idle = _FadingLabel(self)
+        self.idle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.idle.setStyleSheet(f"color:{GARDEN_THEME['text_secondary']};font-size:11px;font-weight:400;")
+        self.idle.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.idle_effect = self.idle
+        layout.addWidget(self.idle)
+        self.metric_row = _FadingRow(self)
+        self.metric_row.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         metric = QHBoxLayout(self.metric_row)
         metric.setContentsMargins(0, 0, 0, 0)
         metric.setSpacing(4)
         metric.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.metric_icon = QLabel(self.metric_row)
+        self.metric_icon = _FadingLabel(self.metric_row)
         self.metric_icon.setFixedSize(12, 12)
         metric.addWidget(self.metric_icon)
-        self.amount = QLabel(self.metric_row)
+        self.amount = _FadingLabel(self.metric_row)
         self.amount.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.amount.setTextFormat(Qt.TextFormat.PlainText)
         apply_tabular_numerals(self.amount)
         metric.addWidget(self.amount)
-        layout.addWidget(self.metric_row)
+        # Retained read-only capture accessor; not a second visible line.
         self.caption = QLabel(self)
-        self.caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.caption.setTextFormat(Qt.TextFormat.PlainText)
-        self.caption.setWordWrap(False)
-        self.caption.setStyleSheet("font-size:11px;font-weight:600;")
-        layout.addWidget(self.caption)
+        self.caption.hide()
+        self.reward_effect = self.metric_row
+        layout.addWidget(self.metric_row)
+        self._disposed = False
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._advance)
@@ -83,27 +119,19 @@ class CollapsedRewardFeedback(QWidget):
         self._seen_major_ids.add(identity)
         self._major_id = identity
         self.setProperty("rewardBundleId", identity)
-        self._frames = deque(frames)
-        if coins:
-            self._frames.append(self._amount_frame("Coins", coins))
-        self._frames.extend(self._amount_frame(label, units) for label, units in allocations if units > 0)
-        # A new milestone takes this single slot; it never creates another HUD.
-        self._timer.stop()
-        self._current = None
-        self._current_major = False
-        self._advance()
+        # Preserve pending resource messages when a newer major event arrives.
+        # Decorative notices can coalesce, but committed Coins and Growth each
+        # retain a finite turn in the display sequence.
+        self._frames = deque(frames[-1:])
+        self.add_routine(allocations, coins)
+        if self._current is None:
+            self._advance()
 
     def add_routine(self, allocations, coins=0):
-        amounts = (("Coins", coins), *allocations)
-        for label, units in amounts:
-            if units <= 0:
-                continue
-            if self._current and not self._current_major and self._current.get("label") == label:
-                self._current = self._amount_frame(label, self._current["units"] + units)
-                self._render(self._current, animate=False)
-                self._timer.start(950)
-            else:
-                self._pending[label] = self._pending.get(label, 0) + units
+        for label, units in (("Coins", coins), *allocations):
+            if units > 0:
+                resource = "Coins" if label == "Coins" else "Growth"
+                self._pending[resource] = self._pending.get(resource, 0) + units
         if self._current is None:
             self._advance()
 
@@ -114,6 +142,8 @@ class CollapsedRewardFeedback(QWidget):
                 "color": GARDEN_THEME["coin_accent" if coin else "reviewer_hud_growth_strong"]}
 
     def _advance(self):
+        if self._disposed:
+            return
         finished_major = self._current is not None and self._current_major
         self._current = None
         self._current_major = False
@@ -124,7 +154,7 @@ class CollapsedRewardFeedback(QWidget):
             if finished_major:
                 QTimer.singleShot(0, lambda: self.hud._maybe_archive_current_reward() if not self.hud._disposed else None)
             if self._pending:
-                label = "Coins" if self._pending.get("Coins", 0) else next(iter(self._pending))
+                label = next(iter(self._pending))
                 self._current = self._amount_frame(label, self._pending.pop(label))
         self.setProperty("sequencePending", self.major_pending)
         if self._current is None:
@@ -136,112 +166,92 @@ class CollapsedRewardFeedback(QWidget):
         else:
             self._paused_ms = self._current["duration"]
 
+    def update_idle(self):
+        nurture = getattr(getattr(self.hud, "_projection", None), "nurture", None)
+        valid = bool(nurture is not None and getattr(nurture, "plant_id", ""))
+        text = ("Full Bloom" if bool(getattr(nurture, "fully_grown", False)) else
+                f"{int(self.hud._collapsed_ring.property('progressPercent') or 0)}%") if valid else ""
+        self.idle.setText(text)
+        self.hud._collapsed_tab.setProperty("collapsedNextValueCopy", text)
+        self.hud._collapsed_tab.setProperty("collapsedNextVisibleCopy", text if self._current is None else "")
+
     def _render(self, frame, *, animate=True):
         color = frame["color"]
-        treatment = reward_treatment(frame.get("treatment", ""))
-        self.art.setStyleSheet("background:transparent;border:0;")
-        self.hud._collapsed_tab.setProperty("rewardTone", treatment.key)
-        self.hud._collapsed_tab.setStyleSheet(
-            f"QFrame#reviewerHudCollapsedTab {{border:1px solid {treatment.color};}}"
-            if treatment.notable else "")
         units = frame.get("units")
-        ratio = max(1.0, self.devicePixelRatioF())
+        self.caption.setText(str(frame.get("caption", "")))
         if units is not None:
-            self.art.hide()
-            self.metric_icon.setPixmap(garden_icon(frame["icon"], color=color, logical_size=12).pixmap(round(12 * ratio), round(12 * ratio)))
-            icon = self.metric_icon.pixmap()
+            exact = f"+{units:,}" if frame["label"] == "Coins" else format_growth_units(units, signed=True)
+            ratio = max(1.0, self.devicePixelRatioF())
+            icon = garden_icon(frame["icon"], color=color).pixmap(round(12 * ratio), round(12 * ratio))
             icon.setDevicePixelRatio(ratio)
             self.metric_icon.setPixmap(icon)
-            exact = f"+{units:,}" if frame["label"] == "Coins" else format_growth_units(units, signed=True)
+            self.metric_icon.show()
             self.amount.setStyleSheet(f"color:{color};font-size:13px;font-weight:600;")
             self.amount.ensurePolished()
-            self.amount.setText(self._fit_amount(exact, units, frame["label"]))
-            self.metric_row.show()
-            unit_name = "Coin" if frame["label"] == "Coins" and units == 1 else frame["label"]
-            tooltip = f"{exact} {unit_name}"
+            spacing = min(4, max(0, self.width() - 12 - self.amount.fontMetrics().horizontalAdvance(exact)))
+            self.metric_row.layout().setSpacing(spacing)
+            self.amount.setText(exact)
+            tooltip = f"{exact} {frame['label']}"
         else:
-            self.metric_row.hide()
-            pixmap = frame.get("pixmap")
-            if pixmap is None or pixmap.isNull():
-                pixmap = garden_icon(frame.get("icon", "find"), color=color).pixmap(round(32 * ratio), round(32 * ratio))
-            art = pixmap.scaled(round(32 * ratio), round(32 * ratio), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            art.setDevicePixelRatio(ratio)
-            self.art.setPixmap(art)
-            self.art.show()
-            tooltip = frame.get("detail") or frame["caption"].replace("\n", " ")
-        self.caption.setText(frame["caption"])
-        self.caption.setStyleSheet(f"color:{color};font-size:11px;font-weight:600;")
-        self.caption.setVisible(bool(frame["caption"]))
-        self._fit_labels()
-        self._sync_content_height()
+            self.metric_icon.hide()
+            text = str(frame.get("caption", "Reward")).replace("\nReached", "").replace("\n", " ")
+            self.amount.setStyleSheet(f"color:{color};font-size:11px;font-weight:600;")
+            if "Discovery" in text:
+                text = "Discovery"
+            elif "Find" in text:
+                text = "Garden Find"
+            self.amount.setText(text)
+            tooltip = str(frame.get("detail") or text)
         self.setProperty("feedbackCopy", tooltip)
-        self.hud._collapsed_tab.setToolTip("Click to expand · Drag to move")
-        if animate and self.hud._animations_enabled:
-            self._fade_in()
-            self.hud.pulse_collapsed_plant(color, artwork=self.art if treatment.notable else None)
-
-    def _fit_amount(self, exact, units, label):
-        metrics = self.amount.fontMetrics()
-        available = max(1, self.width() - 16)
-        if metrics.horizontalAdvance(exact) <= available:
-            return exact
-        value = units if label == "Coins" else units / 100
-        for divisor, suffix in ((1_000, "K"), (1_000_000, "M"), (1_000_000_000, "B"), (1_000_000_000_000, "T")):
-            if value < divisor:
-                continue
-            for precision in (1, 0):
-                number = f"{value / divisor:.{precision}f}"
-                if precision:
-                    number = number.rstrip("0").rstrip(".")
-                candidate = f"+{number}{suffix}"
-                if metrics.horizontalAdvance(candidate) <= available:
-                    return candidate
-        # A bounded scientific form is reserved for extraordinary values; the
-        # tooltip/history still expose the original exact committed amount.
-        return f"+{value:.0e}"
-
-    def _fit_labels(self):
-        width = max(1, self.width())
-        self.art.setFixedWidth(width)
-        self.metric_row.setFixedWidth(width)
-        self.caption.setFixedWidth(width)
-        self.caption.ensurePolished()
-        self.amount.ensurePolished()
-        line_count = max(1, len(self.caption.text().splitlines()))
-        self.caption.setFixedHeight(self.caption.fontMetrics().lineSpacing() * line_count)
-        amount_height = max(16, self.amount.fontMetrics().height())
-        self.amount.setFixedSize(self.amount.fontMetrics().horizontalAdvance(self.amount.text()), amount_height)
-        self.metric_row.setFixedHeight(amount_height)
-
-    def _sync_content_height(self):
-        """Reserve one small Growth line; taller finds borrow space only while shown."""
-        visible = [widget for widget in (self.art, self.metric_row, self.caption)
-                   if not widget.isHidden()]
-        height = sum(widget.height() for widget in visible)
-        height += self.layout().spacing() * max(0, len(visible) - 1)
-        height = max(18, height)
-        changed = self.height() != height or self.isHidden()
-        self.setFixedHeight(height)
-        self.show()
-        if changed and self.hud._collapsed:
-            QTimer.singleShot(0, lambda: self.hud.reposition() if not self.hud._disposed else None)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self._current is not None:
-            self._render(self._current, animate=False)
-        else:
-            self._fit_labels()
+        self.amount.setToolTip(tooltip)
+        self.amount.setAccessibleName(tooltip)
+        self.update_idle()
+        self._exchange(True, animate=animate)
+        if animate:
+            self.hud.pulse_collapsed_plant(color)
 
     def _clear_display(self):
-        for widget in (self.art, self.metric_row, self.caption):
-            widget.hide()
-        self._sync_content_height()
+        self.update_idle()
         self.setProperty("feedbackCopy", "")
+        self.caption.clear()
         self.setProperty("sequencePending", False)
-        self.hud._collapsed_tab.setToolTip("Open Anki Garden")
-        self.hud._collapsed_tab.setStyleSheet("")
-        self.hud._collapsed_tab.setProperty("rewardTone", "")
+        self._exchange(False)
+
+    def _exchange(self, reward, *, animate=True):
+        if self._motion is not None:
+            self._motion.stop()
+            self._motion.deleteLater()
+            self._motion = None
+        target = 1.0 if reward else 0.0
+        def settle():
+            # At rest, paint only the active layer in the fixed status slot.
+            self.metric_row.setVisible(reward)
+            self.idle.setVisible(not reward)
+        if not animate or not self.hud._animations_enabled:
+            self.reward_effect.setOpacity(target)
+            self.idle_effect.setOpacity(1.0 - target)
+            settle()
+            return
+        self.idle.show()
+        self.metric_row.show()
+        motion = QVariantAnimation(self)
+        self._motion = motion
+        motion.setDuration(140)
+        motion.setStartValue(self.reward_effect.opacity())
+        motion.setEndValue(target)
+        def render(value):
+            if self._motion is motion and not self._disposed:
+                self.reward_effect.setOpacity(float(value))
+                self.idle_effect.setOpacity(1.0 - float(value))
+        def finish():
+            if self._motion is motion and not self._disposed:
+                render(target)
+                settle()
+                self._motion = None
+                motion.deleteLater()
+        motion.valueChanged.connect(render)
+        motion.finished.connect(finish)
+        motion.start()
 
     def export_state(self):
         """Keep the current frame and hold across an in-process HUD remount."""
@@ -295,23 +305,8 @@ class CollapsedRewardFeedback(QWidget):
             self._timer.start(self._paused_ms or self._current["duration"])
             self._paused_ms = 0
 
-    def _fade_in(self):
-        if self._motion is not None:
-            self._motion.stop()
-            self._motion.deleteLater()
-        effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(effect)
-        motion = QVariantAnimation(self)
-        self._motion = motion
-        motion.setDuration(160)
-        motion.setStartValue(0.0)
-        motion.setEndValue(1.0)
-        motion.setEasingCurve(QEasingCurve.Type.OutCubic)
-        motion.valueChanged.connect(effect.setOpacity)
-        motion.finished.connect(lambda: self.setGraphicsEffect(None) if self._motion is motion else None)
-        motion.start()
-
     def dispose(self):
+        self._disposed = True
         self._timer.stop()
         if self._motion is not None:
             self._motion.stop()

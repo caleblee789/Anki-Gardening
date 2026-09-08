@@ -1,20 +1,32 @@
-"""Concise decoration and scenery descriptions shared by every presentation."""
+"""One complete effect line derived from each appearance item's mechanics."""
 
-GARDEN_BONUS_EFFECT_COPY = {
-    "seedling_sign": "No study bonus",
-    "default": "No study bonus",
-    "watering_station": "+1 Growth every 2 cards for your first 200 cards each day.",
-    "wind_chime": "+1 Growth every 5 cards.",
-    "firefly_lantern": "+3 Growth every 5 cards to the nurtured plant.",
-    "autumn": "Finish today’s cards: +4 Coins.\n+50% Coins from checkpoints and growth stages.",
-    "snowy": "1 Small Growth Charge every 2 days you finish today’s cards.",
-    "full_moon": "While equipped: 1 Booster Potion every 6 days you finish today’s cards.\nOnce owned: new Potions last 25 extra cards.",
-    "herbalist_hourglass": "While equipped: 1 Booster Potion every 30 days you finish today’s cards.\nOnce owned: new Potions last 25 extra cards.",
-    "prism_trellis": "Finish today’s cards: +100 Growth.",
-    "spring": "+2 Growth per card for your first 20 cards each day.",
-    "summer": "+1 Growth every 2 cards for your first 120 cards each day.",
-    "harvest_bell": "Finish today’s cards: +5 Coins.",
-    "rainbow_horizon": "+1 Growth per card for your first 75 cards each day.",
-    "halloween": "Finish today’s cards for 1 gift:\nSmall Growth Charge 95% · Standard Growth Charge 4% · Booster Potion 1%.",
-    "eclipse": "+1 Growth per card for your first 125 cards each day.",
-}
+from dataclasses import dataclass
+
+from .balance_catalog import COMPLETION_TRIGGER_COPY, format_appearance_effect
+
+
+def appearance_effect_copy(item_id: str, fallback: str = "") -> str:
+    from .balance_catalog import GARDEN_BONUS_BY_ID, SCENERY_BY_ID
+    key = str(item_id or "").strip().casefold()
+    item = GARDEN_BONUS_BY_ID.get(key) or SCENERY_BY_ID.get(key)
+    return format_appearance_effect(item) if item is not None else fallback
+
+
+def gift_contents_copy(item_id: str) -> tuple[str, ...]:
+    from .balance_catalog import CONSUMABLE_BY_ID, SCENERY_BY_ID
+    item = SCENERY_BY_ID[item_id]
+    return tuple(
+        f"{CONSUMABLE_BY_ID[entry.grant.item_id].display_name}: {entry.weight_percent}%"
+        for effect in item.effects for entry in effect.weighted_grants
+    )
+
+
+@dataclass(frozen=True)
+class AppearanceEffectGroup:
+    effect: str
+    conditions: tuple[str, ...] = ()
+
+
+def appearance_effect_groups(item_id: str, state=None) -> tuple[AppearanceEffectGroup, ...]:
+    text = appearance_effect_copy(item_id)
+    return (AppearanceEffectGroup(text),) if text else ()

@@ -87,11 +87,12 @@ def test_fertilizer_tiers_queue_in_production_order():
     assert evidence["checkpoint_count"] == 40
 
 
-def test_collection_rotation_matches_public_placement_without_losing_full_blooms():
+@pytest.mark.parametrize("new_bed", [False, True])
+def test_collection_rotation_matches_public_placement_without_losing_full_blooms(new_bed):
     from ankigarden.game import GardenGameEngine
     from ankigarden.models.state import Plant
-    from scripts.balance_analysis.annual_parity import FastAnnualStorage, _AnnualConfig, _rotate_completed_species
-    from scripts.balance_analysis.kernel import _initial_state, _rotate_completed_plants
+    from scripts.balance_analysis.annual_parity import FastAnnualStorage, _AnnualConfig, _rotate_completed_species, _plant_owned_species_if_space
+    from scripts.balance_analysis.kernel import _initial_state, _rotate_completed_plants, _fill_owned_beds
     from scripts.balance_analysis.quick import quick_cases
 
     facts = load_catalog_facts()
@@ -111,8 +112,18 @@ def test_collection_rotation_matches_public_placement_without_losing_full_blooms
     state.plant_growth_units = [full * 100] * 5 + [0, 0]
     state.planted_order = list(range(5))
     state.active_plant_index = None
+    if new_bed:
+        # A previously stored Full Bloom must occupy the new bed before
+        # replacement choices, preserving its Shared lane and bed order.
+        engine.state.plants[4].slot_index = None
+        state.planted_order.remove(4)
+        state.beds_owned = engine.state.unlocked_slots = 6
+    _fill_owned_beds(state, facts)
+    _plant_owned_species_if_space(engine)
     _rotate_completed_plants(state, facts)
     _rotate_completed_species(engine)
+    _fill_owned_beds(state, facts)
+    _plant_owned_species_if_space(engine)
     actual = {plant.species: plant.slot_index for plant in engine.state.plants if plant.planted}
     expected = {state.plant_species_ids[index]: slot for slot, index in enumerate(state.planted_order)}
     assert actual == expected
@@ -129,7 +140,7 @@ def test_current_onboarding_and_garden_supplies_match_production(profile, comple
     from scripts.balance_analysis.quick import quick_cases
 
     opening = production_opening(profile)
-    assert opening.coins == (1836 if profile == "established" else 51)
+    assert opening.coins == (1826 if profile == "established" else 51)
     assert opening.starter_growth_units == 10_000
     if completed:
         opening = replace(opening, consumables=(("fertilizer_quality", 2), ("booster_potion", 2), ("growth_charge_grand", 1)))

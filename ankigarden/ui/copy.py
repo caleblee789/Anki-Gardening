@@ -10,8 +10,19 @@ import re
 from html import escape
 
 from ..models.state import DEFAULT_GARDEN_NAME
-from ..bonus_copy import GARDEN_BONUS_EFFECT_COPY
+from ..bonus_copy import appearance_effect_copy
 from .formatters import format_garden_coins
+
+STUDY_COUNT_LABEL = "Cards studied"
+COMPLETED_DAYS_LABEL = "Completed days"
+DAILY_COMPLETION_CONDITION = "Finish all cards due today"
+
+
+def cards_studied_text(count: int) -> str:
+    """The established answer-event count, including repeat answers."""
+    count = max(0, int(count))
+    return f"{count:,} {'card' if count == 1 else 'cards'} studied"
+
 
 GARDEN_TITLE = "Anki Garden"
 FALLBACK_GARDEN_NAME = DEFAULT_GARDEN_NAME
@@ -27,14 +38,8 @@ def past_study_intro(review_count: int | None, *, has_rewards: bool) -> str:
     """Count review events accurately, including repeat answers to one card."""
     if review_count is None:
         return "Your past study has earned you these rewards:" if has_rewards else ""
-    count = max(0, int(review_count))
-    noun = "card review" if count == 1 else "card reviews"
-    total = f"You’ve completed {count:,} {noun} in Anki."
-    return (
-        f"Rewards from your {count:,} past Anki {'review' if count == 1 else 'reviews'}:"
-        if has_rewards else
-        f"{total} Keep studying to reach your first study milestone."
-    )
+    return cards_studied_text(review_count)
+
 
 HOME_NO_STARTER_TITLE = "Grow your first plant"
 HOME_NO_STARTER_BODY = "Your first plant is free."
@@ -170,9 +175,7 @@ def fertilizer_queue_copy(
 
 def garden_bonus_summary(item_id: str, full_effect: str = "") -> str:
     """Use the same concise description in Collection and equipped-item cards."""
-    if str(item_id) in {"seedling_sign", "default"}:
-        return "No study bonus"
-    return garden_bonus_effect_copy(item_id, full_effect) or "No study bonus"
+    return garden_bonus_effect_copy(item_id, full_effect) or "Appearance only"
 
 
 def inline_detail_copy(label: str, value: str) -> str:
@@ -212,7 +215,7 @@ def garden_bonus_effect_copy(item_id: str, fallback: object = "") -> str:
     """Resolve exact player-facing bonus mechanics from one stable catalog ID."""
 
     normalized = str(item_id or "").strip().casefold()
-    return GARDEN_BONUS_EFFECT_COPY.get(
+    return appearance_effect_copy(
         normalized,
         learner_card_copy(fallback).strip(),
     )

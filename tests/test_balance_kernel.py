@@ -220,6 +220,13 @@ def test_exact_derived_totals_and_expected_find_values_are_frozen():
     assert report["analysis"]["optional_speed_sensitivity"][
         "separate_from_primary_cohorts"
     ] is True
+    for generated in (row for row in report["statistics"]
+                      if row["metric_id"] == "growth.generated_units"):
+        sources = [row for row in report["statistics"]
+                   if row["scenario_id"] == generated["scenario_id"]
+                   and row["checkpoint_day"] == generated["checkpoint_day"]
+                   and row["metric_id"].startswith("growth.source.")]
+        assert sum(row["pooled_total"] for row in sources) == generated["pooled_total"]
     concentration = report["coin_concentration"][0]
     for source_id, exact_total in concentration["source_totals"].items():
         statistic = next(
@@ -311,6 +318,18 @@ def test_optimal_environment_strategies_receive_catalog_effects():
         "headline:optimal_coin:baseline",
         "environments.effect_coins",
     ) > 0
+    assert metric("headline:optimal_coin:baseline", "coins.source.autumn_hearth") > 0
+
+    from scripts.balance_analysis.kernel import _initial_state, _equip_best_environment
+    growth_scenario = next(row for row in approved_scenarios()
+                           if row.scenario_id == "heavy:optimal_growth:baseline")
+    state = _initial_state(facts, growth_scenario)
+    state.planted_order = list(range(6))
+    state.plant_growth_units = [0] * 6
+    state.species_owned = state.beds_owned = 6
+    state.permanent_owned.update({"watering_station", "firefly_lantern"})
+    _equip_best_environment(state, facts, growth_scenario)
+    assert state.active_garden_bonus_id == "watering_station"
 
 
 def test_shared_scenery_and_post_collection_consumables_follow_production_routing():
@@ -432,7 +451,7 @@ def test_shared_scenery_and_post_collection_consumables_follow_production_routin
     assert capped_state.consumable_units_activated["booster_potion"] == 0
 
 
-def test_repeated_seven_day_run_uses_recurring_streak_source_after_gap():
+def test_repeated_seven_day_run_retains_growth_without_recurring_coins():
     facts = load_catalog_facts()
     scenario = next(
         row for row in approved_scenarios()
@@ -451,7 +470,7 @@ def test_repeated_seven_day_run_uses_recurring_streak_source_after_gap():
     )
 
     assert result.checkpoints[15]["coins.source.achievement"] >= 10
-    assert result.checkpoints[15]["coins.source.seven_day_streak_cycle"] == 10
+    assert "coins.source.seven_day_streak_cycle" not in result.checkpoints[15]
 
 
 def test_firefly_instant_growth_targets_the_nurtured_plant():
@@ -497,7 +516,7 @@ def test_firefly_instant_growth_targets_the_nurtured_plant():
         DayEvents(day=1, study=True, answers=10),
         {row.consumable_id: row for row in facts.consumables},
         schedule,
-        rhythm_percent=0,
+        permanent_growth_percent=0,
     )
 
     assert state.plant_growth_units == [1_015_200, 76_340, 40_260]
@@ -521,7 +540,7 @@ def test_firefly_instant_growth_targets_the_nurtured_plant():
         ),
         {row.consumable_id: row for row in facts.consumables},
         schedule,
-        rhythm_percent=10,
+        permanent_growth_percent=10,
     )
 
     assert state.plant_growth_units == [2_010_900, 184_280, 129_300]

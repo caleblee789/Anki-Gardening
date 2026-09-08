@@ -153,6 +153,7 @@ class ToggleSettingRow(QFrame):
         )
         copy.addWidget(heading)
         copy.addWidget(note)
+        note.setVisible(bool(description))
         layout.addLayout(copy, 1)
         control.setText("")
         control.setProperty("toggleSwitch", True)
@@ -603,7 +604,7 @@ class GardenStudioWidget(QWidget):
         )
         _describe_control(
             self.show_rewards_after_syncing,
-            "Show rewards earned on your other devices.",
+            "Show new rewards found after syncing.",
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
@@ -649,17 +650,17 @@ class GardenStudioWidget(QWidget):
         self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.notifications_row = ToggleSettingRow(
             STUDIO_TEXT["progress_notifications_label"],
-            "Show new rewards while studying.",
+            "",
             self.show_progress_notifications,
         )
         self.reviewer_hud_row = ToggleSettingRow(
             STUDIO_TEXT["reviewer_hud_label"],
-            "Show plant progress and rewards.",
+            "",
             self.show_reviewer_hud,
         )
         self.sync_rewards_row = ToggleSettingRow(
             STUDIO_TEXT["sync_rewards_label"],
-            "Show rewards earned on other devices.",
+            "Show new rewards found after syncing.",
             self.show_rewards_after_syncing,
         )
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)

@@ -183,6 +183,7 @@ def _new_app(addon_module):
     app.engine = SimpleNamespace(rollover_if_needed=lambda: None)
     app.storage = SimpleNamespace(
         state=SimpleNamespace(
+            achievements={},
             daily_stats=SimpleNamespace(reviewed=14, growth_earned=28),
             selected_weather="sunny",
             plants=[],

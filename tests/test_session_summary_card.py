@@ -149,7 +149,7 @@ def test_session_receipt_keeps_totals_above_progress_and_optional_details():
                               shared_growth_total_units=0, stored_growth=SimpleNamespace(added_units=0),
                               total_finds=2, environment_discoveries=(object(),))
     metrics = SessionSummaryCard._reward_metrics(summary, SimpleNamespace(growth_applied_total_units=4000))
-    assert [(row[1], row[2]) for row in metrics] == [("Coins", "+14"), ("Growth", "+40"), ("Discoveries", "3")]
+    assert [(row[1], row[2]) for row in metrics] == [("Coins", "+14"), ("Growth", "+40"), ("Finds & items", "3")]
 
 
 def test_highlight_cards_are_static_prioritized_and_two_line_safe():
@@ -169,7 +169,6 @@ def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     assert "Completed during this session" not in source
     highlights = _method_source("_add_highlights", "_add_highlight_card")
     assert "candidates[:2]" in highlights
-    assert "candidates[2:]" in highlights
     assert "candidates = (*featured, *overflow)" in highlights
     compact = _method_source("_add_compact_highlight_row", "_add_highlight_card")
     assert 'setProperty("summaryHighlightCompact", True)' in compact

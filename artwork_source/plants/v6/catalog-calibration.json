@@ -1829,7 +1829,7 @@
     "plant_lavender_seed_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_seed_alpha.png",
       "source_master_sha256": "5dc156784f32a182d0d91bfdb146cbb83e55073045395175b12144efd3033fd9",
-      "runtime_sha256": "e24dc7ac97a3b4b78d3d3c586a6bebc060127bfe64fb252bed3e160c59641703",
+      "runtime_sha256": "942fa07883699a56edc7d688123ecc09ef03899b666a09e5d515aa0138cadaeb",
       "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
       "placement": {
         "anchor_x": 0.5637958532695375,
@@ -1930,7 +1930,7 @@
     "plant_lavender_sprout_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_sprout_alpha.png",
       "source_master_sha256": "9b07f0f04de451eb4b374db58957a2765b7d4c059653b104310b225c51ef0e3e",
-      "runtime_sha256": "32e7d3f2671d6e73e651fdc08f250d2aba8c48903541875b52503c10647b179b",
+      "runtime_sha256": "049b8cd3fbc4b4be7352f7f84770ad98834ee32f9b8713ba7f9399a83ae0cdfb",
       "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
       "placement": {
         "anchor_x": 0.5003987240829346,
@@ -2031,7 +2031,7 @@
     "plant_lavender_young_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_young_alpha.png",
       "source_master_sha256": "119e6883d7b3089d4877c73b52724df66372655571c1ddb9f2ff0c120bb269b0",
-      "runtime_sha256": "8c949b34f305853b2d75b22f355e1c51d6429858261272d1dc39d7734162b0c4",
+      "runtime_sha256": "a0bad5fc13a6c9e835d59902d793c81e5362e93b0ffa53805dfc2151035f334d",
       "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
       "placement": {
         "anchor_x": 0.4944178628389155,
@@ -2132,7 +2132,7 @@
     "plant_lavender_mature_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_mature_alpha.png",
       "source_master_sha256": "30cf536e2d442e761c30cbb7bef98c9410c76dd31a9c1521764c8986ef1ee455",
-      "runtime_sha256": "327d71976c6db19dafdbcbf1dda1b2f95b6f92b48b5fc36b362eff552d9cbdd5",
+      "runtime_sha256": "f77943e90acc4a301caaff60cdf97f57681906c88017f8f806b3f15d42c7a260",
       "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
       "placement": {
         "anchor_x": 0.5167464114832536,
@@ -2334,7 +2334,7 @@
     "plant_lavender_rare_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/lavender/redesign-20260905-v1/lavender_rare_alpha.png",
       "source_master_sha256": "76d28e4a8c938ad7eb7079cdf62317764ba334016fa57bcc34bd4a067b171f12",
-      "runtime_sha256": "ba2269df4ec6b001db69a0ac3164471265a5259d86900bc2e5b848d8f50805d4",
+      "runtime_sha256": "71f468a01a151a460834d8331144b6e165ad71ec24281e6fc28a7e8307ea575e",
       "source": "Built-in ImageGen Lavender redraw; approved background/alpha cleanup; full prompt lineage beside native-alpha master",
       "placement": {
         "anchor_x": 0.44577352472089316,
@@ -2537,7 +2537,7 @@
     "plant_hydrangea_sprout_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_sprout_master.png",
       "source_master_sha256": "0df1f972fd844114578a1a5f1b74c2b52bd7eadb9d9d792d2b99fcfaa1a1eb65",
-      "runtime_sha256": "323b53b4c1c0bc5704bf8620d433155a0d6749e66264b4194a7629c10454e54f",
+      "runtime_sha256": "4a103d0c49f441022d7d7507082cc2583836c072b771da77992ce2fa5f790959",
       "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
       "placement": {
         "anchor_x": 0.496013,
@@ -2639,7 +2639,7 @@
     "plant_hydrangea_young_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_young_master.png",
       "source_master_sha256": "1dceb32b98463fc0bdaeebd6d59bb5f3f5fe94f97d8ac9cc237934562dfb300f",
-      "runtime_sha256": "626c72f75cda18102bd85edcc644a154f68f7a36e72ce02cf3e0d0899ba0faaa",
+      "runtime_sha256": "38e170e7d27335a863e646bcef648447d4bff0b9a078a826c4101067cd2cd292",
       "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
       "placement": {
         "anchor_x": 0.503589,
@@ -2741,7 +2741,7 @@
     "plant_hydrangea_mature_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_mature_master.png",
       "source_master_sha256": "adfc0438ffa0e25780c4c3fbddd81f912fd6184474663da104f22c049f35512a",
-      "runtime_sha256": "c31c3bdbaf7779b09a05b2d31ebbdcbdeadbfbbcf718e55aa59e7bde1173a7cd",
+      "runtime_sha256": "3191d4d802842d617ff4c81706e95ac4d798353c2e597509a86304974fa19d52",
       "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
       "placement": {
         "anchor_x": 0.513955,
@@ -2843,7 +2843,7 @@
     "plant_hydrangea_flowering_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_flowering_master.png",
       "source_master_sha256": "6140e4b92a18c6c738a7fb2aa9149b46cd1d88171fb3c6ef9be45254e403c5dd",
-      "runtime_sha256": "bace828ce634f9200d6945879d1d88d23d523e1f0cc1e863c042296cc3c77158",
+      "runtime_sha256": "a19f9926fa2e27a9a894cc1274912280f8168fcfe992343ec656a21fde9d836d",
       "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
       "placement": {
         "anchor_x": 0.516746,
@@ -2945,7 +2945,7 @@
     "plant_hydrangea_rare_twilight_v6": {
       "source_master_file": "artwork_source/plants/v6/hydrangea/redesign-20260905/hydrangea_rare_master.png",
       "source_master_sha256": "c43ddf99101a0f0bb4ff9eba4a212329c9f5c1df263bfc950e430776a8e039fa",
-      "runtime_sha256": "999754e114d70804d88e178e099ebfa16cca460b6f18570f51f6cbc6e07b2e75",
+      "runtime_sha256": "219343e737a300e55bba6ce324fdaf1d360859958a021587730d62460ee3ac1d",
       "source": "ImageGen selective refinement of the existing Hydrangea line; authorized alpha extraction and edge cleanup; reviewed RGBA preserved during lossless runtime import",
       "placement": {
         "anchor_x": 0.519139,

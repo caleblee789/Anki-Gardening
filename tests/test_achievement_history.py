@@ -56,7 +56,7 @@ def test_achievement_registry_is_the_exact_one_time_reward_contract() -> None:
         for key, definition in ACHIEVEMENTS_BY_ID.items()
     }
     assert rewards == {
-        "streak_7": (10, 0, 0, 0, (), ()),
+        "streak_7": (0, 0, 0, 0, (), ()),
         "streak_30": (100, 1, 0, 0, (), ()),
         "streak_100": (300, 0, 0, 0, (), ()),
         "streak_365": (1_000, 0, 0, 0, (), ()),
@@ -88,7 +88,7 @@ def test_achievement_registry_is_the_exact_one_time_reward_contract() -> None:
     )
     assert not ACHIEVEMENTS_BY_ID["all_due_done"].historical_backfill
     assert ACHIEVEMENTS_BY_ID["all_due_done"].name == "Review Day"
-    assert ACHIEVEMENTS_BY_ID["all_due_done"].description == "Complete today's cards."
+    assert ACHIEVEMENTS_BY_ID["all_due_done"].description == "Finish all cards due today."
 
 
 def test_history_analysis_is_order_independent_and_never_finalizes_the_open_day() -> None:

@@ -26,7 +26,7 @@ def effects_by_id() -> dict[str, catalog.EffectDefinition]:
     }
 
 
-def test_core_growth_species_stages_and_rhythm_are_exact() -> None:
+def test_core_growth_species_stages_and_permanent_tiers_are_exact() -> None:
     assert catalog.BALANCE_CATALOG_VERSION == "2.2.0"
     assert catalog.BASE_GROWTH_PER_REVIEW == 10
     assert (
@@ -78,16 +78,8 @@ def test_core_growth_species_stages_and_rhythm_are_exact() -> None:
         "strawberry",
         "pumpkin",
     ]
-    assert [catalog.garden_rhythm_percent(day) for day in range(8)] == [
-        0,
-        0,
-        2,
-        4,
-        6,
-        8,
-        10,
-        10,
-    ]
+    assert [(item.progress_target, item.permanent_growth_percent)
+            for item in catalog.STREAK_ACHIEVEMENTS] == [(7, 5), (30, 10), (100, 15), (365, 20)]
 
 
 def test_consumables_have_exact_card_counts_growth_and_prices() -> None:
@@ -157,16 +149,10 @@ def test_environment_prices_effects_and_persistent_contracts_are_exact() -> None
     assert (watering.cadence.every_n, watering.cadence.first_n_per_day) == (2, 200)
     hourglass = effects["hourglass_completion_booster"]
     assert (hourglass.cadence.every_n, grant_signature(hourglass.grant)) == (
-        30,
+        15,
         ("consumable", 1, "booster_potion"),
     )
-    assert grant_signature(effects["booster_cards_plus_25"].grant) == (
-        "booster_card_limit",
-        25,
-        None,
-    )
-    assert not effects["booster_cards_plus_25"].cadence.active_only
-    assert not effects["full_moon_booster_cards_plus_25"].cadence.active_only
+    assert all(effect.cadence.active_only for effect in effects.values())
     assert hourglass.cadence.active_only
     firefly = effects["instant_growth_every_5_plus_3_nurtured"]
     assert firefly.cadence.every_n == 5
@@ -190,17 +176,13 @@ def test_environment_prices_effects_and_persistent_contracts_are_exact() -> None
         None,
     )
     assert effects["summer_growth_every_2_first_120"].cadence.first_n_per_day == 120
-    assert grant_signature(effects["autumn_completion_coins"].grant) == (
-        "coins",
-        4,
+    assert grant_signature(effects["autumn_earned_coin_percent"].grant) == (
+        "earned_coin_percent",
+        15,
         None,
     )
-    assert grant_signature(effects["autumn_milestone_coin_percent"].grant) == (
-        "milestone_coin_percent",
-        50,
-        None,
-    )
-    assert effects["snowy_small_charge_every_2_completions"].cadence.every_n == 2
+    assert effects["snowy_completion_growth"].cadence.every_n == 1
+    assert grant_signature(effects["snowy_completion_growth"].grant) == ("instant_growth", 50, None)
     assert effects["rainbow_horizon_growth_first_75"].cadence.first_n_per_day == 75
     assert [
         (weighted.grant.item_id, weighted.weight_percent)
@@ -210,7 +192,7 @@ def test_environment_prices_effects_and_persistent_contracts_are_exact() -> None
         ("growth_charge_standard", 4),
         ("booster_potion", 1),
     ]
-    assert effects["full_moon_booster_every_6_completions"].cadence.every_n == 6
+    assert effects["full_moon_booster_every_4_completions"].cadence.every_n == 4
     assert effects["eclipse_growth_first_125"].cadence.first_n_per_day == 125
 
 
@@ -401,28 +383,7 @@ def test_user_facing_economy_metadata_is_catalog_owned_and_valid() -> None:
     assert (
         catalog.DAILY_ACTIVITY_COINS,
         catalog.ALL_DUE_BASE_COINS,
-        catalog.GARDEN_CYCLE_COMPLETIONS,
-        catalog.GARDEN_CYCLE_COINS,
-    ) == (4, 8, 5, 30)
-    receipt = coin_reward_receipt(catalog.CoinSourceId.COMPLETION_CYCLE_5)
-    assert (
-        receipt.title,
-        receipt.detail,
-        receipt.amount_coins,
-        receipt.behavioral_family,
-        receipt.artwork_id,
-    ) == (
-        "Garden Cycle complete",
-        "5 completed review days",
-        30,
-        "todays_cards_completion",
-        "ui_garden_coin",
-    )
-    assert not any((
-        receipt.affected_by_harvest_bell,
-        receipt.affected_by_autumn_hearth,
-        receipt.affected_by_plant_checkpoint_multiplier,
-    ))
+    ) == (4, 16)
     first_card = coin_reward_receipt(catalog.CoinSourceId.FIRST_ELIGIBLE_ANSWER)
     assert (first_card.display_name, first_card.title, first_card.detail) == (
         "First card",
@@ -524,12 +485,6 @@ def test_catalog_module_has_no_project_layer_imports() -> None:
         "types",
         "typing",
     }
-
-
-@pytest.mark.parametrize("value", [-1, 8])
-def test_rhythm_rejects_out_of_window_values(value: int) -> None:
-    with pytest.raises(ValueError):
-        catalog.garden_rhythm_percent(value)
 
 
 def test_dynamic_helpers_reject_invalid_counts() -> None:

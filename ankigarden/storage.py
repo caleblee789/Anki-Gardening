@@ -921,7 +921,7 @@ def _migrate_schema22_progression_payload(
     migration_time = time.time() if migrated_at is None else max(0.0, float(migrated_at))
     payload["version"] = STATE_VERSION
     payload.setdefault("stored_growth_units", 0)
-    payload.setdefault("checkpoint_coin_carry_units", 0)
+    payload.setdefault("autumn_coin_carry_units", 0)
 
     plants = payload.get("plants")
     plant_rows = plants if isinstance(plants, list) else []
@@ -1386,25 +1386,7 @@ def _migrate_schema26_economy_payload(
         "today_cards_completions": 0,
     })
     payload.setdefault("hourglass_completion_progress", 0)
-    payload.setdefault("snow_completion_progress", 0)
-    if "full_moon_completion_progress" not in payload:
-        legacy_completion_counts = payload.get("environment_completion_counts")
-        legacy_full_moon_count = (
-            _legacy_nonnegative_int(
-                legacy_completion_counts.get("full_moon", 0)
-            )
-            if isinstance(legacy_completion_counts, dict)
-            else 0
-        )
-        # Schema 25 granted Full Moon's Potion every fourth completion; schema
-        # 26 grants it every sixth.  Carry the old remainder forward at the
-        # same fractional position and round up so a positive earned fraction
-        # is never erased by migration: 1/4 -> 2/6, 2/4 -> 3/6, 3/4 -> 5/6.
-        legacy_remainder = legacy_full_moon_count % 4
-        payload["full_moon_completion_progress"] = min(
-            5,
-            (legacy_remainder * 6 + 3) // 4,
-        )
+    payload.setdefault("full_moon_completion_progress", 0)
     payload["prism_pending_growth_units"] = min(
         30_000,
         max(
@@ -1659,9 +1641,6 @@ def _migrate_schema27_endgame_payload(
     else:
         payload.setdefault("garden_legacy_level", 0)
         payload.setdefault("garden_legacy_progress_units", 0)
-    payload.setdefault("garden_cycle_remainder", 0)
-    payload.setdefault("garden_cycle_migration_version", 0)
-    payload.setdefault("garden_cycle_history_complete", False)
 
     aggregates = payload.get("lifetime_economy_aggregates")
     if not isinstance(aggregates, dict):
@@ -2249,9 +2228,6 @@ class GardenStorage:
     def activity_day_totals(self, day: str) -> dict[str, int]:
         return self._reward_ledger.activity_day_totals(day) if self._reward_ledger else {}
 
-    def activity_streak_rewards(self, day: str = "") -> dict[str, int]:
-        return self._reward_ledger.activity_streak_rewards(day) if self._reward_ledger else {}
-
     def _load_authoritative_state(self) -> GardenState:
         """Load the SQLite authority, or atomically import the legacy JSON."""
 
@@ -2358,7 +2334,10 @@ class GardenStorage:
 
     @staticmethod
     def _bounded_state_payload(state: GardenState) -> dict[str, Any]:
-        payload = state.to_dict()
+        # Every caller immediately passes this to commit_state(), which JSON
+        # encodes and detaches it before opening the transaction. Avoid a
+        # second full copy here; rollback snapshots still use to_dict().
+        payload = state.to_dict(detached=False)
         for key in UNBOUNDED_STATE_AUTHORITY_KEYS:
             payload.pop(key, None)
         return payload
@@ -2384,54 +2363,7 @@ class GardenStorage:
         operation_id = SCHEMA27_ECONOMY_AUTHORITY_OPERATION_ID
         existing = ledger.idempotency_record("migration", operation_id)
         if existing is not None:
-            outcome = dict(existing.outcome)
-            remainder = outcome.get("garden_cycle_remainder")
-            history_complete = outcome.get("garden_cycle_history_complete")
-            if (
-                isinstance(remainder, bool)
-                or not isinstance(remainder, int)
-                or remainder not in range(5)
-                or not isinstance(history_complete, bool)
-            ):
-                raise RewardLedgerCorruptionError(
-                    "The schema-27 Garden Cycle migration outcome is invalid."
-                )
-            state.garden_cycle_remainder = remainder
-            state.garden_cycle_history_complete = history_complete
-            state.garden_cycle_migration_version = 27
             return
-        if state.garden_cycle_migration_version >= 27:
-            history_complete = state.garden_cycle_history_complete
-            state.garden_cycle_remainder = max(
-                0, min(4, int(state.garden_cycle_remainder))
-            )
-        else:
-            completion_days = ledger.verified_today_cards_completion_days_before(
-                "9999-12-31"
-            )
-            recorded_count = max(
-                0,
-                int(state.lifetime_economy_aggregates.today_cards_completions),
-            )
-            explicit_empty_new_profile = bool(
-                not completion_days
-                and recorded_count == 0
-                and max(0, int(state.total_reviews)) == 0
-                and state.stored_growth_opening_balance_identity
-                == STORED_GROWTH_OPENING_IDENTITY_NEW_PROFILE
-            )
-            history_complete = bool(
-                explicit_empty_new_profile
-                or (
-                    completion_days
-                    and recorded_count == len(completion_days)
-                )
-            )
-            state.garden_cycle_remainder = (
-                len(completion_days) % 5 if history_complete else 0
-            )
-        state.garden_cycle_migration_version = 27
-        state.garden_cycle_history_complete = history_complete
         landmark_funding = max(
             0,
             min(
@@ -2485,8 +2417,6 @@ class GardenStorage:
             "endgame_reconciliation_version": (
                 SCHEMA27_ENDGAME_RECONCILIATION_VERSION
             ),
-            "garden_cycle_remainder": state.garden_cycle_remainder,
-            "garden_cycle_history_complete": history_complete,
             "lifetime_growth_history_complete": bool(
                 state.lifetime_economy_aggregates.history_complete
             ),
@@ -3353,7 +3283,6 @@ class GardenStorage:
             return None
         return DailyEconomySnapshot(
             anki_day=record.anki_day,
-            garden_rhythm_percent=record.garden_rhythm_percent,
             active_garden_bonus_id=record.active_garden_bonus_id,
             active_scenery_effect_id=record.active_scenery_effect_id,
             snapshot_source=record.snapshot_source,
@@ -3365,7 +3294,6 @@ class GardenStorage:
         snapshot: DailyEconomySnapshot | DailyEconomySnapshotRecord | None = None,
         *,
         anki_day: str = "",
-        garden_rhythm_percent: int = 0,
         active_garden_bonus_id: str = "",
         active_scenery_effect_id: str = "",
         snapshot_source: str = "",
@@ -3374,7 +3302,6 @@ class GardenStorage:
         if snapshot is None:
             value = DailyEconomySnapshot(
                 anki_day=anki_day,
-                garden_rhythm_percent=garden_rhythm_percent,
                 active_garden_bonus_id=active_garden_bonus_id,
                 active_scenery_effect_id=active_scenery_effect_id,
                 snapshot_source=snapshot_source,
@@ -3383,7 +3310,6 @@ class GardenStorage:
         else:
             value = DailyEconomySnapshot(
                 anki_day=snapshot.anki_day,
-                garden_rhythm_percent=snapshot.garden_rhythm_percent,
                 active_garden_bonus_id=snapshot.active_garden_bonus_id,
                 active_scenery_effect_id=snapshot.active_scenery_effect_id,
                 snapshot_source=snapshot.snapshot_source,
@@ -3400,7 +3326,6 @@ class GardenStorage:
             self._reward_ledger.stage_daily_economy_snapshot(
                 DailyEconomySnapshotRecord(
                     anki_day=value.anki_day,
-                    garden_rhythm_percent=value.garden_rhythm_percent,
                     active_garden_bonus_id=value.active_garden_bonus_id,
                     active_scenery_effect_id=value.active_scenery_effect_id,
                     snapshot_source=value.snapshot_source,

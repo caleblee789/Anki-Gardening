@@ -6,6 +6,27 @@ from types import SimpleNamespace
 import pytest
 
 from ankigarden.models.state import Achievement, GardenFindOutcome, GardenState, RewardReceipt
+
+
+def test_plant_beds_starters_and_visible_catalog_preserve_internal_records():
+    from ankigarden.achievements import ACHIEVEMENT_DEFINITIONS, BED_MILESTONES
+    from ankigarden.plant_beds import plant_bed_progress
+
+    state = GardenState()
+    rows = plant_bed_progress(state)
+    assert [row.bed_id for row in rows] == [f"bed_{n}" for n in range(1, 7)]
+    assert all(row.unlocked and row.requirement == "Available from the start"
+               and row.unlocked_at is None and row.target == 0 for row in rows[:2])
+    assert rows[2].next_bed
+    state.achievements = {definition.achievement_id:
+                          Achievement(definition.achievement_id, definition.name, definition.description,
+                                      unlocked=True, progress=1.0)
+                          for definition in ACHIEVEMENT_DEFINITIONS}
+    views = achievement_presentations(state)
+    assert len(views) == sum(view.unlocked for view in views) == 16
+    assert not set(BED_MILESTONES).intersection(view.achievement_id for view in views)
+    assert "botanical_collection" in {view.achievement_id for view in views}
+    assert set(BED_MILESTONES).issubset(state.achievements)
 from ankigarden.reward_presentation import (
     RewardLine,
     achievement_presentations,
@@ -16,13 +37,13 @@ from ankigarden.reward_presentation import (
 )
 
 
-@pytest.mark.parametrize("count, expected", ((0, "0 card reviews"), (1, "1 card review"), (1_234_567, "1,234,567 card reviews")))
+@pytest.mark.parametrize("count, expected", ((0, "0 cards studied"), (1, "1 card studied"), (1_234_567, "1,234,567 cards studied")))
 def test_past_study_receipt_copy_counts_reviews_and_never_promises_unearned_rewards(count, expected):
     from ankigarden.models.welcome import WelcomeReceipt
     from ankigarden.welcome_presentation import present_welcome
 
     view = present_welcome(WelcomeReceipt(history_review_count=count))
-    assert expected + " in Anki." in view.history_intro
+    assert expected == view.history_intro
     assert "earned you" not in view.history_intro
     assert view.show_history == bool(count)
     assert not view.history and view.achievement_count == 0
@@ -198,13 +219,14 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
     projection = next(item for item in achievement_presentations(state) if item.achievement_id == "streak_7")
 
     assert projection.name == "7-Day Anki Streak"
-    assert projection.description == "Reach a 7-day Anki streak."
+    assert "total +5% bonus to base Growth from card answers" in projection.description
     assert projection.criteria_text == "Complete 7 cards."
     assert projection.progress == 0.75
     assert projection.progress_target == 7
     assert projection.unlocked is True
     assert projection.reward_event_key == "achievement:streak_7"
-    assert projection.reward_coins == 10
+    assert projection.reward_coins == 0
+    assert projection.permanent_growth_percent == 5
     assert projection.historical_backfill is True
     assert replace(
         projection,
@@ -212,7 +234,7 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
         reward_small_growth_charges=2,
         reward_standard_growth_charges=1,
     ).reward_summary == (
-        "1 Coin and 2 Small Growth Charges and 1 Standard Growth Charge"
+        "Total permanent Growth bonus: +5% and 1 Coin and 2 Small Growth Charges and 1 Standard Growth Charge"
     )
 
     assert "retention_90" not in {
@@ -231,109 +253,35 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
 
 
 def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_state() -> None:
-    state = GardenState(streak_days=6)
-    state.daily_stats.day = "2026-08-20"
-    state.recent_reward_receipts = [RewardReceipt(
-        "daily_activity:2026-08-20",
-        "coins",
-        "daily_activity",
-        "2026-08-20",
-        "2026-08-20",
-        "answer:1",
-        "2026-08-20T12:00:00+00:00",
-        amount=2,
-    )]
-    all_due_calls = []
+    from test_engine import make_engine, answer
+    engine, storage = make_engine()
+    state = storage.state
+    state.loadout.active_scenery_effect_id = "autumn"
+    state.autumn_coin_carry_units = 90
+    before = state.to_dict()
+    summary = engine.study_rewards_summary()
+    assert summary["first_coins"] == 5
+    assert not summary["first_earned"]
+    assert state.to_dict() == before
 
-    def all_due_rewards() -> tuple[int, int]:
-        all_due_calls.append(True)
-        return 12, 5
+    answer(engine, storage)
+    state.loadout.active_scenery_effect_id = "default"
+    before = state.to_dict()
+    rules = {item.rule_id: item for item in recurring_reward_presentations(state, engine)}
+    assert set(rules) == {"daily_activity", "all_due"}
+    assert rules["daily_activity"].title == "Study 1 card"
+    assert rules["daily_activity"].reward_coins == 5
+    assert rules["daily_activity"].awarded_today
+    assert rules["all_due"].title == "Finish all cards due today"
+    assert rules["all_due"].reward_coins == 16
+    assert not rules["all_due"].awarded_today
+    assert state.to_dict() == before
 
-    engine = SimpleNamespace(
-        DAILY_ACTIVITY_COINS=2,
-        WEEKLY_STREAK_COINS=10,
-        ALL_DUE_BASE_COINS=10,
-        all_due_rewards=all_due_rewards,
-    )
-
-    rules = {
-        item.rule_id: item
-        for item in recurring_reward_presentations(state, engine)
-    }
-
-    assert rules["daily_activity"].reward_summary == "+2 Coins"
-    assert rules["daily_activity"].title == "First card today"
-    assert rules["daily_activity"].trigger == "Complete your first card today."
-    assert rules["daily_activity"].status == "Earned today"
-    assert rules["all_due"].title == "Today’s Cards"
-    assert rules["all_due"].trigger == "Complete today’s cards."
-    assert rules["all_due"].reward_summary == (
-        "+12 Coins and +5 Growth"
-    )
-    assert all_due_calls == [True]
-    assert rules["weekly_streak"].reward_summary == "+10 Coins"
-    assert rules["weekly_streak"].next_streak_day == 7
-    assert rules["weekly_streak"].streak_days_remaining == 1
-
-    state.streak_days = 3
-    missed_day_rules = {
-        item.rule_id: item
-        for item in recurring_reward_presentations(
-            state,
-            engine,
-            current_streak_days=0,
-        )
-    }
-    assert missed_day_rules["weekly_streak"].next_streak_day == 7
-    assert missed_day_rules["weekly_streak"].streak_days_remaining == 7
-    assert missed_day_rules["weekly_streak"].status == (
-        "Next on Day 7, 7 streak days to go"
-    )
-    state.streak_days = 6
-
-    state.recent_reward_receipts.extend((
-        RewardReceipt(
-            "all_due:2026-08-20", "coins", "all_due", "2026-08-20",
-            "2026-08-20", "answer:2", "2026-08-20T12:01:00+00:00",
-            amount=12,
-        ),
-        RewardReceipt(
-            "all_due:2026-08-20", "growth", "all_due", "2026-08-20",
-            "2026-08-20", "answer:2", "2026-08-20T12:01:00+00:00",
-            amount=5, plant_id="plant:1",
-        ),
-    ))
-    all_due_calls.clear()
-    committed_rules = {
-        item.rule_id: item
-        for item in recurring_reward_presentations(state, engine)
-    }
-    assert committed_rules["all_due"].awarded_today is True
-    assert committed_rules["all_due"].reward_summary == (
-        "+12 Coins and +5 Growth"
-    )
-    assert all_due_calls == []
-
-    def unavailable_all_due_rewards() -> tuple[int, int]:
-        raise RuntimeError("resolver unavailable")
-
-    state.recent_reward_receipts = [
-        receipt
-        for receipt in state.recent_reward_receipts
-        if receipt.source != "all_due"
-    ]
-    fallback = SimpleNamespace(
-        DAILY_ACTIVITY_COINS=2,
-        WEEKLY_STREAK_COINS=10,
-        ALL_DUE_BASE_COINS=10,
-        all_due_rewards=unavailable_all_due_rewards,
-    )
-    fallback_rules = {
-        item.rule_id: item
-        for item in recurring_reward_presentations(state, fallback)
-    }
-    assert fallback_rules["all_due"].reward_coins == 10
-    assert fallback_rules["all_due"].reward_growth == 0
+    # A baseline eligibility marker has no committed amount to display.
+    state.currency_transactions.clear()
+    summary = engine.study_rewards_summary()
+    assert summary["first_earned"]
+    assert summary["first_coins"] is None
 
 
 def test_dormant_reward_details_are_hidden_without_rewriting_history():

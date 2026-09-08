@@ -11,6 +11,7 @@ from typing import Any
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..environment import DEFAULT_SCENERY_ID
 from ..models.state import STREAK_BONUS_TIERS
+from ..achievements import streak_growth_progress
 from .copy import (
     CHOOSE_STARTER_ACTION,
     FALLBACK_GARDEN_NAME,
@@ -1575,6 +1576,7 @@ def build_home_widget_success_data(
         scene_items=scene_items,
         unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
     )
+    retained_percent, next_tier = streak_growth_progress(state)
     return HomeWidgetData(
         reviews_today=reviews_today,
         growth_earned=int(stats.growth_earned),
@@ -1584,9 +1586,9 @@ def build_home_widget_success_data(
         bonus_growth=int(getattr(stats, "bonus_growth", 0)),
         all_due_completed=bool(getattr(stats, "completed_due_cards", False)),
         streak_days=int(state.streak_days),
-        streak_bonus_percent=_streak_bonus_percent(int(state.streak_days)),
-        next_streak_day=_next_streak_day(int(state.streak_days)),
-        next_streak_bonus_percent=_next_streak_bonus(int(state.streak_days)),
+        streak_bonus_percent=retained_percent,
+        next_streak_day=next_tier.progress_target if next_tier else None,
+        next_streak_bonus_percent=next_tier.reward.permanent_growth_percent if next_tier else None,
         garden_currency=max(0, int(getattr(state, "currency_balance", 0))),
         weather=str(
             getattr(
@@ -1660,24 +1662,6 @@ def build_home_widget_success_data(
             getattr(stats, "growth_accounting_stale", False)
         ),
     )
-
-
-def _streak_bonus_percent(streak_days: int) -> int:
-    bonus = 0
-    for threshold, percent in STREAK_BONUS_TIERS:
-        if streak_days >= threshold:
-            bonus = percent
-        else:
-            break
-    return bonus
-
-
-def _next_streak_day(streak_days: int) -> int | None:
-    return next((threshold for threshold, _percent in STREAK_BONUS_TIERS if streak_days < threshold), None)
-
-
-def _next_streak_bonus(streak_days: int) -> int | None:
-    return next((percent for threshold, percent in STREAK_BONUS_TIERS if streak_days < threshold), None)
 
 
 def _streak_milestone_progress(streak_days: int) -> int:

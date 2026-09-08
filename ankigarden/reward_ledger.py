@@ -28,7 +28,7 @@ import uuid
 
 from .activity import (
     ACTIVITY_SCHEMA, ActivityEvent, ActivitySession, read_day_totals,
-    read_entries, read_events, read_streak_rewards, write_activity,
+    read_entries, read_events, write_activity,
 )
 
 
@@ -206,7 +206,6 @@ class EconomyEventRecord:
 @dataclass(frozen=True)
 class DailyEconomySnapshotRecord:
     anki_day: str
-    garden_rhythm_percent: int
     active_garden_bonus_id: str
     active_scenery_effect_id: str
     snapshot_source: str
@@ -275,8 +274,6 @@ CREATE TABLE economy_event (
 _DAILY_ECONOMY_SNAPSHOT_TABLE_SQL = """
 CREATE TABLE daily_economy_snapshot (
     anki_day TEXT PRIMARY KEY,
-    garden_rhythm_percent INTEGER NOT NULL
-        CHECK (garden_rhythm_percent IN (0, 2, 4, 6, 8, 10)),
     active_garden_bonus_id TEXT NOT NULL,
     active_scenery_effect_id TEXT NOT NULL,
     snapshot_source TEXT NOT NULL,
@@ -478,7 +475,7 @@ _EXPECTED_COLUMNS = {
         "growth_unallocated_overflow_units",
     ),
     "daily_economy_snapshot": (
-        "anki_day", "garden_rhythm_percent", "active_garden_bonus_id",
+        "anki_day", "active_garden_bonus_id",
         "active_scenery_effect_id", "snapshot_source", "snapshot_id",
     ),
 }
@@ -1422,7 +1419,7 @@ class RewardLedger:
         if pending is not None:
             return pending
         row = self._connection.execute(
-            "SELECT anki_day, garden_rhythm_percent, active_garden_bonus_id, "
+            "SELECT anki_day, active_garden_bonus_id, "
             "active_scenery_effect_id, snapshot_source, snapshot_id "
             "FROM daily_economy_snapshot WHERE anki_day = ?",
             (day_value,),
@@ -1934,9 +1931,6 @@ class RewardLedger:
         result['growth_units'] = int(row[0])
         return result
 
-    def activity_streak_rewards(self, day: str = "") -> dict[str, int]:
-        return read_streak_rewards(self._connection, day)
-
     def _backup_before_schema_upgrade(self, version: int) -> Optional[Path]:
         """Preserve the complete pre-upgrade database before any DDL."""
 
@@ -2396,12 +2390,11 @@ class RewardLedger:
         for record in self._pending_daily_economy_snapshots.values():
             self._connection.execute(
                 "INSERT INTO daily_economy_snapshot "
-                "(anki_day, garden_rhythm_percent, active_garden_bonus_id, "
+                "(anki_day, active_garden_bonus_id, "
                 "active_scenery_effect_id, snapshot_source, snapshot_id) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?)",
                 (
                     record.anki_day,
-                    record.garden_rhythm_percent,
                     record.active_garden_bonus_id,
                     record.active_scenery_effect_id,
                     record.snapshot_source,
@@ -2817,14 +2810,8 @@ def _normalize_daily_economy_snapshot(
 ) -> DailyEconomySnapshotRecord:
     if not isinstance(record, DailyEconomySnapshotRecord):
         raise TypeError("record must be DailyEconomySnapshotRecord")
-    rhythm = _nonnegative_int(
-        record.garden_rhythm_percent, "garden_rhythm_percent"
-    )
-    if rhythm not in {0, 2, 4, 6, 8, 10}:
-        raise ValueError("garden_rhythm_percent must be 0, 2, 4, 6, 8, or 10")
     return DailyEconomySnapshotRecord(
         anki_day=_iso_day(record.anki_day, "anki_day"),
-        garden_rhythm_percent=rhythm,
         active_garden_bonus_id=_required_text(
             record.active_garden_bonus_id, "active_garden_bonus_id"
         ),
@@ -2964,7 +2951,6 @@ def _daily_economy_snapshot_from_row(
 ) -> DailyEconomySnapshotRecord:
     return DailyEconomySnapshotRecord(
         anki_day=str(row["anki_day"]),
-        garden_rhythm_percent=int(row["garden_rhythm_percent"]),
         active_garden_bonus_id=str(row["active_garden_bonus_id"]),
         active_scenery_effect_id=str(row["active_scenery_effect_id"]),
         snapshot_source=str(row["snapshot_source"]),

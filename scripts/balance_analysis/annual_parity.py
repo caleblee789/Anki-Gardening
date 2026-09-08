@@ -122,7 +122,6 @@ ANNUAL_COVERED_STATE_FIELDS = (
     "stored_growth_balance",
     "lifetime_stored_routing_total",
     "bed_ownership",
-    "garden_cycle_remainder",
     "plant_exact_growth_units",
     "active_plant_species_id",
     "opening_plant_growth_units",
@@ -863,9 +862,9 @@ def _annual_production_row(
         if source in {"harvest_bell", "autumn_hearth", "other"}
     )
     # The trace field is the percentage applied to this event's ordinary
-    # Growth, not a HUD projection of the currently accumulated rhythm.
+    # Growth, rather than the retained tier on a day with no card rewards.
     if max(0, int(event.payload.get("answers", 0) or 0)) == 0:
-        row["garden_rhythm_percent"] = 0
+        row["permanent_growth_percent"] = 0
     row["active_garden_bonus_id"] = str(
         engine.state.loadout.active_garden_bonus_id
         or ""
@@ -1081,44 +1080,7 @@ def _apply_modeled_inventory_use(
                 for batch in (*plant.booster_card_batches, *plant.booster_card_queue)
             ) >= engine.EFFECT_DOSE_CAP:
                 continue
-            before_sources = {
-                str(batch.source_event_key)
-                for batch in (
-                    *plant.booster_card_batches,
-                    *plant.booster_card_queue,
-                )
-            }
             success, message = engine.use_booster_potion(target_id)
-            if success and (engine.last_booster_result.hourglass_bonus_cards + engine.last_booster_result.full_moon_bonus_cards):
-                new_batches = [
-                    batch
-                    for batch in (
-                        *plant.booster_card_batches,
-                        *plant.booster_card_queue,
-                    )
-                    if str(batch.source_event_key) not in before_sources
-                ]
-                if len(new_batches) != 1:
-                    raise AssertionError(
-                        "annual Booster activation did not expose exactly "
-                        "one new public batch identity"
-                    )
-                batch = new_batches[0]
-                recorder = getattr(
-                    engine.storage,
-                    "record_booster_environment_extension",
-                    None,
-                )
-                if not callable(recorder):
-                    raise AssertionError(
-                        "annual storage cannot record Booster extension "
-                        "attribution"
-                    )
-                recorder(
-                    batch.source_event_key,
-                    cards=(engine.last_booster_result.hourglass_bonus_cards + engine.last_booster_result.full_moon_bonus_cards),
-                    growth_per_card_units=batch.growth_per_card_units,
-                )
         elif item_id.startswith("growth_charge_"):
             success, message = engine.use_growth_charge(
                 item_id, target_id
@@ -1459,7 +1421,7 @@ def replay_annual_trace(
             day=0,
             action_suffix="initial",
         )
-    permanent_plan = _permanent_priority(facts, scenario)
+    permanent_plan = _permanent_priority(facts, scenario, initial_kernel_state)
     consumable = _best_consumable(
         facts.purchase_options,
         scenario.strategy.optimize_for or "growth",

@@ -55,7 +55,7 @@ def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
     progress.setFixedHeight(5)
     progress.setStyleSheet(f"QProgressBar {{background:{palette['divider']};border:0;border-radius:2px;}} "
                           f"QProgressBar::chunk {{background:{palette['receipt_primary_mint']};border-radius:2px;}}")
-    progress.setVisible(progress_percent is not None)
+    progress.setVisible(progress_percent is not None and not full_bloom)
     copy.addWidget(progress)
     row.addLayout(copy, 1)
     return SimpleNamespace(widget=frame, progress=progress, title=name, description=description)
@@ -71,7 +71,7 @@ def receipt_resource_values(parent: Any, *, coins: int = 0, growth_units: int = 
     row.setContentsMargins(0, 0, 0, 0)
     row.setSpacing(4)
     for kind, text in (("coin", (f"+{coins:,}" if compact else f"+{coins:,} Coins") if coins else ""),
-                       ("growth", f"{format_growth_units(growth_units, signed=True)} Growth" if growth_units else "")):
+                       ("growth", (format_growth_units(growth_units, signed=True) + ("" if compact else " Growth")) if growth_units else "")):
         if not text:
             continue
         icon = QLabel(frame)
@@ -164,42 +164,63 @@ def reward_discovery_count(source: Any) -> int:
     return finds + len(tuple(read("environment_discoveries", ()) or ()))
 
 
+def receipt_growth_breakdown(parent: Any, *, total_units: int, plant_units: int,
+                             shared_units: int = 0, stored_units: int = 0,
+                             project_units: int = 0, transferred_units: int = 0) -> Any:
+    """One non-overlapping view of recorded Growth, shared by both receipts."""
+    from aqt.qt import QFrame, QHBoxLayout, QLabel, QVBoxLayout, Qt
+    from .session_summary import format_growth_units
+    frame = QFrame(parent)
+    box = QVBoxLayout(frame)
+    box.setContentsMargins(0, 0, 0, 0)
+    box.setSpacing(4)
+    box.addWidget(receipt_section_heading(frame, "Growth breakdown"))
+    allocated = sum(max(0, int(n)) for n in (plant_units, stored_units, project_units))
+    rows = [("To plants", plant_units), ("Stored Growth", stored_units), ("Growth projects", project_units)]
+    if total_units > allocated:
+        rows.append(("Other recorded Growth", total_units - allocated))
+    for name, units in rows:
+        if units <= 0:
+            continue
+        row = QHBoxLayout()
+        label = QLabel(name, frame)
+        label.setProperty("receiptEventDetail", True)
+        row.addWidget(label, 1)
+        amount = QLabel(format_growth_units(units, signed=True), frame)
+        amount.setProperty("receiptEventDetail", True)
+        apply_tabular_numerals(amount)
+        row.addWidget(amount, 0, Qt.AlignmentFlag.AlignRight)
+        box.addLayout(row)
+        if name == "To plants" and shared_units:
+            detail = QLabel(f"Includes {format_growth_units(shared_units)} Shared Growth", frame)
+            detail.setProperty("receiptEventDetail", True)
+            detail.setWordWrap(True)
+            box.addWidget(detail)
+    if transferred_units:
+        detail = QLabel(f"{format_growth_units(transferred_units)} Stored Growth applied from reserve", frame)
+        detail.setProperty("receiptEventDetail", True)
+        detail.setWordWrap(True)
+        box.addWidget(detail)
+    frame.setProperty("growthBreakdownEarnedUnits", int(total_units))
+    frame.setProperty("growthBreakdownAllocatedUnits", allocated)
+    return frame
+
+
 def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
                    palette: dict[str, str], *, compact: bool = False) -> Any:
-    from decimal import Decimal, InvalidOperation
     from aqt.qt import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, Qt
 
     class AmountLabel(QLabel):
-        """Keep large totals on one line, with their exact amount in the tooltip."""
+        """Keep exact totals while the enclosing layout supplies enough space."""
         def setText(self, text: str) -> None:
             self._full_text = str(text)
             self.setAccessibleName(self._full_text)
             self._fit_text()
 
         def _fit_text(self) -> None:
-            full = getattr(self, "_full_text", "")
-            fitted = full
-            available = max(1, self.contentsRect().width())
-            if self.fontMetrics().horizontalAdvance(full) > available:
-                try:
-                    number = Decimal(full.replace(",", ""))
-                    sign = "+" if full.startswith("+") else "-" if number < 0 else ""
-                    for scale, suffix in ((10**12, "T"), (10**9, "B"), (10**6, "M"), (10**3, "K")):
-                        if abs(number) < scale:
-                            continue
-                        for places in (1, 0):
-                            digits = f"{abs(number) / scale:.{places}f}"
-                            if places:
-                                digits = digits.rstrip("0").rstrip(".")
-                            candidate = sign + digits + suffix
-                            if self.fontMetrics().horizontalAdvance(candidate) <= available:
-                                fitted = candidate
-                                break
-                        break
-                except InvalidOperation:
-                    pass
-            super().setText(fitted)
-            self.setToolTip(full if fitted != full else "")
+            # The enclosing metric layout stacks when exact values need it.
+            # Never round or abbreviate a committed reward to make it fit.
+            super().setText(getattr(self, "_full_text", ""))
 
         def resizeEvent(self, event: Any) -> None:
             super().resizeEvent(event)
@@ -214,9 +235,12 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
              palette.get("find_accent", palette["text_secondary"]))
     tile = QFrame(parent)
     tile.setProperty("receiptMetric", True)
+    tile.setProperty("receiptMetricCompact", compact)
     tile.setMinimumWidth(0)
     tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
     tile.setAccessibleName(f"{label}: {value}")
+    if label == "Finds & items":
+        tile.setToolTip("Find events and item or unlock awards")
     tile.setStyleSheet(
         f"QFrame[receiptMetric='true'] {{background:{palette['raised_surface']};"
         f"border:1px solid {palette['subtle_border']};border-radius:8px;}}"
@@ -230,6 +254,9 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
     caption.setWordWrap(True)
     caption.setTextFormat(Qt.TextFormat.PlainText)
     caption.setStyleSheet(f"color:{palette['text_secondary']};font-size:11px;font-weight:500;background:transparent;border:0;")
+    if compact:
+        caption.setMinimumHeight(caption.fontMetrics().lineSpacing() * 2)
+        caption.setAlignment(Qt.AlignmentFlag.AlignTop)
     layout.addWidget(caption)
     number_row = QHBoxLayout()
     number_row.setContentsMargins(0, 0, 0, 0)
@@ -271,11 +298,14 @@ def receipt_metrics_layout(parent: Any = None) -> Any:
                 if caption is None or amount is None:
                     continue
                 margins = tile.layout().contentsMargins()
-                caption_width = caption.fontMetrics().horizontalAdvance(caption.text())
+                caption_parts = (caption.text().split() if tile.property("receiptMetricCompact")
+                                 else [caption.text()])
+                caption_width = max((caption.fontMetrics().horizontalAdvance(part)
+                                     for part in caption_parts), default=0)
                 number_row = tile.layout().itemAt(1).layout()
                 icon = number_row.itemAt(0).widget()
-                # AmountLabel already compacts large totals; measure that visible
-                # value so ordinary rewards keep their compact three-column row.
+                # Compact captions can wrap; exact amounts determine when the
+                # three-column group needs to stack.
                 amount_width = (amount.fontMetrics().horizontalAdvance(amount.text())
                                 + icon.width() + number_row.spacing())
                 minimum_widths.append(max(caption_width, amount_width) + margins.left() + margins.right())
@@ -291,56 +321,48 @@ def receipt_metrics_layout(parent: Any = None) -> Any:
 
     return MetricsLayout(parent) if parent is not None else MetricsLayout()
 
+def reward_section_heading_style() -> str:
+    """One small heading treatment for receipt and reviewer reward sections."""
+    return f"color:{GARDEN_THEME['text_primary']};font-size:12px;font-weight:650;background:transparent;border:0;"
+
+
+def receipt_section_heading(parent: Any, text: str) -> Any:
+    from aqt.qt import QLabel, Qt
+    label = QLabel(text, parent)
+    label.setProperty("receiptSection", True)
+    label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setStyleSheet(reward_section_heading_style())
+    return label
+
+
 def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = "", milestone: bool = False, reward: Any = None, eyebrow: str = "", rarity_badge: bool = False) -> Any:
+    """Lead with the recorded item/event; category headings belong to the list."""
     from aqt.qt import QFrame, QHBoxLayout, QLabel, QVBoxLayout, Qt
     frame = QFrame(parent)
     frame.setProperty("receiptEvent", True)
     frame.setProperty("receiptMilestone", milestone)
     treatment = reward_treatment(reward, full_bloom=milestone)
-    if milestone or treatment.notable:
-        eyebrow = eyebrow or ("Growth milestone" if milestone else "Item earned")
-        rarity_badge = True
-    if eyebrow or rarity_badge:
-        outer = QVBoxLayout(frame)
-        outer.setContentsMargins(10, 8, 10, 8)
-        outer.setSpacing(6)
-        heading = QHBoxLayout()
-        heading.setSpacing(6)
-        if eyebrow:
-            category = QLabel(eyebrow.upper(), frame)
-            category.setProperty("receiptRewardHeading", True)
-            category.setTextFormat(Qt.TextFormat.PlainText)
-            category.setWordWrap(True)
-            category.setMinimumWidth(0)
-            category.setStyleSheet("color:#F2F5EC;font-size:11px;font-weight:650;background:transparent;border:0;")
-            heading.addWidget(category, 1)
-        else:
-            heading.addStretch(1)
-        if rarity_badge and treatment.label:
-            badge = QLabel(treatment.label, frame)
-            badge.setProperty("receiptRarityBadge", True)
-            badge.setStyleSheet(rarity_badge_style(treatment))
-            heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignRight)
-        outer.addLayout(heading)
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        outer.addLayout(row)
-    else:
-        row = QHBoxLayout(frame)
-        row.setContentsMargins(8, 6, 8, 6)
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(8, 6, 8, 6)
     row.setSpacing(8)
     row.addWidget(artwork, 0, Qt.AlignmentFlag.AlignVCenter)
     copy = QVBoxLayout()
     copy.setContentsMargins(0, 0, 0, 0)
     copy.setSpacing(3)
+    heading = QHBoxLayout()
+    heading.setSpacing(6)
     name = QLabel(title, frame)
     name.setProperty("receiptEventTitle", True)
     name.setWordWrap(True)
     name.setMinimumWidth(0)
     name.setTextFormat(Qt.TextFormat.PlainText)
-    copy.addWidget(name)
-    if treatment.notable and not milestone and not rarity_badge and treatment.label.casefold() not in detail.casefold():
-        detail = " · ".join(filter(None, (treatment.label, detail)))
+    heading.addWidget(name, 1)
+    if (rarity_badge or milestone or treatment.notable) and treatment.label:
+        badge = QLabel(treatment.label, frame)
+        badge.setProperty("receiptRarityBadge", True)
+        badge.setStyleSheet(rarity_badge_style(treatment))
+        heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
+    copy.addLayout(heading)
     if detail:
         secondary = QLabel(detail, frame)
         secondary.setProperty("receiptEventDetail", True)
@@ -355,8 +377,6 @@ def receipt_event_row(parent: Any, artwork: Any, title: str, *, detail: str = ""
             f"QFrame[receiptEvent='true'] {{background:{GARDEN_THEME['raised_surface']};"
             "border:0;border-radius:10px;}"
         )
-    if milestone or eyebrow.casefold() in {"growth milestone", "checkpoint"}:
-        name.setStyleSheet("color:#AEBFB7;font-weight:400;")
     return SimpleNamespace(widget=frame, layout=row, copy=copy, title=name)
 
 

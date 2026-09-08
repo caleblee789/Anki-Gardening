@@ -760,8 +760,13 @@ def test_manifest_exposes_canonical_v6_geometry_and_eight_scenery_reskins():
         if row["asset_id"] == "bg_autumn_any_soil_master_v6":
             override = row["landmark_overrides"]["garden_house"]["variants"]
             assert set(override) == {"4:3", "16:9", "home"}
-        else:
-            assert "landmark_overrides" not in row
+        known_landmarks = {
+            landmark["landmark_id"] for landmark in base["placement"]["surface_profile"]["landmarks"]
+        }
+        overrides = row.get("landmark_overrides", {})
+        assert set(overrides) <= known_landmarks
+        for override in overrides.values():
+            assert set(override["variants"]) <= {"4:3", "16:9", "home"}
         assert row.get("release_preferred") is False
 
 

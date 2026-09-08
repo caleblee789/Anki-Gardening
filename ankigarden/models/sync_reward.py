@@ -472,12 +472,8 @@ class SyncRewardSummary:
 
     @property
     def subtitle(self) -> str:
-        if self.eligible_answer_count == 1:
-            return "Reward from 1 card answer on another device."
-        return (
-            f"Rewards from {self.eligible_answer_count:,} card answers "
-            "on another device."
-        )
+        from ..ui.copy import cards_studied_text
+        return f"From {cards_studied_text(self.eligible_answer_count)}" if self.eligible_answer_count > 0 else ""
 
     @property
     def grouped_plant_results(self) -> tuple[SyncPlantResult, ...]:
@@ -935,6 +931,8 @@ def _merge_quantity_rows(
             result[identity] = item
             result[identity]["quantity"] = _nonnegative(item.get("quantity")) or 1
         else:
+            if result[identity].get("source") != item.get("source"):
+                result[identity]["source"] = "mixed"
             result[identity]["quantity"] = _nonnegative(
                 result[identity].get("quantity")
             ) + (_nonnegative(item.get("quantity")) or 1)

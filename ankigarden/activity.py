@@ -91,7 +91,6 @@ class ActivityEntry:
 
 ALIASES = {
     "daily_activity": "first_eligible_answer",
-    "weekly_streak": "seven_day_streak_cycle",
     "all_due": "todays_cards",
     "garden_find": "standard_find",
     "achievement_backfill": "achievement",
@@ -110,8 +109,9 @@ def source_name(source: str, source_id: str = "", reason: str = "",
         from .reward_presentation import _inventory_item_name
         return f"{_inventory_item_name(source_id)} used" if source_id else "Garden item used"
     if source == "achievement":
-        if source_id == "streak_7":
-            return "7-day streak & achievement"
+        from .achievements import BED_MILESTONES
+        if source_id in BED_MILESTONES:
+            return f"Bed {BED_MILESTONES[source_id]} unlocked"
         name = (achievement_names or {}).get(source_id, "")
         if not name:
             from .achievements import ACHIEVEMENTS_BY_ID
@@ -120,9 +120,6 @@ def source_name(source: str, source_id: str = "", reason: str = "",
         return f"Achievement · {name}" if name else "Achievement reward"
     if source == "first_eligible_answer":
         return "First card today"
-    if source == "seven_day_streak_cycle":
-        day = source_id.removeprefix("day_")
-        return f"{day}-day streak reward" if day.isdigit() else "7-day streak reward"
     if source == "standard_find":
         name = reason.removeprefix("Standard Find: ").removeprefix("Garden Find: ")
         return learner_card_copy(name) if name else "Garden Find"
@@ -330,23 +327,3 @@ def read_day_totals(connection: Any, day: str) -> dict[str, int]:
         COALESCE(SUM(growth_units),0), COALESCE(SUM(finds),0)
         FROM activity_event WHERE scheduler_day=?""", (day,)).fetchone()
     return dict(zip(("card_answers", "coins", "growth_units", "finds"), map(int, row)))
-
-
-def read_streak_rewards(connection: Any, day: str = "") -> dict[str, int]:
-    where = " AND scheduler_day=?" if day else ""
-    rows = connection.execute("""SELECT event_key, source, coins, payload_json FROM activity_event
-        WHERE coins>0 AND source IN ('first_eligible_answer','daily_activity',
-            'seven_day_streak_cycle','weekly_streak','achievement','achievement_backfill')""" + where,
-        (day,) if day else ()).fetchall()
-    totals = {"daily": 0, "streak": 0, "achievements": 0}
-    for row in rows:
-        source = ALIASES.get(row["source"], row["source"])
-        source_id = str(json.loads(row["payload_json"]).get("source_id", ""))
-        if not source_id and row["event_key"].startswith("achievement:"):
-            source_id = row["event_key"].partition(":")[2]
-        key = ("daily" if source == "first_eligible_answer" else
-               "streak" if source == "seven_day_streak_cycle" or source_id == "streak_7" else
-               "achievements" if source_id.startswith("streak_") else "")
-        if key:
-            totals[key] += int(row["coins"])
-    return totals

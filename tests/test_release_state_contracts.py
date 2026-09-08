@@ -164,6 +164,10 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
     today = date(2026, 8, 12)
 
     new = streak_presentation(0, None, 0, today=today)
+    never_studied = streak_presentation(0, today.isoformat(), 0, today=today)
+    assert never_studied == new
+    ended_without_current_streak = streak_presentation(0, "2026-08-10", 0, today=today)
+    assert ended_without_current_streak.state is StreakPresentationState.ENDED
     active = streak_presentation(0, None, 1, today=today)
     at_risk = streak_presentation(3, "2026-08-11", 0, today=today)
     ended = streak_presentation(3, "2026-08-10", 0, today=today)

@@ -26967,16 +26967,16 @@
         "garden_find",
         "transparent_cutout"
       ],
-      "file": "assets/v6_storybook_gouache/ui/find_growth_burst.png",
+      "file": "assets/v6_storybook_gouache/ui/find_growth_burst.webp",
       "width": 1254,
       "height": 1254,
-      "format": "png",
+      "format": "webp",
       "alpha": true,
       "style_family": "storybook_gouache",
       "source": "OpenAI built-in image generation; simplified for 32-40px display; original alpha preserved",
       "attribution": "Generated for Anki Garden",
       "source_master_sha256": "a28befc5daac68cfaa6cd75d4e403a4bba7ee2ef8e36d13b1be9f05d3a13ae67",
-      "sha256": "13a4867867678bf07886999a43983f2c80b5467f749877c5a5f7cf12ad531941"
+      "sha256": "c7b53d34f4f831701c45e8655aed2c45c56962497173a441396e02ac71ebddee"
     },
     {
       "asset_id": "ui_find_sun_patch",
@@ -26989,16 +26989,16 @@
         "garden_find",
         "transparent_cutout"
       ],
-      "file": "assets/v6_storybook_gouache/ui/find_sun_patch.png",
+      "file": "assets/v6_storybook_gouache/ui/find_sun_patch.webp",
       "width": 1254,
       "height": 1254,
-      "format": "png",
+      "format": "webp",
       "alpha": true,
       "style_family": "storybook_gouache",
       "source": "OpenAI built-in image generation; simplified for 32-40px display; original alpha preserved",
       "attribution": "Generated for Anki Garden",
       "source_master_sha256": "ac926fd9b0c3fde2f39a0e67f1f1ffac2e3afc6df0d9fc32d4be41d8cbadb750",
-      "sha256": "51dd2a6fb8899020def517e67c44c2c7c86f75b334ef7c03f2b3a66856405669"
+      "sha256": "d4e555c1105844a24b67376b7218e9a070273b61fa4d523bb662a8635d9f2156"
     },
     {
       "asset_id": "ui_find_coin_sprout",
@@ -27011,16 +27011,16 @@
         "garden_find",
         "transparent_cutout"
       ],
-      "file": "assets/v6_storybook_gouache/ui/find_coin_sprout.png",
+      "file": "assets/v6_storybook_gouache/ui/find_coin_sprout.webp",
       "width": 1254,
       "height": 1254,
-      "format": "png",
+      "format": "webp",
       "alpha": true,
       "style_family": "storybook_gouache",
       "source": "OpenAI built-in image generation; simplified for 32-40px display; original alpha preserved",
       "attribution": "Generated for Anki Garden",
       "source_master_sha256": "d9990db297441ac3ec62eee1e4f3768fbb92383dc9cb240b9038dc981b000ebb",
-      "sha256": "56013d63ca2fc04ab5b5d12a3316d4f958dd365c67286aa9810ecf55dbc8aef5"
+      "sha256": "0bc34acd085fd4d62ca28bc71c64158b6f5c6b5f7f88a9a9575a82adab65dfe8"
     },
     {
       "asset_id": "ui_find_hidden_coin_cache",
@@ -27033,16 +27033,16 @@
         "garden_find",
         "transparent_cutout"
       ],
-      "file": "assets/v6_storybook_gouache/ui/find_hidden_coin_cache.png",
+      "file": "assets/v6_storybook_gouache/ui/find_hidden_coin_cache.webp",
       "width": 1254,
       "height": 1254,
-      "format": "png",
+      "format": "webp",
       "alpha": true,
       "style_family": "storybook_gouache",
       "source": "OpenAI built-in image generation; simplified for 32-40px display; original alpha preserved",
       "attribution": "Generated for Anki Garden",
       "source_master_sha256": "015cd60152d241c07c1764cba71470523d2d7331d6738f81f8ef4cac0120c7b1",
-      "sha256": "b8175d72c1dac37be1e9523206dca36876f77ca62caa8a8ef11476761138b83d"
+      "sha256": "d487efad76c8b230a083c4e9293419e04535ed3c581eacb3cc2f8bfebf89939e"
     },
     {
       "asset_id": "ui_find_buried_coin_cache",
@@ -27055,16 +27055,16 @@
         "garden_find",
         "transparent_cutout"
       ],
-      "file": "assets/v6_storybook_gouache/ui/find_buried_coin_cache.png",
+      "file": "assets/v6_storybook_gouache/ui/find_buried_coin_cache.webp",
       "width": 1254,
       "height": 1254,
-      "format": "png",
+      "format": "webp",
       "alpha": true,
       "style_family": "storybook_gouache",
       "source": "OpenAI built-in image generation; simplified for 32-40px display; original alpha preserved",
       "attribution": "Generated for Anki Garden",
       "source_master_sha256": "3b0f72d2c5f78250dba6854146b3bc58244f0b854509135f7dd34b754c015a5a",
-      "sha256": "c69b09eb221918b79636bac6b334d5631854ca8f4123c36dfca971fbee5c7d37"
+      "sha256": "180897c20bd4f731b1a4fe69316e83d96cc08daf7a50e22421c677a36cdcd281"
     },
     {
       "asset_id": "ui_find_garden_treasury",
@@ -27072,15 +27072,15 @@
       "slot": {
         "ui_id": "find_garden_treasury"
       },
-      "file": "assets/v6_storybook_gouache/ui/find_garden_treasury.png",
+      "file": "assets/v6_storybook_gouache/ui/find_garden_treasury.webp",
       "style_family": "storybook_gouache",
       "attribution": "Generated for Anki Garden",
       "width": 1254,
       "height": 1254,
-      "format": "png",
+      "format": "webp",
       "alpha": true,
       "source": "OpenAI built-in image generation; simplified for 32-40px display; original alpha preserved",
-      "sha256": "3f22c9c2c7291d1a9b08d18e7fcb83200d51787884eab6d61b84405efd7b6020"
+      "sha256": "98affe5b06b314bcf36faba041aaa97be28f62db8a0536e54929a47a1c79c4c3"
     },
     {
       "asset_id": "ui_garden_reward",
@@ -27093,16 +27093,16 @@
         "garden_reward",
         "transparent_cutout"
       ],
-      "file": "assets/v6_storybook_gouache/ui/garden_reward.png",
+      "file": "assets/v6_storybook_gouache/ui/garden_reward.webp",
       "width": 1254,
       "height": 1254,
-      "format": "png",
+      "format": "webp",
       "alpha": true,
       "style_family": "storybook_gouache",
       "source": "OpenAI built-in image generation; simplified for 32-40px display; original alpha preserved",
       "attribution": "Generated for Anki Garden",
       "source_master_sha256": "1355343611b7489fbf65f371d86d7564f3acc1c47a2f2814a44c051721990fe8",
-      "sha256": "1355343611b7489fbf65f371d86d7564f3acc1c47a2f2814a44c051721990fe8"
+      "sha256": "96bdf96a039a5a2fc1798481b7dbe14328a3c1357a7803bc0433948bd95cab96"
     }
   ],
   "style_family": "mixed_v2_v3"
