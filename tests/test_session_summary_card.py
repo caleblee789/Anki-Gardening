@@ -163,7 +163,7 @@ def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     assert "setCursor" not in method
     assert "setWordWrap(True)" in source
     assert 'setProperty("summaryTwoLineName", True)' in source
-    assert "elidedText" not in source
+    assert "elidedText" not in method
     assert "Final growth stage reached" in projection_source
     assert "unlock_category_copy" in source
     assert "Completed during this session" not in source

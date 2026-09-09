@@ -1728,7 +1728,7 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
     assert "widget.setMinimumWidth" not in session_feedback
     assert "changed = changed_metrics[index]" in session_feedback
     assert "changed_metrics=changed_metrics" in WIDGET_SOURCE
-    assert "receipt_metric(self._session_footer" in WIDGET_SOURCE
+    assert "receipt_metric(self._session_totals_card" in WIDGET_SOURCE
 
 
 def test_custom_hud_position_preserves_anchor_and_stays_clear_of_answer_controls():

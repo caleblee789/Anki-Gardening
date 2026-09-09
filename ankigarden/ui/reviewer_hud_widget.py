@@ -10,7 +10,7 @@ from collections import deque
 import re
 from typing import Any, Callable, Literal, Mapping, Optional
 
-from .formatters import format_garden_coins, format_growth, format_quantity, format_status_label
+from .formatters import format_garden_coins, format_growth, format_quantity, format_stage_progress, format_status_label
 from .plant_art import normalized_plant_pixmap, plant_art_source_identity
 from .render_cache import BoundedLruCache, pixmap_bytes
 from .reviewer_hud import (
@@ -29,7 +29,7 @@ from .reviewer_hud import (
     reviewer_hud_width,
 )
 from .reward_rarity import apply_reward_treatment, reward_treatment, rarity_badge_style, rarity_art_style, RewardTreatment
-from .reward_receipt import receipt_metric, receipt_metrics_layout, reward_discovery_count
+from .reward_receipt import receipt_metric, reward_discovery_count
 from .theme import GARDEN_THEME, apply_tabular_numerals
 
 
@@ -1437,6 +1437,22 @@ class CheckpointTrack(QWidget):  # type: ignore[misc,valid-type]
                 else GARDEN_THEME["text_muted"]
             )
             painter.setBrush(QColor(color))
+            if is_next:
+                from .icons import garden_icon_pixmap
+
+                badge = garden_icon_pixmap(
+                    "checkpoint", 14, device_pixel_ratio=self.devicePixelRatioF()
+                )
+                if badge is not None and not badge.isNull():
+                    size = 12.0 + (2.0 * self._pulse if is_pulsing else 0.0)
+                    badge_x = max(size / 2.0, min(float(rect.width()) - size / 2.0, x))
+                    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+                    painter.drawPixmap(
+                        QRectF(badge_x - size / 2.0, 9.0 - size / 2.0, size, size),
+                        badge,
+                        QRectF(badge.rect()),
+                    )
+                    continue
             if is_completed or is_next:
                 size = 7.0 + (2.0 * self._pulse if is_pulsing else 0.0)
                 painter.setPen(QPen(
@@ -1882,6 +1898,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QFrame[hudCard='true'][cardRole='standard'] {background:transparent;border:0;}"
             "QFrame#reviewerHudTodayCard[completionSettling='true'] {border-color:" + t["reviewer_hud_growth_strong"] + ";}"
             "QFrame#reviewerHudPlantCard:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
+            "QFrame#reviewerHudSessionTotals {background:transparent;border:0;border-radius:12px;}"
+            "QFrame#reviewerHudSessionTotals:hover {background:" + t["reviewer_hud_surface_hover"] + ";}"
             "QFrame#reviewerHudPlantCard[celebration='stage-change'] {border-color:" + t["reviewer_hud_growth_strong"] + ";}"
             "QFrame#reviewerHudPlantCard[celebration='full-bloom'] {border-color:" + t["reviewer_hud_coin"] + ";}"
             "QFrame#reviewerHudArtRegion {background:qradialgradient(cx:0.5,cy:0.54,radius:0.52,"
@@ -2233,10 +2251,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         apply_tabular_numerals(self._percent)
         _set_decoration(self._percent)
         layout.addLayout(stage_row)
-        self._progress_destination = QLabel("", self._plant_card)
-        self._progress_destination.setProperty("hudMuted", True)
-        _set_decoration(self._progress_destination)
-        layout.addWidget(self._progress_destination)
         layout.addWidget(self._percent)
         self._checkpoint_track = CheckpointTrack(self._plant_card)
         layout.addWidget(self._checkpoint_track)
@@ -2783,20 +2797,26 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_divider.hide()
         surface.addWidget(self._reward_divider)
 
-        self._session_footer = _ClickableFrame(self._reward_surface, self._open_activity)
+        self._session_footer = QFrame(self._reward_surface)
         self._session_footer.setObjectName("reviewerHudSessionFooter")
         self._session_footer.setProperty("semanticId", "reviewer.hud.session-footer")
         self._session_footer.setProperty("historyAvailable", False)
         self._session_footer.setProperty("historyExpanded", True)
-        self._session_footer.setAccessibleName("Open Progress Activity")
         self._session_footer.setMinimumHeight(76)
         self._session_footer.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         footer = QVBoxLayout(self._session_footer)
         footer.setContentsMargins(0, 6, 0, 8)
         footer.setSpacing(6)
+        self._session_totals_card = _ClickableFrame(self._session_footer, self._open_activity)
+        self._session_totals_card.setObjectName("reviewerHudSessionTotals")
+        self._session_totals_card.setAccessibleName("Open Progress Activity")
+        totals_layout = QVBoxLayout(self._session_totals_card)
+        totals_layout.setContentsMargins(6, 6, 6, 6)
+        totals_layout.setSpacing(6)
+        footer.addWidget(self._session_totals_card)
         heading_row = QHBoxLayout()
         heading_row.setSpacing(4)
-        self._session_heading = QLabel("This session", self._session_footer)
+        self._session_heading = QLabel("This session", self._session_totals_card)
         self._session_heading.setProperty("hudMuted", True)
         from .reward_receipt import reward_section_heading_style
         self._session_heading.setStyleSheet(reward_section_heading_style())
@@ -2826,9 +2846,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._session_history_chevron.clicked.connect(self._toggle_reward_history)
         self._session_history_chevron.hide()
         history_heading.addWidget(self._session_history_chevron)
-        footer.addLayout(heading_row)
+        totals_layout.addLayout(heading_row)
         from .session_summary_card import session_summary_palette
-        metrics = receipt_metrics_layout()
+        # The fixed-width HUD always keeps its three compact cells in one row.
+        # Receipt layouts may stack; HUD amounts shorten within their own cell.
+        metrics = QHBoxLayout()
         metrics.setSpacing(6)
         self._session_metrics_layout = metrics
         self._session_metric_tiles = []
@@ -2836,7 +2858,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         for key, caption, icon_name in (("coins", "Coins", "coin"),
                                          ("growth", "Growth", "growth"),
                                          ("finds", "Items & finds", "environment-discovery")):
-            metric = receipt_metric(self._session_footer, caption, "0", icon_name, palette, compact=True)
+            metric = receipt_metric(self._session_totals_card, caption, "0", icon_name, palette, compact=True)
             metric.widget.setProperty("hudSessionTile", key)
             metric.value.setProperty("hudSessionMetric", True)
             _set_decoration(metric.value)
@@ -2847,7 +2869,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             setattr(self, "_session_" + key, metric.value)
             self._session_metric_tiles.append(metric.widget)
             metrics.addWidget(metric.widget, 1)
-        footer.addLayout(metrics)
+        totals_layout.addLayout(metrics)
         footer.addWidget(self._session_history_toggle)
         self._session_history_toggle.hide()
         self._session_footer.hide()
@@ -3922,9 +3944,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._stage.setProperty("fullBloomAccent", bool(nurture.fully_grown))
         _repolish(self._stage)
         self._stage.hide()
-        self._percent.setText(format_growth(nurture.stage_points, nurture.stage_goal, include_unit=False) if nurture.next_stage_key else "Full Bloom")
-        self._progress_destination.setText(f"Growth to {format_status_label(nurture.next_stage_key)}" if nurture.next_stage_key else "")
-        self._progress_destination.setVisible(normal)
+        self._percent.setText(
+            format_stage_progress(nurture.stage_points, nurture.stage_goal, nurture.next_stage_key)
+            if nurture.next_stage_key else "Full Bloom"
+        )
         self._checkpoint_track.setProperty("showMarkers", bool(nurture.next_checkpoint_reward_coins))
         self._checkpoint_track.setToolTip(
             f"Stage milestones award Coins. Next milestone: {nurture.next_checkpoint_percent}%, {format_garden_coins(nurture.next_checkpoint_reward_coins, signed=True)}."
@@ -4864,7 +4887,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _repolish(self._stage)
         self._stage.hide()
         self._percent.hide()
-        self._progress_destination.hide()
         self._checkpoint_track.hide()
         self._checkpoint_distance_row.hide()
         self._checkpoint_reward_row.hide()
@@ -4918,7 +4940,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _repolish(self._stage)
         self._stage.hide()
         self._percent.hide()
-        self._progress_destination.hide()
         self._checkpoint_track.hide()
         self._checkpoint_distance_row.hide()
         self._checkpoint_reward_row.hide()
@@ -6079,7 +6100,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         self._set_session_history_chevron(history_expanded)
         self._session_history_chevron.setVisible(available)
-        self._session_footer.setCursor(
+        self._session_totals_card.setCursor(
             Qt.CursorShape.PointingHandCursor
             if available
             else Qt.CursorShape.ArrowCursor

@@ -424,6 +424,56 @@ def test_collection_hides_dormant_landmarks_and_retains_enabled_layout(
     application.processEvents()
 
 
+def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(monkeypatch):
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from aqt.qt import QApplication, QWidget
+        from PyQt6.QtTest import QTest
+        from ankigarden.ui.reviewer_hud import NurtureProjection, ReviewerHudProjection, TodayCardsProjection
+        from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+    application = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    owner.resize(1200, 900)
+    hud = ReviewGardenHud(owner, animations_enabled=False)
+    hud.update_projection(ReviewerHudProjection(
+        108, TodayCardsProjection("in_progress", "Today", "1 / 2"),
+        NurtureProjection(False), True, "right",
+    ))
+    try:
+        # Receive totals while hidden/collapsed, then expand repeatedly with
+        # the reported amount, a large session, and small totals again.
+        for growth_units, exact, count in ((185_145, "+1,851.45", 10),
+                                           (123_456_789_000, "+1,234,567,890", 1_234_567_890),
+                                           (12_600, "+126", 0)):
+            hud.set_collapsed(True)
+            hud.update_session_totals({"footer_growth_units": growth_units,
+                                       "footer_coin_count": count, "footer_find_count": count})
+            owner.show()
+            hud.set_collapsed(False)
+            QTest.qWait(40)
+            cells = [tile.geometry() for tile in hud._session_metric_tiles]
+            assert len({cell.y() for cell in cells}) == 1
+            assert max(cell.height() for cell in cells) <= 80
+            assert max(cell.width() for cell in cells) - min(cell.width() for cell in cells) <= 1
+            for amount, full in ((hud._session_growth, exact),
+                                 (hud._session_coins, f"+{count:,}" if count else "0"),
+                                 (hud._session_finds, f"{count:,}")):
+                assert amount.fontMetrics().horizontalAdvance(amount.text()) <= amount.contentsRect().width()
+                assert amount.accessibleName() == full
+                if amount.text() != full:
+                    assert amount.toolTip() == full
+                    assert full in amount.parentWidget().toolTip()
+            assert hud.width() == 296
+    finally:
+        hud.dispose()
+        owner.close()
+        owner.deleteLater()
+        application.processEvents()
+
+
 @pytest.mark.parametrize("initial_session_state", ["expanded", "collapsed", "hidden"])
 def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_session_state):
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
@@ -525,12 +575,17 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
         initial_height = hud.height()
         initial_footer = hud._session_footer.geometry()
         opened.clear()
-        for target in (hud._session_heading, *hud._session_metric_tiles, hud._session_history_toggle):
+        for target in (hud._session_heading, *hud._session_metric_tiles):
+            previous_count = len(opened)
             click(target)
+            assert len(opened) == previous_count + 1, target.objectName()
             assert opened[-1] == "activity"
             assert not hud._reward_feed.isVisibleTo(hud)
-        assert opened == ["activity"] * 5
+        assert opened == ["activity"] * 4
         opened.clear()
+        click(hud._session_history_toggle)
+        assert not opened
+        assert not hud._reward_feed.isVisibleTo(hud)
         click(hud._session_history_chevron)
         assert hud._reward_feed.isVisibleTo(hud)
         click(hud._session_history_chevron)

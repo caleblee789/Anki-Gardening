@@ -1,0 +1,33 @@
+Created with built-in image generation. Title typeset separately in Fraunces Semibold.
+
+PORTRAIT
+
+Edit the first reference, the ACTUAL Anki Garden UI screenshot, into a premium portrait promotional poster illustration. The user specifically wants the image MUCH MORE SIMILAR TO THIS ACTUAL GARDEN UI. Faithfulness to reference 1 is the overriding priority. Aspect ratio 4:5 portrait.
+
+INPUT ROLES:
+1: Actual in-app garden screenshot: PRIMARY authority for scene composition, camera, graphical style, six stone planting beds, buildings and visual identity.
+2: Actual garden background painting: exact environmental artwork, colors, cottage and greenhouse appearance.
+3: Actual peony game sprite: exact plant style and flower form.
+4: Actual sunflower game sprite: exact plant style and flower form.
+These are product art references, not photography.
+
+Preserve the simple, matte, softly painted storybook game-art appearance of the screenshot: muted sage lawn, dusky teal leafy edge framing, lavender-peach sunset, a modest old green-painted glass greenhouse to the left, a simple small plaster-and-stone cottage with a red tiled roof and glowing amber window to the right. Preserve the broad flat open lawn with the single horizontal path near the buildings. Camera is a slightly elevated overview looking across the garden, like the UI, not a closeup from among flowers. Keep the house and greenhouse visually very similar to the references. No added mountains, valleys, ponds, rivers, gates, fences, arched bridges, vistas, new buildings, terraced landscaping or giant flowers.
+
+Most important: retain EXACTLY SIX clearly separate rounded oval stone-edged planting beds in three receding rows of two, with a single centered plant per bed and open lawn around each. Far row has a small seed and a small green sprout. Middle row has an attractive golden sunflower matching reference 4 and a silver-green lavender shrub. Near row has a blue hydrangea on the left and coral/apricot peony matching reference 3 on the right. Scale plants like believable game sprites in their beds, with complete connected stems and correctly grounded bases. Front plants are larger due to perspective but do not become giant foreground bouquets. Preserve the handmade stone planters from the actual UI. Preserve one small wooden sprout-emblem sign near the lower-left bed if space allows, with no letters. Place all six beds in the middle-to-lower poster area.
+
+Transform only the presentation into a beautiful poster: portrait framing, slightly richer yet restrained warm dusk lighting, crisp detailed authored-looking plants, tasteful depth and shadow, clean soft leafy corner framing. Keep about the top 22% as calm dark forest-green to lavender sky for typography to be added later, with the horizon and buildings beneath. Make the garden occupy the full canvas; no screenshot frame.
+
+REMOVE all UI chrome, navigation tabs, buttons, currency, meters, side panels, numbers, text and labels. Absolutely NO text anywhere, including the title. We add the precise title separately. Do not render a browser, phone, desktop window, panel grid, border, or mockup. This must look like the actual Anki Garden scene carefully art-directed for a poster, with its recognizable open lawn, six discrete stone beds and painted game sprites, not a different botanical fantasy game. Matte gouache game illustration, not photorealism.
+
+LANDSCAPE
+
+Recompose reference 1 into a matching 16:9 landscape marketing header for Anki Garden. This is a layout adaptation of the SAME illustration. Reference 2 is the ACTUAL Anki Garden UI and must govern the visual style and familiar game layout.
+
+Keep the newly refined painting VERY SIMILAR TO THE ACTUAL UI: flat open sage-green lawn, exactly six separate oval raised stone planting beds in three receding rows of two, a simple small green-painted glass greenhouse at upper left, a modest plaster-and-stone cottage with a red tile roof and one glowing amber window at upper right, the horizontal earthen path between those buildings, gently wooded distant horizon, violet-and-peach dusk sky, teal foliage framing the sides and bottom corners. Same plants in the same row order as reference 1: far row orange seed and green sprout; middle row three-headed golden sunflower and silver-green lavender; near row blue hydrangea and coral/apricot peony. Preserve the true connected structure of each plant, visible soil, handmade oval stone planters, clean graphical silhouettes, matte softly painted gouache style. Keep the small wooden sprout-emblem sign beside the near-left bed with no letters.
+
+For landscape, extend the garden laterally and recompose to show the entire six-bed garden clearly. Do not stretch, squash, crop out a bed, duplicate a bed, merge beds, or change the arrangement. Plants should occupy enough space to read clearly at header size, without overwhelming their individual planters. The buildings stay at the sides, with the lawn and beds between and in front of them. Make it elegant and restrained, with detailed game-art brushwork and soft warm sunset illumination.
+
+Leave the centered upper 24% clear for a title added separately: quiet darker dusky lavender-blue sky, with no trees, buildings, flowers or bright clouds intruding into x 15% to 85%, y 4% to 24%. No giant bouquet foreground, no new landscape attractions, no photorealistic look. Absolutely NO text or lettering whatsoever, no title, UI controls, navigation, buttons, meters, currency, badges, labels, borders, signatures or watermarks.
+
+Output: one continuous 16:9 landscape painting, ideally 1920 x 1080 or larger in exactly this ratio. Match reference 1's image quality and palette while staying unmistakably Anki Garden.
+

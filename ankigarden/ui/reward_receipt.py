@@ -200,19 +200,49 @@ def receipt_growth_breakdown(parent: Any, *, total_units: int, plant_units: int,
 
 def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
                    palette: dict[str, str], *, compact: bool = False) -> Any:
+    from decimal import Decimal, InvalidOperation
     from aqt.qt import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, Qt
 
     class AmountLabel(QLabel):
-        """Keep exact totals while the enclosing layout supplies enough space."""
+        """Fit compact HUD totals while preserving their exact accessible value."""
         def setText(self, text: str) -> None:
             self._full_text = str(text)
             self.setAccessibleName(self._full_text)
             self._fit_text()
 
         def _fit_text(self) -> None:
-            # The enclosing metric layout stacks when exact values need it.
-            # Never round or abbreviate a committed reward to make it fit.
-            super().setText(getattr(self, "_full_text", ""))
+            full = getattr(self, "_full_text", "")
+            fitted = full
+            available = max(1, self.contentsRect().width())
+            if compact and self.fontMetrics().horizontalAdvance(full) > available:
+                try:
+                    number = Decimal(full.replace(",", ""))
+                    sign = "+" if full.startswith("+") else "-" if number < 0 else ""
+                    for scale, suffix in ((10**12, "T"), (10**9, "B"), (10**6, "M"), (10**3, "K")):
+                        if abs(number) < scale:
+                            continue
+                        for places in (2, 1, 0):
+                            digits = f"{abs(number) / scale:.{places}f}"
+                            if places:
+                                digits = digits.rstrip("0").rstrip(".")
+                            candidate = sign + digits + suffix
+                            if self.fontMetrics().horizontalAdvance(candidate) <= available:
+                                fitted = candidate
+                                break
+                        break
+                except InvalidOperation:
+                    pass
+                fitted = self.fontMetrics().elidedText(fitted, Qt.TextElideMode.ElideRight, available)
+            super().setText(fitted)
+            self.setToolTip(full if fitted != full else "")
+            if compact:
+                # HUD labels pass mouse events through to their tile, so the
+                # exact amount must also be available on that hover target.
+                tile.setAccessibleName(f"{label}: {full}")
+                tooltip = f"{label}: {full}" if fitted != full else ""
+                if label == "Items & finds":
+                    tooltip = "\n".join(filter(None, (tooltip, "Find events and item or unlock awards")))
+                tile.setToolTip(tooltip)
 
         def resizeEvent(self, event: Any) -> None:
             super().resizeEvent(event)
@@ -229,7 +259,8 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
     tile.setProperty("receiptMetric", True)
     tile.setProperty("receiptMetricCompact", compact)
     tile.setMinimumWidth(0)
-    tile.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+    tile.setSizePolicy(QSizePolicy.Policy.Ignored,
+                       QSizePolicy.Policy.Fixed if compact else QSizePolicy.Policy.Preferred)
     tile.setAccessibleName(f"{label}: {value}")
     if label == "Items & finds":
         tile.setToolTip("Find events and item or unlock awards")

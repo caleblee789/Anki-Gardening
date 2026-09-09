@@ -1705,7 +1705,7 @@ def test_today_snapshot_keeps_current_learning_cards_reviewable(monkeypatch):
     )
 
 
-def test_continue_reviews_uses_native_overview_timebox_review_path(monkeypatch):
+def test_continue_reviews_starts_review_without_queuing_an_overview_render(monkeypatch):
     reviewer_module = _load_reviewer_module(monkeypatch)
     calls: list[str] = []
 
@@ -1745,7 +1745,7 @@ def test_continue_reviews_uses_native_overview_timebox_review_path(monkeypatch):
     monkeypatch.setattr(handler, "_today_cards_snapshot", lambda **_kwargs: today)
 
     assert handler._continue_reviews_from_session_summary() is True
-    assert calls == ["select:55", "overview", "timebox", "review"]
+    assert calls == ["select:55", "timebox", "review"]
 
 
 def test_continue_reviews_revalidates_current_today_scope(monkeypatch):

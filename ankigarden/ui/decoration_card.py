@@ -120,13 +120,8 @@ class DecorationInfoCard(QFrame):
         self._position_at(anchor)
 
     def _position_at(self, anchor: QRectF) -> None:
-        # The scene has the artwork's exact aspect ratio. Its workspace owns
-        # the empty side lanes; include those while staying above the footer.
+        # Keep descriptions inside the garden and near their visible artwork.
         canvas = QRectF(self.scene.rect())
-        page = getattr(self.scene.window(), "_garden_scene_page", None)
-        if page is not None and page.isVisible():
-            origin = self.scene.mapFromGlobal(page.mapToGlobal(QPoint(0, 0)))
-            canvas = QRectF(origin.x(), 0, page.width(), self.scene.height())
         canvas = canvas.adjusted(12, 12, -12, -12)
         self.bonus.ensurePolished()
         required_width = self.bonus.fontMetrics().horizontalAdvance(self.bonus.text()) + 34
@@ -164,7 +159,7 @@ class DecorationInfoCard(QFrame):
                     dy = max(anchor.top() - rect.bottom(), rect.top() - anchor.bottom(), 0)
                     alignment = (rect.center().x() - anchor.center().x()) ** 2 + (rect.center().y() - anchor.center().y()) ** 2
                     score = (rect.intersects(anchor), any(rect.intersects(other) for other in controls),
-                             8 * covered_art + dx ** 2 + dy ** 2 + .05 * alignment + 4 * (preferred_width - width))
+                             .25 * covered_art + dx ** 2 + dy ** 2 + alignment + 4 * (preferred_width - width))
                     candidates.append((score, rect))
         rect = min(candidates, key=lambda candidate: candidate[0])[1]
         self.setFixedSize(round(rect.width()), round(rect.height()))

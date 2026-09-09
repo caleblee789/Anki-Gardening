@@ -1,0 +1,16 @@
+Built-in ImageGen detail enhancement. Original poster typography and layout retained separately.
+
+EDIT THE PROVIDED IMAGE IN PLACE. This is a conservative high-fidelity image restoration and detail enhancement task, NOT a new illustration, redesign, or new composition.
+
+The user likes the existing image and repeatedly insists it stays true to the actual Anki Garden UI. Preserve this exact image: identical composition, framing, viewing angle, scale, open spaces, object positions, object counts, shapes, colors, dusk lighting and painted game-art style. Keep every plant and each of the SIX stone planting beds in exactly the same place and size. Keep the greenhouse, cottage, sign, trees, path, hill horizon and sunset unchanged. Keep the orange seed, small green sprout, young non-flowering plant, silvery shrub, blue hydrangea and coral/apricot peony exactly as depicted. DO NOT turn the young plant into a flowering sunflower, add flowers, change growth stages, move or reshape beds, add decorations, change buildings, introduce new garden content, or change the sky.
+
+Improve ONLY the fidelity of existing visible detail:
+- Restore crisp, coherent edges and clean contours that have been softened by scaling.
+- Resolve the existing leaf edges, leaf veins, flower petals and hydrangea clusters with delicate, natural painted detail.
+- Resolve existing stone joins, stone surface texture, soil grain, wooden sign texture, window frames, greenhouse panes, cottage roof tiles and door details.
+- Preserve the watercolor/gouache-like matte painted textures and softly atmospheric distant trees. Keep fine detail appropriate to object size and distance.
+- Reduce mushiness and compression-like artifacts while preserving the original brushwork.
+- Keep exactly the current color palette, brightness, saturation, contrast and warm dusk ambience. No stronger color grading, glow, sharpening halos, HDR, plastic texture, photorealism, added grain or new visual effects.
+
+Treat it as carefully restoring a higher-resolution master of the SAME artwork. The original scene must remain immediately recognizable, with no creative reinterpretation. Do not make the picture feel like a different game or a different drawing. Preserve the original aspect ratio and complete frame. Return the highest available detailed resolution. Full-bleed image, no margin, framing, matte, title, letters, logos, watermarks or signature. No text is present in this source image and none should be added; the existing poster title will be retained separately unchanged.
+

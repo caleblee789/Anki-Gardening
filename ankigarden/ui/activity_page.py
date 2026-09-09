@@ -8,7 +8,7 @@ import logging
 
 from aqt.qt import (
     QEvent, QFrame, QHBoxLayout, QLabel, QPushButton,
-    QSizePolicy, Qt, QVBoxLayout, QWidget,
+    QScrollArea, QSizePolicy, Qt, QVBoxLayout, QWidget,
 )
 
 from ..reward_presentation import reward_content_visible, recorded_event_presentation
@@ -38,7 +38,8 @@ def _icon(name: str, size: int = 16, *, gold: bool = False) -> QLabel:
     label.setPixmap(garden_icon(name, color=GARDEN_THEME[
         "coin_accent" if gold else "growth_accent"]).pixmap(size, size))
     label.setAccessibleName({"reviews": STUDY_COUNT_LABEL, "coin": "Coins",
-        "growth": "Growth", "find": "Items & finds", "streak": "Anki streak"}.get(name, ""))
+        "growth": "Growth", "find": "Items & finds",
+        "environment-discovery": "Items & finds", "streak": "Anki streak"}.get(name, ""))
     return label
 
 
@@ -107,7 +108,7 @@ class ActivityPage(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("semanticId", "progress.activity")
         self.setMaximumWidth(1400)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         colors = GARDEN_THEME
         rules = [f"""
             QWidget#agActivity {{background:{colors['garden_background']};}}
@@ -167,7 +168,7 @@ class ActivityPage(QWidget):
             ("reviews", STUDY_COUNT_LABEL, f"{state.daily_stats.reviewed:,}"),
             ("growth", "Growth earned", _growth(totals["growth_units"]) if totals is not None else "—"),
             ("coin", "Coins earned", f"{totals['coins']:,}" if totals is not None else "—"),
-            ("find", "Items & finds", f"{totals['finds']:,}" if totals is not None else "—"),
+            ("environment-discovery", "Items & finds", f"{totals['finds']:,}" if totals is not None else "—"),
         ):
             tile = SectionCard()
             tile.setMinimumHeight(80)
@@ -199,8 +200,8 @@ class ActivityPage(QWidget):
         column.addWidget(self.study_rewards_card)
         self.history_card = self._build_history()
         self.columns = ResponsiveSplit(self.history_card, sidebar, stretches=(13, 6),
-                                       minimum_widths=(480, 320), stack_right_first=True)
-        self.body.addWidget(self.columns)
+                                       minimum_widths=(480, 320), stack_right_first=True, fill_left=True)
+        self.body.addWidget(self.columns, 1)
 
     def _card(self, title: str, semantic: str = ""):
         from .dashboard import SectionCard
@@ -314,7 +315,18 @@ class ActivityPage(QWidget):
         self.history.setContentsMargins(0, 0, 0, 0)
         self.history.setSpacing(8)
         self.history.setAlignment(Qt.AlignmentFlag.AlignTop)
-        body.addWidget(content)
+        from .dashboard import _set_scroll_surface
+        self.history_scroll = QScrollArea()
+        self.history_scroll.setWidgetResizable(True)
+        self.history_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.history_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.history_scroll.setAccessibleName("Recent activity")
+        self.history_scroll.setMinimumHeight(100)
+        self.history_scroll.setWidget(content)
+        _set_scroll_surface(self.history_scroll, content, GARDEN_THEME["raised_surface"])
+        body.addWidget(self.history_scroll, 1)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        body.setAlignment(Qt.AlignmentFlag(0))
         self.more = QPushButton("Show more")
         self.more.clicked.connect(self._load_more)
         body.addWidget(self.more, 0, Qt.AlignmentFlag.AlignLeft)
@@ -340,6 +352,7 @@ class ActivityPage(QWidget):
         self.owner._clear_layout(self.history)
         self.cursor, self.last_day, self.history_message = None, None, None
         self._load_more()
+        self.history_scroll.verticalScrollBar().setValue(0)
 
     def _load_more(self):
         if self.history_message is not None:

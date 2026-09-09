@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Anki Garden · Review HUD</title>
+<style>
+html{background:#2b2b2b;color:#eeeeee;font:15px system-ui}body{margin:0 auto;max-width:1140px;padding:0}img{display:block;width:100%;height:auto}nav{display:flex;gap:18px;align-items:center;justify-content:center;padding:18px;flex-wrap:wrap}a{color:#dddddd}button{background:#3a3a3a;color:#eeeeee;border:1px solid #606060;padding:9px 18px;border-radius:30px;cursor:pointer}
+</style>
+<img id="demo" src="anki-garden-review-hud.gif" width="960" height="584" alt="Animated Anki Garden review HUD">
+<nav><button id="toggle">Pause animation</button><a href="anki-garden-review-hud.gif" download>AnkiWeb GIF</a><a href="anki-garden-review-hud-hd.mp4" download>HD video</a><a href="ankiweb-embed.html" download>Embed snippet</a></nav>
+<script>
+let paused=false;document.querySelector('#toggle').onclick=()=>{paused=!paused;document.querySelector('#demo').src=paused?'anki-garden-review-hud-poster.png':'anki-garden-review-hud.gif';document.querySelector('#toggle').textContent=paused?'Play animation':'Pause animation'};
+if(matchMedia('(prefers-reduced-motion: reduce)').matches)document.querySelector('#toggle').click();
+</script>
+</html>

@@ -1122,7 +1122,8 @@ class AnkiGardenApp:
         self._sync_in_progress = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
-            runtime.invalidate("sync completion", suspended=False, replacement=self._collection_replacement_pending)
+            runtime.invalidate("sync completion", suspended=False,
+                               replacement=self._collection_replacement_pending, from_sync=True)
             self._collection_replacement_pending = False
             return
         self._invalidate_review_history("sync completion")

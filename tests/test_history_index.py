@@ -239,9 +239,10 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     rows = [(now + i, 1, 3, 10, 5, 2500, 500, 1) for i in range(20)]
     engine, storage = _engine_at(tmp_path / "runtime", rows, indexed=False)
     completions = []
-    app = SimpleNamespace(engine=engine, storage=storage, _sync_reward_summary_enabled=lambda: False,
+    presented = []
+    app = SimpleNamespace(engine=engine, storage=storage, _sync_reward_summary_enabled=lambda: True,
                           _runtime_reconciled=lambda: completions.append(True))
-    app.sync_reward_processor = SyncRewardProcessor(engine, storage, SimpleNamespace())
+    app.sync_reward_processor = SyncRewardProcessor(engine, storage, SimpleNamespace(enqueue=presented.append))
     runtime = ReconciliationCoordinator(app)
 
     def drain():
@@ -313,6 +314,24 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     runtime.invalidate("repeat sync", suspended=False)
     drain()
     assert storage.state.total_reviews == reviewed_before + 1
+    # Startup, ordinary operations and deferred local answers must not masquerade
+    # as sync rewards, even when the learner enables sync summaries.
+    assert presented == []
+    incoming = (now + 200, 4, 3, 10, 5, 2500, 500, 1)
+    storage.mw.col.db.connection.execute("INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", incoming)
+    runtime.invalidate("sync completion", suspended=False, from_sync=True)
+    runtime.operation_finished(SimpleNamespace(card=True), None)
+    runtime.request("home rendering")
+    drain()
+    assert sum(summary.eligible_answer_count for summary in presented) == 1
+    assert storage.state.total_reviews == reviewed_before + 2
+    presented.clear()
+    browser_answer = (now + 201, 5, 3, 10, 5, 2500, 500, 1)
+    storage.mw.col.db.connection.execute("INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", browser_answer)
+    runtime.operation_finished(SimpleNamespace(card=True), None)
+    drain()
+    assert storage.state.total_reviews == reviewed_before + 3
+    assert presented == []
     runtime.close()
     drain()
     ledger.close()

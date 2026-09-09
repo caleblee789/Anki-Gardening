@@ -1,0 +1,9316 @@
+[
+  {
+    "frame": 0,
+    "seconds": 0.0,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 1,
+    "seconds": 0.05,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 2,
+    "seconds": 0.1,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 3,
+    "seconds": 0.15,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 4,
+    "seconds": 0.2,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 5,
+    "seconds": 0.25,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 6,
+    "seconds": 0.3,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.059259259259259046,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 7,
+    "seconds": 0.35,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.4990740740740736,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 8,
+    "seconds": 0.4,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 9,
+    "seconds": 0.45,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 10,
+    "seconds": 0.5,
+    "collapsed": true,
+    "hud": [
+      1596,
+      87,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 11,
+    "seconds": 0.55,
+    "collapsed": true,
+    "hud": [
+      1577,
+      97,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 12,
+    "seconds": 0.6,
+    "collapsed": true,
+    "hud": [
+      1552,
+      109,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 13,
+    "seconds": 0.65,
+    "collapsed": true,
+    "hud": [
+      1522,
+      123,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 14,
+    "seconds": 0.7,
+    "collapsed": true,
+    "hud": [
+      1490,
+      139,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 15,
+    "seconds": 0.75,
+    "collapsed": true,
+    "hud": [
+      1455,
+      156,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 16,
+    "seconds": 0.8,
+    "collapsed": true,
+    "hud": [
+      1421,
+      172,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 17,
+    "seconds": 0.85,
+    "collapsed": true,
+    "hud": [
+      1386,
+      189,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 18,
+    "seconds": 0.9,
+    "collapsed": true,
+    "hud": [
+      1354,
+      205,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 19,
+    "seconds": 0.95,
+    "collapsed": true,
+    "hud": [
+      1324,
+      219,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 20,
+    "seconds": 1.0,
+    "collapsed": true,
+    "hud": [
+      1299,
+      231,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 21,
+    "seconds": 1.05,
+    "collapsed": true,
+    "hud": [
+      1280,
+      241,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 22,
+    "seconds": 1.1,
+    "collapsed": true,
+    "hud": [
+      1267,
+      247,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 23,
+    "seconds": 1.15,
+    "collapsed": true,
+    "hud": [
+      1263,
+      249,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 24,
+    "seconds": 1.2,
+    "collapsed": true,
+    "hud": [
+      1265,
+      246,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 25,
+    "seconds": 1.25,
+    "collapsed": true,
+    "hud": [
+      1272,
+      238,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 26,
+    "seconds": 1.3,
+    "collapsed": true,
+    "hud": [
+      1282,
+      226,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 27,
+    "seconds": 1.35,
+    "collapsed": true,
+    "hud": [
+      1295,
+      210,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 28,
+    "seconds": 1.4,
+    "collapsed": true,
+    "hud": [
+      1310,
+      192,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 29,
+    "seconds": 1.45,
+    "collapsed": true,
+    "hud": [
+      1326,
+      172,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 30,
+    "seconds": 1.5,
+    "collapsed": true,
+    "hud": [
+      1343,
+      152,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 31,
+    "seconds": 1.55,
+    "collapsed": true,
+    "hud": [
+      1360,
+      131,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 32,
+    "seconds": 1.6,
+    "collapsed": true,
+    "hud": [
+      1376,
+      111,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 33,
+    "seconds": 1.65,
+    "collapsed": true,
+    "hud": [
+      1391,
+      93,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 34,
+    "seconds": 1.7,
+    "collapsed": true,
+    "hud": [
+      1404,
+      77,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 35,
+    "seconds": 1.75,
+    "collapsed": true,
+    "hud": [
+      1414,
+      65,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 36,
+    "seconds": 1.8,
+    "collapsed": true,
+    "hud": [
+      1421,
+      57,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 37,
+    "seconds": 1.85,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 38,
+    "seconds": 1.9,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.5925925925925933,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 39,
+    "seconds": 1.95,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.1250000000000002,
+    "stage_progress_text": "850 / 1,600 Growth to Young",
+    "opening_window_logical_size": [
+      1710.0,
+      1041.0
+    ],
+    "opening_hud_width_fraction": 0.04678362573099415
+  },
+  {
+    "frame": 40,
+    "seconds": 2.0,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 41,
+    "seconds": 2.05,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      24.398148148147982,
+      0.0,
+      1685.080751681076,
+      1025.8298611111113
+    ],
+    "uniform_scene_scale": 0.6765254418001685,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 42,
+    "seconds": 2.1,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      91.85185185185202,
+      0.0,
+      1616.1863592699326,
+      983.8888888888888
+    ],
+    "uniform_scene_scale": 0.705364201016375,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 43,
+    "seconds": 2.15,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      193.74999999999983,
+      0.0,
+      1512.1118515850146,
+      920.5312500000001
+    ],
+    "uniform_scene_scale": 0.7539124826017584,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 44,
+    "seconds": 2.2,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      321.48148148148204,
+      0.0,
+      1381.652257444764,
+      841.1111111111107
+    ],
+    "uniform_scene_scale": 0.8250990752972263,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 45,
+    "seconds": 2.25,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      466.4351851851852,
+      0.0,
+      1233.6026056676271,
+      750.9826388888889
+    ],
+    "uniform_scene_scale": 0.9241225616437724,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 46,
+    "seconds": 2.3,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      619.9999999999994,
+      0.0,
+      1076.7579250720466,
+      655.5000000000003
+    ],
+    "uniform_scene_scale": 1.0587337909992367,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 47,
+    "seconds": 2.35,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      773.564814814815,
+      0.0,
+      919.9132444764647,
+      560.017361111111
+    ],
+    "uniform_scene_scale": 1.2392472951607407,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 48,
+    "seconds": 2.4,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      918.5185185185184,
+      0.0,
+      771.8635926993277,
+      469.888888888889
+    ],
+    "uniform_scene_scale": 1.476944904232679,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 49,
+    "seconds": 2.45,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1046.2500000000005,
+      0.0,
+      641.4039985590771,
+      390.46874999999966
+    ],
+    "uniform_scene_scale": 1.7773509403761525,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 50,
+    "seconds": 2.5,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1148.1481481481483,
+      0.0,
+      537.3294908741593,
+      327.111111111111
+    ],
+    "uniform_scene_scale": 2.121603260869566,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 51,
+    "seconds": 2.55,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1215.6018518518517,
+      0.0,
+      468.4350984630164,
+      285.170138888889
+    ],
+    "uniform_scene_scale": 2.4336348914512533,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 52,
+    "seconds": 2.6,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 53,
+    "seconds": 2.65,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 54,
+    "seconds": 2.7,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 55,
+    "seconds": 2.75,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 8600,
+    "plant_growth": 850,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 0,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 56,
+    "seconds": 2.8,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 57,
+    "seconds": 2.85,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 58,
+    "seconds": 2.9,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "850 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 59,
+    "seconds": 2.95,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 60,
+    "seconds": 3.0,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 61,
+    "seconds": 3.05,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 62,
+    "seconds": 3.1,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 63,
+    "seconds": 3.15,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 64,
+    "seconds": 3.2,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 65,
+    "seconds": 3.25,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 66,
+    "seconds": 3.3,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 67,
+    "seconds": 3.35,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 68,
+    "seconds": 3.4,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 69,
+    "seconds": 3.45,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 10300,
+    "plant_growth": 867,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 1,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 70,
+    "seconds": 3.5,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 71,
+    "seconds": 3.55,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 72,
+    "seconds": 3.6,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "867 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 73,
+    "seconds": 3.65,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 74,
+    "seconds": 3.7,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 75,
+    "seconds": 3.75,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 76,
+    "seconds": 3.8,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 77,
+    "seconds": 3.85,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 78,
+    "seconds": 3.9,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 79,
+    "seconds": 3.95,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 80,
+    "seconds": 4.0,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 81,
+    "seconds": 4.05,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 82,
+    "seconds": 4.1,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 83,
+    "seconds": 4.15,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 114,
+    "card_index": 2,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 84,
+    "seconds": 4.2,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 85,
+    "seconds": 4.25,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 86,
+    "seconds": 4.3,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 87,
+    "seconds": 4.35,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 88,
+    "seconds": 4.4,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 89,
+    "seconds": 4.45,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 90,
+    "seconds": 4.5,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 91,
+    "seconds": 4.55,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 92,
+    "seconds": 4.6,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 93,
+    "seconds": 4.65,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 94,
+    "seconds": 4.7,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 95,
+    "seconds": 4.75,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 96,
+    "seconds": 4.8,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 97,
+    "seconds": 4.85,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 98,
+    "seconds": 4.9,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 99,
+    "seconds": 4.95,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 100,
+    "seconds": 5.0,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 101,
+    "seconds": 5.05,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 102,
+    "seconds": 5.1,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 103,
+    "seconds": 5.15,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 104,
+    "seconds": 5.2,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 105,
+    "seconds": 5.25,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 106,
+    "seconds": 5.3,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 107,
+    "seconds": 5.35,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 108,
+    "seconds": 5.4,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 109,
+    "seconds": 5.45,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 110,
+    "seconds": 5.5,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 111,
+    "seconds": 5.55,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 112,
+    "seconds": 5.6,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1240.0,
+      0.0,
+      443.51585014409216,
+      270.0
+    ],
+    "uniform_scene_scale": 2.570370370370371,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 113,
+    "seconds": 5.65,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1215.601851851851,
+      0.0,
+      468.4350984630171,
+      285.17013888888937
+    ],
+    "uniform_scene_scale": 2.43363489145125,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 114,
+    "seconds": 5.7,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1148.1481481481471,
+      0.0,
+      537.3294908741605,
+      327.11111111111165
+    ],
+    "uniform_scene_scale": 2.1216032608695614,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 115,
+    "seconds": 5.75,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      1046.249999999999,
+      0.0,
+      641.4039985590787,
+      390.46875000000057
+    ],
+    "uniform_scene_scale": 1.777350940376148,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 116,
+    "seconds": 5.8,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      918.5185185185179,
+      0.0,
+      771.8635926993281,
+      469.88888888888926
+    ],
+    "uniform_scene_scale": 1.476944904232678,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 117,
+    "seconds": 5.85,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      773.5648148148148,
+      0.0,
+      919.9132444764649,
+      560.0173611111111
+    ],
+    "uniform_scene_scale": 1.2392472951607403,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 118,
+    "seconds": 5.9,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      619.9999999999978,
+      0.0,
+      1076.7579250720482,
+      655.5000000000014
+    ],
+    "uniform_scene_scale": 1.0587337909992351,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 119,
+    "seconds": 5.95,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      466.43518518518357,
+      0.0,
+      1233.602605667629,
+      750.9826388888898
+    ],
+    "uniform_scene_scale": 0.924122561643771,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 120,
+    "seconds": 6.0,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      321.48148148148044,
+      0.0,
+      1381.6522574447658,
+      841.1111111111118
+    ],
+    "uniform_scene_scale": 0.8250990752972251,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 121,
+    "seconds": 6.05,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      193.74999999999946,
+      0.0,
+      1512.1118515850148,
+      920.5312500000003
+    ],
+    "uniform_scene_scale": 0.7539124826017582,
+    "pointer_opacity": 0.1250000000000019,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 122,
+    "seconds": 6.1,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      91.8518518518517,
+      0.0,
+      1616.1863592699328,
+      983.888888888889
+    ],
+    "uniform_scene_scale": 0.7053642010163749,
+    "pointer_opacity": 0.5925925925925933,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 123,
+    "seconds": 6.15,
+    "collapsed": true,
+    "hud": [
+      1423,
+      54,
+      80,
+      72
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      24.3981481481476,
+      0.0,
+      1685.0807516810764,
+      1025.8298611111115
+    ],
+    "uniform_scene_scale": 0.6765254418001684,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 124,
+    "seconds": 6.2,
+    "collapsed": false,
+    "hud": [
+      1207,
+      54,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 125,
+    "seconds": 6.25,
+    "collapsed": false,
+    "hud": [
+      1207,
+      54,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 126,
+    "seconds": 6.3,
+    "collapsed": false,
+    "hud": [
+      1207,
+      54,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 127,
+    "seconds": 6.35,
+    "collapsed": false,
+    "hud": [
+      1207,
+      54,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 128,
+    "seconds": 6.4,
+    "collapsed": false,
+    "hud": [
+      1207,
+      54,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 129,
+    "seconds": 6.45,
+    "collapsed": false,
+    "hud": [
+      1182,
+      53,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 130,
+    "seconds": 6.5,
+    "collapsed": false,
+    "hud": [
+      1154,
+      52,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 131,
+    "seconds": 6.55,
+    "collapsed": false,
+    "hud": [
+      1121,
+      50,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 132,
+    "seconds": 6.6,
+    "collapsed": false,
+    "hud": [
+      1085,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 133,
+    "seconds": 6.65,
+    "collapsed": false,
+    "hud": [
+      1049,
+      48,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 134,
+    "seconds": 6.7,
+    "collapsed": false,
+    "hud": [
+      1016,
+      46,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 135,
+    "seconds": 6.75,
+    "collapsed": false,
+    "hud": [
+      988,
+      45,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 136,
+    "seconds": 6.8,
+    "collapsed": false,
+    "hud": [
+      970,
+      44,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 137,
+    "seconds": 6.85,
+    "collapsed": false,
+    "hud": [
+      963,
+      44,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 138,
+    "seconds": 6.9,
+    "collapsed": false,
+    "hud": [
+      971,
+      44,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 139,
+    "seconds": 6.95,
+    "collapsed": false,
+    "hud": [
+      991,
+      45,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 140,
+    "seconds": 7.0,
+    "collapsed": false,
+    "hud": [
+      1021,
+      45,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 141,
+    "seconds": 7.05,
+    "collapsed": false,
+    "hud": [
+      1058,
+      46,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 142,
+    "seconds": 7.1,
+    "collapsed": false,
+    "hud": [
+      1098,
+      47,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 143,
+    "seconds": 7.15,
+    "collapsed": false,
+    "hud": [
+      1138,
+      47,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 144,
+    "seconds": 7.2,
+    "collapsed": false,
+    "hud": [
+      1175,
+      48,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 145,
+    "seconds": 7.25,
+    "collapsed": false,
+    "hud": [
+      1205,
+      48,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 146,
+    "seconds": 7.3,
+    "collapsed": false,
+    "hud": [
+      1225,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 147,
+    "seconds": 7.35,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 148,
+    "seconds": 7.4,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.7407407407407388,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 149,
+    "seconds": 7.45,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      10.336665465898104,
+      0.0,
+      1699.5604186679475,
+      1034.6446759259259
+    ],
+    "uniform_scene_scale": 0.6707616790072634,
+    "pointer_opacity": 0.30092592592592426,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 150,
+    "seconds": 7.5,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      38.91450528338111,
+      0.0,
+      1670.6980467499202,
+      1017.0740740740742
+    ],
+    "uniform_scene_scale": 0.6823495138560138,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 151,
+    "seconds": 7.55,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      82.08528458213205,
+      0.0,
+      1627.0974423631128,
+      990.5312500000003
+    ],
+    "uniform_scene_scale": 0.7006341294128781,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 152,
+    "seconds": 7.6,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      136.20076849183397,
+      0.0,
+      1572.4431636247207,
+      957.2592592592598
+    ],
+    "uniform_scene_scale": 0.7249864582527273,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 153,
+    "seconds": 7.65,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      197.612722142171,
+      0.0,
+      1510.4197686519371,
+      919.5011574074074
+    ],
+    "uniform_scene_scale": 0.7547570706237908,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 154,
+    "seconds": 7.7,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      262.672910662824,
+      0.0,
+      1444.7118155619598,
+      879.5000000000001
+    ],
+    "uniform_scene_scale": 0.7890847072200112,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 155,
+    "seconds": 7.75,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      327.73309918347707,
+      0.0,
+      1379.0038624719823,
+      839.4988425925928
+    ],
+    "uniform_scene_scale": 0.8266836888741215,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 156,
+    "seconds": 7.8,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      389.1450528338131,
+      0.0,
+      1316.9804674992,
+      801.7407407407411
+    ],
+    "uniform_scene_scale": 0.8656164826534852,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 157,
+    "seconds": 7.85,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      443.2605367435152,
+      0.0,
+      1262.3261887608076,
+      768.4687500000005
+    ],
+    "uniform_scene_scale": 0.903094628115977,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 158,
+    "seconds": 7.9,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      486.43131604226716,
+      0.0,
+      1218.7255843739993,
+      741.9259259259259
+    ],
+    "uniform_scene_scale": 0.935403354632588,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 159,
+    "seconds": 7.95,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      515.0091558597502,
+      0.0,
+      1189.8632124559717,
+      724.3553240740741
+    ],
+    "uniform_scene_scale": 0.9580933237249598,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 160,
+    "seconds": 8.0,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 161,
+    "seconds": 8.05,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 12800,
+    "plant_growth": 892,
+    "scroll": 0,
+    "scroll_max": 180,
+    "card_index": 3,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 162,
+    "seconds": 8.1,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 66,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 163,
+    "seconds": 8.15,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 15,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "892 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 164,
+    "seconds": 8.2,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 2,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 165,
+    "seconds": 8.25,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 166,
+    "seconds": 8.3,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 167,
+    "seconds": 8.35,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 168,
+    "seconds": 8.4,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 169,
+    "seconds": 8.45,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 170,
+    "seconds": 8.5,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 171,
+    "seconds": 8.55,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 172,
+    "seconds": 8.6,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 173,
+    "seconds": 8.65,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 174,
+    "seconds": 8.7,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 175,
+    "seconds": 8.75,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 176,
+    "seconds": 8.8,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 177,
+    "seconds": 8.85,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 246,
+    "card_index": 4,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 178,
+    "seconds": 8.9,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 66,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 179,
+    "seconds": 8.95,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 33,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 180,
+    "seconds": 9.0,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 3,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 181,
+    "seconds": 9.05,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 182,
+    "seconds": 9.1,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 183,
+    "seconds": 9.15,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 184,
+    "seconds": 9.2,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 185,
+    "seconds": 9.25,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 186,
+    "seconds": 9.3,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 187,
+    "seconds": 9.35,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 188,
+    "seconds": 9.4,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 189,
+    "seconds": 9.45,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 190,
+    "seconds": 9.5,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 191,
+    "seconds": 9.55,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 192,
+    "seconds": 9.6,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 193,
+    "seconds": 9.65,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 194,
+    "seconds": 9.7,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 195,
+    "seconds": 9.75,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 196,
+    "seconds": 9.8,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 197,
+    "seconds": 9.85,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 198,
+    "seconds": 9.9,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 199,
+    "seconds": 9.95,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 200,
+    "seconds": 10.0,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 201,
+    "seconds": 10.05,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 15600,
+    "plant_growth": 920,
+    "scroll": 0,
+    "scroll_max": 312,
+    "card_index": 5,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 202,
+    "seconds": 10.1,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 66,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 203,
+    "seconds": 10.15,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 13,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "920 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 204,
+    "seconds": 10.2,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 1,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 205,
+    "seconds": 10.25,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 206,
+    "seconds": 10.3,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 207,
+    "seconds": 10.35,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 208,
+    "seconds": 10.4,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 209,
+    "seconds": 10.45,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 210,
+    "seconds": 10.5,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 211,
+    "seconds": 10.55,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 378,
+    "card_index": 6,
+    "answer_visible": true,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 212,
+    "seconds": 10.6,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 37,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 213,
+    "seconds": 10.65,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 8,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 214,
+    "seconds": 10.7,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 215,
+    "seconds": 10.75,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 216,
+    "seconds": 10.8,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 217,
+    "seconds": 10.85,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.12499999999999521,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 218,
+    "seconds": 10.9,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.5925925925925933,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 219,
+    "seconds": 10.95,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 4,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 220,
+    "seconds": 11.0,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 17,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 221,
+    "seconds": 11.05,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 37,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 222,
+    "seconds": 11.1,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 62,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 223,
+    "seconds": 11.15,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 93,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 224,
+    "seconds": 11.2,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 127,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 225,
+    "seconds": 11.25,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 164,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 226,
+    "seconds": 11.3,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 202,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 227,
+    "seconds": 11.35,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 242,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 228,
+    "seconds": 11.4,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 280,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 229,
+    "seconds": 11.45,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 317,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 230,
+    "seconds": 11.5,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 351,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 231,
+    "seconds": 11.55,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 382,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 232,
+    "seconds": 11.6,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 407,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 233,
+    "seconds": 11.65,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 427,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 234,
+    "seconds": 11.7,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 440,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 235,
+    "seconds": 11.75,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 444,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 236,
+    "seconds": 11.8,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 440,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 237,
+    "seconds": 11.85,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 427,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 238,
+    "seconds": 11.9,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 407,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 239,
+    "seconds": 11.95,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 382,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 240,
+    "seconds": 12.0,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 351,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 241,
+    "seconds": 12.05,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 317,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 242,
+    "seconds": 12.1,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 280,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 243,
+    "seconds": 12.15,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 242,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 244,
+    "seconds": 12.2,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 202,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 245,
+    "seconds": 12.25,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 164,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 246,
+    "seconds": 12.3,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 127,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 247,
+    "seconds": 12.35,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 93,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 248,
+    "seconds": 12.4,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 62,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 249,
+    "seconds": 12.45,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 37,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 250,
+    "seconds": 12.5,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 17,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 251,
+    "seconds": 12.55,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 4,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 252,
+    "seconds": 12.6,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 253,
+    "seconds": 12.65,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.7842592592592575,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 254,
+    "seconds": 12.7,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.4000000000000051,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 255,
+    "seconds": 12.75,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.015740740740740094,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 256,
+    "seconds": 12.8,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      525.3458213256484,
+      0.0,
+      1179.4236311239192,
+      718.0
+    ],
+    "uniform_scene_scale": 0.9665738161559889,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 257,
+    "seconds": 12.85,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      515.0091558597506,
+      0.0,
+      1189.8632124559713,
+      724.3553240740739
+    ],
+    "uniform_scene_scale": 0.9580933237249603,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 258,
+    "seconds": 12.9,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      486.4313160422673,
+      0.0,
+      1218.725584373999,
+      741.9259259259258
+    ],
+    "uniform_scene_scale": 0.9354033546325882,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 259,
+    "seconds": 12.95,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      443.26053674351726,
+      0.0,
+      1262.3261887608055,
+      768.4687499999991
+    ],
+    "uniform_scene_scale": 0.9030946281159784,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 260,
+    "seconds": 13.0,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      389.1450528338145,
+      0.0,
+      1316.9804674991985,
+      801.7407407407402
+    ],
+    "uniform_scene_scale": 0.8656164826534861,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 261,
+    "seconds": 13.05,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      327.7330991834774,
+      0.0,
+      1379.003862471982,
+      839.4988425925926
+    ],
+    "uniform_scene_scale": 0.8266836888741216,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 262,
+    "seconds": 13.1,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      262.67291066282564,
+      0.0,
+      1444.7118155619582,
+      879.4999999999991
+    ],
+    "uniform_scene_scale": 0.7890847072200121,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 263,
+    "seconds": 13.15,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      197.61272214217138,
+      0.0,
+      1510.419768651937,
+      919.5011574074072
+    ],
+    "uniform_scene_scale": 0.7547570706237909,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 264,
+    "seconds": 13.2,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      136.20076849183644,
+      0.0,
+      1572.4431636247182,
+      957.2592592592582
+    ],
+    "uniform_scene_scale": 0.7249864582527284,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 265,
+    "seconds": 13.25,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      82.08528458213321,
+      0.0,
+      1627.0974423631117,
+      990.5312499999995
+    ],
+    "uniform_scene_scale": 0.7006341294128785,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 266,
+    "seconds": 13.3,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      38.9145052833813,
+      0.0,
+      1670.69804674992,
+      1017.0740740740741
+    ],
+    "uniform_scene_scale": 0.682349513856014,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 267,
+    "seconds": 13.35,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      10.336665465898585,
+      0.0,
+      1699.560418667947,
+      1034.6446759259256
+    ],
+    "uniform_scene_scale": 0.6707616790072636,
+    "pointer_opacity": 0.015740740740740094,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 268,
+    "seconds": 13.4,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.4000000000000051,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 269,
+    "seconds": 13.45,
+    "collapsed": false,
+    "hud": [
+      1233,
+      49,
+      296,
+      654
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.7842592592592575,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 270,
+    "seconds": 13.5,
+    "collapsed": true,
+    "hud": [
+      1449,
+      49,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 271,
+    "seconds": 13.55,
+    "collapsed": true,
+    "hud": [
+      1449,
+      49,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 272,
+    "seconds": 13.6,
+    "collapsed": true,
+    "hud": [
+      1449,
+      49,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 273,
+    "seconds": 13.65,
+    "collapsed": true,
+    "hud": [
+      1449,
+      49,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 274,
+    "seconds": 13.7,
+    "collapsed": true,
+    "hud": [
+      1449,
+      49,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 275,
+    "seconds": 13.75,
+    "collapsed": true,
+    "hud": [
+      1461,
+      51,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 276,
+    "seconds": 13.8,
+    "collapsed": true,
+    "hud": [
+      1475,
+      54,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 277,
+    "seconds": 13.85,
+    "collapsed": true,
+    "hud": [
+      1492,
+      57,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 278,
+    "seconds": 13.9,
+    "collapsed": true,
+    "hud": [
+      1511,
+      60,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 279,
+    "seconds": 13.95,
+    "collapsed": true,
+    "hud": [
+      1531,
+      64,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 280,
+    "seconds": 14.0,
+    "collapsed": true,
+    "hud": [
+      1551,
+      68,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 281,
+    "seconds": 14.05,
+    "collapsed": true,
+    "hud": [
+      1570,
+      71,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 282,
+    "seconds": 14.1,
+    "collapsed": true,
+    "hud": [
+      1587,
+      74,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 283,
+    "seconds": 14.15,
+    "collapsed": true,
+    "hud": [
+      1601,
+      77,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 284,
+    "seconds": 14.2,
+    "collapsed": true,
+    "hud": [
+      1610,
+      78,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.8,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 285,
+    "seconds": 14.25,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.674999999999999,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 286,
+    "seconds": 14.3,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.20740740740739985,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 287,
+    "seconds": 14.35,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": false,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 288,
+    "seconds": 14.4,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 289,
+    "seconds": 14.45,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 290,
+    "seconds": 14.5,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 291,
+    "seconds": 14.55,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 292,
+    "seconds": 14.6,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  },
+  {
+    "frame": 293,
+    "seconds": 14.65,
+    "collapsed": true,
+    "hud": [
+      1613,
+      79,
+      80,
+      72
+    ],
+    "growth": 18800,
+    "plant_growth": 952,
+    "scroll": 0,
+    "scroll_max": 444,
+    "card_index": 7,
+    "answer_visible": false,
+    "reward_pulse": true,
+    "window_logical_size": [
+      1710,
+      1041
+    ],
+    "camera_crop": [
+      0.0,
+      0.0,
+      1710.0,
+      1041.0
+    ],
+    "uniform_scene_scale": 0.6666666666666666,
+    "pointer_opacity": 0.0,
+    "stage_progress_text": "952 / 1,600 Growth to Young"
+  }
+]

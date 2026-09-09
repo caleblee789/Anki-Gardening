@@ -211,6 +211,7 @@ class GardenSceneWidget(QWidget):
         self._starter_placement = False
         self._placement_generation = 0
         self._active_placement_token: int | None = None
+        self._hovered_locked_bed: int | None = None
         self._hovered_move_slot: int | None = None
         self._press_position: Any = None
         self._press_plant_id: str | None = None
@@ -276,7 +277,10 @@ class GardenSceneWidget(QWidget):
         self._nursery_hotspot.setAccessibleDescription("Open nursery")
         self._nursery_hotspot.setToolTip("Open nursery")
         self._feature_hotspot = _LandmarkHotspot(self)
-        self._feature_hotspot.setStyleSheet("QToolButton {background:transparent;border:0;}")
+        self._feature_hotspot.setStyleSheet(
+            "QToolButton {background:transparent;border:0;padding:0;"
+            "min-width:0;min-height:0;max-width:16777215px;max-height:16777215px;}"
+        )
         self._feature_hotspot.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._feature_hotspot.setCursor(Qt.CursorShape.PointingHandCursor)
         self._feature_hotspot.clicked.connect(self._activate_decoration)
@@ -1022,9 +1026,9 @@ class GardenSceneWidget(QWidget):
             self.setProperty(property_name, value)
 
     def dismiss_selection(self) -> None:
-        if self._interaction.pinned_id is None:
-            return
         self._interaction.dismiss()
+        self._hover_close_timer.stop()
+        self._hover_opacity.clear()
         self.set_keyboard_hint_suppressed(False)
         self._card_connector_rect = None
         self._card_connector_plant_id = ""
@@ -1032,7 +1036,7 @@ class GardenSceneWidget(QWidget):
         self._inline_message = ""
         self._announce_focused_plant()
         self.selectionChanged.emit("")
-        self.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.clearFocus()
         self._sync_animation_timer()
         self.update()
 
@@ -1263,7 +1267,8 @@ class GardenSceneWidget(QWidget):
         if source is None:
             button.hide()
             return
-        geometry = box.toAlignedRect()
+        visible = self.decoration_visible_geometry() or box
+        geometry = visible.adjusted(-3, -3, 3, 3).toAlignedRect()
         button.setGeometry(geometry)
         local_box = box.translated(-geometry.x(), -geometry.y())
         key = (path, self._file_identity_for(path), geometry.width(), geometry.height(),
@@ -1298,6 +1303,8 @@ class GardenSceneWidget(QWidget):
 
     def set_decoration_inspected(self, inspected: bool) -> None:
         self._feature_selected = bool(inspected)
+        if not inspected:
+            self._feature_hotspot.clearFocus()
         self.update()
 
     def _sync_landmark_occlusion(self) -> None:
@@ -2664,29 +2671,19 @@ class GardenSceneWidget(QWidget):
         for slot, layout in self._slot_placements.items():
             if int(slot) < unlocked:
                 continue
-            bed = QRectF(
-                layout.bed_footprint.x,
-                layout.bed_footprint.y,
-                layout.bed_footprint.width,
-                layout.bed_footprint.height,
-            )
-            planter = planter_draw_rect(layout, planter_family)
             painter.save()
             # The badge is the complete locked treatment. The previous
             # planter-sized translucent rounded rectangle made adjacent beds
             # merge into a foggy panel and obscured the source artwork.
-            badge_height = max(22.0, min(26.0, bed.width() * 0.18))
-            badge_width = badge_height
-            badge_rect = QRectF(
-                planter.x + planter.width / 2 - badge_width / 2,
-                planter.y + planter.height / 2 - badge_height / 2,
-                badge_width,
-                badge_height,
-            )
-            locked_border = QColor(GARDEN_THEME["text_muted"])
-            locked_border.setAlpha(150)
-            painter.setPen(QPen(locked_border, 1.0))
-            painter.setBrush(QColor(8, 37, 28, 170))
+            badge_rect = self._locked_bed_badge_rect(layout, planter_family)
+            badge_height = badge_rect.height()
+            badge_width = badge_rect.width()
+            clickable = self.interactive and slot in self.scene.get("achievement_locked_beds", ())
+            highlighted = clickable and slot == self._hovered_locked_bed
+            locked_border = QColor(GARDEN_THEME["action_hover" if highlighted else "text_muted"])
+            locked_border.setAlpha(255 if highlighted else 150)
+            painter.setPen(QPen(locked_border, 2.0 if highlighted else 1.0))
+            painter.setBrush(QColor(GARDEN_THEME["action_accent"]) if highlighted else QColor(8, 37, 28, 170))
             painter.drawRoundedRect(
                 badge_rect,
                 badge_height * 0.28,
@@ -2702,7 +2699,8 @@ class GardenSceneWidget(QWidget):
             )
             painter.setPen(Qt.PenStyle.NoPen)
             locked_icon = QColor(GARDEN_THEME["text_muted"])
-            locked_icon.setAlpha(175)
+            locked_icon = QColor("#ffffff") if highlighted else locked_icon
+            locked_icon.setAlpha(255 if highlighted else 175)
             painter.setBrush(locked_icon)
             painter.drawRoundedRect(body_rect, 2.0, 2.0)
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -2731,9 +2729,33 @@ class GardenSceneWidget(QWidget):
                     round(float(badge_rect.height()), 2),
                 ],
                 "relative_visual_strength": 0.58,
-                "interactive": False,
+                "interactive": clickable,
+                "highlighted": highlighted,
             }
             painter.restore()
+
+    @staticmethod
+    def _locked_bed_badge_rect(layout: Any, planter_family: Any) -> QRectF:
+        planter = planter_draw_rect(layout, planter_family)
+        size = max(18.0, min(20.0, layout.bed_footprint.width * 0.14))
+        return QRectF(
+            planter.x + (planter.width - size) / 2,
+            planter.y + (planter.height - size) / 2,
+            size, size,
+        )
+
+    def _locked_bed_at(self, position: Any) -> int | None:
+        if not self.interactive or not self.scene.get("show_locked_bed_badges", True):
+            return None
+        family = self._planter_family_record()
+        unlocked = max(0, min(6, int(self.scene.get("unlocked_slots", 0))))
+        for slot, layout in self._slot_placements.items():
+            if slot < unlocked or slot not in self.scene.get("achievement_locked_beds", ()):
+                continue
+            # A small pointer allowance follows the painted badge at every size.
+            if self._locked_bed_badge_rect(layout, family).adjusted(-3, -3, 3, 3).contains(position):
+                return int(slot)
+        return None
 
     def _draw_slot_placeholders(self, painter: QPainter) -> None:
         sync_emphasis = getattr(self, "_sync_emphasis_state_properties", None)
@@ -3307,6 +3329,23 @@ class GardenSceneWidget(QWidget):
             super().mouseMoveEvent(event)
             return
         position = self._event_position(event)
+        locked_bed = self._locked_bed_at(position) if not self._drag_started else None
+        if locked_bed != self._hovered_locked_bed:
+            self._hovered_locked_bed = locked_bed
+            if locked_bed is None:
+                QToolTip.hideText()
+            else:
+                QToolTip.showText(
+                    self.mapToGlobal(position.toPoint()),
+                    f"Bed {locked_bed + 1}: Click to view unlock requirements",
+                    self,
+                )
+            self.update()
+        if locked_bed is not None and not self._interaction.placing:
+            self._schedule_hover_clear()
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            super().mouseMoveEvent(event)
+            return
         if self._interaction.placing:
             hover_slot = self._slot_at(position)
             unlocked = max(0, min(6, int(self.scene.get("unlocked_slots", 0))))
@@ -3367,7 +3406,7 @@ class GardenSceneWidget(QWidget):
                     )
                     self.update()
                     return
-            if target_state == "valid":
+            if target_state == "valid" or locked_bed is not None:
                 self.setCursor(Qt.CursorShape.PointingHandCursor)
             elif target_state == "unavailable":
                 self.setCursor(Qt.CursorShape.ForbiddenCursor)
@@ -3403,6 +3442,11 @@ class GardenSceneWidget(QWidget):
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event: Any) -> None:
+        if self._hovered_locked_bed is not None:
+            self._hovered_locked_bed = None
+            QToolTip.hideText()
+            self.unsetCursor()
+            self.update()
         if self._interaction.placing:
             self._hovered_move_slot = None
             QToolTip.hideText()
@@ -3416,12 +3460,8 @@ class GardenSceneWidget(QWidget):
             super().mousePressEvent(event)
             return
         position = self._event_position(event)
-        slot = self._slot_at(position)
-        if (
-            not self._drag_started and slot is not None
-            and slot >= int(self.scene.get("unlocked_slots", 0))
-            and slot in self.scene.get("achievement_locked_beds", ())
-        ):
+        slot = self._locked_bed_at(position) if not self._drag_started else None
+        if slot is not None:
             self._press_position = None
             self._press_plant_id = None
             self.lockedBedActivated.emit(int(slot))
@@ -3513,15 +3553,16 @@ class GardenSceneWidget(QWidget):
             self._drag_started = False
             self.setFocus()
         else:
+            self._press_position = None
+            self._press_plant_id = None
             self._interaction.cancel_placement()
-            was_selected = self._interaction.pinned_id is not None
-            self._interaction.dismiss()
-            if was_selected:
-                self.set_keyboard_hint_suppressed(False)
-            self._inline_message = ""
-            if was_selected:
-                self._announce_focused_plant()
-                self.selectionChanged.emit("")
+            self.dismiss_selection()
+            self._hovered_locked_bed = None
+            self._feature_hotspot.clearFocus()
+            self.set_decoration_inspected(False)
+            for button in self._landmark_hotspots.values():
+                button.clearFocus()
+            QToolTip.hideText()
         self.update()
         super().mousePressEvent(event)
 

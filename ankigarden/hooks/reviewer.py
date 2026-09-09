@@ -2296,7 +2296,7 @@ class ReviewerHookHandler:
             return False
 
     def _continue_reviews_from_session_summary(self) -> bool:
-        """Use Anki's native Overview study transition.
+        """Start Anki's reviewer for the revalidated continuation deck.
 
         The card deliberately stays mounted until the transition succeeds;
         this gives keyboard and pointer users a recoverable failure state.
@@ -2358,12 +2358,9 @@ class ReviewerHookHandler:
                     select_deck(original_deck_id)
                 return False
             self._session_summary_continuation_in_progress = True
-            if str(getattr(mw, "state", "") or "") != "overview":
-                move_to_state("overview")
-            if str(getattr(mw, "state", "") or "") != "overview":
-                if original_deck_id is not None:
-                    select_deck(original_deck_id)
-                return False
+            # Overview.refresh() renders asynchronously. Visiting overview here
+            # can overwrite the review page after its bridge handler is active,
+            # leaving a visible Study now button that the reviewer cannot handle.
             start_timebox()
             move_to_state("review")
             succeeded = str(getattr(mw, "state", "") or "") == "review"

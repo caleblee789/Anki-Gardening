@@ -663,6 +663,7 @@ def test_current_origin_is_inert_and_escape_cancels_move() -> None:
     mouse_scene.scene = {"unlocked_slots": 2, "achievement_locked_beds": (2, 3)}
     mouse_scene._event_position = lambda event: event.position()
     mouse_scene._slot_at = lambda _position: 0
+    mouse_scene._locked_bed_at = lambda _position: None
     mouse_event = SimpleNamespace(button=lambda: "left", position=lambda: object())
     mouse_press(mouse_scene, mouse_event)
 
@@ -675,6 +676,7 @@ def test_current_origin_is_inert_and_escape_cancels_move() -> None:
     # destination, cancelling the move, or changing the committed selection.
     mouse_scene.lockedBedActivated = _Signal()
     mouse_scene._slot_at = lambda _position: 2
+    mouse_scene._locked_bed_at = lambda _position: 2
     mouse_event.accept = lambda: None
     previous_destination = mouse_scene._interaction.destination_slot
     mouse_press(mouse_scene, mouse_event)

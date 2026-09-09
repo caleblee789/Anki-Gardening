@@ -1,6 +1,7 @@
 """Gardening Trophies in Progress → Trophy Room, also reached from the house."""
 from __future__ import annotations
 
+from html import escape
 from typing import Any, Callable
 
 from aqt.qt import (
@@ -197,6 +198,21 @@ class TrophyShowcase(QFrame):
         super().resizeEvent(event)
         self._reflow()
 
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self._stacked or not self._panels:
+            return
+        # Continue the cabinet's two bay boundaries through the descriptions.
+        cabinet = QRectF(self.case.geometry()).adjusted(14, 14, -14, -23)
+        top = min(panel.geometry().top() for panel in self._panels)
+        bottom = max(panel.geometry().bottom() for panel in self._panels)
+        painter = QPainter(self)
+        painter.setPen(QPen(QColor(GARDEN_THEME["subtle_border"]), 1))
+        for divider in (1, 2):
+            x = round(cabinet.left() + cabinet.width() * divider / 3)
+            painter.drawLine(x, top, x, bottom)
+        painter.end()
+
     def _reflow(self) -> None:
         # The three descriptions need room for their natural text size even
         # when the host width itself has not changed (for example larger text).
@@ -238,14 +254,28 @@ class TrophyShowcase(QFrame):
             active = trophy.unlocked and bool(getattr(self.engine.state, "trophy_activation_ms", {}).get(trophy.trophy_id))
             status.setText(trophy.status)
             status.setStyleSheet(f"color:{GARDEN_THEME['action_accent' if active else 'text_secondary']};")
-            requirement.setText(f"Unlock requirement\n{trophy.requirement}\n{trophy.progress_text}")
+            requirement.setTextFormat(Qt.TextFormat.RichText)
+            heading_style = f"color:{GARDEN_THEME['text_primary']};font-weight:700;"
+            requirement_copy = (
+                f"{escape(trophy.requirement)} (currently {trophy.progress:,}/{trophy.target:,} species)"
+                if trophy.trophy_id == "botanists_plaque" else
+                f"{escape(trophy.requirement)}<br>{escape(trophy.progress_text)}"
+            )
+            requirement.setText(
+                f'<span style="{heading_style}">Unlock requirement</span><br>'
+                + requirement_copy
+            )
             requirement.setVisible(not trophy.unlocked)
             bonus_label = "Permanent bonus" if trophy.unlocked else "Bonus when unlocked"
             effect = trophy.buff
             if trophy.trophy_id == "golden_trowel":
                 effect += "\n" + self.engine.overflow_destination_summary()
             main_effect, _, mechanics = effect.partition("\n")
-            buff.setText(bonus_label + "\n" + main_effect)
+            buff.setTextFormat(Qt.TextFormat.RichText)
+            buff.setText(
+                f'<span style="{heading_style}">{escape(bonus_label)}</span><br>'
+                f"{escape(main_effect)}"
+            )
             extra.setText(mechanics)
             details_toggle.setVisible(bool(mechanics))
             extra.setVisible(bool(mechanics) and details_toggle.isChecked())

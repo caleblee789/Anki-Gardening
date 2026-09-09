@@ -29,6 +29,25 @@ def _label(text, size, weight=400, line_height=16, *, secondary=False):
     return label
 
 
+def progress_status_badge(text: str, *, unlocked: bool = False, highlighted: bool = False, parent=None) -> QFrame:
+    badge = QFrame(parent)
+    badge.setAccessibleName(text)
+    badge.setMinimumHeight(22)
+    badge.setStyleSheet(f"background:{GARDEN_THEME['selected_surface']};border:0;border-radius:6px;")
+    badge_layout = QHBoxLayout(badge)
+    badge_layout.setContentsMargins(8, 3, 8, 3)
+    badge_layout.setSpacing(4)
+    icon = QLabel(badge)
+    icon.setFixedSize(14, 14)
+    icon.setPixmap(garden_icon_pixmap("check" if unlocked else "lock", 14,
+                                     color=GARDEN_THEME['action_accent' if unlocked or highlighted else 'text_secondary']))
+    badge_layout.addWidget(icon)
+    status = _label(text, 12, 600)
+    status.setWordWrap(False)
+    badge_layout.addWidget(status)
+    return badge
+
+
 class PlantBedCard(QFrame):
     def __init__(self, row: PlantBedProgress, artwork, parent=None):
         super().__init__(parent)
@@ -52,21 +71,7 @@ class PlantBedCard(QFrame):
         heading = QHBoxLayout()
         heading.setSpacing(8)
         heading.addWidget(_label(f"Bed {row.bed_number}", 16, 600, 22), 1)
-        badge = QFrame(self)
-        badge.setAccessibleName(row.status)
-        badge.setMinimumHeight(22)
-        badge.setStyleSheet(f"background:{GARDEN_THEME['selected_surface']};border:0;border-radius:6px;")
-        badge_layout = QHBoxLayout(badge)
-        badge_layout.setContentsMargins(8, 3, 8, 3)
-        badge_layout.setSpacing(4)
-        icon = QLabel(badge)
-        icon.setFixedSize(14, 14)
-        icon.setPixmap(garden_icon_pixmap("check" if row.unlocked else "lock", 14,
-                                         color=GARDEN_THEME['action_accent' if row.unlocked or row.next_bed else 'text_secondary']))
-        badge_layout.addWidget(icon)
-        status = _label(row.status, 12, 600)
-        status.setWordWrap(False)
-        badge_layout.addWidget(status)
+        badge = progress_status_badge(row.status, unlocked=row.unlocked, highlighted=row.next_bed, parent=self)
         heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(heading)
         layout.addSpacing(6)

@@ -1,0 +1,78 @@
+{
+  "gif": {
+    "file": "anki-garden-review-hud.gif",
+    "width": 960,
+    "height": 584,
+    "frames": 294,
+    "duration_seconds": 14.7,
+    "bytes": 2190038,
+    "loop_forever": true
+  },
+  "video": {
+    "file": "anki-garden-review-hud-hd.mp4",
+    "bytes": 696620,
+    "width": 1140,
+    "height": 694
+  },
+  "checks": {
+    "constant_anki_window": true,
+    "native_hud_size": true,
+    "uniform_camera_transform": true,
+    "camera_zooms_in_and_out": true,
+    "both_hud_states": true,
+    "compact_drag": true,
+    "expanded_drag": true,
+    "growth_increases": true,
+    "rewards_scroll_and_return": true,
+    "review_card_answers": true,
+    "native_rarity_pulses": true,
+    "looping_gif": true,
+    "matching_loop_composition": true,
+    "quiet_pointer_during_reward_closeups": true,
+    "reduced_surrounding_margin": true,
+    "exact_package_runtime": true,
+    "updated_stage_progress_copy": true,
+    "original_duration_preserved": true,
+    "edge_to_edge_review_screen": true,
+    "no_decorative_frame_or_title": true
+  },
+  "rendering": "The complete 1710 x 1041 native review viewport fills the output edge to edge. No decorative background, border, corner mask or title is added. The HUD is imported from the recorded production archive and rendered at 3x pixel density with the approved plant artwork. A single uniform camera transform, subtle interaction-only cursor, sample cards and rewards, and the full 14.7-second sequence are retained. No Anki collection is opened.",
+  "review_capture": "build/ui-face-captures/full/capture-sequence-20260908-012834/assembled/49-workspace-reviewer-collapsed.png",
+  "public_image_url": null,
+  "embedding": "Replace PUBLIC_GIF_URL in ankiweb-embed.html after publicly hosting the GIF.",
+  "opening_scale": {
+    "seconds": 2,
+    "reference_window_logical_pixels": [
+      1710,
+      1041
+    ],
+    "compact_hud_width_logical_pixels": 80,
+    "compact_hud_width_fraction": 0.04678362573099415
+  },
+  "framing": {
+    "canvas": [
+      1140,
+      694
+    ],
+    "margin_pixels": 0,
+    "title_band_pixels": 0,
+    "opening_window_area_fraction": 1.0
+  },
+  "pointer": {
+    "relative_size": 0.6,
+    "maximum_opacity": 0.8,
+    "halo": false,
+    "visible_during": [
+      "dragging",
+      "toggling",
+      "scrolling"
+    ]
+  },
+  "package_source": {
+    "archive": "/Users/test/Documents/Anki Gardening.nosync/dist/anki_garden.ankiaddon",
+    "sha256": "4565a53f40f67ef59bcc8ce566aee7358ddc2404db44a8980de769841993fbe8",
+    "version": "2.2.0",
+    "runtime_source": "/private/tmp/anki-garden-hud-packages/4565a53f40f67ef59bcc8ce566aee7358ddc2404db44a8980de769841993fbe8/ankigarden",
+    "hud_module_sha256": "a259653b27ab7c4b28564937ef464872de5e4e7bf4cbbd928420a6f4e1eaf8d1"
+  }
+}

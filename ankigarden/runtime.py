@@ -60,6 +60,7 @@ class ReconciliationCoordinator:
         self._alias_batch_size = 256
         self._alias_after_id = 0
         self._source = "startup"
+        self._sync_rewards_pending = False
         self._batch_id = ""
         self._batch_number = 0
         self._after_id = 0
@@ -116,7 +117,8 @@ class ReconciliationCoordinator:
             time.tzname, time.timezone, time.altzone,
         )
 
-    def invalidate(self, reason: str, *, suspended: bool | None = None, replacement: bool = False) -> None:
+    def invalidate(self, reason: str, *, suspended: bool | None = None, replacement: bool = False,
+                   from_sync: bool = False) -> None:
         self.generation += 1
         self.dirty = True
         self.busy = False
@@ -127,10 +129,14 @@ class ReconciliationCoordinator:
         if suspended is not None:
             self.suspended = suspended
         self._replacement = self._replacement or replacement
+        # Helper operations and view refreshes can supersede the scan's source.
+        # Retain an actual sync completion until its reconciliation settles.
+        self._sync_rewards_pending = self._sync_rewards_pending or from_sync
         self.request(reason, replacement=replacement)
 
     def close(self) -> None:
         self.closed = True
+        self._sync_rewards_pending = False
         self.generation += 1
         self.storage.history_index = None
         self.storage.runtime_pending = True
@@ -381,7 +387,9 @@ class ReconciliationCoordinator:
                     reward_baseline=self.app.engine.sync_reward_baseline(),
                 )
                 self.app.sync_reward_processor.process(
-                    snapshot, presentation_enabled=self.app._sync_reward_summary_enabled(),
+                    snapshot, presentation_enabled=(
+                        self._sync_rewards_pending and self.app._sync_reward_summary_enabled()
+                    ),
                     raise_on_failure=True,
                 )
             self.storage._history_after_id = max(
@@ -431,6 +439,7 @@ class ReconciliationCoordinator:
             (int(row["last"]) for row in self.index.summaries() if row["day"] <= self._verified_day), default=0,
         )
         self._replacement = False
+        self._sync_rewards_pending = False
         self.storage.runtime_pending = False
         self.storage._history_batch_limit = None
         self.storage._history_after_id = 0

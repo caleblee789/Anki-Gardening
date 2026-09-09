@@ -1774,8 +1774,10 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         toggle.setStyleSheet(f"QToolButton {{background:transparent;border:0;color:{self._summary_theme['text_secondary']};font-size:12px;padding:3px;}} QToolButton:hover {{color:{self._summary_theme['text_primary']};}}")
         toggle.clicked.connect(self._toggle_progress_details)
         layout.addWidget(toggle, 0, Qt.AlignmentFlag.AlignRight)
-        panel.setVisible(self._progress_details_expanded)
         layout.addWidget(panel)
+        # Parent the panel before showing it so macOS never treats it as a
+        # separate top-level window and switches Spaces when Details expands.
+        panel.setVisible(self._progress_details_expanded)
 
     def _toggle_progress_details(self) -> None:
         self._progress_details_expanded = not self._progress_details_expanded

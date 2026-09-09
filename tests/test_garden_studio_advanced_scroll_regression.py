@@ -978,9 +978,10 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         dashboard.refresh_all()
         settle()
         assert not dashboard.plant_card.isVisibleTo(dashboard)
-        QTest.mouseClick(bar.view_plant, Qt.MouseButton.LeftButton)
+        target = dashboard.scene.plant_geometry("p1").center().toPoint()
+        QTest.mouseClick(dashboard.scene, Qt.MouseButton.LeftButton, pos=target)
         settle()
-        QTest.mouseClick(bar.view_plant, Qt.MouseButton.LeftButton)
+        QTest.mouseClick(dashboard.scene, Qt.MouseButton.LeftButton, pos=target)
         settle()
         assert dashboard.scene.selected_plant_id() == "p1"
         assert dashboard.plant_card.isVisibleTo(dashboard)
@@ -1041,8 +1042,9 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         engine.set_active_plant(None)
         dashboard.refresh_all()
         settle()
-        assert not bar.plant_id and bar.view_plant.text() == "Choose plant"
-        bar.view_plant.click()
+        assert not bar.plant_id and bar.heading.text() == "No plant is being nurtured"
+        target = dashboard.scene.plant_geometry("p1").center().toPoint()
+        QTest.mouseClick(dashboard.scene, Qt.MouseButton.LeftButton, pos=target)
         settle()
         assert dashboard.plant_card.isVisibleTo(dashboard)
         assert storage.state.active_plant_id is None
