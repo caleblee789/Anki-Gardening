@@ -101,6 +101,12 @@ Use the gear in the Garden to rename it, reduce animations, and choose which Gar
 
 **“Your Anki Garden is still updating”** appears beneath the title while Garden checks study history, such as after startup or sync. Your saved garden stays visible and you can keep reviewing. New rewards and some Garden actions may wait until the update finishes; the notice then clears automatically. The first update can take longer with a large review history.
 
+After this version starts successfully, your progress and settings stay on this
+computer when you uninstall Garden and return when you reinstall it. They live
+in `anki-garden-data` inside Anki's data directory, outside the add-on folder.
+Deleting Anki's data directory or losing the computer is not covered.
+See [saved progress and recovery](docs/saved-progress.md) for details.
+
 If you study on another device, syncing reviews back to desktop can add Garden rewards and show a summary. Turning off the summary leaves rewards enabled. Your garden is retained when the add-on is upgraded.
 
 For item effects, unlock requirements, and reward details, see the [progression and rewards guide](docs/progression-rewards-effects-reference.md). For contributing to the add-on, see the [development guide](docs/development.md).

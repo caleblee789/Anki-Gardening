@@ -165,7 +165,6 @@ def _new_app(addon_module):
     app._collection_did_temporarily_close_callback = (
         app._on_collection_did_temporarily_close
     )
-    app._profile_will_close_callback = app._on_profile_will_close
     app._profile_did_open_callback = app._on_profile_did_open
     app._collection_replacement_pending = False
     app._home_widget_controller = HomeWidgetStateController()
@@ -2360,8 +2359,27 @@ def test_setup_collection_lifecycle_hooks_is_idempotent(monkeypatch):
     assert hooks.collection_did_temporarily_close.count(
         app._collection_did_temporarily_close_callback
     ) == 1
-    assert hooks.profile_will_close.count(app._profile_will_close_callback) == 1
+    assert hooks.profile_will_close == []
     assert hooks.profile_did_open.count(app._profile_did_open_callback) == 1
+
+
+def test_cancelled_profile_close_keeps_garden_open_until_actual_unload(monkeypatch):
+    aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    events = []
+    aqt_mod.mw._unloadProfile = lambda: events.append("unloaded")
+    app.storage.close = lambda: events.append("database closed")
+    app._setup_collection_hooks()
+    app._setup_collection_hooks()
+
+    # Anki emits this before asking open dialogs to close; a cancelled dialog
+    # never reaches _unloadProfile and must not stop Garden.
+    for callback in hooks.profile_will_close:
+        callback()
+    assert events == []
+    aqt_mod.mw._unloadProfile()
+    assert events == ["unloaded", "database closed"]
 
 
 def test_sync_lifecycle_processes_snapshot_with_live_presentation_setting(monkeypatch):

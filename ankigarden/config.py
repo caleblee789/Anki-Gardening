@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
 from typing import Any, Dict
 
 
@@ -137,16 +139,28 @@ def _sanitize_config(payload: Any, *, strict: bool) -> Dict[str, Any]:
 
 
 class ConfigManager:
-    def __init__(self, mw: Any) -> None:
+    def __init__(self, mw: Any, *, settings_path: Path | None = None) -> None:
         self.mw = mw
+        self.settings_path = settings_path
         self._config = deepcopy(DEFAULT_CONFIG)
         self.reload()
 
     def reload(self) -> None:
-        if self.mw is None:
+        if self.settings_path is not None:
+            try:
+                user_conf = json.loads(self.settings_path.read_text(encoding="utf-8"))
+                if not isinstance(user_conf, dict):
+                    raise ValueError("Settings must be an object.")
+            except Exception as exc:
+                raise ConfigError(
+                    f"Garden could not read its saved settings at {self.settings_path}. "
+                    "The file was preserved; restore a valid copy before restarting Garden."
+                ) from exc
+        elif self.mw is None:
             return
-        addon_key = self.mw.addonManager.addonFromModule(__name__)
-        user_conf = self.mw.addonManager.getConfig(addon_key) or {}
+        else:
+            addon_key = self.mw.addonManager.addonFromModule(__name__)
+            user_conf = self.mw.addonManager.getConfig(addon_key) or {}
         if isinstance(user_conf, dict):
             user_conf = deepcopy(user_conf)
             legacy_hint_seen = user_conf.pop("plant_interaction_hint_seen", False)
@@ -177,7 +191,13 @@ class ConfigManager:
         candidate = self._merge(deepcopy(self._config), validated)
         if candidate["initial_slots"] > candidate["max_slots"]:
             raise ConfigError("initial_slots cannot be greater than max_slots.")
-        if self.mw is not None:
+        if self.settings_path is not None:
+            from .persistence import atomic_write_json
+            try:
+                atomic_write_json(self.settings_path, candidate)
+            except Exception as exc:
+                raise ConfigError("Garden could not save these settings. Check available disk space and folder permissions.") from exc
+        elif self.mw is not None:
             addon_key = self.mw.addonManager.addonFromModule(__name__)
             try:
                 self.mw.addonManager.writeConfig(addon_key, deepcopy(candidate))

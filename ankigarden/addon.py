@@ -6,6 +6,7 @@ from .ui.formatters import format_plant_name
 import json
 import logging
 import os
+from functools import wraps
 from html import escape
 from pathlib import Path
 from typing import Any, Optional
@@ -146,8 +147,8 @@ def _iter_submenus(menu: Any, seen: set[int] | None = None):
 
 class AnkiGardenApp:
     def __init__(self) -> None:
-        self.config = ConfigManager(mw)
-        self.storage = GardenStorage(mw, self.config, deferred=True)
+        from .persistence import open_persistent_garden
+        self.config, self.storage = open_persistent_garden(mw)
         self.engine = GardenGameEngine(self.config, self.storage)
         self.state_events = GardenUiCoordinator(mw)
         self.state_events.stateChanged.connect(self._invalidate_home_cache)
@@ -197,7 +198,6 @@ class AnkiGardenApp:
         self._collection_did_temporarily_close_callback = (
             self._on_collection_did_temporarily_close
         )
-        self._profile_will_close_callback = self._on_profile_will_close
         self._profile_did_open_callback = self._on_profile_did_open
         self._sync_in_progress = False
         self._collection_replacement_pending = False
@@ -659,6 +659,10 @@ class AnkiGardenApp:
 
     def _setup_settings_menu(self) -> None:
         """Register Garden settings beside the user's other add-on settings."""
+        manager = getattr(mw, "addonManager", None)
+        set_config_action = getattr(manager, "setConfigAction", None)
+        if callable(set_config_action):
+            set_config_action(__name__, self.open_settings)
         if getattr(self, "_settings_action", None) is not None:
             return
         submenu = self._shared_addons_settings_menu()
@@ -1185,6 +1189,19 @@ class AnkiGardenApp:
         try:
             from aqt import gui_hooks
 
+            # profile_will_close fires BEFORE cancellable dialogs and sync.
+            # Keep the database usable until Anki has actually unloaded the
+            # profile. There is no public profile_did_close hook in supported
+            # Anki versions; wrap the completed-unload boundary on this window.
+            unload_profile = getattr(mw, "_unloadProfile", None)
+            if callable(unload_profile):
+                @wraps(unload_profile)
+                def after_profile_unload(*args: Any, **kwargs: Any) -> Any:
+                    result = unload_profile(*args, **kwargs)
+                    self._on_profile_closed()
+                    return result
+                mw._unloadProfile = after_profile_unload
+
             hook_callbacks = (
                 ("operation_did_execute", self._on_operation_did_execute),
                 (
@@ -1209,14 +1226,6 @@ class AnkiGardenApp:
                         self,
                         "_collection_did_temporarily_close_callback",
                         self._on_collection_did_temporarily_close,
-                    ),
-                ),
-                (
-                    "profile_will_close",
-                    getattr(
-                        self,
-                        "_profile_will_close_callback",
-                        self._on_profile_will_close,
                     ),
                 ),
                 (
@@ -1334,7 +1343,7 @@ class AnkiGardenApp:
                     "Anki Garden: replacement collection baseline was deferred"
                 )
 
-    def _on_profile_will_close(self, *_args: object, **_kwargs: object) -> None:
+    def _on_profile_closed(self, *_args: object, **_kwargs: object) -> None:
         self._sync_in_progress = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
@@ -1351,8 +1360,19 @@ class AnkiGardenApp:
         )
         if callable(close_for_profile):
             close_for_profile()
+        close_storage = getattr(getattr(self, "storage", None), "close", None)
+        if callable(close_storage):
+            close_storage()
 
     def _on_profile_did_open(self, *_args: object, **_kwargs: object) -> None:
+        reopen_storage = getattr(getattr(self, "storage", None), "reopen", None)
+        if callable(reopen_storage):
+            try:
+                reopen_storage()
+            except Exception as error:
+                from .notices import USER_NOTICES
+                USER_NOTICES.publish(str(error), key="saved_progress")
+                return
         runtime = getattr(self, "runtime", None)
         if runtime is not None and runtime.closed:
             from .runtime import ReconciliationCoordinator

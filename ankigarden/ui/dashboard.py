@@ -12680,6 +12680,12 @@ class GardenSettingsDialog(GardenDialog):
         a_layout = QVBoxLayout(advanced_body)
         a_layout.setContentsMargins(0, 16, 0, 0)
         a_layout.setSpacing(12)
+        self.persistence_notice = QLabel(
+            "Your progress and settings stay on this computer when you uninstall "
+            "Anki Garden and return when you reinstall it."
+        )
+        self.persistence_notice.setWordWrap(True)
+        self.persistence_notice.setProperty("dialogSubtitle", True)
         advanced.setWidget(advanced_body)
         _set_scroll_surface(
             advanced,
@@ -12892,6 +12898,7 @@ class GardenSettingsDialog(GardenDialog):
         support_layout.setContentsMargins(0, 0, 0, 0)
         support_layout.setSpacing(4)
         support_layout.addWidget(support_heading)
+        support_layout.addWidget(self.persistence_notice)
         support_layout.addWidget(self.diagnostics_toggle)
         support_spacer = QWidget(behavior)
         support_spacer.hide()
@@ -23810,12 +23817,14 @@ class GardenDashboard(DialogShell):
             if environment_new else
             "Open the plant Collection in Garden Progress."
         )
-        if self.progress_dialog.isVisible():
+        # prepare_to_show refreshes before the dashboard becomes visible.
+        # Refresh the selected workspace even while its parent is hidden.
+        if self._workspace_section == "progress":
             self.progress_dialog.refresh_current_page()
-        if self.collection_section.isVisible():
+        if self._workspace_section == "collection":
             self._refresh_progress_page("collection")
         shop = getattr(self, "_shop", None)
-        if shop is not None and shop.isVisible():
+        if shop is not None and self._workspace_section == "shop":
             shop.refresh()
             self._shop_dirty = False
         self._pending_feedback_ack_ids = tuple(event.event_id for event in feedback)

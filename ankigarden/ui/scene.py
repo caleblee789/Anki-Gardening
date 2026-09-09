@@ -275,7 +275,7 @@ class GardenSceneWidget(QWidget):
         self._nursery_hotspot.setAccessibleName("Shop")
         self._nursery_hotspot.setAccessibleDescription("Open nursery")
         self._nursery_hotspot.setToolTip("Open nursery")
-        self._feature_hotspot = QToolButton(self)
+        self._feature_hotspot = _LandmarkHotspot(self)
         self._feature_hotspot.setStyleSheet("QToolButton {background:transparent;border:0;}")
         self._feature_hotspot.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._feature_hotspot.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1265,10 +1265,18 @@ class GardenSceneWidget(QWidget):
             return
         geometry = box.toAlignedRect()
         button.setGeometry(geometry)
-        key = (path, self._file_identity_for(path), geometry.width(), geometry.height())
+        local_box = box.translated(-geometry.x(), -geometry.y())
+        key = (path, self._file_identity_for(path), geometry.width(), geometry.height(),
+               local_box.x(), local_box.y(), local_box.width(), local_box.height())
         if key != self._feature_hotspot_key:
-            mask = source.scaled(geometry.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
-                                 Qt.TransformationMode.SmoothTransformation).toImage().createAlphaMask()
+            # Match the painter's fractional destination instead of stretching
+            # the artwork to the outward-rounded button rectangle.
+            raster = QImage(geometry.size(), QImage.Format.Format_ARGB32_Premultiplied)
+            raster.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(raster)
+            painter.drawPixmap(local_box, source, QRectF(source.rect()))
+            painter.end()
+            mask = raster.createAlphaMask()
             region = QRegion(QBitmap.fromImage(mask))
             # Give slender hooks and stems a small pointer tolerance while
             # preserving the transparent gaps around the decoration.
@@ -4260,11 +4268,13 @@ class GardenSceneWidget(QWidget):
         source = self._pixmap_for(feature_path)
         button = self._feature_hotspot
         emphasized = self._feature_selected or button.hasFocus()
-        if source is not None and self.interactive and (emphasized or button.underMouse()):
-            scale = feature_box.width() / source.width()
+        if source is not None and self.interactive and not self._interaction.placing and (emphasized or button.underMouse()):
+            render_width = max(1, min(source.width(), math.ceil(feature_box.width() * self.devicePixelRatioF())))
+            scale = feature_box.width() / render_width
             radius = max(1, min(12, round((1.2 if emphasized else 1.0) / scale)))
             edge = self._highlight_pixmap_for(feature_path,
-                GARDEN_THEME["focus_ring"] if emphasized else "#d7edcf", radius)
+                GARDEN_THEME["focus_ring"] if emphasized else "#d7edcf", radius,
+                render_width=render_width)
             if edge is not None:
                 padding = (radius + 1) * scale
                 painter.setOpacity(.45 if emphasized else PLANT_HOVER_OUTLINE_OPACITY)

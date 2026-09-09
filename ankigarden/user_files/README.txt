@@ -1,4 +1,7 @@
-Anki Garden stores your local garden progress in this folder.
+This folder contains disposable artwork metadata/cache and may contain old
+progress retained after migration. Current progress and settings live in
+anki-garden-data inside Anki's active data directory, outside addons21.
 
-Anki preserves user_files when the add-on is upgraded. Do not delete this
-folder unless you intentionally want to reset your garden.
+After successful migration, uninstalling and reinstalling Anki Garden resumes
+that saved progress automatically. Deleting Anki's data directory or losing the
+computer is not covered; keep ordinary computer backups.

@@ -2102,7 +2102,8 @@ class GardenStorage:
     _reward_ledger: RewardLedger | None = None
     _ledger_revision: int = 0
 
-    def __init__(self, mw: Any, config: Any, *, deferred: bool = False) -> None:
+    def __init__(self, mw: Any, config: Any, *, deferred: bool = False,
+                 data_dir: Path | None = None, addon_dir: Path | None = None) -> None:
         self.runtime_pending = bool(deferred)
         self._runtime_initialized = not deferred
         self._allow_runtime_commit = False
@@ -2111,26 +2112,58 @@ class GardenStorage:
         self._due_snapshot_collection = None
         self.mw = mw
         self.config = config
-        self.addon_dir = Path(__file__).parent
-        # Anki keeps user_files/ across add-on upgrades. All mutable state stays here.
-        self.user_files_dir = self.addon_dir / "user_files"
+        self.addon_dir = addon_dir or Path(__file__).parent
+        # Production supplies the uninstall-independent directory. Keep the
+        # legacy default for standalone migration and development callers.
+        self.user_files_dir = data_dir or self.addon_dir / "user_files"
         self.data_path = self.user_files_dir / "garden_state.json"
         self.database_path = self.user_files_dir / REWARD_DATABASE_FILENAME
         self.assets_root = self.addon_dir / "assets"
-        self.metadata_dir = self.user_files_dir
-        self.cache_dir = self.user_files_dir / "cache"
-        self.asset_metadata = self.user_files_dir / "asset_metadata.json"
+        self.metadata_dir = self.addon_dir / "user_files"
+        self.cache_dir = self.metadata_dir / "cache"
+        self.asset_metadata = self.metadata_dir / "asset_metadata.json"
         self._reward_ledger: RewardLedger | None = None
         self._ledger_revision = 0
-        self.state = self._load_authoritative_state()
-        self._initialize_activity_history()
-        self._initialize_activity_drop_counts()
-        if self._reward_ledger is not None and self._reward_ledger.interrupt_activity_sessions():
-            committed = self._reward_ledger.commit_state(self._bounded_state_payload(self.state),
-                schema_version=STATE_VERSION, expected_revision=self._ledger_revision)
-            self._ledger_revision = committed.revision
-        if not deferred:
-            self._ensure_defaults()
+        try:
+            self.state = self._load_authoritative_state()
+            self._initialize_activity_history()
+            self._initialize_activity_drop_counts()
+            if self._reward_ledger is not None and self._reward_ledger.interrupt_activity_sessions():
+                committed = self._reward_ledger.commit_state(self._bounded_state_payload(self.state),
+                    schema_version=STATE_VERSION, expected_revision=self._ledger_revision)
+                self._ledger_revision = committed.revision
+            if not deferred:
+                self._ensure_defaults()
+        except Exception:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        """Release the writer without committing unfinished transactions."""
+        if self._reward_ledger is not None:
+            self._reward_ledger.close()
+            self._reward_ledger = None
+        self.runtime_pending = True
+
+    def reopen(self) -> None:
+        """Reopen the same shared store after a profile switch."""
+        if self._reward_ledger is not None:
+            return
+        if not self.database_path.is_file():
+            raise StatePreservationError("Garden's saved database is missing; progress was not reset.")
+        existing_state = self.state
+        try:
+            loaded = self._load_authoritative_state()
+        except Exception:
+            self.close()
+            raise
+        # Engine and open views hold this object across profile switches.
+        existing_state.__dict__.clear()
+        existing_state.__dict__.update(loaded.__dict__)
+        self.state = existing_state
+        self.history_index = None
+        self._due_snapshot = None
+        self._due_snapshot_collection = None
 
     def _initialize_activity_history(self) -> None:
         """Preserve available old receipts once; never infer review sessions."""
@@ -3633,17 +3666,15 @@ class GardenStorage:
                 if version != STATE_VERSION:
                     backup = self.data_path.with_suffix(f".schema-{version}.legacy.json")
                     _required_backup(self.data_path, backup)
-                    logger.warning(
-                        "Anki Garden: unsupported schema %s preserved at %s; starting schema %s",
-                        version, backup, STATE_VERSION,
+                    raise StatePreservationError(
+                        f"Garden schema {version} is unsupported. The original was preserved at {backup}."
                     )
-                    return GardenState()
                 payload = deepcopy(raw)
                 return _materialize_unlocked_species(GardenState.from_dict(payload))
         except StatePreservationError:
             raise
-        except Exception:
-            logger.exception("Anki Garden: saved state is unreadable; preserving it and starting fresh")
+        except Exception as load_error:
+            logger.exception("Anki Garden: saved state is unreadable; preserving it and stopping")
             try:
                 backup = self.data_path.with_suffix(".invalid.json")
                 _required_backup(self.data_path, backup)
@@ -3652,6 +3683,9 @@ class GardenStorage:
                 raise StatePreservationError(
                     "Anki Garden could not preserve the saved garden; startup was stopped before any overwrite."
                 ) from error
+            raise StatePreservationError(
+                "Garden preserved unreadable progress and stopped before overwriting it."
+            ) from load_error
         return GardenState()
 
     def _atomic_write_json(self, path: Path, payload: Dict[str, Any]) -> None:

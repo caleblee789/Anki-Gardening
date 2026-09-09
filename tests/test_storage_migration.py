@@ -378,16 +378,14 @@ def test_previous_release_does_not_restore_removed_goal_or_vitality_systems():
     assert state.currency_transactions == []
 
 
-def test_unsupported_schema_is_backed_up_and_reset(tmp_path):
+def test_unsupported_schema_is_backed_up_without_resetting_progress(tmp_path):
     state_path = tmp_path / "garden_state.json"
     payload = GardenState(total_reviews=321).to_dict()
     payload["version"] = 9
     state_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    state = storage_at(state_path)._load()
-
-    assert state.version == STATE_VERSION
-    assert state.total_reviews == 0
+    with pytest.raises(StatePreservationError):
+        storage_at(state_path)._load()
     assert state_path.with_suffix(".schema-9.legacy.json").exists()
 
 
@@ -873,14 +871,12 @@ def test_atomic_write_failure_preserves_original_and_removes_temp(tmp_path, monk
     assert [path.name for path in tmp_path.iterdir()] == ["state.json"]
 
 
-def test_corrupt_state_is_backed_up_before_fresh_recovery(tmp_path):
+def test_corrupt_state_is_backed_up_without_resetting_progress(tmp_path):
     state_path = tmp_path / "garden_state.json"
     state_path.write_text("{not valid json", encoding="utf-8")
 
-    state = storage_at(state_path)._load()
-
-    assert state.version == STATE_VERSION
-    assert state.total_reviews == 0
+    with pytest.raises(StatePreservationError):
+        storage_at(state_path)._load()
     backup = state_path.with_suffix(".invalid.json")
     assert backup.read_text(encoding="utf-8") == "{not valid json"
 
