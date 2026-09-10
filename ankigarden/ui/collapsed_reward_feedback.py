@@ -47,7 +47,7 @@ class _FadingRow(QWidget):
 
 
 class CollapsedRewardFeedback(QWidget):
-    """One inline slot: milestone art, then Coins, then committed Growth.
+    """One inline slot: committed Growth, then milestone art, then Coins.
 
     This owns only the visual sequence. The HUD keeps the authoritative bundle,
     history, duplicate protection, and expanded-reward lifecycle.
@@ -128,10 +128,20 @@ class CollapsedRewardFeedback(QWidget):
             self._advance()
 
     def add_routine(self, allocations, coins=0):
-        for label, units in (("Coins", coins), *allocations):
+        # A routine answer should acknowledge its Growth immediately instead
+        # of waiting for the Coin frame's full reading time.
+        for label, units in (*allocations, ("Coins", coins)):
             if units > 0:
                 resource = "Coins" if label == "Coins" else "Growth"
                 self._pending[resource] = self._pending.get(resource, 0) + units
+        if self._current is not None and not self._current_major and "Growth" in self._pending:
+            # A new answer need not wait behind an already displayed resource.
+            # Merge an in-flight Growth pulse; Coins have already been shown.
+            if self._current.get("label") == "Growth":
+                self._pending["Growth"] += self._current["units"]
+            self._timer.stop()
+            self._advance()
+            return
         if self._current is None:
             self._advance()
 
@@ -147,15 +157,16 @@ class CollapsedRewardFeedback(QWidget):
         finished_major = self._current is not None and self._current_major
         self._current = None
         self._current_major = False
-        if self._frames:
+        if "Growth" in self._pending:
+            self._current = self._amount_frame("Growth", self._pending.pop("Growth"))
+        elif self._frames:
             self._current = self._frames.popleft()
             self._current_major = True
-        else:
-            if finished_major:
-                QTimer.singleShot(0, lambda: self.hud._maybe_archive_current_reward() if not self.hud._disposed else None)
-            if self._pending:
-                label = next(iter(self._pending))
-                self._current = self._amount_frame(label, self._pending.pop(label))
+        elif self._pending:
+            label = next(iter(self._pending))
+            self._current = self._amount_frame(label, self._pending.pop(label))
+        if finished_major:
+            QTimer.singleShot(0, lambda: self.hud._maybe_archive_current_reward() if not self.hud._disposed else None)
         self.setProperty("sequencePending", self.major_pending)
         if self._current is None:
             self._clear_display()

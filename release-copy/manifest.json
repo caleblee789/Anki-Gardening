@@ -1,0 +1,22 @@
+{
+  "published": false,
+  "repository_visibility": "private",
+  "license_status": "owner_approved",
+  "required_placeholders": [
+    "ANKIWEB_CODE"
+  ],
+  "media_sha256": {
+    "anki-garden-review-hud.gif": "db096442cd3ed985a4c014dcfbb5cb81986114c706de7d127d3bf88948e5a2fc",
+    "anki-garden-review-hud.mp4": "edf574f273544291496abccaba38cf082a7b9d1d73f069efd6082a3933149318",
+    "anki-garden-poster.png": "dfb365c0c5ac10b759f82d19589f2580ce0b31c6b93e55c13f8e90130ec217fe"
+  },
+  "word_counts": {
+    "README.md": 934,
+    "ANKIWEB.md": 528,
+    "REDDIT.md": 317
+  },
+  "licenses": {
+    "code": "AGPL-3.0-or-later",
+    "project_artwork": "CC-BY-4.0; rights held only; third-party exclusions"
+  }
+}

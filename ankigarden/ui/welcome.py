@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from aqt.qt import (
-    QBoxLayout, QEvent, QFrame, QHBoxLayout, QLabel, QObject, QPushButton, QScrollArea,
+    QBoxLayout, QEvent, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QObject, QPushButton, QScrollArea,
     QSize, QSizePolicy, QTimer, QVBoxLayout, QWidget, Qt,
 )
 
@@ -18,7 +18,7 @@ from .icons import garden_icon
 from .plant_display import growth_display
 from .reward_receipt import receipt_event_row, receipt_style
 from .session_summary_card import _alpha_bounded_thumbnail, _source_pixmap, session_summary_palette
-from .welcome_animation import WELCOME_DURATION
+from .welcome_animation import WELCOME_DURATION, WELCOME_REVEAL_START
 from .theme import TextRole, apply_text_role, typography_stylesheet
 
 
@@ -33,7 +33,11 @@ class WelcomeCard(QFrame):
         self.setAccessibleName(WELCOME_TITLE)
         self._palette = session_summary_palette()
         self.setStyleSheet(receipt_style(self._palette) + typography_stylesheet() + f"""
-            QFrame#gardenWelcomeCard {{ border-radius:16px; }}
+            QFrame#gardenWelcomeCard {{
+                border:1px solid #8C8050; border-radius:16px;
+                background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #123D30, stop:0.45 {self._palette['receipt_panel']});
+            }}
             QLabel {{ background:transparent; border:0; color:{self._palette['text_primary']}; }}
             QScrollArea, QScrollArea > QWidget > QWidget {{ background:transparent; border:0; }}
             QPushButton:focus {{ border:2px solid {self._palette['growth_accent']}; }}
@@ -87,6 +91,7 @@ class WelcomeCard(QFrame):
         actions.addStretch(1)
         root.addLayout(actions)
         self.expanded = False
+        self._plant_id = ""
         self.hide()
 
     def _label(self, text: str, role: TextRole) -> QLabel:
@@ -99,6 +104,7 @@ class WelcomeCard(QFrame):
         return label
 
     def set_receipt(self, receipt: Any) -> None:
+        self._plant_id = receipt.plant_id
         presentation = present_welcome(receipt)
         content = QWidget(self.details)
         layout = QHBoxLayout(content)
@@ -108,7 +114,8 @@ class WelcomeCard(QFrame):
         self._reward_columns = []
 
         def column(title: str) -> QVBoxLayout:
-            panel = QWidget(content)
+            panel = QFrame(content)
+            panel.setObjectName("gardenWelcomeRewardColumn")
             panel.setMinimumWidth(0)
             panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
             rows = QVBoxLayout(panel)
@@ -122,7 +129,7 @@ class WelcomeCard(QFrame):
 
         gift = column("Welcome gift")
         for reward in presentation.gift:
-            gift.addWidget(self._reward_row(reward))
+            gift.addWidget(self._reward_row(reward, gift=True))
         if presentation.show_history:
             history = column("Past study rewards")
             intro = self._label(presentation.history_intro, TextRole.SECONDARY)
@@ -142,7 +149,7 @@ class WelcomeCard(QFrame):
         self.view_rewards.setText("Start gardening")
         self.view_rewards.setAccessibleDescription("Close the welcome and start gardening. Your rewards are already saved.")
 
-    def _reward_row(self, reward: Any) -> QWidget:
+    def _reward_row(self, reward: Any, *, gift: bool = False) -> QWidget:
         art = QLabel(self)
         art.setFixedSize(32, 24)
         art.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -168,6 +175,14 @@ class WelcomeCard(QFrame):
         art.setProperty("welcomeRewardArt", source_path)
         art.setProperty("welcomeRewardItem", reward.item_id)
         row = receipt_event_row(self, art, reward.text)
+        if gift:
+            row.title.setStyleSheet(f"color:{color};font-weight:700;")
+            row.widget.setStyleSheet(f"""
+                QFrame[welcomeRewardRow='true'] {{
+                    background:{self._palette['raised_surface']};
+                    border:1px solid {self._palette['subtle_border']};border-radius:10px;
+                }}
+            """)
         row.layout.setContentsMargins(10, 6, 10, 6)
         row.widget.setProperty("welcomeRewardRow", True)
         row.widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
@@ -186,11 +201,12 @@ class WelcomeCard(QFrame):
         self.setFixedWidth(width)
         margins = self.layout().contentsMargins()
         inner_width = max(0, width - margins.left() - margins.right() - 2 * self.frameWidth())
+        content_width = max(1, inner_width - max(12, self.details.verticalScrollBar().sizeHint().width()))
         columns = getattr(self, "_reward_columns_layout", None)
         if columns is not None:
             stacked = width < 500
             columns.setDirection(QBoxLayout.Direction.TopToBottom if stacked else QBoxLayout.Direction.LeftToRight)
-            available = max(1, inner_width - 12)
+            available = content_width
             gift_labels = [label for label in self._reward_columns[0].findChildren(QLabel)
                            if label.property("receiptEventTitle")]
             for label in gift_labels:
@@ -202,6 +218,16 @@ class WelcomeCard(QFrame):
                 if not stacked and len(self._reward_columns) > 1:
                     panel_width = gift_width if index == 0 else available - gift_width - columns.spacing()
                 panel.setFixedWidth(max(1, panel_width))
+                separated = index > 0
+                panel.layout().setContentsMargins(12 if separated and not stacked else 0,
+                                                 12 if separated and stacked else 0, 0, 0)
+                edge = "top" if stacked else "left"
+                panel.setStyleSheet(
+                    "QFrame#gardenWelcomeRewardColumn {background:transparent;border:0;"
+                    + (f"border-{edge}:1px solid {self._palette['divider']};" if separated else "") + "}"
+                )
+                panel_margins = panel.layout().contentsMargins()
+                row_available = max(1, panel_width - panel_margins.left() - panel_margins.right())
                 for row in panel.findChildren(QFrame):
                     if not row.property("welcomeRewardRow"):
                         continue
@@ -209,7 +235,7 @@ class WelcomeCard(QFrame):
                     label = next(label for label in row.findChildren(QLabel) if label.property("receiptEventTitle"))
                     label.ensurePolished()
                     padding = row_margins.left() + row_margins.right() + 32 + row.layout().spacing()
-                    row_width = min(panel_width, label.fontMetrics().horizontalAdvance(label.text()) + padding + 4)
+                    row_width = min(row_available, label.fontMetrics().horizontalAdvance(label.text()) + padding + 4)
                     row.setFixedWidth(row_width)
                     text_width = max(1, row_width - padding)
                     label.setMinimumHeight(max(0, label.heightForWidth(text_width)))
@@ -222,7 +248,7 @@ class WelcomeCard(QFrame):
         content_height = 0
         if content is not None:
             content.setMinimumHeight(0)
-            content_height = content.layout().totalHeightForWidth(max(0, inner_width - 12))
+            content_height = content.layout().totalHeightForWidth(content_width)
             if content_height < 0:
                 content_height = content.sizeHint().height()
             content_height = max(content_height, content.minimumSizeHint().height())
@@ -233,7 +259,21 @@ class WelcomeCard(QFrame):
         desired = (content_height + heading_height + self._actions_layout.sizeHint().height()
                    + margins.top() + margins.bottom() + 2 * self.frameWidth() + 2 * self.layout().spacing())
         self.setFixedHeight(max(0, min(parent.height() - 32, 540, desired)))
-        self.move((parent.width() - width) // 2, 16)
+        left = (parent.width() - width) // 2
+        # Dock beside the starter when there is room. Compact scenes retain the
+        # centered, scrollable receipt rather than squeezing its text.
+        if self._plant_id and hasattr(parent, "_layout_plants"):
+            for plant, placement in parent._layout_plants(parent.width(), parent.height()):
+                if str(plant.get("plant_id", "")) != self._plant_id:
+                    continue
+                anchor_x = placement.ground_anchor[0]
+                clearance = placement.bed_footprint.width / 2 + 24
+                if anchor_x + clearance < parent.width() - width - 16:
+                    left = parent.width() - width - 16
+                elif anchor_x - clearance > width + 16:
+                    left = 16
+                break
+        self.move(left, 16)
         self.raise_()
 
 
@@ -261,6 +301,7 @@ class WelcomeController(QObject):
         self.timer.timeout.connect(self._tick)
         self.receipt = None
         self._started_at = 0.0
+        self._reveal_effect = None
         self.scene.installEventFilter(self)
         self.card.installEventFilter(self)
         self.card.view_rewards.installEventFilter(self)
@@ -305,6 +346,9 @@ class WelcomeController(QObject):
             # A failed acknowledgement must not hide an already-saved gift.
             should_animate = False
         if should_animate:
+            self._reveal_effect = QGraphicsOpacityEffect(self.card)
+            self._reveal_effect.setOpacity(0.0)
+            self.card.setGraphicsEffect(self._reveal_effect)
             self._started_at = time.monotonic()
             self.skip.move(max(0, self.scene.width() - self.skip.width() - 16), 16)
             self.skip.show()
@@ -323,6 +367,12 @@ class WelcomeController(QObject):
             self.suspend()
             return
         self.scene.set_welcome_frame(self.receipt.plant_id, elapsed)
+        if elapsed >= WELCOME_REVEAL_START:
+            if not self.card.isVisible():
+                self.card.reposition()
+                self.card.show()
+            phase = min(1.0, (elapsed - WELCOME_REVEAL_START) / (WELCOME_DURATION - WELCOME_REVEAL_START))
+            self._reveal_effect.setOpacity(1 - (1 - phase) ** 3)
         phase = min(1.0, max(0.0, (elapsed - 0.4) / 1.35))
         eased = 1 - (1 - phase) ** 3
         units = self.receipt.growth_before_units + round(
@@ -339,6 +389,9 @@ class WelcomeController(QObject):
 
     def _stop_animation(self) -> None:
         self.timer.stop()
+        if self._reveal_effect is not None:
+            self.card.setGraphicsEffect(None)
+            self._reveal_effect = None
         self.skip.hide()
         self.scene.set_welcome_frame("", None)
         bar = self.dashboard.nurtured_plant_bar

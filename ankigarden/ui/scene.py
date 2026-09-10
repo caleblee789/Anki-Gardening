@@ -91,7 +91,7 @@ from ..environment import GARDEN_FEATURE_CATALOG
 from .copy import garden_bonus_summary
 from .render_cache import BoundedLruCache, pixmap_bytes
 from .theme import GARDEN_THEME, SCENE_HELP_BUTTON_SIZE
-from .welcome_animation import draw_welcome_shower, welcome_wobble
+from .welcome_animation import draw_welcome_glow, draw_welcome_shower, welcome_lift, welcome_wobble
 
 SCENE_TEXT = {
     "live_garden_label": "Your garden",
@@ -1936,6 +1936,9 @@ class GardenSceneWidget(QWidget):
                     painter.save()
                     if plant_id == self._welcome_plant_id and self._welcome_elapsed is not None:
                         anchor_x, anchor_y = layout.ground_anchor
+                        draw_welcome_glow(painter, layout.ground_anchor, layout.bed_footprint.width,
+                                          self._welcome_elapsed)
+                        painter.translate(0, -welcome_lift(self._welcome_elapsed, layout.bed_footprint.width))
                         painter.translate(anchor_x, anchor_y)
                         painter.rotate(welcome_wobble(self._welcome_elapsed))
                         painter.translate(-anchor_x, -anchor_y)

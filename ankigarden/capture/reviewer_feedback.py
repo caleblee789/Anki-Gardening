@@ -249,7 +249,7 @@ def capture_correction_details(runner, handler):
         card = SessionSummaryCard(mw.web, payload, engine=runner.app.engine, animations_enabled=False)
         card.show()
         QTest.qWait(50)
-        checks["progress_visible_initially"] = any("Bonsai reached Sprout" in visible(row) for row in progress_cards(card))
+        checks["progress_visible_initially"] = any("Bonsai Sprout" in visible(row) and "Reached Sprout" in visible(row) for row in progress_cards(card))
         checks["cumulative_find_amount"] = cumulative_growth_find(card)
         checks["summary_theme_is_green"] = (lambda c: c.green() > c.red())(card.grab().toImage().pixelColor(5, 100))
         card.grab().save(str(output / "session-default.png"))
@@ -264,10 +264,10 @@ def capture_correction_details(runner, handler):
             disclosure.click()
         QTest.qWait(40)
         copy = visible(card)
-        checks["single_progress_journey"] = len(progress_cards(card)) == 1 and copy.count("Bonsai reached Sprout") == 1
+        checks["single_progress_journey"] = len(progress_cards(card)) == 1 and copy.count("Reached Sprout") == 1
         checks["one_progress_coin_total"] = [w.property("receiptProgressCoins") for w in card.findChildren(QFrame) if w.property("receiptProgressCoins")] == [6]
         checks["no_duplicate_progress_coin_row"] = "Bonsai progression" not in copy
-        checks["journey_has_recorded_stage_progress"] = "Seed → Sprout\n540 / 1,600 Growth to Young" in copy
+        checks["journey_has_recorded_stage_progress"] = all(text in copy for text in ("Bonsai Sprout", "+820 Growth", "540 / 1,600 Growth to Young", "Reached Sprout"))
         checks["session_details_show_shared_growth"] = all(text in copy for text in ("Growth breakdown", "To plants", "Includes 100 Shared Growth"))
         checks["totals_stay_pinned"] = all(text in visible(card._summary_fixed) for text in ("Coins", "Growth", "Items & finds")) and not card._scroll.isAncestorOf(card._summary_fixed)
         card.grab().save(str(output / "session-expanded.png"))
@@ -380,10 +380,12 @@ def capture_correction_details(runner, handler):
         for name, receipt in (("session", card), ("sync", sync)):
             receipt.show()
             QTest.qWait(40)
+            expected_title = "Full Bloom Bonsai" if name == "session" else "Bonsai reached Full Bloom"
+            expected_transition = "Reached Full Bloom" if name == "session" else "Flowering → Full Bloom"
             checks[f"{name}_full_bloom_once"] = (
                 len(progress_cards(receipt)) == 1
-                and visible(receipt).count("Bonsai reached Full Bloom") == 1
-                and visible(receipt).count("Flowering → Full Bloom") == 1
+                and visible(receipt).count(expected_title) == 1
+                and visible(receipt).count(expected_transition) == 1
                 and not any(w.text() == "Full Bloom" and w.isVisibleTo(receipt)
                             for w in receipt.findChildren(QLabel))
             )

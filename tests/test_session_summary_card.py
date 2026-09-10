@@ -4,6 +4,8 @@ import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import RewardReceipt
 from ankigarden.ui.icons import GARDEN_ICON_PATHS
@@ -23,6 +25,7 @@ from ankigarden.ui.session_summary_card import (
     session_effect_remaining_text,
     session_find_summary_plan,
     session_inventory_reward_lines,
+    session_plant_progress,
     session_summary_geometry,
     session_summary_palette,
     session_summary_uses_compact_density,
@@ -31,6 +34,34 @@ from ankigarden.ui.theme import GARDEN_THEME
 
 
 SOURCE_PATH = Path(__file__).parents[1] / "ankigarden" / "ui" / "session_summary_card.py"
+
+
+@pytest.mark.parametrize(
+    "species,before,gain,name,amount,description,transition,current,required",
+    (
+        ("bonsai", 601_200, 3_100, "Mature Bonsai", "+31 Growth",
+         "43 / 9,000 Growth to Flowering", "", 4_300, 900_000),
+        ("wisteria", 56_280, 465, "Wisteria Sprout", "+4.65 Growth",
+         "167.45 / 1,600 Growth to Young", "", 16_745, 160_000),
+        ("bonsai", 39_950, 100, "Bonsai Sprout", "+1 Growth",
+         "0.5 / 1,600 Growth to Young", "Reached Sprout", 50, 160_000),
+        ("bonsai", 0, 200_050, "Young Bonsai", "+2,000.5 Growth",
+         "0.5 / 4,000 Growth to Mature", "Advanced 2 stages to Young", 50, 400_000),
+        ("bonsai", 3_499_999, 1, "Full Bloom Bonsai", "+0.01 Growth",
+         "Fully grown", "Reached Full Bloom", None, None),
+        ("bonsai", 3_500_000, 100, "Full Bloom Bonsai", "+1 Growth",
+         "Fully grown", "", None, None),
+        ("bonsai", None, 10_050, "Bonsai", "+100.5 Growth", "", "", None, None),
+    ),
+)
+def test_session_plant_progress_keeps_recorded_gain_across_stage_boundaries(
+    species, before, gain, name, amount, description, transition, current, required,
+):
+    progress = session_plant_progress(species, before, gain)
+    assert (progress.name, progress.gain) == (name, amount)
+    assert (progress.description, progress.stage_change) == (description, transition)
+    assert (progress.current_units, progress.required_units) == (current, required)
+    assert progress.fully_grown == (description == "Fully grown")
 
 
 def _method_source(name: str, following: str) -> str:

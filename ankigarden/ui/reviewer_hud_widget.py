@@ -1437,22 +1437,6 @@ class CheckpointTrack(QWidget):  # type: ignore[misc,valid-type]
                 else GARDEN_THEME["text_muted"]
             )
             painter.setBrush(QColor(color))
-            if is_next:
-                from .icons import garden_icon_pixmap
-
-                badge = garden_icon_pixmap(
-                    "checkpoint", 14, device_pixel_ratio=self.devicePixelRatioF()
-                )
-                if badge is not None and not badge.isNull():
-                    size = 12.0 + (2.0 * self._pulse if is_pulsing else 0.0)
-                    badge_x = max(size / 2.0, min(float(rect.width()) - size / 2.0, x))
-                    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-                    painter.drawPixmap(
-                        QRectF(badge_x - size / 2.0, 9.0 - size / 2.0, size, size),
-                        badge,
-                        QRectF(badge.rect()),
-                    )
-                    continue
             if is_completed or is_next:
                 size = 7.0 + (2.0 * self._pulse if is_pulsing else 0.0)
                 painter.setPen(QPen(
@@ -2247,6 +2231,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _set_decoration(self._stage)
         stage_row.addWidget(self._stage, 1)
         self._percent = QLabel("0%", self._plant_card)
+        self._percent.setWordWrap(True)
+        self._percent.setMinimumWidth(0)
+        self._percent.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._percent.setProperty("hudMuted", True)
         apply_tabular_numerals(self._percent)
         _set_decoration(self._percent)
@@ -2507,7 +2494,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             pill.setAccessibleName(description)
             pill.setProperty("remainingCards", effect.remaining_cards)
             pill.setProperty("activeItemId", effect.item_id)
-        self._consumables.setVisible(bool(active) and not self._collapsed)
+        # The expanded shell owns collapse visibility. Hiding this child too
+        # leaves its badges hidden when an unchanged projection is expanded.
+        self._consumables.setVisible(bool(active))
 
     def _build_reward_dock(self, expanded_layout: Any) -> None:
         # One logical dock owns a bounded scroll-body and a sticky session
@@ -2811,7 +2800,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._session_totals_card.setObjectName("reviewerHudSessionTotals")
         self._session_totals_card.setAccessibleName("Open Progress Activity")
         totals_layout = QVBoxLayout(self._session_totals_card)
-        totals_layout.setContentsMargins(6, 6, 6, 6)
+        totals_layout.setContentsMargins(0, 0, 0, 0)
         totals_layout.setSpacing(6)
         footer.addWidget(self._session_totals_card)
         heading_row = QHBoxLayout()
@@ -3329,9 +3318,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._update_consumables(projection.active_consumables)
         self.show()
         self.raise_()
-        if animate:
+        if animate and not projection.collapsed:
             # The committed reward dock begins its reveal before header and
-            # plant values move, preserving the answer -> result relationship.
+            # plant values move. The compact rail has no visible reward dock
+            # to wait for; its progress should acknowledge the answer now.
             QTimer.singleShot(_PROJECTION_APPLY_DELAY_MS, apply_changed_values)
         else:
             apply_changed_values()
@@ -6463,6 +6453,14 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                             self._body_contents,
                             body_layout,
                         )
+                    overflow = max(0, 46 + body_height + reward_height - available_height)
+                    if overflow:
+                        # The pinned totals/feed must not push the Growth line
+                        # below the plant viewport. Spend the remaining space
+                        # on artwork only after reserving the readable rows.
+                        art_height = max(48, self._art_region.height() - overflow)
+                        self._resize_normal_plant_art(art_height, max(44, art_height - 4))
+                        body_height = natural_height(self._body_contents, body_layout)
                 # The styled shell contributes a one-pixel border on both
                 # vertical edges. Include both the independently anchored
                 # reward dock and the 44px header so the dock never steals

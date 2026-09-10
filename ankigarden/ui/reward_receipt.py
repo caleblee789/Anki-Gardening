@@ -11,7 +11,7 @@ from .theme import GARDEN_THEME, apply_tabular_numerals
 
 def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
                           progress_percent: int | None, coins: int, palette: dict[str, str],
-                          full_bloom: bool = False) -> Any:
+                          full_bloom: bool = False, growth_gain: str = "", stage_change: str = "") -> Any:
     """One illustrated journey and its committed progression reward."""
     from aqt.qt import QFrame, QHBoxLayout, QLabel, QProgressBar, Qt, QVBoxLayout
     frame = QFrame(parent)
@@ -31,6 +31,12 @@ def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
     name.setWordWrap(True)
     name.setStyleSheet(f"color:{palette['text_primary']};font-size:14px;font-weight:600;background:transparent;border:0;")
     heading.addWidget(name, 1)
+    if growth_gain:
+        gain = QLabel(growth_gain, frame)
+        gain.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        gain.setStyleSheet(f"color:{palette['growth_accent']};font-size:14px;font-weight:600;background:transparent;border:0;")
+        apply_tabular_numerals(gain)
+        heading.addWidget(gain, 0, Qt.AlignmentFlag.AlignTop)
     if full_bloom:
         treatment = reward_treatment(full_bloom=True)
         apply_reward_treatment(frame, treatment, artwork=artwork)
@@ -39,7 +45,7 @@ def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
             badge.setProperty("receiptRarityBadge", True)
             badge.setStyleSheet(rarity_badge_style(treatment))
             heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
-    if coins > 0:
+    if coins > 0 and not growth_gain:
         reward = receipt_resource_values(frame, coins=coins, compact=True)
         reward.setProperty("receiptProgressCoins", coins)
         heading.addWidget(reward, 0, Qt.AlignmentFlag.AlignTop)
@@ -48,6 +54,8 @@ def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
     description.setWordWrap(True)
     description.setTextFormat(Qt.TextFormat.PlainText)
     description.setStyleSheet(f"color:{palette['text_secondary']};font-size:13px;font-weight:400;background:transparent;border:0;")
+    if growth_gain:
+        description.setVisible(bool(text))
     copy.addWidget(description)
     progress = QProgressBar(frame)
     progress.setRange(0, 100)
@@ -58,6 +66,16 @@ def receipt_progress_card(parent: Any, artwork: Any, title: str, text: str, *,
                           f"QProgressBar::chunk {{background:{palette['receipt_primary_mint']};border-radius:2px;}}")
     progress.setVisible(progress_percent is not None and not full_bloom)
     copy.addWidget(progress)
+    if stage_change:
+        stage = QLabel(stage_change, frame)
+        stage.setWordWrap(True)
+        stage.setTextFormat(Qt.TextFormat.PlainText)
+        stage.setStyleSheet(description.styleSheet())
+        copy.addWidget(stage)
+    if coins > 0 and growth_gain:
+        reward = receipt_resource_values(frame, coins=coins, compact=True)
+        reward.setProperty("receiptProgressCoins", coins)
+        copy.addWidget(reward, 0, Qt.AlignmentFlag.AlignRight)
     row.addLayout(copy, 1)
     return SimpleNamespace(widget=frame, progress=progress, title=name, description=description)
 

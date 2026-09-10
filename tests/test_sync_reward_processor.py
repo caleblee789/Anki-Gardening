@@ -415,3 +415,20 @@ def test_one_way_replacement_baselines_without_processing_or_presenting() -> Non
     assert engine.reconcile_calls == []
     assert engine.state.pending_sync_reward_summary is None
     assert presenter.enqueued == []
+
+
+def test_sync_receipt_excludes_deferred_local_reviews_even_in_a_mixed_batch():
+    local = replace(_result(event_id="answer:100", scheduler_day=CURRENT_DAY,
+                            before_units=0, after_units=1000), origin="local_recovery")
+    remote = _result(event_id="answer:200", scheduler_day=CURRENT_DAY,
+                     before_units=1000, after_units=1500)
+    presenter = Presenter()
+    storage = SimpleNamespace(due_obligations=lambda: None)
+    local_engine = Engine((local,))
+    assert SyncRewardProcessor(local_engine, storage, presenter).process(_snapshot()) is None
+    assert local_engine.state.pending_sync_reward_summary is None
+    mixed_engine = Engine((local, remote))
+    summary = SyncRewardProcessor(mixed_engine, storage, presenter).process(_snapshot())
+    assert summary.eligible_answer_count == 1
+    assert summary.growth_total_units == 500
+    assert summary.plant_results[0].growth_delta_units == 500

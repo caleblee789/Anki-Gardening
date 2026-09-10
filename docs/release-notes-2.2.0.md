@@ -1,11 +1,18 @@
 # Anki Garden 2.2.0 release notes
 
-> Unreleased 2.2.0 release candidate. Public distribution remains on hold because the
-> protected progression audit includes all-ten-species finishes by day 30.
-> See the [combined integration report](ui/combined-integration-20260906.md).
-> Automated checks do not replace exact-package native or human approval.
+> Unpublished 2.2.0 release candidate. The release owner accepted the current
+> progression pacing on September 9, 2026, including high-volume completion
+> within 30 days. No reward rules or balance values changed for that decision.
+> Exact-package functional and visual acceptance remain separate from publication.
 
 ## Clearer Garden and reward panels
+
+- Naming the garden in Settings before choosing a starter preserves onboarding
+  and its one-time welcome gift.
+- Purchase receipts preserve capitalization in item effects and later sentences.
+- Repeatedly closing the welcome screen no longer reports a false save failure.
+- Fertilizer tooltips describe the active tier correctly, and growth-stage
+  announcements do not repeat the same species name.
 
 - Fresh gardens correctly show a zero-day streak until the first studied card.
 

@@ -1985,3 +1985,95 @@ def _walk_text(value):
             yield from _walk_text(item)
     elif isinstance(value, str):
         yield value
+
+
+def test_review_session_survives_profile_close_and_recovers_only_its_local_answers(monkeypatch):
+    import json
+    module = _load_reviewer_module(monkeypatch)
+    profile = {}
+    saved = []
+    module.mw.pm = SimpleNamespace(profile=None, save=lambda: saved.append(True))
+    storage = SimpleNamespace(state=SimpleNamespace(), runtime_pending=False)
+    handler = module.ReviewerHookHandler(SimpleNamespace(), storage)
+    # Ordinary startup may load add-ons before Anki selects a profile.
+    handler.restore_review_sessions()
+    handler._save_review_sessions()
+    assert not handler._saved_review_sessions and not saved
+    module.mw.pm.profile = profile
+    accumulator = _empty_accumulator()
+    event = CommittedSessionEvent(event_id="local:1", anki_day_id=DAY,
+                                  occurred_at="2026-08-28T10:01:00Z",
+                                  plant_growth=(PlantGrowthDelta("p1", "Bonsai", 1200),))
+    accumulator.accept_committed(event)
+    handler._session_summary_accumulator = accumulator
+    handler._review_window_answer_revlog_ids = {2000}
+    end = SessionEndSnapshot(TodayCardsSnapshot("in_progress", cards_remaining=20))
+    monkeypatch.setattr(handler, "_session_end_snapshot", lambda **kwargs: end)
+    handler.preserve_session_for_close()
+    assert handler._profile_closing
+    assert handler._session_summary_accumulator is None
+
+    # A fresh handler and JSON round trip model a real process restart.
+    module.mw.pm.profile = json.loads(json.dumps(profile))
+    module.mw.state = "deckBrowser"
+    restored = module.ReviewerHookHandler(SimpleNamespace(), storage)
+    restored.restore_review_sessions()
+    later = replace(event, event_id="local:2")
+    monkeypatch.setattr(restored, "_session_event_from_result", lambda result: later)
+    restored.accept_reconciled_results([
+        SimpleNamespace(origin="historical_sync", occurred_at_ms=2000),
+        SimpleNamespace(origin="local_recovery", occurred_at_ms=9999),
+        SimpleNamespace(origin="local_recovery", occurred_at_ms=2000),
+    ])
+    rendered = []
+    monkeypatch.setattr(restored, "_schedule_session_summary_render",
+                        lambda: rendered.append(restored._pending_session_summary))
+    restored.present_saved_review_session()
+    restored.present_saved_review_session()
+    assert len(rendered) == 1
+    assert rendered[0].cards_completed == 2
+    assert rendered[0].segments[0].plant_growth_total_units == 2400
+    assert rendered[0].terminal_today_cards == end.today_cards
+
+    # Navigating away before the card mounts retains its recovery record.
+    restored.dismiss_session_summary_for_navigation()
+    assert restored._restored_session_id == ""
+    assert accumulator.session_id in restored._saved_review_sessions
+    restored.present_saved_review_session()
+    assert len(rendered) == 2
+    assert rendered[1] == rendered[0]
+
+    # A different Anki profile never inherits the previous profile's receipt.
+    module.mw.pm.profile = {}
+    other = module.ReviewerHookHandler(SimpleNamespace(), storage)
+    other.restore_review_sessions()
+    assert not other._saved_review_sessions
+
+
+def test_first_question_during_verification_keeps_recovered_hud_rewards(monkeypatch):
+    module = _load_reviewer_module(monkeypatch)
+    module.mw.reviewer = object()
+    storage = SimpleNamespace(
+        state=SimpleNamespace(starter_selection_complete=True), runtime_pending=True,
+        runtime_coordinator=SimpleNamespace(request=lambda reason: None),
+        current_scheduler_day=lambda: DAY,
+    )
+    handler = module.ReviewerHookHandler(SimpleNamespace(), storage)
+    monkeypatch.setattr(handler, "_session_start_snapshot",
+                        lambda: SessionStartSnapshot(TodayCardsSnapshot("unavailable")))
+    monkeypatch.setattr(handler, "_schedule_session_cutoff_split", lambda: None)
+    monkeypatch.setattr(handler, "_ensure_reviewer_hud", lambda: None)
+    monkeypatch.setattr(handler, "_hide_no_starter_notice", lambda: None)
+    handler.on_question()
+    session = handler._session_summary_accumulator
+    handler._review_window_answer_revlog_ids = {123}
+    event = CommittedSessionEvent("answer:123", DAY, "2026-08-28T10:01:00Z",
+                                  plant_growth=(PlantGrowthDelta("p1", "Bonsai", 1200),))
+    monkeypatch.setattr(handler, "_session_event_from_result", lambda result: event)
+    result = SimpleNamespace(origin="local_recovery", occurred_at_ms=123)
+    handler.accept_reconciled_results([result])
+    storage.runtime_pending = False
+    handler.on_question()
+    assert handler._session_summary_accumulator is session
+    assert session.cards_completed == 1
+    assert handler._pending_reviewer_results == [(result, event)]

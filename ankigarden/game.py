@@ -9573,11 +9573,13 @@ class GardenGameEngine:
 
     def mark_welcome_presented(self, receipt_id: str, *, acknowledged: bool = False) -> bool:
         welcome = self.state.welcome_receipt
-        if welcome is None or welcome.receipt_id != receipt_id or not welcome.pending:
+        if welcome is None or welcome.receipt_id != receipt_id:
             return False
         status = "acknowledged" if acknowledged else "started"
         if welcome.status == status:
             return True
+        if not welcome.pending:
+            return False
         snapshot = self._state_snapshot()
         self.state.welcome_receipt = replace(welcome, status=status)
         try:
@@ -10449,12 +10451,12 @@ class GardenGameEngine:
         if len(transitions) == 1:
             item = transitions[0]
             return plant_stage_event(item.species, item.new_stage) + "."
-        names = ", ".join(
-            plant_species_name(item.species)
-            for item in transitions[:3]
-        )
-        if len(transitions) > 3:
-            names += f" and {len(transitions) - 3} more"
+        species_names = list(dict.fromkeys(
+            plant_species_name(item.species) for item in transitions
+        ))
+        names = ", ".join(species_names[:3])
+        if len(species_names) > 3:
+            names += f" and {len(species_names) - 3} more"
         return f"{names} reached new growth stages."
 
     def _ensure_achievements(self) -> None:

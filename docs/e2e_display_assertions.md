@@ -63,5 +63,6 @@ Require passing applicable automated checks, native core journeys, conserved
 state, and no unresolved confirmed functional defect for functional acceptance.
 Windows is tested when an existing environment is readily available; otherwise
 record portability review and native Windows as unverified. Do not equate Linux
-CI checks with a native desktop UI pass. Keep the separate pacing hold and public
-release approval visible in the final report.
+CI checks with a native desktop UI pass. Current progression pacing was accepted
+by the release owner on September 9, 2026; preserve the historical findings without
+carrying that superseded hold forward. Keep public release approval separate.

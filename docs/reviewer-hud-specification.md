@@ -26,7 +26,7 @@ One vertical rail contains the plant/progress circle and one reward slot below i
 
 The circle stays anchored. Bottom padding is 5–7 px. Coins/Growth use one icon-and-amount row, with no redundant resource caption. Stored and Shared each use one short line. Milestones use 32 px artwork and deliberate two-line captions, such as “Full Bloom / Reached”. Fonts retain the established compact scale; long totals abbreviate instead of clipping or adding lines.
 
-Committed reward priority is preserved: important plant milestones and discoveries/Finds/items first, then Coins, then Growth. Events are shown sequentially inside the rail. Routine amounts coalesce without losing totals. Every original event remains in history. A bundle cannot archive during its inline sequence. Expanding pauses the sequence; collapsing resumes it. Remount restores the current frame, queued frames, and remaining hold without replay.
+The compact rail acknowledges committed Growth first, followed by plant milestones and discoveries/Finds/items, then Coins. Compact progress updates begin without waiting for the expanded reward dock's reveal delay. A new answer merges into visible Growth or replaces an already displayed Coin message immediately; an already visible milestone retains its reading time. Routine amounts coalesce without losing totals. Every original event remains in history. A bundle cannot archive during its inline sequence. Expanding pauses the sequence; collapsing resumes it. Remount restores the current frame, queued frames, and remaining hold without replay.
 
 ## Shared rarity and artwork treatment
 

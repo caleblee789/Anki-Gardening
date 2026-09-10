@@ -428,7 +428,7 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     try:
-        from aqt.qt import QApplication, QWidget
+        from aqt.qt import QApplication, Qt, QWidget
         from PyQt6.QtTest import QTest
         from ankigarden.ui.reviewer_hud import NurtureProjection, ReviewerHudProjection, TodayCardsProjection
         from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
@@ -440,7 +440,9 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
     hud = ReviewGardenHud(owner, animations_enabled=False)
     hud.update_projection(ReviewerHudProjection(
         108, TodayCardsProjection("in_progress", "Today", "1 / 2"),
-        NurtureProjection(False), True, "right",
+        NurtureProjection(True, plant_id="p1", plant_name="Flowering Bonsai",
+                          stage_points=12_345, stage_goal=14_000, next_stage_key="rare"),
+        True, "right",
     ))
     try:
         # Receive totals while hidden/collapsed, then expand repeatedly with
@@ -467,6 +469,73 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
                     assert amount.toolTip() == full
                     assert full in amount.parentWidget().toolTip()
             assert hud.width() == 296
+            growth = hud._percent
+            required = growth.fontMetrics().boundingRect(
+                growth.contentsRect(), int(Qt.TextFlag.TextWordWrap), growth.text())
+            assert growth.height() >= required.height()
+            assert hud._body_scroll.verticalScrollBar().maximum() == 0
+    finally:
+        hud.dispose()
+        owner.close()
+        owner.deleteLater()
+        application.processEvents()
+
+
+@pytest.mark.parametrize("animations_enabled", [False, True])
+def test_compact_hud_acknowledges_growth_before_coins(monkeypatch, animations_enabled):
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from dataclasses import replace
+        from aqt.qt import QApplication, QWidget
+        from ankigarden.ui.reviewer_hud import NurtureProjection, ReviewerHudProjection, TodayCardsProjection
+        from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+    application = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    owner.resize(1200, 900)
+    hud = ReviewGardenHud(owner, animations_enabled=animations_enabled)
+    projection = ReviewerHudProjection(
+        100, TodayCardsProjection("in_progress", "Today", "1 / 20"),
+        NurtureProjection(True, plant_id="p1", plant_name="Rose", progress_percent=10),
+        True, "right",
+    )
+    try:
+        hud.update_projection(projection)
+        hud.update_projection(replace(
+            projection, nurture=replace(projection.nurture, progress_percent=20),
+        ), animate=True)
+        # Committed compact progress and Growth do not wait for a reveal timer.
+        assert hud.property("hudProgressPercent") == 20
+        feedback = hud._collapsed_feedback
+        feedback.add_routine((("Growth", 1_000), ("Shared Growth", 200)), 3)
+        assert feedback.property("feedbackCopy") == "+12 Growth"
+        # Further answers retain every resource while the current frame is held.
+        feedback.add_routine((("Growth stored", 500),), 2)
+        assert feedback.property("feedbackCopy") == "+17 Growth"
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == "+5 Coins"
+        # A new card also starts Growth while the previous Coins are visible.
+        feedback.add_routine((("Growth", 300),), 1)
+        assert feedback.property("feedbackCopy") == "+3 Growth"
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == "+1 Coins"
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == ""
+        feedback.set_major("checkpoint", [{
+            "caption": "Checkpoint", "color": "#ffffff", "duration": 1_150,
+        }], 4, (("Growth", 1_200),))
+        assert feedback.property("feedbackCopy") == "+12 Growth"
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == "Checkpoint"
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == "+4 Coins"
     finally:
         hud.dispose()
         owner.close()
@@ -555,6 +624,7 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
         click(hud._collapsed_tab)
         assert not hud._collapsed and hud.geometry().right() == right_edge
         assert hud._position == saved and len(positions) == 2
+        assert all(pill.isVisible() for pill in hud._consumable_pills.values())
 
         if initial_session_state == "hidden":
             owner.hide()
@@ -606,6 +676,16 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
         hud.present_reward(RewardBundleProjection('new-answer', '2026-09-06T12:00:01Z', (item,)))
         assert before_scroll > 0
         assert bar.value() == 0
+        # A native short reviewer must keep the Growth line above the pinned
+        # totals and the visible feed, including after collapsing and expanding.
+        owner.resize(1200, 480)
+        owner.setProperty("reviewerAnswerControlsTop", 480)
+        hud.set_collapsed(True)
+        hud.set_collapsed(False)
+        QTest.qWait(40)
+        growth_bottom = hud._percent.mapTo(hud._body_scroll.viewport(), hud._percent.rect().bottomRight()).y()
+        assert growth_bottom < hud._body_scroll.viewport().height()
+        assert hud._reward_feed.isVisibleTo(hud)
         plant.fertilizer_card_batches.clear()
         plant.booster_card_batches.clear()
         hud.update_projection(project_reviewer_hud(engine, storage.state))

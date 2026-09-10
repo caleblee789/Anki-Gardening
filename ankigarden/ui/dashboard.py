@@ -12764,8 +12764,8 @@ class GardenSettingsDialog(GardenDialog):
         self.debug_report = QTextEdit()
         self.debug_report.setReadOnly(True)
         self.debug_report.setPlaceholderText("Support details will appear here.")
-        # Let the settings body own scrolling. The selectable report grows
-        # to its wrapped text instead of creating a second scroll region.
+        # Keep long support reports bounded and selectable without making
+        # the settings body several screens tall.
         self.debug_report.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
@@ -13318,7 +13318,7 @@ class GardenSettingsDialog(GardenDialog):
             return
         if draft_name != old_name:
             try:
-                ok, message = self.engine.rename_garden(draft_name)
+                ok, message = self.engine.rename_garden(draft_name, complete_setup=False)
             except Exception:
                 logger.exception("Anki Garden: garden name save failed")
                 ok = False
@@ -15242,17 +15242,15 @@ class NurseryDialog(PageShell):
         row, actions = self._compact_item_row(
             species, presentation.item_name, "", None, plant_species=species,
         )
-        actions.addWidget(self._catalog_price(price))
         details = QPushButton("View growth stages")
-        _set_button_variant(details, BUTTON_VARIANT_TERTIARY)
+        _set_button_variant(details, BUTTON_VARIANT_SECONDARY)
         _set_compact_row_action(details)
         details.setProperty("shopDetailsAction", True)
-        details.setStyleSheet(f"QPushButton {{color:{GARDEN_THEME['text_secondary']};background:transparent;border:0;border-radius:7px;padding:0 9px;text-align:left;font-weight:400;}} QPushButton:hover {{color:{GARDEN_THEME['text_primary']};background:{GARDEN_THEME['secondary_hover']};border-color:{GARDEN_THEME['strong_border']};}}")
         details.setCursor(Qt.CursorShape.PointingHandCursor)
         details.clicked.connect(lambda: self._dialog_owner.open_section("collection", "plants", item_id=species))
-        details.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        row.layout().addWidget(details, 4, 0, 1, 3)
+        actions.addWidget(details)
         actions.addStretch(1)
+        actions.addWidget(self._catalog_price(price))
         buy = QPushButton("Buy")
         _set_button_variant(buy, BUTTON_VARIANT_PRIMARY)
         _set_compact_row_action(buy)
@@ -16841,8 +16839,12 @@ class NurseryDialog(PageShell):
             "semanticId",
             "nursery.receipt-secondary",
         )
+        receipt_message = message
+        if outcome.disposition in {PurchaseDisposition.COLLECTION, PurchaseDisposition.INVENTORY}:
+            receipt_message = message.removeprefix(item_name).strip()
+            receipt_message = receipt_message[:1].upper() + receipt_message[1:]
         self.nursery_toast.show_message(
-            message.removeprefix(item_name).strip().capitalize() if outcome.disposition in {PurchaseDisposition.COLLECTION, PurchaseDisposition.INVENTORY} else message,
+            receipt_message,
             title=f"{item_name} purchased" if outcome.disposition in {PurchaseDisposition.COLLECTION, PurchaseDisposition.INVENTORY} else "",
             action_text=primary if callback is not None else "",
             callback=callback,
@@ -18352,17 +18354,17 @@ class PlantInfoCard(QFrame):
 
         if fully_grown:
             nurture_reason = "Nurture is unavailable because this plant is fully grown."
-            fertilizer_reason = "Magical Fertilizer is unavailable because this plant is fully grown."
+            fertilizer_reason = "Fertilizer is unavailable because this plant is fully grown."
         elif active:
             nurture_reason = "This plant is already being nurtured."
             fertilizer_reason = (
-                "Choose a tier to replace or extend the active Magical Fertilizer."
+                "Choose a tier to replace or extend the active Fertilizer."
                 if fertilizer_active else
-                "Magical Fertilizer is available for this nurtured plant."
+                "Fertilizer is available for this nurtured plant."
             )
         else:
             nurture_reason = "Nurture is available for this unfinished plant."
-            fertilizer_reason = "Nurture this plant before using Magical Fertilizer."
+            fertilizer_reason = "Nurture this plant before using Fertilizer."
 
         status_text = ""
         if fertilizer_active and isinstance(fertilizer_projection, dict):

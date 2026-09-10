@@ -2369,6 +2369,11 @@ def test_cancelled_profile_close_keeps_garden_open_until_actual_unload(monkeypat
     app = _new_app(addon)
     events = []
     aqt_mod.mw._unloadProfile = lambda: events.append("unloaded")
+    aqt_mod.mw._unloadCollection = lambda: events.append("collection closed")
+    app.reviewer_hooks = SimpleNamespace(
+        preserve_session_for_close=lambda: events.append("session saved"),
+        close_for_profile=lambda: events.append("reviewer closed"),
+    )
     app.storage.close = lambda: events.append("database closed")
     app._setup_collection_hooks()
     app._setup_collection_hooks()
@@ -2378,8 +2383,9 @@ def test_cancelled_profile_close_keeps_garden_open_until_actual_unload(monkeypat
     for callback in hooks.profile_will_close:
         callback()
     assert events == []
+    aqt_mod.mw._unloadCollection()
     aqt_mod.mw._unloadProfile()
-    assert events == ["unloaded", "database closed"]
+    assert events == ["session saved", "collection closed", "unloaded", "reviewer closed", "database closed"]
 
 
 def test_sync_lifecycle_processes_snapshot_with_live_presentation_setting(monkeypatch):
@@ -2463,6 +2469,134 @@ def test_one_way_sync_invalidation_never_falls_back_to_rewarding_maintenance(mon
     assert {"reason": "collection_replaced", "persist": True} in baselines
     assert snapshot in baselines
     assert maintenance == []
+
+
+def test_confirmed_upload_preserves_history_until_reopen_and_sync_finish(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    calls = []
+    app.runtime = SimpleNamespace(invalidate=lambda reason, **kw: calls.append((reason, kw)))
+    app.reviewer_hooks = SimpleNamespace(invalidate_history=lambda reason: None)
+    app.sync_reward_presenter = SimpleNamespace(dismiss=lambda reason: pytest.fail("Upload discarded receipt"))
+    app._on_sync_will_start()
+    aqt_mod.mw._anki_garden_full_upload = True
+    app._on_collection_will_temporarily_close()
+    del aqt_mod.mw._anki_garden_full_upload
+    assert not app._collection_replacement_pending
+    assert calls[-1][1]["suspended"] is True
+    app._on_collection_did_temporarily_close(aqt_mod.mw.col)
+    assert calls[-1][1]["suspended"] is True
+    app._on_sync_finished()
+    assert calls[-1][1]["suspended"] is False
+    assert calls[-1][1]["from_sync"] is False
+    app._on_sync_finished()  # Duplicate completion before background work settles.
+    assert calls[-1][1]["from_sync"] is False
+    assert not any(kw.get("replacement") for _, kw in calls)
+
+    app._on_sync_will_start()
+    aqt_mod.mw._anki_garden_full_upload = True
+    app._on_collection_will_temporarily_close()
+    aqt_mod.mw._anki_garden_full_upload = False
+    closed_calls = list(calls)
+    app._on_sync_finished()  # Even an early finish cannot release a closed DB.
+    assert calls == closed_calls
+    app._on_collection_did_temporarily_close(aqt_mod.mw.col)
+    assert calls[-1][1]["suspended"] is False
+    app._on_collection_did_temporarily_close(aqt_mod.mw.col)
+    assert calls[-1][1]["replacement"] is False
+
+    app._on_sync_will_start()
+    aqt_mod.mw._anki_garden_full_upload = True
+    app._on_collection_will_temporarily_close()
+    aqt_mod.mw._anki_garden_full_upload = False
+    app._on_upload_start_failed()  # Failure before Anki closes the database.
+    assert not app._collection_temporarily_closed
+    assert calls[-1][1]["suspended"] is False
+
+    # A later download must still take the conservative replacement path.
+    app.sync_reward_presenter = SimpleNamespace(dismiss=lambda reason: None)
+    app._on_sync_will_start()
+    app._on_collection_will_temporarily_close()
+    assert app._collection_replacement_pending
+    assert calls[-1][1]["replacement"] is True
+
+
+@pytest.mark.parametrize("garden_first", [False, True])
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancel"])
+def test_full_upload_guard_preserves_wrappers_arguments_and_failures(monkeypatch, garden_first, outcome):
+    from functools import wraps
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    events = []
+    error = RuntimeError(outcome)
+
+    def original(mw, *args, **kwargs):
+        events.append((mw._anki_garden_full_upload, args, kwargs))
+        if outcome != "success":
+            raise error
+        return "unchanged return"
+
+    def companion_wrapper(fn):
+        @wraps(fn)
+        def wrapped(*args, **kwargs):
+            events.append("companion")
+            return fn(*args, **kwargs)
+        return wrapped
+
+    aqt_mod.sync = SimpleNamespace(full_upload=original)
+    if not garden_first:
+        aqt_mod.sync.full_upload = companion_wrapper(aqt_mod.sync.full_upload)
+    app._setup_sync_hooks()
+    installed = aqt_mod.sync.full_upload
+    app._setup_sync_hooks()
+    assert aqt_mod.sync.full_upload is installed
+    if garden_first:
+        aqt_mod.sync.full_upload = companion_wrapper(installed)
+        app._setup_sync_hooks()
+    for args, kwargs in (((aqt_mod.mw, "callback"), {}),
+                         ((), {"mw": aqt_mod.mw, "server_usn": None, "on_done": "callback"})):
+        if outcome == "success":
+            assert aqt_mod.sync.full_upload(*args, **kwargs) == "unchanged return"
+        else:
+            with pytest.raises(RuntimeError) as raised:
+                aqt_mod.sync.full_upload(*args, **kwargs)
+            assert raised.value is error
+        assert aqt_mod.mw._anki_garden_full_upload is False
+    assert events == ["companion", (True, ("callback",), {}),
+                      "companion", (True, (), {"server_usn": None, "on_done": "callback"})]
+
+
+@pytest.mark.parametrize("with_sync", [False, True])
+def test_upload_fallback_reconciles_without_baseline_or_sync_receipt(monkeypatch, with_sync):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    events = []
+    app._sync_in_progress = with_sync
+    app._invalidate_review_history = lambda reason: None
+    app._run_garden_maintenance = lambda reason: events.append("reconciled")
+    app.sync_review_detector = SimpleNamespace(
+        invalidate=lambda reason: events.append("invalidated"),
+        note_collection_generation=lambda **kw: events.append("new generation"),
+        finish=lambda: SimpleNamespace(valid=False, one_way_replacement=False),
+    )
+    app.sync_reward_processor = SimpleNamespace(process=lambda *a, **kw: pytest.fail("upload sync receipt"))
+    app.engine.baseline_reward_history = lambda **kw: pytest.fail("upload baseline")
+    app.sync_reward_presenter = SimpleNamespace(dismiss=lambda reason: pytest.fail("discarded pending receipt"))
+    aqt_mod.mw._anki_garden_full_upload = True
+    app._on_collection_will_temporarily_close()
+    aqt_mod.mw._anki_garden_full_upload = False
+    app._on_collection_did_temporarily_close(aqt_mod.mw.col)
+    if with_sync:
+        assert "reconciled" not in events
+        app._on_sync_finished()
+    assert events == ["invalidated", "new generation", "reconciled"]
+    app._on_profile_closed()
+    assert not app._last_sync_was_upload
+    assert not app._collection_upload_pending
+    assert not app._collection_temporarily_closed
 
 
 def test_generated_non_iterable_hooks_register_idempotently(monkeypatch):

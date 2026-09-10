@@ -454,19 +454,17 @@ def test_live_qt_component_gallery_renders_release_geometry_and_pixels_when_avai
 
     assert (image.width(), image.height()) == (960, 640)
     assert output.exists() and output.stat().st_size > 2_000
-    assert compact.height() == 32
-    assert standard.height() == 36
-    assert primary.height() == 40
-    assert destructive.height() == 36
+    assert compact.height() == 30
+    assert standard.height() == primary.height() == destructive.height() == 34
     assert disabled.isEnabled() is False
     assert bool(loading.property("busy")) is True
     assert loading.text() == "Loading…"
     assert loading.isEnabled() is False
-    assert (icon.width(), icon.height()) == (32, 32)
+    assert (icon.width(), icon.height()) == (30, 30)
     assert toggle_off.property("switchState") == "off"
     assert toggle_on.property("switchState") == "on"
-    assert tabs.tabBar().height() == 42
-    assert progress.bar.height() == 8
+    assert tabs.tabBar().height() == 36
+    assert progress.bar.height() == 6
     assert 48 <= toast.height() <= 84
     colors = _rendered_colors(image)
     assert GARDEN_THEME["dialog_surface"].upper() in colors

@@ -54,6 +54,9 @@ from ..ui.session_summary import (
     SessionProjectGrowthAllocation,
     SessionStartSnapshot,
     SessionSummaryAccumulator,
+    SessionSummaryPayload,
+    encode_session_record,
+    decode_session_record,
     StandardFind,
     TodayCardsSnapshot,
 )
@@ -537,6 +540,9 @@ class ReviewerHookHandler:
         ] = []
         self._presented_reviewer_result_ids: set[str] = set()
         self._session_summary_accumulator: SessionSummaryAccumulator | None = None
+        self._saved_review_sessions: dict[str, Any] = {}
+        self._restored_session_id = ""
+        self._profile_closing = False
         self._session_summary_card: Any | None = None
         self._pending_session_summary: Any | None = None
         self._session_summary_render_scheduled = False
@@ -1824,6 +1830,7 @@ class ReviewerHookHandler:
         self._reviewer_session_window = None
         self._reviewer_notice_shown = False
         self._reviewer_hud_narrow_forced = False
+        self.present_saved_review_session()
 
     def _start_reviewer_session_totals(
         self,
@@ -1832,6 +1839,7 @@ class ReviewerHookHandler:
     ) -> None:
         """Start the event-sourced local session after the first question."""
 
+        self._reviewer_session_window = getattr(mw, "reviewer", None)
         self._pending_reviewer_results = []
         self._presented_reviewer_result_ids = set()
         self._reviewer_hud_reward_state = None
@@ -1853,6 +1861,8 @@ class ReviewerHookHandler:
         )
 
     def _show_reviewer_session_summary(self) -> None:
+        if self._review_window_answer_revlog_ids and getattr(self.storage, "runtime_pending", False):
+            self.preserve_session_for_close(closing=False)
         accumulator = self._session_summary_accumulator
         self._session_summary_accumulator = None
         self._review_window_token = ""
@@ -1888,6 +1898,144 @@ class ReviewerHookHandler:
         self._pending_session_summary = payload
         self._refresh_post_session_surfaces()
         self._schedule_session_summary_render()
+
+    def _save_review_sessions(self) -> None:
+        manager = getattr(mw, "pm", None)
+        profile = getattr(manager, "profile", None)
+        if isinstance(profile, dict):
+            profile["anki_garden_review_sessions"] = dict(self._saved_review_sessions)
+            manager.save()
+
+    def restore_review_sessions(self) -> None:
+        """Load only this Anki profile's unshown local sessions."""
+        self._profile_closing = False
+        # Anki may import add-ons before selecting a profile. Its profile
+        # attribute exists but is None until profile_did_open retries recovery.
+        profile = getattr(getattr(mw, "pm", None), "profile", None)
+        raw = profile.get("anki_garden_review_sessions", {}) if isinstance(profile, dict) else {}
+        self._saved_review_sessions = dict(raw) if isinstance(raw, dict) else {}
+        for session_id, record in tuple(self._saved_review_sessions.items()):
+            try:
+                if record["version"] != 1:
+                    raise ValueError("Unsupported saved session version")
+                if "payload" in record:
+                    if not isinstance(decode_session_record(record["payload"]), SessionSummaryPayload):
+                        raise ValueError("Invalid saved session payload")
+                else:
+                    SessionSummaryAccumulator.from_recovery_checkpoint(record["checkpoint"])
+                    if not isinstance(decode_session_record(record["end"]), SessionEndSnapshot):
+                        raise ValueError("Invalid saved session ending")
+                    {int(value) for value in record["pending_ids"]}
+            except (KeyError, TypeError, ValueError, AttributeError):
+                logger.exception("Anki Garden: invalid saved session was ignored")
+                self._saved_review_sessions.pop(session_id)
+
+    def preserve_session_for_close(self, *, closing: bool = True) -> None:
+        """Called after cancellable close dialogs, while the collection is open."""
+        accumulator = self._session_summary_accumulator
+        if accumulator is not None:
+            ended_at = self._session_now_iso()
+            end = self._session_end_snapshot(refresh_today=False)
+            if accumulator.cards_completed or self._review_window_answer_revlog_ids:
+                self._saved_review_sessions[accumulator.session_id] = {
+                    "version": 1, "checkpoint": accumulator.recovery_checkpoint(),
+                    "pending_ids": sorted(self._review_window_answer_revlog_ids),
+                    "ended_at": ended_at, "end": encode_session_record(end),
+                }
+        elif self._pending_session_summary is not None:
+            payload = self._pending_session_summary
+            self._saved_review_sessions[payload.session_id] = {
+                "version": 1, "payload": encode_session_record(payload),
+            }
+        self._save_review_sessions()
+        end_feature_session = getattr(self.engine, "end_review_session", None)
+        if callable(end_feature_session):
+            end_feature_session()
+        self._profile_closing = closing
+        self._session_summary_accumulator = None
+        self._review_window_token = ""
+        self._review_window_answer_revlog_ids = set()
+        self._session_cutoff_generation += 1
+
+    def accept_reconciled_results(self, results: Any) -> None:
+        """Route delayed local commits back to their original review session."""
+        local = [row for row in results if row.origin in {"local", "local_recovery"}]
+        accumulator = self._session_summary_accumulator
+        for result in local:
+            if accumulator is not None and result.occurred_at_ms in self._review_window_answer_revlog_ids:
+                event = self._session_event_from_result(result)
+                if event is not None and accumulator.accept_committed(event):
+                    self._pending_reviewer_results.append((result, event))
+                self._review_window_answer_revlog_ids.discard(result.occurred_at_ms)
+        changed = False
+        for record in self._saved_review_sessions.values():
+            pending = set(record.get("pending_ids", ()))
+            matching = [row for row in local if row.occurred_at_ms in pending]
+            if not matching:
+                continue
+            accumulator = SessionSummaryAccumulator.from_recovery_checkpoint(record["checkpoint"])
+            for result in matching:
+                event = self._session_event_from_result(result)
+                if event is not None:
+                    accumulator.accept_committed(event)
+                pending.discard(result.occurred_at_ms)
+            record["checkpoint"] = accumulator.recovery_checkpoint()
+            record["pending_ids"] = sorted(pending)
+            changed = True
+        if changed:
+            self._save_review_sessions()
+
+    def present_saved_review_session(self) -> None:
+        if (self._profile_closing or getattr(self.storage, "runtime_pending", False)
+                or self._pending_session_summary is not None or self._session_summary_card is not None
+                or str(getattr(mw, "state", "")) not in {"deckBrowser", "overview"}):
+            return
+        for session_id, record in tuple(self._saved_review_sessions.items()):
+            try:
+                if record["version"] != 1:
+                    raise ValueError("Unsupported saved session version")
+                if "payload" in record:
+                    payload = decode_session_record(record["payload"])
+                else:
+                    accumulator = SessionSummaryAccumulator.from_recovery_checkpoint(record["checkpoint"])
+                    # Verification has settled; an unmatched deferred answer may
+                    # have been undone. Only committed events enter the receipt.
+                    payload = accumulator.finalize(ended_at=record["ended_at"],
+                                                   end_snapshot=decode_session_record(record["end"]))
+                if payload is None:
+                    del self._saved_review_sessions[session_id]
+                    self._save_review_sessions()
+                    continue
+                if not isinstance(payload, SessionSummaryPayload):
+                    raise ValueError("Invalid saved Session Summary")
+                finish_activity = getattr(self.storage, "finish_activity_session", None)
+                if callable(finish_activity):
+                    try:
+                        finish_activity(session_id, payload.ended_at)
+                    except Exception:
+                        logger.exception("Anki Garden: recovered session end could not be saved")
+                self._restored_session_id = session_id
+                self._pending_session_summary = payload
+                self._session_summary_presentation_generation += 1
+                self._schedule_session_summary_render()
+                return
+            except (KeyError, TypeError, ValueError, AttributeError):
+                logger.exception("Anki Garden: saved session summary could not be restored")
+                # A malformed presentation record must not disable rewards or
+                # repeatedly block all other summaries. Keep it for diagnosis.
+                self._saved_review_sessions.pop(session_id)
+
+    def close_for_profile(self) -> None:
+        self._profile_closing = True
+        self._restored_session_id = ""
+        self._hide_session_summary(clear_pending=True)
+        self._hide_reviewer_hud()
+        self._session_summary_accumulator = None
+        self._reviewer_session_window = None
+        self._pending_reviewer_results = []
+        self._review_window_answer_revlog_ids = set()
+        self._review_window_token = ""
+        self._session_cutoff_generation += 1
 
     def _refresh_post_session_surfaces(self) -> None:
         """Refresh the visible Anki/Garden state before mounting the summary.
@@ -2145,6 +2293,7 @@ class ReviewerHookHandler:
         if callable(release):
             release("session")
         if clear_pending:
+            self._restored_session_id = ""
             self._session_summary_presentation_generation += 1
             self._pending_session_summary = None
             self._session_summary_render_scheduled = False
@@ -2208,8 +2357,11 @@ class ReviewerHookHandler:
         payload = self._pending_session_summary
         if payload is None:
             return
-        if self._anki_is_closing():
-            self._pending_session_summary = None
+        if self._profile_closing or self._anki_is_closing():
+            return
+        if (getattr(self.storage, "runtime_pending", False)
+                or str(getattr(mw, "state", "")) not in {"deckBrowser", "overview"}):
+            self._schedule_session_summary_render(150)
             return
         if reviewer_modal_active(mw):
             self._schedule_session_summary_render(150)
@@ -2244,6 +2396,13 @@ class ReviewerHookHandler:
             self._install_session_summary_exclusion_tracking(card, parent)
             self._presented_session_summary_payload = payload
             self._pending_session_summary = None
+            if self._restored_session_id:
+                self._saved_review_sessions.pop(self._restored_session_id, None)
+                self._restored_session_id = ""
+                try:
+                    self._save_review_sessions()
+                except Exception:
+                    logger.exception("Anki Garden: presented session receipt could not be cleared")
         except Exception:
             self._dispose_session_summary_shortcut(shortcut)
             dispose_unmounted_summary_card(card)
@@ -2270,6 +2429,7 @@ class ReviewerHookHandler:
 
     def _dismiss_session_summary(self) -> None:
         self._hide_session_summary(clear_pending=True)
+        self.present_saved_review_session()
 
     def dismiss_session_summary_for_navigation(self, *_args: Any) -> None:
         """Cancel both visible and delayed summary presentation exactly once."""

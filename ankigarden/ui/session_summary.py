@@ -10,7 +10,7 @@ from __future__ import annotations
 from ..presentation import plant_stage_event
 
 import logging
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Iterable, Literal, Sequence, TypeVar
 
@@ -2477,6 +2477,68 @@ class SessionSummaryAccumulator:
             return None
         self._taken = True
         return self._finalized
+
+    def recovery_checkpoint(self) -> dict[str, Any]:
+        """Retain accepted facts and undo identities while Anki is closed."""
+        return {
+            "session_id": self.session_id,
+            "started_at": self.started_at,
+            "segments": encode_session_record(self._segments),
+            "events": encode_session_record(tuple(self._events.values())),
+            "seen": sorted(self._seen_event_ids),
+            "reversed": sorted(self._reversed_event_ids),
+            "reversals": sorted(self._processed_reversal_ids),
+        }
+
+    @classmethod
+    def from_recovery_checkpoint(cls, data: dict[str, Any]) -> SessionSummaryAccumulator:
+        segments = decode_session_record(data["segments"])
+        events = decode_session_record(data["events"])
+        if not segments or not all(isinstance(row, _Segment) for row in segments):
+            raise ValueError("Invalid saved session segments")
+        if not all(isinstance(row, CommittedSessionEvent) for row in events):
+            raise ValueError("Invalid saved session events")
+        result = cls(session_id=data["session_id"], started_at=data["started_at"],
+                     anki_day_id=segments[0].anki_day_id, start_snapshot=segments[0].start)
+        result._segments = segments
+        result._events = {row.event_id: row for row in events}
+        result._seen_event_ids = set(data["seen"])
+        result._reversed_event_ids = set(data["reversed"])
+        result._processed_reversal_ids = set(data["reversals"])
+        return result
+
+
+def encode_session_record(value: Any) -> Any:
+    """JSON-only presentation records; never serialize executable objects."""
+    if is_dataclass(value):
+        return {"record": type(value).__name__, "fields": {
+            item.name: encode_session_record(getattr(value, item.name))
+            for item in fields(value) if item.init
+        }}
+    if isinstance(value, (tuple, frozenset)):
+        return {"sequence": type(value).__name__, "items": [encode_session_record(row) for row in value]}
+    if isinstance(value, list):
+        return [encode_session_record(row) for row in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise ValueError("Unsupported saved session value")
+
+
+def decode_session_record(value: Any) -> Any:
+    if isinstance(value, list):
+        return [decode_session_record(row) for row in value]
+    if not isinstance(value, dict):
+        return value
+    if value.get("sequence") in {"tuple", "frozenset"}:
+        constructor = tuple if value["sequence"] == "tuple" else frozenset
+        return constructor(decode_session_record(row) for row in value["items"])
+    # Only the data models declared in this module and RewardReceipt are valid.
+    # Names in saved data cannot import modules or select arbitrary constructors.
+    record_types = {name: model for name, model in globals().items()
+                    if isinstance(model, type) and is_dataclass(model)
+                    and (model.__module__ == __name__ or model is RewardReceipt)}
+    model = record_types[value["record"]]
+    return model(**{name: decode_session_record(row) for name, row in value["fields"].items()})
 
 
 __all__ = [

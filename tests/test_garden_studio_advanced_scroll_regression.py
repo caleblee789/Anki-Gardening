@@ -449,6 +449,9 @@ def _live_engine_fixture() -> tuple[Any, Any, Any]:
         def value(self, key: str, default: Any = None) -> Any:
             return self.data.get(key, default)
 
+        def update(self, payload: dict[str, Any]) -> None:
+            self.data.update(deepcopy(payload))
+
         def nested(self, *keys: str, default: Any = None) -> Any:
             node: Any = self.data
             for key in keys:
@@ -588,9 +591,9 @@ def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
 
     icon = placement.nursery_toast.icon
     icon_pixmap = icon.pixmap()
-    assert placement.nursery_toast.message.text() == "Sunflower Seed added to your collection."
-    assert placement.nursery_toast.action.text() == "Place in garden"
-    assert placement.nursery_toast.property("receiptPrimaryRoute") == "Place in garden"
+    assert placement.nursery_toast.message.text() == "Added to your collection."
+    assert placement.nursery_toast.action.text() == "Plant in garden"
+    assert placement.nursery_toast.property("receiptPrimaryRoute") == "Plant in garden"
     assert icon.accessibleName() == "Sunflower Seed artwork"
     assert icon_pixmap is not None and not icon_pixmap.isNull()
 
@@ -611,7 +614,7 @@ def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     )
     no_bed.show()
     application.processEvents()
-    assert no_bed.nursery_toast.message.text() == "Sunflower Seed added to your collection. No empty bed is available."
+    assert no_bed.nursery_toast.message.text() == "Added to your collection. No empty bed is available."
     assert no_bed.nursery_toast.action.text() == "View in Collection"
     assert no_bed.nursery_toast.property("receiptPrimaryRoute") == "View in Collection"
     no_bed.nursery_toast.action.click()
@@ -886,7 +889,7 @@ def test_live_qt_plant_popover_state_matrix_when_available(monkeypatch: pytest.M
     for current in (0, 1000, 2000):
         settle(stage_points=current)
         assert card.stage_progress.bar.value() == current
-        assert card.stage_progress.value_label.text() == f"{current:,} / 2,000 Growth toward Young"
+        assert card.stage_progress.value_label.text() == f"{current:,} / 2,000 Growth to Young"
         assert card.fertilize.isVisibleTo(card) and card.fertilize.isEnabled()
         assert any(action.text() == "Move" and action.isVisible() for action in card.more.menu().actions())
         assert card.story.isVisibleTo(card)
@@ -1055,13 +1058,13 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         dashboard.open_section("shop", "supplies", plant_id="p2")
         assert shop.catalog_layout.count() == shop.upgrades_layout.count() == 0
         assert shop.supply_context.isHidden()  # Inspection does not choose a fertilizer target.
-        first_row = shop.supplements_layout.itemAt(1).widget()
+        first_catalog = shop.supplements_layout.itemAt(0).widget()
         dashboard.open_section("garden")
         dashboard.open_section("shop", "supplies", plant_id="p2")
-        assert shop.supplements_layout.itemAt(1).widget() is first_row
+        assert shop.supplements_layout.itemAt(0).widget() is first_catalog
         dashboard._mark_progress_pages_dirty()
         dashboard.open_section("shop", "supplies", plant_id="p2")
-        assert shop.supplements_layout.itemAt(1).widget() is not first_row
+        assert shop.supplements_layout.itemAt(0).widget() is not first_catalog
         assert shop.catalog_layout.count() == shop.upgrades_layout.count() == 0
     finally:
         dashboard.close()
@@ -1119,11 +1122,15 @@ def test_live_qt_settings_details_stay_bounded_and_scroll_when_needed(
 
     assert wide_height >= 100
     assert narrow_height >= wide_height
-    assert narrow_height >= required_height
+    assert narrow_height <= 220 < required_height
     assert (
         settings.debug_report.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     )
+    report_scroll = settings.debug_report.verticalScrollBar()
+    assert report_scroll.maximum() > 0
+    report_scroll.setValue(report_scroll.maximum())
+    assert report_scroll.value() == report_scroll.maximum()
     regions = settings.active_vertical_scroll_regions()
     assert len(regions) == 1
     outer_scroll = regions[0]
@@ -1695,6 +1702,87 @@ def test_live_welcome_and_trophies_keep_text_and_actions_reachable(
     finally:
         welcome.close()
         trophies.close()
+        owner.close()
+        application.processEvents()
+
+
+@pytest.mark.parametrize("ending", ("complete", "skip", "escape", "hide", "disable_motion", "dismiss"))
+def test_live_welcome_reveal_settles_and_recovers_without_replaying(
+    monkeypatch: pytest.MonkeyPatch, ending: str,
+) -> None:
+    """Every exit from the reward reveal restores a usable, fully visible receipt."""
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QWidget
+        from ankigarden.models.state import GardenState
+        from ankigarden.ui.dashboard import GardenDashboard
+        from ankigarden.ui import welcome as welcome_module
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    config, storage, engine = _live_engine_fixture()
+    storage.state = GardenState()
+    engine = type(engine)(config, storage)
+    if ending == "complete":
+        from ankigarden.ui.dashboard import GardenSettingsDialog
+
+        settings_owner = QWidget()
+        settings = GardenSettingsDialog(settings_owner, engine, config)
+        settings.garden_name_edit.setText("My first garden")
+        settings.save_settings.click()
+        assert storage.state.garden_name == "My first garden"
+        assert storage.state.garden_setup_version == 0
+        settings.close()
+        settings_owner.close()
+    ok, _, plant = engine.choose_starter("bonsai")
+    assert ok and engine.set_active_plant(plant.plant_id)[0]
+    assert engine.finish_onboarding()[0]
+    balances = storage.state.currency_balance, plant.growth_points
+    assert balances == (51, 100)
+    now = [100.0]
+    monkeypatch.setattr(welcome_module, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    owner = QWidget()
+    dashboard = GardenDashboard(owner, engine, storage, config)
+    try:
+        dashboard.show()
+        application.processEvents()
+        welcome = dashboard.welcome
+        dashboard.scene.scene["motion_enabled"] = True
+        welcome.maybe_present()
+        assert welcome.timer.isActive()
+        now[0] += 2.8
+        welcome.timer.timeout.emit()
+        assert welcome.card.isVisible()
+        if ending == "complete":
+            now[0] += 1.0
+            welcome.timer.timeout.emit()
+        elif ending == "skip":
+            welcome.skip.click()
+        elif ending == "escape":
+            assert welcome.handle_escape()
+        elif ending == "hide":
+            dashboard.hide()
+            dashboard.show()
+            application.processEvents()
+        elif ending == "disable_motion":
+            dashboard.scene.scene["motion_enabled"] = False
+            welcome.timer.timeout.emit()
+        else:
+            welcome.card.start_gardening.click()
+        assert not welcome.timer.isActive()
+        assert welcome.card.graphicsEffect() is None
+        assert welcome.card.isVisible() == (ending != "dismiss")
+        assert dashboard.nurtured_plant_bar.progress.value() == 10000
+        dashboard.hide()
+        dashboard.show()
+        application.processEvents()
+        assert not welcome.timer.isActive()
+        assert welcome.card.isVisible() == (ending != "dismiss")
+        assert (storage.state.currency_balance, plant.growth_points) == balances
+    finally:
+        dashboard.close()
         owner.close()
         application.processEvents()
 

@@ -207,13 +207,14 @@ def build_sync_reward_summary(
     *,
     baseline: Mapping[str, Any] | None = None,
     engine: Any = None,
+    committed_only: bool = False,
 ) -> SyncRewardSummary | None:
     """Shape only engine-confirmed batch facts; never calculate rewards."""
 
     if not results:
         return None
-    before_facts = dict(baseline or {})
-    after_facts = _post_facts(engine)
+    before_facts = {} if committed_only else dict(baseline or {})
+    after_facts = {} if committed_only else _post_facts(engine)
     before_plants = _plants_from_facts(before_facts) or _plants_from_results(results, before=True)
     after_plants = _plants_from_facts(after_facts) or _plants_from_results(results, before=False)
     active_after = str(after_facts.get("active_plant_id") or results[-1].active_plant_after_id or "")
@@ -315,7 +316,8 @@ def build_sync_reward_summary(
         growth_total_units = accounted_growth_units
     shared_growth_units = sum(max(0, int(result.award.shared_growth_units)) for result in results)
 
-    receipts = _new_receipts(engine, results, before_facts)
+    receipts = (_new_receipts(None, results, {}) if committed_only
+                else _new_receipts(engine, results, before_facts))
     progression_coins: dict[str, int] = defaultdict(int)
     milestone_keys = {str(receipt.event_key) for receipt in receipts
                       if str(receipt.source) == "plant_milestone"}
@@ -711,6 +713,7 @@ class SyncRewardProcessor:
         *,
         presentation_enabled: bool = True,
         raise_on_failure: bool = False,
+        result_collector: list[CommittedAnswerResult] | None = None,
     ) -> SyncRewardSummary | None:
         if snapshot is None:
             return None
@@ -731,12 +734,19 @@ class SyncRewardProcessor:
         created: list[SyncRewardSummary] = []
 
         def factory(results: tuple[CommittedAnswerResult, ...]) -> SyncRewardSummary | None:
-            summary = build_sync_reward_summary(
-                snapshot.batch_id,
-                results,
-                baseline=snapshot.reward_baseline,
-                engine=self.engine,
-            )
+            remote = tuple(row for row in results if row.origin not in {"local", "local_recovery"})
+            if len(remote) == len(results):
+                summary = build_sync_reward_summary(snapshot.batch_id, remote,
+                    baseline=snapshot.reward_baseline, engine=self.engine)
+            else:
+                # Interleaved local recovery must not leak through whole-state
+                # balance differences or be relabelled as downloaded rewards.
+                summary = None
+                for result in remote:
+                    part = build_sync_reward_summary(f"{snapshot.batch_id}:{result.event_id}",
+                        (result,), engine=self.engine, committed_only=True)
+                    if part is not None:
+                        summary = summary.merge(part) if summary is not None else part
             if summary is not None:
                 created.append(summary)
             return summary
@@ -747,6 +757,7 @@ class SyncRewardProcessor:
             due_status=due_status,
             pending_summary_factory=factory if presentation_enabled else None,
             emit_feedback=False,
+            **({"result_collector": result_collector} if result_collector is not None else {}),
         )
         if not ok and raise_on_failure:
             raise RuntimeError(_message)

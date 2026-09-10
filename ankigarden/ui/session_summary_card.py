@@ -12,6 +12,7 @@ from ..presentation import plant_stage_event
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,7 @@ from ..environment import (
 from ..reward_presentation import project_growth_allocations
 from .accessibility import read_system_reduced_motion
 from .environment_art import environment_preview_pixmap
-from .formatters import format_garden_coins, format_quantity
+from .formatters import format_garden_coins, format_plant_name, format_quantity, format_stage_progress
 from .copy import cards_studied_text
 from .icons import garden_icon
 from .reward_rarity import apply_reward_treatment, reward_treatment
@@ -42,7 +43,6 @@ from .session_summary import (
     format_growth_units,
     project_session_day,
     session_coin_groups,
-    plant_growth_journey,
     unlock_category_copy,
 )
 from .theme import GARDEN_THEME, apply_tabular_numerals
@@ -61,6 +61,54 @@ SESSION_SUMMARY_HEADER_HEIGHT = 44
 SESSION_SUMMARY_FOOTER_HEIGHT = 48
 SESSION_SUMMARY_FRAME_BORDER_WIDTH = 1
 SESSION_SUMMARY_COMPACT_HOST_HEIGHT = 903
+
+
+@dataclass(frozen=True)
+class SessionPlantProgress:
+    name: str
+    gain: str
+    description: str
+    stage_change: str
+    stage: str
+    current_units: int | None
+    required_units: int | None
+    fully_grown: bool
+
+
+def session_plant_progress(
+    species: str, before_units: int | None, gained_units: int, *, full_bloom: bool = False,
+) -> SessionPlantProgress:
+    """Present recorded session gains and exact within-stage hundredths together."""
+    from ..growth import stage_presentation, stage_progress
+
+    before = stage_progress(before_units // 100) if before_units is not None else None
+    total_units = before_units + gained_units if before_units is not None else None
+    after = stage_progress(total_units // 100) if total_units is not None else None
+    fully_grown = full_bloom or bool(after is not None and after.fully_grown)
+    stage = "rare" if fully_grown else after.stage if after is not None else ""
+    current_units = required_units = None
+    description = "Fully grown" if fully_grown else ""
+    if after is not None and not fully_grown:
+        current_units = total_units - after.stage_start * 100
+        required_units = after.stage_goal * 100
+        description = format_stage_progress(
+            Decimal(current_units) / 100, Decimal(required_units) / 100, after.next_stage,
+        )
+    stage_change = ""
+    if before is not None and after is not None:
+        advanced = after.stage_index - before.stage_index
+        if advanced > 0:
+            destination = stage_presentation(after.stage).display_name
+            stage_change = (f"Reached {destination}" if advanced == 1 else
+                            f"Advanced {advanced} stages to {destination}")
+    elif full_bloom:
+        stage_change = "Reached Full Bloom"
+    return SessionPlantProgress(
+        name=format_plant_name({"species": species, "stage": stage}),
+        gain=f"{format_growth_units(gained_units, signed=True)} Growth",
+        description=description, stage_change=stage_change, stage=stage,
+        current_units=current_units, required_units=required_units, fully_grown=fully_grown,
+    )
 
 
 def session_summary_palette(background_lightness: int | None = None) -> dict[str, str]:
@@ -1844,43 +1892,30 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if growth:
             layout.addWidget(self._section_heading("Plant progress"))
             from types import SimpleNamespace
-            from ..growth import stage_progress
             from .reward_receipt import receipt_progress_card
             for plant_id, (item, units) in growth.items():
-                name = item.species_name or item.plant_name
                 baseline = starts.get(plant_id)
                 before_units = baseline.growth_units if baseline is not None else None
-                text = plant_growth_journey(name, before_units, units)
-                before = stage_progress(before_units // 100) if before_units is not None else None
-                after = stage_progress((before_units + units) // 100) if before_units is not None else None
                 full_bloom = plant_id in blooms
-                if full_bloom and before_units is None:
-                    text = plant_stage_event(name, "rare")
+                details = session_plant_progress(
+                    item.species_name or item.plant_name, before_units, units, full_bloom=full_bloom,
+                )
                 artwork = self._plant_art_label(SimpleNamespace(
                     plant_id=plant_id, species_name=item.species_name, art_asset=item.art_asset,
-                    new_stage="rare" if full_bloom else after.stage if after is not None else "",
+                    new_stage=details.stage,
                 ), 48)
-                transitioned = bool(before is not None and after is not None and after.stage != before.stage)
-                title = plant_stage_event(name, "rare" if full_bloom else after.stage) if full_bloom or transitioned else name
-                if transitioned:
-                    from .sync_reward_summary import _plant_progress_copy
-                    from ..growth import stage_presentation
-                    old_stage = stage_presentation(before.stage).display_name
-                    new_stage = stage_presentation(after.stage).display_name
-                    text = old_stage + " → " + new_stage
-                    progress_copy = _plant_progress_copy({"stage_after": after.stage, "next_stage": after.next_stage,
-                        "growth_after_units": before_units + units, "stage_progress_after": round(after.progress * 100)})
-                    if progress_copy:
-                        text += "\n" + progress_copy
-                elif full_bloom:
-                    text = ""
                 progress = receipt_progress_card(layout.parentWidget(), artwork,
-                    title,
-                    text, progress_percent=round(after.progress * 100) if after is not None and not full_bloom else None,
-                    coins=progression_coins.get(plant_id, 0), palette=self._summary_theme, full_bloom=full_bloom)
+                    details.name, details.description,
+                    progress_percent=0 if details.current_units is not None else None,
+                    coins=progression_coins.get(plant_id, 0), palette=self._summary_theme,
+                    full_bloom=full_bloom, growth_gain=details.gain, stage_change=details.stage_change)
+                if details.current_units is not None:
+                    progress.progress.setRange(0, details.required_units)
+                    progress.progress.setValue(details.current_units)
                 progress.widget.setProperty("summaryBreakdownRowKey", f"plant_progress:{plant_id}")
                 progress.widget.setProperty("summaryHighlightKind", "full_bloom" if full_bloom else "plant_progress")
-                progress.progress.setAccessibleName(f"{name} stage progress")
+                progress.progress.setAccessibleName(f"{details.name} stage progress")
+                progress.progress.setAccessibleDescription(details.description)
                 layout.addWidget(progress.widget)
 
     def _add_breakdown_details(self, layout: Any, summary: SessionDaySummary, projection: Any) -> None:

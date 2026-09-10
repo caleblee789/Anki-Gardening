@@ -9304,6 +9304,21 @@ class _UiFaceCaptureRunner:
                 # The native welcome card occludes these garden hotspots.
                 # Their geometry must not be treated as overlapping actions.
                 continue
+            popover = getattr(root, "plant_card", None)
+            if (
+                isinstance(popover, QWidget)
+                and popover.isVisibleTo(root)
+                and isinstance(scene, QWidget)
+                and scene.isAncestorOf(button)
+                and not popover.isAncestorOf(button)
+            ):
+                # As with the welcome card, a raised inspector occludes scene
+                # hotspots. Confirm the foreground owner by native hit testing;
+                # keep every control within the inspector in the normal audit.
+                hotspot = QRect(*painted.get("bounds", (0, 0, 0, 0)))
+                hit = root.childAt(hotspot.center())
+                if hit is popover or (hit is not None and popover.isAncestorOf(hit)):
+                    continue
             owner, owner_name = nearest_clip_owner(button)
             owner_evidence = self._widget_bounds_evidence(button, owner)
             if not owner_evidence.get("intersects", False):

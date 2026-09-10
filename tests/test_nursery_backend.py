@@ -105,6 +105,9 @@ def test_first_garden_gift_is_atomic_once_and_survives_interrupted_presentation(
     assert engine.finish_onboarding()[0]
     assert engine.mark_welcome_presented(WELCOME_EVENT_KEY, acknowledged=True)
     assert storage.state.welcome_receipt.status == "acknowledged"
+    assert engine.mark_welcome_presented(WELCOME_EVENT_KEY, acknowledged=True)
+    assert not engine.mark_welcome_presented(WELCOME_EVENT_KEY)
+    assert storage.state.welcome_receipt.status == "acknowledged"
     assert storage.state.currency_balance == 51
     assert storage.state.plants[0].growth_points == 100
 

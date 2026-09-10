@@ -71,6 +71,40 @@ _MAINTENANCE_PERFORMANCE_ROUTES = {
 }
 
 
+def _install_full_upload_guard() -> None:
+    """Identify Anki's synchronous upload close hook without changing sync."""
+    try:
+        from aqt import sync
+    except ImportError:
+        return
+    original = getattr(sync, "full_upload", None)
+    if not callable(original) or getattr(original, "_anki_garden_upload_guard", False):
+        return
+
+    @wraps(original)
+    def full_upload(*args: Any, **kwargs: Any) -> Any:
+        window = args[0] if args else kwargs.get("mw")
+        if window is None:
+            return original(*args, **kwargs)
+        previous = getattr(window, "_anki_garden_full_upload", False)
+        window._anki_garden_full_upload = True
+        try:
+            return original(*args, **kwargs)
+        except Exception:
+            failed = getattr(window, "_anki_garden_upload_start_failed", None)
+            if callable(failed):
+                try:
+                    failed()
+                except Exception:
+                    logger.exception("Anki Garden: upload recovery was deferred")
+            raise
+        finally:
+            window._anki_garden_full_upload = previous
+
+    full_upload._anki_garden_upload_guard = True
+    sync.full_upload = full_upload
+
+
 def _focused_qt_widget() -> Any | None:
     """Return the focused Qt widget when the active binding supports it."""
     application = _QApplication
@@ -201,6 +235,9 @@ class AnkiGardenApp:
         self._profile_did_open_callback = self._on_profile_did_open
         self._sync_in_progress = False
         self._collection_replacement_pending = False
+        self._collection_upload_pending = False
+        self._collection_temporarily_closed = False
+        self._last_sync_was_upload = False
         self._collection_hooked = False
         self._collection_callback = self._on_collection_did_load
         self._home_widget_controller = HomeWidgetStateController()
@@ -280,6 +317,8 @@ class AnkiGardenApp:
             return False
         if getattr(reviewer, "_pending_session_summary", None) is not None:
             return False
+        if getattr(reviewer, "_saved_review_sessions", None):
+            return False
         return True
 
     def _mark_review_history_reconciled(self) -> None:
@@ -314,6 +353,9 @@ class AnkiGardenApp:
         self._setup_review_undo_hook()
         self._setup_sync_hooks()
         self._setup_collection_hooks()
+        restore_sessions = getattr(getattr(self, "reviewer_hooks", None), "restore_review_sessions", None)
+        if callable(restore_sessions):
+            restore_sessions()
         self._run_garden_maintenance("startup")
         presenter = getattr(self, "sync_reward_presenter", None)
         restore_pending = getattr(presenter, "restore_pending", None)
@@ -357,11 +399,15 @@ class AnkiGardenApp:
             RUNTIME_PERFORMANCE.finish(f"maintenance.{route}", started)
 
     def _runtime_reconciled(self) -> None:
+        self._collection_replacement_pending = False
         USER_NOTICES.clear(key="review_history")
         self._mark_review_history_reconciled()
         self.state_events.notify("history reconciled")
         self.reviewer_hooks.refresh_from_external_state()
         self._refresh_home_surface()
+        present_session = getattr(self.reviewer_hooks, "present_saved_review_session", None)
+        if callable(present_session):
+            present_session()
         retry = getattr(self.sync_reward_presenter, "retry", None)
         if callable(retry):
             retry()
@@ -1068,6 +1114,8 @@ class AnkiGardenApp:
             logger.debug("Anki Garden: unable to show dashboard-open warning", exc_info=True)
 
     def _setup_sync_hooks(self) -> None:
+        mw._anki_garden_upload_start_failed = self._on_upload_start_failed
+        _install_full_upload_guard()
         if getattr(self, "_sync_hooked", False):
             return
         try:
@@ -1092,6 +1140,7 @@ class AnkiGardenApp:
     def _on_sync_will_start(self, *_args: object, **_kwargs: object) -> None:
         """Establish a clean local reward boundary before collection sync."""
         self._sync_in_progress = True
+        self._last_sync_was_upload = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
             runtime.invalidate("sync start", suspended=True)
@@ -1118,12 +1167,26 @@ class AnkiGardenApp:
                 "Anki Garden: pre-sync reward boundary could not be established"
             )
 
+    def _on_upload_start_failed(self) -> None:
+        # An exception before close_for_full_sync() can leave the collection
+        # open without a reopen callback. Do not strand Garden's close hold.
+        if (getattr(self, "_collection_upload_pending", False)
+                and getattr(getattr(mw, "col", None), "db", None) is not None):
+            self._sync_in_progress = False
+            self._on_collection_did_temporarily_close(mw.col)
+
     def _on_sync_finished(self, *_args: object, **_kwargs: object) -> None:
         self._sync_in_progress = False
+        upload = bool(getattr(self, "_last_sync_was_upload", False))
+        # A completion callback must not reopen the background reader while
+        # Anki still owns a closed collection. The reopen hook resumes it.
+        if getattr(self, "_collection_temporarily_closed", False):
+            return
+        self._collection_upload_pending = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
             runtime.invalidate("sync completion", suspended=False,
-                               replacement=self._collection_replacement_pending, from_sync=True)
+                               replacement=self._collection_replacement_pending, from_sync=not upload)
             self._collection_replacement_pending = False
             return
         self._invalidate_review_history("sync completion")
@@ -1135,6 +1198,11 @@ class AnkiGardenApp:
             self._run_garden_maintenance("sync completion")
             return
         snapshot = finish()
+        if upload and not self._collection_replacement_pending:
+            # Reopening invalidates the detector's object-generation snapshot.
+            # Upload recovery still pays pending history, without a sync receipt.
+            self._run_garden_maintenance("full upload completion")
+            return
         if snapshot is None:
             # Older Anki builds or an interrupted add-on initialization can
             # provide the finish hook without a corresponding start hook.
@@ -1202,6 +1270,22 @@ class AnkiGardenApp:
                     self._on_profile_closed()
                     return result
                 mw._unloadProfile = after_profile_unload
+
+            # _unloadCollection runs after cancellable dialogs and closing
+            # sync, but before the collection and scheduler become unavailable.
+            unload_collection = getattr(mw, "_unloadCollection", None)
+            if callable(unload_collection):
+                @wraps(unload_collection)
+                def before_collection_unload(*args: Any, **kwargs: Any) -> Any:
+                    try:
+                        self.reviewer_hooks.preserve_session_for_close()
+                    except Exception:
+                        logger.exception("Anki Garden: closing session summary could not be saved")
+                    runtime = getattr(self, "runtime", None)
+                    if runtime is not None:
+                        runtime.close()
+                    return unload_collection(*args, **kwargs)
+                mw._unloadCollection = before_collection_unload
 
             hook_callbacks = (
                 ("operation_did_execute", self._on_operation_did_execute),
@@ -1279,11 +1363,24 @@ class AnkiGardenApp:
         *_args: object,
         **_kwargs: object,
     ) -> None:
-        self._collection_replacement_pending = True
+        upload = bool(getattr(mw, "_anki_garden_full_upload", False))
+        self._collection_temporarily_closed = True
+        self._collection_upload_pending = upload
+        self._last_sync_was_upload = upload
+        self._collection_replacement_pending = self._collection_replacement_pending or not upload
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
-            runtime.invalidate("collection replacement", suspended=True, replacement=True)
+            runtime.invalidate(
+                "full upload" if upload else "collection replacement",
+                suspended=True, replacement=self._collection_replacement_pending,
+                upload_only=upload,
+            )
         detector = getattr(self, "sync_review_detector", None)
+        if upload:
+            invalidate = getattr(detector, "invalidate", None)
+            if callable(invalidate):
+                invalidate("full upload")
+            return
         invalidate = getattr(detector, "invalidate_one_way", None)
         if callable(invalidate):
             invalidate("one_way_collection_replacement")
@@ -1310,11 +1407,18 @@ class AnkiGardenApp:
         *args: object,
         **_kwargs: object,
     ) -> None:
+        self._collection_temporarily_closed = False
+        upload = bool(getattr(self, "_collection_upload_pending", False)
+                      or getattr(self, "_last_sync_was_upload", False))
+        suspended = bool(getattr(self, "_sync_in_progress", False))
+        replacement = self._collection_replacement_pending or not upload
+        reason = "full upload reopened" if upload else "collection replacement"
+        if not suspended:
+            self._collection_upload_pending = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
             runtime.invalidate(
-                "collection replacement", replacement=True,
-                suspended=bool(getattr(self, "_sync_in_progress", False)),
+                reason, replacement=replacement, suspended=suspended,
             )
             return
         detector = getattr(self, "sync_review_detector", None)
@@ -1322,7 +1426,11 @@ class AnkiGardenApp:
         if callable(note_generation):
             collection = args[0] if args else getattr(mw, "col", None)
             note_generation(token=str(id(collection)) if collection is not None else "")
-        self._invalidate_review_history("collection replacement")
+        self._invalidate_review_history(reason)
+        if not replacement:
+            if not suspended:
+                self._run_garden_maintenance("full upload completion")
+            return
         baseline = getattr(self.engine, "baseline_reward_history", None)
         if callable(baseline):
             try:
@@ -1345,11 +1453,17 @@ class AnkiGardenApp:
                 )
 
     def _on_profile_closed(self, *_args: object, **_kwargs: object) -> None:
+        close_reviewer = getattr(getattr(self, "reviewer_hooks", None), "close_for_profile", None)
+        if callable(close_reviewer):
+            close_reviewer()
         self._sync_in_progress = False
         runtime = getattr(self, "runtime", None)
         if runtime is not None:
             runtime.close()
         self._collection_replacement_pending = False
+        self._collection_upload_pending = False
+        self._collection_temporarily_closed = False
+        self._last_sync_was_upload = False
         detector = getattr(self, "sync_review_detector", None)
         invalidate = getattr(detector, "invalidate", None)
         if callable(invalidate):
@@ -1374,6 +1488,9 @@ class AnkiGardenApp:
                 from .notices import USER_NOTICES
                 USER_NOTICES.publish(str(error), key="saved_progress")
                 return
+        restore_sessions = getattr(getattr(self, "reviewer_hooks", None), "restore_review_sessions", None)
+        if callable(restore_sessions):
+            restore_sessions()
         runtime = getattr(self, "runtime", None)
         if runtime is not None and runtime.closed:
             from .runtime import ReconciliationCoordinator

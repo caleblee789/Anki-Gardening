@@ -7,16 +7,20 @@ Garden does not enter this new onboarding flow.
 
 ## Copy and disclosure
 
-The settled greeting is exactly:
+The settled greeting uses the current welcome title and immediately shows the
+saved rewards:
 
-> **Welcome to your new Anki Garden!**
+> **Welcome to Anki Garden**
 >
-> As you study cards each day, you will receive rewards and help your plants grow!
+> Welcome gift
 >
-> View rewards
+> Start gardening
 
-**View rewards** expands the same nonmodal card. Its heading, close control, and
-disclosure remain visible while the reward details scroll when necessary. The
+The nonmodal card has a warm gold border, a subtle twilight-green gradient,
+and mint Growth / gold Coin emphasis for the welcome gift. Past study rewards
+have their own separated column, stacked below the gift on narrow screens.
+Its heading, close control, and **Start gardening** action remain visible while
+the reward details scroll when necessary. The
 Garden navigation and nurtured-plant bar stay outside the receipt. The heading is text-only; reward rows retain their shared icons.
 
 - **Welcome gift:** +100 Growth and +51 Coins for a fresh starter.
@@ -68,11 +72,19 @@ still qualify for ordinary delayed-sync rewards under the existing processor.
 ## Animation and lifecycle
 
 The native painted Garden keeps its twilight palette, cream text, mint Growth,
-and warm gold Coins. A 2.8-second sequence uses a soft bed glow, twelve falling
-leaves, a restrained seed wobble, six Coins moving toward the wallet, and six
-small settling glints. Counts stay bounded regardless of history size. The
-nurtured plant's progress bar animates between the saved before/after values.
-The sequence is silent and leaves navigation available.
+and warm gold Coins. The silent 3.4-second sequence gathers warm light behind
+the starter, spirals sixteen leaves inward, then opens into a mint-and-gold
+burst with eighteen fine sparks and two soft expanding ground rings. The
+starter makes one small bounce without changing its artwork or growth stage.
+Ten illustrative Coins fan upward on curved golden trails, followed by twelve
+staggered settling glints. Counts stay bounded regardless of history size;
+particle counts do not represent the grant amount. The nurtured plant's
+progress bar animates between the saved before/after values.
+
+At 2.7 seconds, the reward card begins a short fade-in using the same animation
+timer. It docks beside the starter when there is enough horizontal clearance,
+otherwise uses the centered, scrollable layout. Its opacity effect is removed
+at completion or interruption. Navigation stays available at native UI scale.
 
 Skip animation and Escape settle immediately. Reduced motion or disabled
 animations show the settled greeting immediately. Hiding Garden cancels timers

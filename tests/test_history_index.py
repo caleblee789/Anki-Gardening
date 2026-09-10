@@ -240,8 +240,10 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     engine, storage = _engine_at(tmp_path / "runtime", rows, indexed=False)
     completions = []
     presented = []
+    recovered_results = []
     app = SimpleNamespace(engine=engine, storage=storage, _sync_reward_summary_enabled=lambda: True,
-                          _runtime_reconciled=lambda: completions.append(True))
+                          _runtime_reconciled=lambda: completions.append(True),
+                          reviewer_hooks=SimpleNamespace(accept_reconciled_results=recovered_results.extend))
     app.sync_reward_processor = SyncRewardProcessor(engine, storage, SimpleNamespace(enqueue=presented.append))
     runtime = ReconciliationCoordinator(app)
 
@@ -270,6 +272,37 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     drain()
     assert not runtime.suspended and not storage.runtime_pending
     completions.pop()
+    # A full upload must not consume pending history as a replacement. These
+    # five answers intentionally have no deferred-local metadata.
+    before_upload = storage.state.total_reviews
+    growth_before_upload = storage.state.plants[0].growth_units
+    runtime.invalidate("full upload", suspended=True, upload_only=True)
+    backlog = [(now + 21 + i, 2, 3, 10, 5, 2500, 500, 1) for i in range(5)]
+    storage.mw.col.db.connection.executemany("INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", backlog)
+    runtime.operation_finished(SimpleNamespace(card=True), None)
+    drain()
+    assert storage.state.total_reviews == before_upload
+    runtime.invalidate("full upload reopened", suspended=False)
+    drain()
+    assert storage.state.total_reviews == before_upload + 5
+    assert storage.state.plants[0].growth_units > growth_before_upload
+    upload_state = storage.state.to_dict()
+    runtime.invalidate("repeat upload completion", suspended=False)
+    drain()
+    assert storage.state.to_dict() == upload_state
+    assert presented == []
+    runtime.invalidate("full upload", suspended=True, upload_only=True)
+    upload_local = (now + 27, 3, 3, 10, 5, 2500, 500, 1)
+    storage.mw.col.db.connection.execute("INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", upload_local)
+    runtime.defer_answer(SimpleNamespace(id=3), 3, "upload-session")
+    runtime.invalidate("full upload reopened", suspended=False)
+    drain()
+    assert storage.state.total_reviews == before_upload + 6
+    assert [(r.occurred_at_ms, r.origin) for r in recovered_results
+            if r.occurred_at_ms == upload_local[0]] == [(upload_local[0], "local_recovery")]
+    assert storage._reward_ledger.deferred_review_context(upload_local[0]) == {}
+    assert presented == []
+    completions[:] = [True]
     before = storage.lifetime_economy_aggregates()
     storage.mw.col.db.connection.execute("DELETE FROM revlog WHERE id=?", (rows[-1][0],))
     runtime.review_undone(now + 30)
@@ -311,6 +344,8 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     drain()
     assert storage.state.total_reviews == reviewed_before + 1
     assert ledger.deferred_review_context(local[0]) == {}
+    assert [(result.occurred_at_ms, result.origin) for result in recovered_results
+            if result.occurred_at_ms == local[0]] == [(local[0], "local_recovery")]
     runtime.invalidate("repeat sync", suspended=False)
     drain()
     assert storage.state.total_reviews == reviewed_before + 1

@@ -118,7 +118,7 @@ class ReconciliationCoordinator:
         )
 
     def invalidate(self, reason: str, *, suspended: bool | None = None, replacement: bool = False,
-                   from_sync: bool = False) -> None:
+                   from_sync: bool = False, upload_only: bool = False) -> None:
         self.generation += 1
         self.dirty = True
         self.busy = False
@@ -131,7 +131,11 @@ class ReconciliationCoordinator:
         self._replacement = self._replacement or replacement
         # Helper operations and view refreshes can supersede the scan's source.
         # Retain an actual sync completion until its reconciliation settles.
-        self._sync_rewards_pending = self._sync_rewards_pending or from_sync
+        # Upload recovery processes history that was already local. Preserve
+        # durable receipts, but do not label this backlog as downloaded study.
+        self._sync_rewards_pending = (
+            False if upload_only else self._sync_rewards_pending or from_sync
+        )
         self.request(reason, replacement=replacement)
 
     def close(self) -> None:
@@ -386,12 +390,22 @@ class ReconciliationCoordinator:
                     scheduler_day=self.storage.current_scheduler_day(),
                     reward_baseline=self.app.engine.sync_reward_baseline(),
                 )
+                results: list[Any] = []
                 self.app.sync_reward_processor.process(
                     snapshot, presentation_enabled=(
                         self._sync_rewards_pending and self.app._sync_reward_summary_enabled()
                     ),
                     raise_on_failure=True,
+                    result_collector=results,
                 )
+                accept = getattr(getattr(self.app, "reviewer_hooks", None), "accept_reconciled_results", None)
+                if callable(accept):
+                    try:
+                        accept(results)
+                    except Exception:
+                        # The ledger is already committed. A presentation
+                        # failure must not mark those rewards as unverified.
+                        logger.exception("Anki Garden: recovered session feedback could not be updated")
             self.storage._history_after_id = max(
                 self.storage._history_after_id, getattr(self.storage, "_history_loaded_through", 0),
             )
