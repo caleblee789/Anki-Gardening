@@ -2,83 +2,85 @@
 
 **Grow a garden while you study.**
 
-Anki Garden is a free desktop Anki add-on that turns card answers into plant growth. Start with a seed, collect new plants, and make the garden your own with scenery and decorations.
+Anki Garden is a free add-on for desktop Anki. Grow plants as you answer cards, collect new species, and customize your garden with scenery and decorations.
 
-**Version 2.2.0** · [Getting started](#get-started) · [Progression and rewards](docs/progression-rewards-effects-reference.md) · [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
+**Version 2.2.0** | [Get started](#get-started) | [Progression and rewards](docs/progression-rewards-effects-reference.md) | [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
 
-![Anki Garden promotional artwork showing plants at different growth stages, garden beds, and a decoration](docs/images/anki-garden-poster.png)
+![Anki Garden promotional artwork with plants, garden beds, and decorations](docs/images/anki-garden-poster.png)
 
-## A garden that grows with your cards
+## Features
 
-- **Grow your collection.** Choose from ten plant species and follow six stages, from Seed to Full Bloom. Unlock more garden beds as you progress.
+- **Grow your collection.** Choose from ten plant species, grow them from Seed to Full Bloom, and unlock more garden beds.
 - **Make it yours.** Collect scenery and decorations, preview them in your garden, and equip your favorites.
-- **Discover rewards.** Earn Coins, find supplies, and work toward achievements and Gardening Trophies.
-- **Keep the reviewer compact.** Use a small progress tile while answering cards, then expand it for your plant, session totals, and recent rewards.
+- **Discover rewards.** Earn Coins and supplies, complete achievements, and unlock Gardening Trophies.
+- **Follow your progress.** Keep the reviewer panel compact or expand it to see your plant, session totals, and recent rewards.
 
-![Anki Garden reviewer demonstration showing the compact progress tile, expanded plant panel, and reward feedback](docs/images/anki-garden-review-hud.gif)
+![Anki Garden reviewer showing the compact tile, expanded plant panel, and rewards](docs/images/anki-garden-review-hud.gif)
 
-*Reviewer showcase with several reward states. The sequence is not representative of typical reward frequency.*
+*This showcase demonstrates several reward states, not their typical frequency.*
 
 ## Get started
 
-1. In desktop Anki, choose **Tools → Add-ons → Install from file**, select `anki_garden.ankiaddon`, and restart Anki.
-2. Select **Choose a plant** on the home screen. Your first starter is free.
-3. Place it in a garden bed and choose **Nurture** to direct future Growth to it.
-4. Study as usual. Open the garden from Anki's home screen or the reviewer panel whenever you want to check in.
+1. Install `anki_garden.ankiaddon` through **Tools → Add-ons → Install from file**, then restart Anki.
+2. Select **Choose a plant** on Anki’s home screen. Your first plant is free.
+3. Place it in a bed and select **Nurture** to choose which plant receives Growth.
+4. Study as usual. Reopen the garden from the home screen or reviewer panel.
 
-Use the packaged `anki_garden.ankiaddon` file, not GitHub's source-code ZIP.
+Use the packaged `.ankiaddon` file, not GitHub’s source-code ZIP.
 
 ## How it works
 
-**Studying earns Growth to grow your plants.** Again, Hard, Good, and Easy give the same base Growth. Choose the answer that reflects your recall, not a Garden reward.
+**Answer cards to earn Growth.** Again, Hard, Good, and Easy give the same base Growth, so choose the answer that reflects your recall. Plants grow through six stages:
 
-**Plants have six growth stages:** Seed → Sprout → Young → Mature → Flowering → Full Bloom.
+Seed → Sprout → Young → Mature → Flowering → Full Bloom.
 
-**Coins build your collection.** Earn this in-game currency through studying, milestones, and Garden Finds, then spend it in the Shop on plants, supplies, scenery, and decorations. Buying an appearance adds it to your collection; equipping it applies its artwork and effect. Previewing does not spend Coins or change your saved equipment.
+**Earn Coins and collect items.** Studying, milestones, and Garden Finds award in-game currency and rewards. Spend Coins in the Shop on plants, supplies, scenery, and decorations. Buying adds an item to your collection; equipping applies its artwork and effect. Previews are free and leave your saved equipment unchanged.
 
-**Supplies boost Growth.** Fertilizer and Potions add bonus Growth to a set number of card answers. Growth Charges add a fixed amount of Growth when used.
+**Use supplies for a boost.** Fertilizer and Potions add bonus Growth for a set number of card answers. Growth Charges add a fixed amount immediately.
 
-**Earned streak bonuses stay earned.** Streak achievements unlock permanent Growth bonuses. Ending a streak does not remove the highest bonus you have already unlocked.
+**Keep your earned streak bonuses.** Streak achievements unlock permanent Growth bonuses. Ending a streak does not remove your highest earned bonus.
 
-The [progression and rewards guide](docs/progression-rewards-effects-reference.md) contains the full rules, item effects, and unlock requirements.
+See the [progression and rewards guide](docs/progression-rewards-effects-reference.md) for full rules, item effects, and unlock requirements.
 
 ## Find your way around
 
-| Tab | What it is for |
+| Tab | What you can do |
 | --- | --- |
-| **Garden** | View your plants, choose which one to nurture, move plants, and use supplies. |
-| **Collection** | Explore plant stages and change your scenery and decorations. |
-| **Shop** | Buy plants, supplies, scenery, and decorations with Coins. |
-| **Progress** | Check activity, Study rewards, achievements, plant beds, and the Trophy Room. |
+| **Garden** | View, nurture, and move plants, or use supplies. |
+| **Collection** | Browse plant stages and change scenery and decorations. |
+| **Shop** | Buy plants, supplies, scenery, and decorations. |
+| **Progress** | View activity, Study rewards, achievements, plant beds, and the Trophy Room. |
 
-In **Progress → Activity**, **Finish all cards due today** is the daily completion milestone. Session summaries show what you earned during that session; the Coin balance shows what you currently have available to spend.
+**Finish all cards due today** is the daily completion milestone in **Progress → Activity**. Session summaries show session earnings; your Coin balance shows what you have available to spend.
 
-Use Garden settings to reduce animations and choose which reviewer panels and reward summaries appear. The reviewer panel can also be collapsed while studying.
+Garden settings let you adjust animations, reviewer panels, and reward summaries.
 
 ## Compatibility and limitations
 
-**Tested environment:** macOS with Anki 26.08.1. Windows and Linux have not been verified.
+**Tested on macOS with Anki 26.08.1.** Windows and Linux have not been verified.
 
-Anki Garden runs in **desktop Anki**. Installing it does not add the Garden interface to AnkiMobile, AnkiDroid, or the AnkiWeb website. Garden inventory and settings are stored locally and do not synchronize between computers. Reviews studied on another device can earn Garden rewards when their review history syncs back to desktop Anki.
+The Garden interface runs only in desktop Anki, not AnkiMobile, AnkiDroid, or the AnkiWeb website. Inventory and settings are stored locally and do not sync between computers. Reviews from another device can earn rewards when their history syncs back to desktop Anki.
 
-Compatibility with other add-ons can vary. The [add-on interaction audit](docs/addon-compatibility-audit-20260908.md) describes the combinations and workflows checked.
+Compatibility with other add-ons may vary. See the [add-on interaction audit](docs/addon-compatibility-audit-20260908.md) for the scope and limits of existing checks.
 
-**Full Bloom and Stored Growth:** Growth can continue to other unfinished planted plants and then into Stored Growth. Stored Growth is retained but cannot be spent in this version.
+**After Full Bloom**, extra Growth goes to other unfinished planted plants, then into Stored Growth. Stored Growth is saved but cannot be spent in this version.
 
 ## Help and feedback
 
-[Open an issue](https://github.com/caleblee789/Anki-Gardening/issues) for bugs, confusing behavior, or feature suggestions. Include the Garden version, Anki version, operating system, what you expected, and what happened. Add a screenshot or error message when useful, after removing private information.
+[Open an issue](https://github.com/caleblee789/Anki-Gardening/issues) to report a bug or suggest an improvement. Include your Garden version, Anki version, operating system, and what happened versus what you expected.
 
-Please do not upload your collection, private card content, patient information, or personal file paths to a public report.
+Screenshots and error messages are helpful, but remove private information first. Do not upload collections, private card content, patient information, or personal file paths.
 
 ## Development and maintenance
 
-Anki Garden is developed and maintained by **Caleb Meadows** ([caleblee789](https://github.com/caleblee789)), a medical student and Anki add-on maintainer. Maintenance includes implementation, Anki integration, reward behavior, compatibility, issue triage, documentation, and releases.
+Developed and maintained by **Caleb Meadows** ([caleblee789](https://github.com/caleblee789)), a medical student and Anki add-on maintainer. Caleb oversees development, reviews changes, validates releases, and handles compatibility, documentation, and user reports.
 
-Caleb directs the project and is responsible for reviewing changes, validating releases, and responding to issues.
-
-For development setup, see the [development guide](docs/development.md).
+See the [development guide](docs/development.md) for setup and contribution details.
 
 ## License and acknowledgments
 
-**Code:** [AGPL-3.0-or-later](LICENSE). **Project artwork:** [CC BY 4.0](LICENSES/CC-BY-4.0.txt), to the extent of rights held by the project. Third-party material retains its original terms. Artwork includes AI-generated assets. See [licensing and credits](LICENSING.md) for scope, attribution, and exceptions. Anki Garden is an independent add-on, not an official Anki product.
+**Code:** [AGPL-3.0-or-later](LICENSE).
+
+**Project artwork:** [CC BY 4.0](LICENSES/CC-BY-4.0.txt), to the extent of rights held by the project. Artwork includes AI-generated assets. Third-party material retains its original terms. See [licensing and credits](LICENSING.md) for attribution, scope, and exceptions.
+
+Anki Garden is an independent add-on, not an official Anki product.
