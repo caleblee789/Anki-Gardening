@@ -34,6 +34,16 @@ Use the packaged `.ankiaddon` file, not GitHub’s source-code ZIP.
 
 Seed → Sprout → Young → Mature → Flowering → Full Bloom.
 
+<table>
+  <tr>
+    <td align="center">
+      <img src="output/promo/anki-garden-growth-showcase.gif" width="300" height="300" alt="Dahlia progressing from Seed through all six growth stages to Full Bloom">
+      <br>
+      <sub>Promotional Dahlia stage showcase.</sub>
+    </td>
+  </tr>
+</table>
+
 **Earn Coins and collect items.** Studying, milestones, and Garden Finds award in-game currency and rewards. Spend Coins in the Shop on plants, supplies, scenery, and decorations. Buying adds an item to your collection; equipping applies its artwork and effect. Previews are free and leave your saved equipment unchanged.
 
 **Use supplies for a boost.** Fertilizer and Potions add bonus Growth for a set number of card answers. Growth Charges add a fixed amount immediately.
