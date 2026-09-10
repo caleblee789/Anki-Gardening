@@ -75,7 +75,7 @@ Please do not upload your collection, private card content, patient information,
 
 Anki Garden is developed and maintained by **Caleb Meadows** ([caleblee789](https://github.com/caleblee789)), a medical student and Anki add-on maintainer. Maintenance includes implementation, Anki integration, reward behavior, compatibility, issue triage, documentation, and releases.
 
-Development is substantially AI-assisted with Codex. Caleb directs the project and is responsible for reviewing changes, validating releases, and responding to issues.
+Caleb directs the project and is responsible for reviewing changes, validating releases, and responding to issues.
 
 For development setup, see the [development guide](docs/development.md).
 
