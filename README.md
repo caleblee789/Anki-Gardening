@@ -30,7 +30,7 @@ Use the packaged `anki_garden.ankiaddon` file, not GitHub's source-code ZIP.
 
 ## How it works
 
-**Cards become Growth.** Again, Hard, Good, and Easy give the same base Growth. Choose the answer that reflects your recall, not a Garden reward. Your nurtured plant receives Growth from card answers, and other planted, unfinished plants receive Shared Growth.
+**Studying earns Growth to grow your plants.** Again, Hard, Good, and Easy give the same base Growth. Choose the answer that reflects your recall, not a Garden reward.
 
 **Plants have six growth stages:** Seed → Sprout → Young → Mature → Flowering → Full Bloom.
 
