@@ -4,7 +4,7 @@
 
 Anki Garden is a free desktop Anki add-on that turns card answers into plant growth. Start with a seed, collect new plants, and make the garden your own with scenery and decorations.
 
-**Anki Garden 2.2.0 — unreleased preview.** This repository remains private. Public release is on hold; an AnkiWeb download is not available yet. See the [preview release notes](docs/release-notes-2.2.0.md).
+**Version 2.2.0** · [Getting started](#get-started) · [Progression and rewards](docs/progression-rewards-effects-reference.md) · [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
 
 ![Anki Garden promotional artwork showing plants at different growth stages, garden beds, and a decoration](docs/images/anki-garden-poster.png)
 
@@ -26,7 +26,7 @@ Anki Garden is a free desktop Anki add-on that turns card answers into plant gro
 3. Place it in a garden bed and choose **Nurture** to direct future Growth to it.
 4. Study as usual. Open the garden from Anki's home screen or the reviewer panel whenever you want to check in.
 
-Use the packaged add-on, not GitHub's source-code ZIP. Public installation instructions will be added when a release is available.
+Use the packaged `anki_garden.ankiaddon` file, not GitHub's source-code ZIP.
 
 ## How it works
 
@@ -57,17 +57,17 @@ Use Garden settings to reduce animations and choose which reviewer panels and re
 
 ## Compatibility and limitations
 
-**Preview testing:** macOS with Anki 26.08.1. This describes recorded preview checks, not approval of a final release package. Windows and Linux validation remain open.
+**Tested environment:** macOS with Anki 26.08.1. Windows and Linux have not been verified.
 
-Anki Garden runs in **desktop Anki**. Installing it does not add the Garden interface to AnkiMobile, AnkiDroid, or the AnkiWeb website. Do not assume that Garden inventory and settings synchronize between computers; consult the release notes for the verified scope of any sync-related functionality.
+Anki Garden runs in **desktop Anki**. Installing it does not add the Garden interface to AnkiMobile, AnkiDroid, or the AnkiWeb website. Garden inventory and settings are stored locally and do not synchronize between computers. Reviews studied on another device can earn Garden rewards when their review history syncs back to desktop Anki.
 
-Compatibility with other add-ons can vary. See the [preview release notes](docs/release-notes-2.2.0.md) and [add-on interaction audit](docs/addon-compatibility-audit-20260908.md) for the scope of existing checks.
+Compatibility with other add-ons can vary. The [add-on interaction audit](docs/addon-compatibility-audit-20260908.md) describes the combinations and workflows checked.
 
 **Full Bloom and Stored Growth:** Growth can continue to other unfinished planted plants and then into Stored Growth. Stored Growth is retained but cannot be spent in this version.
 
 ## Help and feedback
 
-Testers with repository access can [open an issue](https://github.com/caleblee789/Anki-Gardening/issues) for bugs, confusing behavior, or feature suggestions. Include the Garden version, Anki version, operating system, what you expected, and what happened. Add a screenshot or error message when useful, after removing private information.
+[Open an issue](https://github.com/caleblee789/Anki-Gardening/issues) for bugs, confusing behavior, or feature suggestions. Include the Garden version, Anki version, operating system, what you expected, and what happened. Add a screenshot or error message when useful, after removing private information.
 
 Please do not upload your collection, private card content, patient information, or personal file paths to a public report.
 
