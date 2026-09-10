@@ -4,8 +4,6 @@
 
 Anki Garden is a free desktop Anki add-on that turns card answers into plant growth. Start with a seed, collect new plants, and make the garden your own with scenery and decorations.
 
-No watering. No plant decay. Your garden keeps what you have earned when you take a break.
-
 **Anki Garden 2.2.0 — unreleased preview.** This repository remains private. Public release is on hold; an AnkiWeb download is not available yet. See the [preview release notes](docs/release-notes-2.2.0.md).
 
 ![Anki Garden promotional artwork showing plants at different growth stages, garden beds, and a decoration](docs/images/anki-garden-poster.png)
@@ -22,8 +20,6 @@ No watering. No plant decay. Your garden keeps what you have earned when you tak
 *Reviewer showcase with several reward states. The sequence is not representative of typical reward frequency.*
 
 ## Get started
-
-These steps are for testers who already have the preview package.
 
 1. In desktop Anki, choose **Tools → Add-ons → Install from file**, select `anki_garden.ankiaddon`, and restart Anki.
 2. Select **Choose a plant** on the home screen. Your first starter is free.
