@@ -1,106 +1,88 @@
-# Anki Garden 🌿
+# Anki Garden
 
-Grow a hand-painted garden as you study in Anki. Nurture plants, discover scenery and decorations, and turn your study progress into a collection of your own.
+**Grow a garden while you study.**
 
-Study at your own pace: your garden needs no watering, never decays, and keeps everything you have earned when you take a break.
+Anki Garden is a free desktop Anki add-on that turns card answers into plant growth. Start with a seed, collect new plants, and make the garden your own with scenery and decorations.
 
-**Anki Garden 2.2.0 — unreleased preview.** Public release is still on hold. [What’s new and preview status](docs/release-notes-2.2.0.md).
+No watering. No plant decay. Your garden keeps what you have earned when you take a break.
 
-![Anki Garden with six plants at different growth stages](docs/images/garden-overview-ui-20260906.png)
+**Anki Garden 2.2.0 — unreleased preview.** This repository remains private. Public release is on hold; an AnkiWeb download is not available yet. See the [preview release notes](docs/release-notes-2.2.0.md).
+
+![Anki Garden promotional artwork showing plants at different growth stages, garden beds, and a decoration](docs/images/anki-garden-poster.png)
+
+## A garden that grows with your cards
+
+- **Grow your collection.** Choose from ten plant species and follow six stages, from Seed to Full Bloom. Unlock more garden beds as you progress.
+- **Make it yours.** Collect scenery and decorations, preview them in your garden, and equip your favorites.
+- **Discover rewards.** Earn Coins, find supplies, and work toward achievements and Gardening Trophies.
+- **Keep the reviewer compact.** Use a small progress tile while answering cards, then expand it for your plant, session totals, and recent rewards.
+
+![Anki Garden reviewer demonstration showing the compact progress tile, expanded plant panel, and reward feedback](docs/images/anki-garden-review-hud.gif)
+
+*Reviewer showcase with several reward states. The sequence is not representative of typical reward frequency.*
 
 ## Get started
 
-1. In desktop Anki, install `anki_garden.ankiaddon` through **Tools → Add-ons → Install from file**, then restart Anki.
-2. Select **Choose a plant** on Anki’s home screen and pick your free starter.
-3. Place it in a garden bed and choose **Nurture** in its panel.
-4. Study as usual. Your nurtured plant gains Growth with each card answer.
+These steps are for testers who already have the preview package.
 
-After setup, use **Open garden** on Anki’s home screen to return. All ten plant species grow at the same rate, so choose the appearance you like. Your first starter is free; additional species cost 250 Coins each.
+1. In desktop Anki, choose **Tools → Add-ons → Install from file**, select `anki_garden.ankiaddon`, and restart Anki.
+2. Select **Choose a plant** on the home screen. Your first starter is free.
+3. Place it in a garden bed and choose **Nurture** to direct future Growth to it.
+4. Study as usual. Open the garden from Anki's home screen or the reviewer panel whenever you want to check in.
+
+Use the packaged add-on, not GitHub's source-code ZIP. Public installation instructions will be added when a release is available.
+
+## How it works
+
+**Cards become Growth.** Again, Hard, Good, and Easy give the same base Growth. Choose the answer that reflects your recall, not a Garden reward. Your nurtured plant receives Growth from card answers, and other planted, unfinished plants receive Shared Growth.
+
+**Plants have six growth stages:** Seed → Sprout → Young → Mature → Flowering → Full Bloom.
+
+**Coins build your collection.** Earn this in-game currency through studying, milestones, and Garden Finds, then spend it in the Shop on plants, supplies, scenery, and decorations. Buying an appearance adds it to your collection; equipping it applies its artwork and effect. Previewing does not spend Coins or change your saved equipment.
+
+**Supplies count cards, not time away.** Fertilizer and Potions last for a number of card answers, so a study break does not use them up. Growth Charges provide an immediate boost when used.
+
+**Earned streak bonuses stay earned.** Streak achievements unlock permanent Growth bonuses. Ending a streak does not remove the highest bonus you have already unlocked.
+
+The [progression and rewards guide](docs/progression-rewards-effects-reference.md) contains the full rules, item effects, and unlock requirements.
 
 ## Find your way around
 
-| Tab | What you can do |
-|---|---|
-| **Garden** | See your plants, choose which one to nurture, move plants, and use supplies. |
-| **Collection** | Browse plant stages and history, compare bonuses, and change your garden’s appearance. |
-| **Shop** | Spend Coins on plants, supplies, scenery, and decorations. |
-| **Progress** | View Activity, track achievements, and visit the Trophy Room. |
+| Tab | What it is for |
+| --- | --- |
+| **Garden** | View your plants, choose which one to nurture, move plants, and use supplies. |
+| **Collection** | Explore plant stages and change your scenery and decorations. |
+| **Shop** | Buy plants, supplies, scenery, and decorations with Coins. |
+| **Progress** | Check activity, Study rewards, achievements, plant beds, and the Trophy Room. |
 
-Click a plant to see its progress and actions. **Nurture** chooses where future Growth goes; viewing or moving another plant leaves that choice in place.
+In **Progress → Activity**, **Finish all cards due today** is the daily completion milestone. Session summaries show what you earned during that session; the Coin balance shows what you currently have available to spend.
 
-## Grow your collection
+Use Garden settings to reduce animations and choose which reviewer panels and reward summaries appear. The reviewer panel can also be collapsed while studying.
 
-Plants grow through **Seed → Sprout → Young → Mature → Flowering → Full Bloom**. Each card answer gives 10 base Growth, plus active bonuses. Again, Hard, Good, and Easy give the same ordinary Growth. Other planted plants receive Shared Growth too.
+## Compatibility and limitations
 
-Your first two beds are included. More beds unlock when a plant reaches Mature and when one, three, and six different species reach Full Bloom, giving you up to six beds.
+**Preview testing:** macOS with Anki 26.08.1. This describes recorded preview checks, not approval of a final release package. Windows and Linux validation remain open.
 
-**Coins** buy plants, supplies, scenery, and decorations. Earn them from daily study, completed review days, achievements, plant milestones, and Garden Finds.
+Anki Garden runs in **desktop Anki**. Installing it does not add the Garden interface to AnkiMobile, AnkiDroid, or the AnkiWeb website. Do not assume that Garden inventory and settings synchronize between computers; consult the release notes for the verified scope of any sync-related functionality.
 
-**Garden Finds** bring Coins, Growth, and supplies as you study, with no daily Find limit. Discoveries can also unlock new scenery and decorations.
+Compatibility with other add-ons can vary. See the [preview release notes](docs/release-notes-2.2.0.md) and [add-on interaction audit](docs/addon-compatibility-audit-20260908.md) for the scope of existing checks.
 
-**Streak achievements** permanently unlock a total bonus to base Growth from card answers: +5% at 7 consecutive study days, +10% at 30, +15% at 100, and +20% at 365. You keep the highest unlocked bonus after a streak ends.
+**Full Bloom and Stored Growth:** Growth can continue to other unfinished planted plants and then into Stored Growth. Stored Growth is retained but cannot be spent in this version.
 
-## Follow your study rewards
+## Help and feedback
 
-**Progress → Activity** brings together today’s card answers, Growth, Coins earned, and Garden Finds. Recent activity groups study rewards into sessions and shows purchases and other rewards with their recorded times. Use the filters and **Show more** to explore your history.
+Testers with repository access can [open an issue](https://github.com/caleblee789/Anki-Gardening/issues) for bugs, confusing behavior, or feature suggestions. Include the Garden version, Anki version, operating system, what you expected, and what happened. Add a screenshot or error message when useful, after removing private information.
 
-**Card answers** includes repeat answers to the same card. **Coins earned** counts what you received that day; the header balance shows what you have left after spending.
+Please do not upload your collection, private card content, patient information, or personal file paths to a public report.
 
-The **Study rewards** panel shows what you have earned and your next Growth tier:
+## Development and maintenance
 
-| Study milestone | Base reward |
-|---|---|
-| Study 1 card | 4 Coins, once daily |
-| Finish all cards due today | 16 Coins, once daily |
+Anki Garden is developed and maintained by **Caleb Meadows** ([caleblee789](https://github.com/caleblee789)), a medical student and Anki add-on maintainer. Maintenance includes implementation, Anki integration, reward behavior, compatibility, issue triage, documentation, and releases.
 
-Completed review days do **not** need to be consecutive. Your Anki streak does count consecutive study days. Finishing all due cards earns the daily reward once; more cards becoming due later do not take it away. Each day follows Anki’s configured next-day cutoff.
+Development is substantially AI-assisted with Codex. Caleb directs the project and is responsible for reviewing changes, validating releases, and responding to issues.
 
-Open **Achievements** for longer-term milestones. The **Trophy Room**, also accessible through the garden house, shows three Gardening Trophies. Their permanent bonuses activate automatically when unlocked and work together with your equipped items.
+For development setup, see the [development guide](docs/development.md).
 
-## Make the garden yours
+## License and acknowledgments
 
-In **Collection → Appearance**, preview scenery and decorations in your garden and read their effects before choosing **Equip**. Equipping saves both the artwork and its bonus. **Cancel preview** returns to your saved appearance; **Undo** restores your previous equipment.
-
-Previews are free. Buying an item adds it to your collection; equip it when you want to use it.
-
-## While you study
-
-The review panel shows your nurtured plant, progress, active supplies, and recent rewards. **This session** keeps your Coins, Growth, and Discoveries together.
-
-- Click the plant’s picture or name to open your garden.
-- Drag the panel’s header to move it.
-- Use the top-right arrow to collapse it into a compact strip. Click the strip to expand it again.
-
-Session summaries and sync receipts show what you earned, including Find artwork and reward details. **Discoveries** includes Garden Finds and newly unlocked scenery or decorations. For daily totals and due-card rewards, open **Progress → Activity**.
-
-## Supplies
-
-| Supply | Effect |
-|---|---|
-| **Basic Fertilizer** | +1 Growth per card for 100 cards · 30 Coins |
-| **Quality Fertilizer** | +2 Growth per card for 200 cards · 100 Coins |
-| **Magical Fertilizer** | +3 Growth per card for 400 cards · 300 Coins |
-| **Booster Potion** | +5 Growth per card for 100 cards · found as a reward |
-| **Small Growth Charge** | +100 Growth when used · 30 Coins |
-| **Standard Growth Charge** | +500 Growth when used · 125 Coins |
-| **Grand Growth Charge** | +2,000 Growth when used · earned through rewards |
-
-Fertilizer and Potions last for card answers, so taking a break uses none of their remaining value. The menu shows whether a dose starts now, extends an active supply, or waits its turn. A Potion can work alongside Fertilizer.
-
-Growth Charges give an immediate boost. Before you use one, the confirmation shows which plants receive Growth, any new stages, and how many charges will remain.
-
-## Full Bloom and Stored Growth
-
-Full Bloom is the final plant stage. Extra Growth goes to other unfinished planted plants, then into **Stored Growth**. Its bottle icon and balance appear beside Coins on the Garden tab when you have a reserve.
-
-After every species reaches Full Bloom, supplies can continue adding to Stored Growth. Your reserve is kept, but cannot be spent in this version.
-
-## Settings, startup, and sync
-
-Use the gear in the Garden to rename it, reduce animations, and choose which Garden panels and reward notices appear in Anki. **Artwork check** helps identify missing artwork.
-
-**“Your Anki Garden is still updating”** appears beneath the title while Garden checks study history, such as after startup or sync. Your saved garden stays visible and you can keep reviewing. New rewards and some Garden actions may wait until the update finishes; the notice then clears automatically. The first update can take longer with a large review history.
-
-If you study on another device, syncing reviews back to desktop can add Garden rewards and show a summary. Turning off the summary leaves rewards enabled. Your garden is retained when the add-on is upgraded.
-
-For item effects, unlock requirements, and reward details, see the [progression and rewards guide](docs/progression-rewards-effects-reference.md). For contributing to the add-on, see the [development guide](docs/development.md).
+**Code:** [AGPL-3.0-or-later](LICENSE). **Project artwork:** [CC BY 4.0](LICENSES/CC-BY-4.0.txt), to the extent of rights held by the project. Third-party material retains its original terms. Artwork includes AI-generated assets. See [licensing and credits](LICENSING.md) for scope, attribution, and exceptions. Anki Garden is an independent add-on, not an official Anki product.
