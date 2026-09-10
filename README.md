@@ -36,7 +36,7 @@ Use the packaged `anki_garden.ankiaddon` file, not GitHub's source-code ZIP.
 
 **Coins build your collection.** Earn this in-game currency through studying, milestones, and Garden Finds, then spend it in the Shop on plants, supplies, scenery, and decorations. Buying an appearance adds it to your collection; equipping it applies its artwork and effect. Previewing does not spend Coins or change your saved equipment.
 
-**Supplies count cards, not time away.** Fertilizer and Potions last for a number of card answers, so a study break does not use them up. Growth Charges provide an immediate boost when used.
+**Supplies boost Growth.** Fertilizer and Potions add bonus Growth to a set number of card answers. Growth Charges add a fixed amount of Growth when used.
 
 **Earned streak bonuses stay earned.** Streak achievements unlock permanent Growth bonuses. Ending a streak does not remove the highest bonus you have already unlocked.
 
