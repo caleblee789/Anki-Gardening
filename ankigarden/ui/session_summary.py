@@ -1937,6 +1937,47 @@ class _Segment:
     transaction_ids: list[str] = field(default_factory=list)
 
 
+class _HudSegmentTotals:
+    """Derived scalar totals and sparse drop details, never persisted."""
+
+    def __init__(self, segment: _Segment) -> None:
+        self.cards = self.growth = self.coins = self.finds = 0
+        self.projects = self.landmark_allocated = self.landmark = 0
+        self.plant_totals: dict[tuple[str, str], int] = {}
+        self.find_rows: list[StandardFind] = []
+        self.environments: list[EnvironmentDiscovery] = []
+        self.receipts: list[RewardReceipt] = []
+        self.environment_ids = set(segment.start.owned_environment_ids)
+        self.drop_revision = 0
+
+    def add(self, event: CommittedSessionEvent) -> None:
+        self.cards += event.cards_completed
+        for lane, deltas in (("plant", event.plant_growth), ("shared", event.shared_growth)):
+            for delta in deltas:
+                key = (lane, delta.plant_id)
+                before = self.plant_totals.get(key, 0)
+                after = before + delta.growth_units
+                self.plant_totals[key] = after
+                self.growth += max(0, after) - max(0, before)
+        self.growth += max(0, event.stored_growth_delta_units)
+        self.coins += sum(award.amount for award in event.coin_awards if award.amount > 0)
+        self.finds += event.total_finds
+        self.projects += sum(row.units for row in event.project_allocations)
+        self.landmark_allocated += sum(row.units for row in event.project_allocations if row.target_type == "landmark")
+        self.landmark += event.landmark_growth_delta_units
+        self.find_rows.extend(event.standard_finds)
+        for row in event.environment_discoveries:
+            if row.environment_id not in self.environment_ids:
+                self.environment_ids.add(row.environment_id)
+                self.environments.append(row)
+                self.drop_revision += 1
+        # Coin/Growth receipts do not enter the Items & finds calculation.
+        receipts = [row for row in event.reward_receipts if row.reward_type in {"inventory_item", "environment_item"}]
+        self.receipts.extend(receipts)
+        if receipts or event.standard_finds or event.total_finds:
+            self.drop_revision += 1
+
+
 class SessionSummaryAccumulator:
     """In-memory, event-sourced accumulator for one continuous local session."""
 
@@ -1962,6 +2003,10 @@ class SessionSummaryAccumulator:
         self._finalized: SessionSummaryPayload | None = None
         self._finalized_empty = False
         self._taken = False
+        self._hud_segments: dict[str, _HudSegmentTotals] | None = None
+        self._hud_drop_key = None
+        self._hud_drop_count = 0
+        self._transaction_membership: dict[str, set[str]] = {}
 
     @property
     def finalized(self) -> bool:
@@ -2033,16 +2078,26 @@ class SessionSummaryAccumulator:
         segment = self._segment_for_day(event.anki_day_id)
         blocked = {
             event_id
-            for event_id in self._seen_event_ids | self._reversed_event_ids
+            for event_id in event.related_event_ids
+            if event_id in self._seen_event_ids or event_id in self._reversed_event_ids
             if event_id not in allowed_replay_ids
         }
         if event.event_id in blocked or event.event_id in self._events:
             return False
         normalized = self._filter_nested(event, blocked)
         self._events[normalized.event_id] = normalized
-        if normalized.event_id not in segment.transaction_ids:
+        membership = self._transaction_membership.get(segment.anki_day_id)
+        if membership is None:
+            membership = set(segment.transaction_ids)
+            self._transaction_membership[segment.anki_day_id] = membership
+        if normalized.event_id not in membership:
             segment.transaction_ids.append(normalized.event_id)
+            membership.add(normalized.event_id)
         self._seen_event_ids.update(normalized.related_event_ids)
+        if self._hud_segments is not None:
+            if segment.anki_day_id not in self._hud_segments:
+                self._hud_segments[segment.anki_day_id] = _HudSegmentTotals(segment)
+            self._hud_segments[segment.anki_day_id].add(normalized)
         return True
 
     def accept_committed(self, event: CommittedSessionEvent) -> bool:
@@ -2058,6 +2113,8 @@ class SessionSummaryAccumulator:
         if reversal.reversal_id in self._processed_reversal_ids:
             return False
         self._processed_reversal_ids.add(reversal.reversal_id)
+        self._hud_segments = None
+        self._hud_drop_key = None
         targets = set(reversal.reversed_event_ids)
         changed = False
         for transaction_id, event in tuple(self._events.items()):
@@ -2409,6 +2466,40 @@ class SessionSummaryAccumulator:
                 segment.landmark_growth_delta_units for segment in segments
             ),
         )
+
+    def hud_snapshot(self) -> dict[str, int]:
+        """Cheap footer projection; full receipt/effect reduction stays off the answer path."""
+        from ..reward_counts import reward_drop_count
+
+        if self._hud_segments is None:
+            self._hud_segments = {}
+            for segment in self._segments:
+                totals = _HudSegmentTotals(segment)
+                for identity in segment.transaction_ids:
+                    if identity in self._events:
+                        totals.add(self._events[identity])
+                self._hud_segments[segment.anki_day_id] = totals
+        active = [row for row in self._hud_segments.values() if row.cards > 0]
+        finds = sum(row.finds for row in active)
+        # Reuse the canonical drop counter only when sparse item/Find details
+        # change. Ordinary Growth and Coin answers do no historical reduction.
+        key = tuple((day, row.drop_revision) for day, row in self._hud_segments.items() if row.cards > 0)
+        if key != self._hud_drop_key:
+            self._hud_drop_count = reward_drop_count({
+                "footer_find_count": finds,
+                "standard_finds": [item for row in active for item in row.find_rows],
+                "environment_discoveries": [item for row in active for item in row.environments],
+                "reward_receipts": [item for row in active for item in row.receipts],
+            })
+            self._hud_drop_key = key
+        return {
+            "cards_completed": sum(row.cards for row in active),
+            "footer_growth_units": sum(row.growth + row.projects for row in active) + max(0,
+                sum(row.landmark - row.landmark_allocated for row in active)),
+            "footer_coin_count": sum(row.coins for row in active),
+            "footer_find_count": finds,
+            "footer_drop_count": self._hud_drop_count,
+        }
 
     def live_snapshot(
         self,

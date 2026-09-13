@@ -229,6 +229,7 @@ def test_current_boost_projection_keeps_names_and_art_references_aligned() -> No
 
 
 @pytest.mark.parametrize("text_scale", (1.0, 1.5, 2.0))
+@pytest.mark.release_evidence
 def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch, text_scale: float) -> None:
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
@@ -307,7 +308,7 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch,
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "Rewards after syncing" in texts
     assert "From 42 cards studied" in texts
-    assert {"Wisteria reached Full Bloom", "Full Bloom", "New discoveries"} <= texts
+    assert {"Wisteria reached Full Bloom", "New discoveries"} <= texts
     for label in card.findChildren(QLabel):
         if label.property("receiptMetricLabel") or label.property("receiptMetricValue"):
             assert label.fontMetrics().horizontalAdvance(label.text()) <= label.contentsRect().width()
@@ -325,7 +326,7 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch,
     assert card._summary_fixed.mapTo(card, QPoint(0, 0)) == pinned_position
     assert card._summary_fixed.isVisibleTo(card)
     texts = {label.text() for label in card.findChildren(QLabel)}
-    assert {"Wisteria reached Full Bloom", "Full Bloom", "New discoveries"} <= texts
+    assert {"Wisteria reached Full Bloom", "New discoveries"} <= texts
     assert "Stored Growth" in texts
     assert not any("landmark" in text.casefold() or "mastery" in text.casefold() for text in texts)
     project_rows = [
@@ -543,6 +544,7 @@ def test_merge_backfills_art_for_a_legacy_pending_boost_receipt() -> None:
     assert merged.booster_art_asset == "/art/booster_potion.webp"
 
 
+@pytest.mark.release_evidence
 def test_current_boost_rows_use_named_item_art_when_qt_is_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

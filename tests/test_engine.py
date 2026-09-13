@@ -2224,24 +2224,28 @@ def test_read_only_empty_queue_cannot_award_today_cards_completion():
     assert storage.state.currency_balance == balance
 
 
-def test_committed_answer_result_groups_final_due_rewards_under_answer_identity():
+@pytest.mark.parametrize("trailing_duplicate", [False, True])
+def test_committed_answer_result_groups_final_due_rewards_under_answer_identity(trailing_duplicate):
     engine, storage = make_engine()
     assert engine.observe_due_start(DueObligationStatus(review_count=1))
     revlog_id = storage.now_ms + 1_000
-    result = engine.commit_reviewer_answer(
-        {
+    payload = {
             "queue": 2,
             "ease": 3,
             "revlog_id": revlog_id,
             "answered_at_ms": revlog_id,
             "scheduler_day": storage.day,
             "origin": "local",
-        },
+        }
+    results = engine.apply_same_day_reviews_with_results(
+        [payload] * (2 if trailing_duplicate else 1),
         latest_revlog_id=revlog_id,
         due_status=DueObligationStatus(),
     )
 
-    assert result is not None
+    assert len(results) == 1
+    result = results[0]
+    assert storage.state.total_reviews == 1
     assert result.event_id == result.correlation_id
     assert result.event_id.startswith("answer:")
     assert result.origin == "local"

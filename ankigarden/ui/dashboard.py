@@ -179,6 +179,7 @@ from .theme import (
     ICON_BUTTON_SIZE,
     INPUT_VISUAL_HEIGHT,
     PLANT_ACTION_MIN_HEIGHT,
+    PLANT_DETAIL_TITLE_STYLE,
     PRIMARY_BUTTON_VISUAL_HEIGHT,
     PROGRESS_BAR_HEIGHT,
     TAB_VISUAL_HEIGHT,
@@ -189,14 +190,17 @@ from .theme import (
     apply_tabular_numerals,
     apply_button_size,
     apply_text_role,
+    bind_palette_colors,
     button_stylesheet,
     foundation_stylesheet,
     secondary_navigation_stylesheet,
     nursery_catalog_stylesheet,
+    raised_section_panel_style,
     set_control_enabled,
     set_icon_accessible_name,
     set_keyboard_focus_surface,
     set_semantic_role,
+    text_style,
 )
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..performance import RUNTIME_PERFORMANCE
@@ -405,11 +409,7 @@ _RELEASE_QSS_COLOR_ALIASES: tuple[tuple[str, str], ...] = (
 def _release_palette_stylesheet(stylesheet: str) -> str:
     """Resolve legacy local QSS colors through the shared semantic tokens."""
 
-    resolved = str(stylesheet)
-    for literal, semantic_name in _RELEASE_QSS_COLOR_ALIASES:
-        token = GARDEN_THEME[semantic_name]
-        resolved = resolved.replace(literal, token).replace(literal.lower(), token)
-    return resolved
+    return bind_palette_colors(stylesheet, _RELEASE_QSS_COLOR_ALIASES, GARDEN_THEME)
 
 logger = logging.getLogger(__name__)
 
@@ -3643,28 +3643,28 @@ def _garden_dialog_stylesheet() -> str:
     return foundation_stylesheet() + f"""
         QWidget[gardenDialogShell='true'] {{ background:{t['dialog_surface']}; color:{t['text_primary']}; }}
         QFrame[dialogHeader='true'] {{ background:transparent; border:0; }}
-        QLabel {{ color:{t['text_primary']}; font-size:14px; }}
+        QLabel {{ color:{t['text_primary']}; {text_style(TextRole.BODY, include_weight=False)} }}
         QLabel[dialogTitle='true'] {{ color:{t['text_primary']}; font-size:20px; font-weight:600; }}
         QLabel[dialogTitle='true'][textRole='screen-title'] {{ color:{t['text_primary']}; font-size:{screen_title.font_size_px}px; font-weight:{screen_title.font_weight}; }}
-        QLabel[dialogSubtitle='true'] {{ color:{t['text_secondary']}; font-size:13px; }}
+        QLabel[dialogSubtitle='true'] {{ color:{t['text_secondary']}; {text_style(TextRole.SECONDARY, include_weight=False)} }}
         QPushButton[iconButton='true'] {{ min-width:{ICON_BUTTON_SIZE}px; max-width:{ICON_BUTTON_SIZE}px; min-height:{ICON_BUTTON_SIZE}px; max-height:{ICON_BUTTON_SIZE}px; padding:0; border-radius:8px; background:transparent; border:1px solid transparent; }}
         QPushButton[iconButton='true']:enabled:hover {{ background:{t['raised_surface']}; border-color:{t['subtle_border']}; }}
         QPushButton[iconButton='true'][keyboardFocusVisible='true']:focus {{ border:2px solid {t['focus_ring']}; }}
         QFrame[actionFooter='true'] {{ background:{t['dialog_surface']}; border-top:1px solid {t['subtle_border']}; }}
-        QFrame[sectionCard='true'], QFrame[statSummary='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
+        QFrame[sectionCard='true'], QFrame[statSummary='true'] {{ {raised_section_panel_style(t)} }}
         QFrame[growthChargeSummaryCard='true'] {{ background:{t['raised_surface']}; border:1px solid {t['subtle_border']}; border-radius:12px; }}
         QFrame[stageArtworkTile='true'] {{ background:{t['selected_surface']}; border:1px solid {t['subtle_border']}; border-radius:10px; }}
         QFrame[growthChargeDivider='true'] {{ background:{t['subtle_border']}; border:0; }}
         QFrame[growthChargeImpactRow='true'] {{ background:transparent; border:0; }}
         QLabel[growthChargeTransition='true'] {{ color:{t['text_primary']}; font-size:14px; font-weight:600; }}
-        QLabel[stageArtworkCaption='before'], QLabel[stageArtworkCaption='after'] {{ color:{t['text_muted']}; font-size:12px; }}
+        QLabel[stageArtworkCaption='before'], QLabel[stageArtworkCaption='after'] {{ color:{t['text_muted']}; {text_style(TextRole.METADATA, include_weight=False)} }}
         QLabel[growthChargeImpactName='true'] {{ color:{t['text_primary']}; font-size:14px; font-weight:600; }}
         QLabel[growthChargeImpactValue='true'] {{ color:{t['growth_accent']}; font-size:14px; font-weight:700; }}
         QLabel[growthChargeDetailValue='true'] {{ color:{t['text_primary']}; font-size:13px; font-weight:600; }}
         QProgressBar[growthChargeProgress='true'] {{ min-height:6px; max-height:6px; border:0; border-radius:3px; background:{t['selected_surface']}; }}
         QProgressBar[growthChargeProgress='true']::chunk {{ border-radius:3px; background:{t['growth_accent']}; }}
-        QFrame[progressRow='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
-        QFrame[appearanceCard='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
+        QFrame[progressRow='true'] {{ {raised_section_panel_style(t)} }}
+        QFrame[appearanceCard='true'] {{ {raised_section_panel_style(t)} }}
         QLabel[collectibleIcon='true'] {{ color:{t['growth_accent']}; background:{t['selected_surface']}; border:1px solid {t['strong_border']}; border-radius:9px; font-size:20px; font-weight:800; }}
         QFrame[storyStage='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
         QFrame[storyStage='true'][stageStripVariant='individual-progression'][stageStripState='reached'] {{ background:{t['elevated_surface']}; }}
@@ -3678,8 +3678,8 @@ def _garden_dialog_stylesheet() -> str:
         QFrame[speciesPlantRow='true'] {{ background:transparent; border:0; }}
         QFrame[speciesPlantDivider='true'] {{ background:{t['subtle_border']}; border:0; }}
         QLabel[detailStatus='true'] {{ color:#dff3bc; background:#284936; border:1px solid #54775d; border-radius:8px; padding:4px 8px; font-size:13px; font-weight:600; }}
-        QLabel[detailBadge='true'] {{ color:{t['text_primary']}; background:{t['elevated_surface']}; border:1px solid {t['strong_border']}; border-radius:8px; padding:4px 8px; font-size:12px; font-weight:600; }}
-        QLabel[growthOutcomeBadge='true'] {{ color:{t['growth_accent']}; background:{t['selected_surface']}; border:1px solid {t['strong_border']}; border-radius:6px; padding:2px 7px; font-size:12px; font-weight:600; }}
+        QLabel[detailBadge='true'] {{ color:{t['text_primary']}; background:{t['elevated_surface']}; border:1px solid {t['strong_border']}; border-radius:8px; padding:4px 8px; {text_style(TextRole.BADGE)} }}
+        QLabel[growthOutcomeBadge='true'] {{ color:{t['growth_accent']}; background:{t['selected_surface']}; border:1px solid {t['strong_border']}; border-radius:6px; padding:2px 7px; {text_style(TextRole.BADGE)} }}
         QLabel[summaryLabel='true'] {{ color:{t['text_muted']}; font-size:13px; }}
         QLabel[stageRewardHeading='true'] {{ color:{t['text_secondary']}; font-size:13px; font-weight:600; }}
         QLabel[summaryValue='true'] {{ color:{t['text_primary']}; font-size:28px; font-weight:700; }}
@@ -7096,7 +7096,7 @@ class ToastRegion(QFrame):
         self.receipt_title.setTextFormat(Qt.TextFormat.PlainText)
         self.receipt_title.setWordWrap(True)
         self.receipt_title.setMinimumWidth(0)
-        self.receipt_title.setStyleSheet("font-size:16px;font-weight:600;")
+        self.receipt_title.setStyleSheet(text_style(TextRole.CARD_TITLE))
         self.receipt_title.hide()
         self.action = QPushButton("")
         _set_button_variant(self.action, BUTTON_VARIANT_SECONDARY)
@@ -8641,7 +8641,7 @@ class _StarterPlantCard(QFrame):
         title = QLabel(name, self.selection)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFixedHeight(22)
-        title.setStyleSheet("font-size:16px;font-weight:600;")
+        title.setStyleSheet(text_style(TextRole.CARD_TITLE))
         title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         inside.addWidget(title)
         self.artwork = _StarterStageArtwork(self.selection)
@@ -12871,7 +12871,7 @@ class GardenSettingsDialog(GardenDialog):
             preferences.removeWidget(control)
         for index, title in ((0, "Display"), (4, "Notifications")):
             heading = QLabel(title)
-            heading.setStyleSheet("font-size:16px;font-weight:600;padding:8px 0 4px 0;")
+            heading.setStyleSheet(text_style(TextRole.SECTION_HEADING) + "padding:8px 0 4px 0;")
             preferences.addWidget(heading, index, 0, 1, 2)
         for row, control in zip((1, 2, 3, 5, 6), preference_rows):
             preferences.addWidget(control, row, 0, 1, 2)
@@ -13853,7 +13853,7 @@ class _PlantStoryContent:
             QSizePolicy.Policy.Preferred,
         )
         self.name_heading.setProperty("maximumVisibleLines", 2)
-        self.name_heading.setStyleSheet("font-size:19px; font-weight:600;")
+        self.name_heading.setStyleSheet(PLANT_DETAIL_TITLE_STYLE)
         self.artwork = QLabel()
         self._story_artwork_size = 72
         self.artwork.setFixedSize(
@@ -14419,7 +14419,7 @@ class NurseryDialog(PageShell):
                 font-size:12px;
                 padding:0;
             }}
-            QPushButton[shopDetailsAction='true'] {{ color:{GARDEN_THEME['action_accent']}; padding-left:0; padding-right:0; text-align:left; }}
+            QPushButton[shopDetailsAction='true'] {{ color:{GARDEN_THEME['action_accent']}; padding-left:0; padding-right:0; text-align:center; }}
             QPushButton[nurseryCarouselNav='true'] {{ padding:2px 4px; font-size:13px; font-weight:600; }}
             QScrollBar:vertical {{ width:6px; margin:1px 2px 1px 1px; background:transparent; }}
             QScrollBar::handle:vertical {{ min-height:30px; border-radius:3px; background:{GARDEN_THEME['strong_border']}; }}
@@ -15258,9 +15258,6 @@ class NurseryDialog(PageShell):
         set_control_enabled(buy, affordable, disabled_reason=affordability)
         buy.clicked.connect(lambda: self._purchase_species(species))
         actions.addWidget(buy)
-        if not affordable:
-            row.shop_description.setText(affordability)
-            row.shop_description.show()
         return row
 
     def _starter_card(self, species: str) -> QFrame:
@@ -17184,7 +17181,7 @@ class NurseryDialog(PageShell):
             rows.setContentsMargins(0, 0, 0, 0)
             rows.setSpacing(8)
             heading = QLabel(caption, section)
-            heading.setStyleSheet("font-size:16px;font-weight:600;")
+            heading.setStyleSheet(text_style(TextRole.SECTION_HEADING))
             rows.addWidget(heading)
             if caption == "Growth Charges" and garden_target:
                 scope = GardenWrappingLabel("Adds Stored Growth to the Garden.")
@@ -19189,11 +19186,11 @@ class RearrangeBar(QFrame):
         self.bar_layout.setVerticalSpacing(6)
         self.title = QLabel("", self)
         self.title.setProperty("moveTitle", True)
-        self.title.setStyleSheet("font-size:16px;font-weight:600;")
+        self.title.setStyleSheet(text_style(TextRole.SECTION_HEADING))
         self.instructions = QLabel("Choose a bed.", self)
         self.instructions.setTextFormat(Qt.TextFormat.PlainText)
         self.instructions.setWordWrap(True)
-        self.instructions.setStyleSheet("font-size:14px;font-weight:400;")
+        self.instructions.setStyleSheet(text_style(TextRole.BODY))
         self.bar_layout.addWidget(self.title, 0, 0)
         self.bar_layout.addWidget(self.instructions, 0, 1)
         self.bar_layout.setColumnStretch(1, 1)
@@ -20466,7 +20463,7 @@ class GardenDetailsDialog(GardenPage):
             identity = QVBoxLayout()
             identity.setSpacing(4)
             name = self._label(format_plant_name(active), "detailSection")
-            name.setStyleSheet("font-size:19px; font-weight:600;")
+            name.setStyleSheet(PLANT_DETAIL_TITLE_STYLE)
             identity.addWidget(name)
             support = self._label(
                 (
@@ -28270,7 +28267,7 @@ class GardenDashboard(DialogShell):
                 section_rows.setContentsMargins(0, 4, 0, 0)
                 section_rows.setSpacing(6)
                 heading = QLabel(caption, section)
-                heading.setStyleSheet("font-size:16px;font-weight:600;")
+                heading.setStyleSheet(text_style(TextRole.SECTION_HEADING))
                 section_rows.addWidget(heading)
                 sections[key] = heading
                 if key == "fertilizer":

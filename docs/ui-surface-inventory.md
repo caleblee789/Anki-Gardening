@@ -1,8 +1,8 @@
 # Anki Garden UI surface inventory
 
 The current capture contract is **v29**, schema 2, scenario schema 3. The full
-profile contains **50 active surfaces on five explicit sheets**. Representative
-preflight covers 22 surfaces across those same five assignments. Both use
+profile contains **53 active surfaces on six explicit sheets**. Representative
+preflight covers 23 surfaces across those same six assignments. Both use
 canonical 100% UI scale; macOS Retina pixels remain at the native device ratio.
 
 The authoritative registry is `ankigarden/capture/workspace_specs.py`, compiled
@@ -13,7 +13,7 @@ carries `handoff.sheet`, `handoff.sheet_name` and `handoff.display_order`.
 
 ## Coverage and ownership
 
-All 35 active v28 surfaces are retained, plus 15 active new views. Collection and Shop
+The registry retains the existing Garden flows and adds three Plant beds states. Collection and Shop
 remain separate assignments. Item-use dialogs and Growth Charge outcomes belong
 to Shop so the complete purchase/use flow has one owner. The Garden/onboarding
 owner integrates shared navigation, theme and copy changes. Agents should own
@@ -75,12 +75,12 @@ historical evidence remain preserved; the disabled view is not counted as missin
 
 | Order | Stable surface ID | Native path | Coverage |
 |---:|---|---|---|
-| 1 | `progress-today-page` | Progress → Today | Retained |
-| 2 | `progress-today-details` | Progress → Today → expand details | Retained |
+| 1 | `progress-today-page` | Progress → Activity → Today | Retained |
+| 2 | `progress-today-details` | Progress → Activity → Study rewards summary | Retained |
 | 3 | `progress-achievements-page` | Progress → Achievements (top) | Retained |
 | 4 | `workspace-achievements-scroll-end` | Progress → Achievements → scroll to end (final rows) | New in v29 |
 | 5 | `workspace-trophy-room` | Progress → Trophy Room (locked and unlocked) | New in v29 |
-| 6 | `progress-coins-page` | Progress → Coins | Retained |
+| 6 | `progress-coins-page` | Progress → Activity → Coins earned | Retained |
 | 7 | `garden-settings` | Workspace gear → Settings | Retained |
 | 8 | `workspace-settings-unsaved` | Settings → edit Garden name → unsaved Save/Cancel state | New in v29 |
 | 9 | `garden-diagnostics` | Settings → Artwork check → scroll to result | Retained |
@@ -98,11 +98,19 @@ historical evidence remain preserved; the disabled view is not counted as missin
 | 6 | `session-summary-after-review` | Study cards → leave Reviewer → Session Summary | Retained |
 | 7 | `sync-rewards-summary` | Anki Home → Sync Rewards receipt (committed offline fixture; network sync disabled) | Retained |
 
+## Sheet 6: Plant beds (3)
+
+| Order | Stable surface ID | Native path | Coverage |
+|---:|---|---|---|
+| 1 | `progress-plant-beds-starting` | Progress → Plant beds → starting Garden | Current |
+| 2 | `progress-plant-beds-partial` | Progress → Plant beds → partially unlocked Garden | Current |
+| 3 | `progress-plant-beds-unlocked` | Progress → Plant beds → all beds unlocked | Current |
+
 ## Capture execution
 
 Acquisition order is independent of sheet placement. Preserve the first-run
 scenario prerequisites and transaction sequence even when their images appear
-in different sheet groups. The 15 active additional IDs use deterministic isolated
+in different sheet groups. Additional IDs use deterministic isolated
 fixtures and per-surface postconditions. Onboarding, purchases and item use show
 native actions and committed engine results. The expanded welcome fixture
 reconciles 5,000 eligible past reviews through the engine; its gift and historical
@@ -139,9 +147,9 @@ runner from inside that snapshot:
 python scripts/capture_sequence.py --profile full --fresh-baseline --anki-version 26.8.1
 ```
 
-This mode schedules all 51 surfaces in one disposable Anki process, includes
+This mode schedules all 53 surfaces in one disposable Anki process, includes
 the process shutdown gate in that session, and disables historical screenshot
-reuse. It then validates the raw set and renders the five sheets. It never
+reuse. It then validates the raw set and renders the six sheets. It never
 starts a second Anki process to repair a failed surface. The ordinary
 incremental mode remains available when exact reuse is wanted.
 
@@ -149,13 +157,12 @@ Add `--plan-only` to inspect the complete ordered plan without launching Anki,
 building packages or capturing images. Foreground fallback is bounded per
 Home/Reviewer surface; normal dialogs retain native background capture.
 
-The runner fixes have offline regression coverage. A fresh 51/51 native run
-with the new plant assets is still pending and must be verified when capture
-is authorized.
+The current package and acceptance status are recorded in the
+[pre-release hardening record](pre-release-hardening-20260912.md).
 
-Produce five PNGs, each 3,000 pixels wide with two columns. Explicit sheet
-boundaries replace the old five-row pagination limit: 12/10/12/10/7 surfaces
-require 6/5/6/5/4 rows. Use consistent thumbnail boxes, native aspect ratios,
+Produce six PNGs, each 3,000 pixels wide with two columns. Explicit sheet
+boundaries replace the old five-row pagination limit: 12/9/12/10/7/3 surfaces
+require 6/5/6/5/4/2 rows. Use consistent thumbnail boxes, native aspect ratios,
 top alignment and clearly marked non-UI padding. Scroll-end views are named
 explicitly. Each surface appears exactly once.
 
@@ -164,12 +171,15 @@ full-resolution raw links, frozen code sections, ownership boundaries and observ
 issues. The handoff includes a coverage index, raw PNGs, source inventory,
 manifest, independent validation report, visual review and evidence archive.
 `python scripts/build_refinement_handoff.py --help` describes the packager.
+Select additional input directories explicitly with repeated `--evidence-root`
+arguments when packages or sibling capture sets live outside the report's
+directory. Metadata cannot authorize reads or copies outside those roots.
 
 ## Acceptance boundary
 
-A completed full run requires 51 expected surfaces, 51 valid native PNGs, five
+A completed full run requires 53 expected surfaces, 53 valid native PNGs, six
 sheets and no omitted or duplicate assignments. Package hashes and each
-surface-to-image binding must verify. Inspect every raw PNG and all five sheets
+surface-to-image binding must verify. Inspect every raw PNG and all six sheets
 for the correct state, readable labels, complete controls, popup inclusion and
 visible lower content. Raw manifest-owned PNGs are the geometry authority.
 
@@ -180,17 +190,23 @@ Completion is evidence preparation only: `quality_status: review-required`,
 `release_ready: false`. It does not provide human release approval, publication,
 Windows/Linux acceptance, mixed-DPI or exhaustive responsive/animation coverage.
 
-### Native UI issue retained for refinement
+### Historical capture limitations
 
-The collapsed Reviewer HUD currently clips its cards-remaining text at its unchanged native width. Both new collapsed Reviewer views preserve that product behavior and record `reviewer-collapsed-status-width` in raw text warnings, audit `native_ui_issues`, visual review and agent brief 5. This one role-specific horizontal text issue is advisory for the refinement evidence; missing pixels, wrong states, window or control clipping, and all unrelated layout warnings remain blocking. This exception is not a product fix or release approval.
+The September 5 handoff below recorded clipped collapsed-HUD text. That is a
+historical observation, not a waiver for the current release. Current runtime
+and visual acceptance must bind the production archive being released.
 
-## Completed v29 handoff
+## Current v29 handoff
 
-The [September 5 grouped handoff](../build/ui-refinement-v29-20260905-184218/handoff-20260905-205811/README.md)
-contains five sheets, five agent briefs and 51 independently validated native
-captures, with no omitted or duplicate assignments. All raw images and sheets
-were visually inspected. The [portable evidence archive](../build/ui-refinement-v29-20260905-184218/handoff-20260905-205811.zip)
-includes the raw images, manifests, validation, frozen code references, verified
-packages and source inventory. The obsolete scenery summary and Apply block
-are removed in this baseline. Evidence remains `review-required` and
-`release_ready: false`.
+The [September 13 grouped handoff](../build/pre-release-hardening-20260913T040418Z/verified-handoff/README.md)
+contains six sheets and 53 validated native captures. Its
+[portable archive](../build/pre-release-hardening-20260913T040418Z/verified-handoff.zip)
+retains raw images, manifests, validation, frozen code references, both package
+variants and source inventory. Codex inspected every image and sheet; human
+release approval remains pending. The duplicate-visual advisory for the initial
+Collection selection is recorded in the visual review.
+
+The earlier September 5 record described 51 surfaces on five sheets. Its linked
+README and portable archive are absent from this checkout; surviving source
+files are preserved as historical material and are not current acceptance evidence.
+The current handoff remains `review-required` and `release_ready: false`.

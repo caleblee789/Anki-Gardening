@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 
 MIN_LEGIBLE_TEXT_SIZE = 12
@@ -78,6 +78,13 @@ TEXT_ROLE_TOKENS: dict[TextRole, TypographyToken] = {
 TYPOGRAPHY_SCALE = TEXT_ROLE_TOKENS
 TEXT_STYLES = TEXT_ROLE_TOKENS
 TextStyle = TypographyToken
+
+# The plant detail heading predates the 20 px/650 screen-title role. Keep its
+# exact declaration separate; adopting a text role must not add a line metric.
+PLANT_DETAIL_TITLE_STYLE = "font-size:19px; font-weight:600;"
+
+# Raised section panels differ from the opt-in 8 px semantic card treatment.
+SECTION_PANEL_RADIUS_PX = 10
 
 
 class SpacingToken(IntEnum):
@@ -211,6 +218,19 @@ BUTTON_SIZE_TOKENS: dict[ButtonSize, ButtonSizeToken] = {
     ButtonSize.PRIMARY: ButtonSizeToken(PRIMARY_BUTTON_VISUAL_HEIGHT, 12),
     ButtonSize.ONBOARDING: ButtonSizeToken(ONBOARDING_BUTTON_VISUAL_HEIGHT, 12),
     ButtonSize.ICON: ButtonSizeToken(ICON_BUTTON_VISUAL_SIZE, 0, square=True),
+}
+
+# QSS content padding is distinct from the existing horizontalPadding widget
+# metadata above. In particular, secondary/primary/onboarding metadata remains
+# 12 px while the rendered declarations remain 14/16/16 px.
+BUTTON_BORDER_WIDTH_PX = 1
+BUTTON_DEFAULT_HORIZONTAL_PADDING_PX = 14
+BUTTON_QSS_HORIZONTAL_PADDING: dict[ButtonSize, int] = {
+    ButtonSize.COMPACT_ROW: 10,
+    ButtonSize.BANNER: 10,
+    ButtonSize.SECONDARY: 14,
+    ButtonSize.PRIMARY: 16,
+    ButtonSize.ONBOARDING: 16,
 }
 
 
@@ -365,6 +385,14 @@ GARDEN_THEME = {
     "secondary_hover": SEMANTIC_COLORS["surface_hover"],
     "secondary_pressed": SEMANTIC_COLORS["surface_1"],
     "secondary_border": SEMANTIC_COLORS["divider"],
+    "secondary_hover_border": "#5b836f",
+    "secondary_pressed_border": "#6d9581",
+    "action_pressed_border": "#86bc91",
+    "destructive_surface": "#6d2d2d",
+    "destructive_border": "#a44a4a",
+    "destructive_text": "#ffecec",
+    "destructive_hover": "#7b3434",
+    "destructive_pressed": "#562424",
     "disabled_surface": "#173029",
     "disabled_border": "#3F5C50",
     "disabled_text": "#A6B6AE",
@@ -587,6 +615,47 @@ def text_token(role: TextRole | str) -> TypographyToken:
     except ValueError as error:
         raise ValueError(f"unknown text role: {role!r}") from error
     return TEXT_ROLE_TOKENS[normalized]
+
+
+def text_style(role: TextRole | str, *, include_weight: bool = True) -> str:
+    """Return only existing font declarations, without widget side effects.
+
+    Unlike apply_text_role(), this adds no minimum height, color, letter
+    spacing, properties, or repolishing. Omit weight where it is inherited.
+    """
+
+    token = text_token(role)
+    return f"font-size:{token.font_size_px}px;" + (
+        f"font-weight:{token.font_weight};" if include_weight else ""
+    )
+
+
+def bind_palette_colors(
+    stylesheet: str,
+    aliases: Sequence[tuple[str, str]],
+    palette: Mapping[str, str],
+) -> str:
+    """Resolve renderer-owned legacy aliases in their original order.
+
+    Sequential substitutions intentionally retain existing cascades. This is
+    not a general color normalizer; each renderer keeps its own alias map and
+    stylesheet application scope.
+    """
+
+    resolved = str(stylesheet)
+    for literal, semantic_name in aliases:
+        token = palette[semantic_name]
+        resolved = resolved.replace(literal, token).replace(literal.lower(), token)
+    return resolved
+
+
+def raised_section_panel_style(palette: Mapping[str, str]) -> str:
+    """The borderless section treatment, independent of panel layout."""
+
+    return (
+        f"background:{palette['raised_surface']}; border:0; "
+        f"border-radius:{SECTION_PANEL_RADIUS_PX}px;"
+    )
 
 
 def spacing(token: SpacingToken | str | int) -> int:
@@ -1096,28 +1165,25 @@ def button_stylesheet(
     """Return the complete text-button contract, including safe defaults."""
 
     t = theme_palette(context)
-    hover_border = "#5b836f"
-    pressed_border = "#6d9581"
-    primary_pressed_border = "#86bc91"
     return f"""
         QPushButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
             max-height: {BUTTON_VISUAL_HEIGHT}px;
-            padding: 0 14px;
-            border: 1px solid {t['secondary_border']};
+            padding: 0 {BUTTON_DEFAULT_HORIZONTAL_PADDING_PX}px;
+            border: {BUTTON_BORDER_WIDTH_PX}px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             background: {t['secondary_action']};
             color: {t['text_primary']};
             font-size: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_size_px}px;
-            font-weight: 600;
+            font-weight: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_weight};
         }}
         QPushButton:enabled:hover {{
             background: {t['secondary_hover']};
-            border-color: {hover_border};
+            border-color: {t['secondary_hover_border']};
         }}
         QPushButton:enabled:pressed {{
             background: {t['secondary_pressed']};
-            border-color: {pressed_border};
+            border-color: {t['secondary_pressed_border']};
         }}
         QPushButton[variant='primary'] {{
             min-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
@@ -1129,7 +1195,7 @@ def button_stylesheet(
         QPushButton[variant='primary']:enabled:hover {{ background: {t['action_hover']}; }}
         QPushButton[variant='primary']:enabled:pressed {{
             background: {t['action_pressed']};
-            border-color: {primary_pressed_border};
+            border-color: {t['action_pressed_border']};
         }}
         QPushButton[variant='secondary'] {{
             background: {t['secondary_action']};
@@ -1139,7 +1205,7 @@ def button_stylesheet(
         QPushButton[variant='secondary']:enabled:hover {{ background: {t['secondary_hover']}; }}
         QPushButton[variant='secondary']:enabled:pressed {{
             background: {t['secondary_pressed']};
-            border-color: {pressed_border};
+            border-color: {t['secondary_pressed_border']};
         }}
         QPushButton[variant='quiet'], QPushButton[variant='tertiary'] {{
             background: transparent;
@@ -1152,41 +1218,41 @@ def button_stylesheet(
             color: {t['text_primary']};
         }}
         QPushButton[variant='destructive'] {{
-            background: #6d2d2d;
-            border-color: #a44a4a;
-            color: #ffecec;
+            background: {t['destructive_surface']};
+            border-color: {t['destructive_border']};
+            color: {t['destructive_text']};
         }}
-        QPushButton[variant='destructive']:enabled:hover {{ background: #7b3434; }}
-        QPushButton[variant='destructive']:enabled:pressed {{ background: #562424; }}
+        QPushButton[variant='destructive']:enabled:hover {{ background: {t['destructive_hover']}; }}
+        QPushButton[variant='destructive']:enabled:pressed {{ background: {t['destructive_pressed']}; }}
         QPushButton[compactRowAction='true'] {{
             min-height: {COMPACT_BUTTON_HEIGHT}px;
             max-height: {COMPACT_BUTTON_HEIGHT}px;
-            padding: 0 10px;
+            padding: 0 {BUTTON_QSS_HORIZONTAL_PADDING[ButtonSize.COMPACT_ROW]}px;
         }}
         QPushButton[buttonSize='compact-row'] {{
             min-height: {COMPACT_BUTTON_HEIGHT}px;
             max-height: {COMPACT_BUTTON_HEIGHT}px;
-            padding: 0 10px;
+            padding: 0 {BUTTON_QSS_HORIZONTAL_PADDING[ButtonSize.COMPACT_ROW]}px;
         }}
         QPushButton[buttonSize='banner'] {{
             min-height: {BANNER_BUTTON_HEIGHT}px;
             max-height: {BANNER_BUTTON_HEIGHT}px;
-            padding: 0 10px;
+            padding: 0 {BUTTON_QSS_HORIZONTAL_PADDING[ButtonSize.BANNER]}px;
         }}
         QPushButton[buttonSize='secondary'] {{
             min-height: {BUTTON_VISUAL_HEIGHT}px;
             max-height: {BUTTON_VISUAL_HEIGHT}px;
-            padding: 0 14px;
+            padding: 0 {BUTTON_QSS_HORIZONTAL_PADDING[ButtonSize.SECONDARY]}px;
         }}
         QPushButton[buttonSize='primary'] {{
             min-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
             max-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
-            padding: 0 16px;
+            padding: 0 {BUTTON_QSS_HORIZONTAL_PADDING[ButtonSize.PRIMARY]}px;
         }}
         QPushButton[buttonSize='onboarding'] {{
             min-height: {ONBOARDING_BUTTON_VISUAL_HEIGHT}px;
             max-height: {ONBOARDING_BUTTON_VISUAL_HEIGHT}px;
-            padding: 0 16px;
+            padding: 0 {BUTTON_QSS_HORIZONTAL_PADDING[ButtonSize.ONBOARDING]}px;
         }}
         QPushButton[buttonSize='icon'] {{
             min-width: {ICON_BUTTON_VISUAL_SIZE}px;
@@ -1218,28 +1284,26 @@ def tool_button_stylesheet(
     """Return the matching treatment for visible and icon tool buttons."""
 
     t = theme_palette(context)
-    hover_border = "#5b836f"
-    pressed_border = "#6d9581"
     return f"""
         QToolButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
             max-height: {BUTTON_VISUAL_HEIGHT}px;
-            padding: 0 14px;
+            padding: 0 {BUTTON_DEFAULT_HORIZONTAL_PADDING_PX}px;
             color: {t['text_primary']};
             background: {t['secondary_action']};
-            border: 1px solid {t['secondary_border']};
+            border: {BUTTON_BORDER_WIDTH_PX}px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_size_px}px;
-            font-weight: 600;
+            font-weight: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_weight};
             text-align: left;
         }}
         QToolButton:enabled:hover {{
             background: {t['secondary_hover']};
-            border-color: {hover_border};
+            border-color: {t['secondary_hover_border']};
         }}
         QToolButton:enabled:pressed {{
             background: {t['secondary_pressed']};
-            border-color: {pressed_border};
+            border-color: {t['secondary_pressed_border']};
         }}
         QToolButton:checked {{
             background: {t['selected_surface']};
@@ -1269,12 +1333,12 @@ def tool_button_stylesheet(
             color: {t['text_primary']};
         }}
         QToolButton[variant='destructive'] {{
-            background: #6d2d2d;
-            border-color: #a44a4a;
-            color: #ffecec;
+            background: {t['destructive_surface']};
+            border-color: {t['destructive_border']};
+            color: {t['destructive_text']};
         }}
-        QToolButton[variant='destructive']:enabled:hover {{ background: #7b3434; }}
-        QToolButton[variant='destructive']:enabled:pressed {{ background: #562424; }}
+        QToolButton[variant='destructive']:enabled:hover {{ background: {t['destructive_hover']}; }}
+        QToolButton[variant='destructive']:enabled:pressed {{ background: {t['destructive_pressed']}; }}
         QToolButton[gardenRole='icon-button'] {{
             min-width: {ICON_BUTTON_SIZE}px;
             min-height: {ICON_BUTTON_SIZE}px;

@@ -24,6 +24,31 @@ def frozen_report():
     )
 
 
+@pytest.mark.release_evidence
+def test_pdf_preserves_imported_text_and_authored_line_breaks(frozen_report, tmp_path, monkeypatch):
+    from pypdf import PdfReader
+    from reportlab.platypus.paraparser import ParaParser
+    from scripts.balance_analysis.report import build_pdf
+
+    report = deepcopy(frozen_report)
+    title = "Literal <b>name</b> & details"
+    report["findings"].append({
+        "finding_id": "literal-text", "severity": "high", "domain": "test",
+        "title": title, "observed": 1, "metric_refs": [],
+    })
+    # Reports have no image inputs. A render must never enter image parsing.
+    def reject_image(*args, **kwargs):
+        pytest.fail("Report text attempted to load an image")
+    monkeypatch.setattr(ParaParser, "start_img", reject_image)
+    output = build_pdf(report, tmp_path / "report.pdf")
+    reader = PdfReader(output)
+    text = "\n".join(page.extract_text() for page in reader.pages)
+    assert len(reader.pages) == len(REPORT_SECTIONS)
+    assert title in text
+    assert "<br/>" not in text
+    assert "Economy, Progression," in text and "and Rewards Analysis" in text
+
+
 def test_frozen_report_has_a_concise_fifteen_page_outline(frozen_report):
     outline = report_outline(frozen_report)
     assert len(REPORT_SECTIONS) == len(outline) == 15

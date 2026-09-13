@@ -16,6 +16,8 @@ def test_runtime_performance_recorder_is_disabled_without_overhead() -> None:
     )
 
     marker = recorder.begin()
+    recorder.answer_stage("action", "answer-1")
+    recorder.answer_stage("feedback_painted", "answer-1")
     recorder.finish("review.answer", marker)
 
     assert marker is None
@@ -34,6 +36,19 @@ def test_runtime_performance_recorder_bounds_and_summarizes_samples() -> None:
     assert summary.median_ms == 3.0
     assert summary.p95_ms == 4.0
     assert summary.maximum_ms == 4.0
+    for i in range(1000):
+        recorder.answer_stage("action", str(i))
+    events = recorder.payload()["answer_events"]
+    assert len(events) <= 3 * 24
+    assert events[-1]["answer_id"] == "999"
+    recorder.answer_stage("deferred", "revlog-999")
+    recorder.answer_stage("hook_finished")
+    recorder.answer_stage("action", "1000")
+    recorder.answer_stage("committed", "commit-999", related_answer_id="revlog-999")
+    recorder.answer_stage("hook_finished")
+    recorder.answer_stage("feedback_painted", "commit-999")
+    assert recorder.payload()["answer_events"][-1]["action_id"] == "999"
+    assert len(recorder._answer_actions) <= 6
 
 
 def test_runtime_performance_export_is_absolute_and_atomic(tmp_path) -> None:

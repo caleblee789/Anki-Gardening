@@ -9,7 +9,7 @@ from ..environment import GARDEN_FEATURE_CATALOG
 from .copy import garden_bonus_summary
 from .formatters import GardenDateService
 from .icons import garden_icon
-from .theme import GARDEN_THEME
+from .theme import GARDEN_THEME, TextRole, text_style
 
 
 class DecorationInfoCard(QFrame):
@@ -38,7 +38,7 @@ class DecorationInfoCard(QFrame):
         self.name.setMinimumWidth(0)
         self.name.setWordWrap(True)
         self.name.setTextFormat(Qt.TextFormat.PlainText)
-        self.name.setStyleSheet("font-size:16px;font-weight:600;")
+        self.name.setStyleSheet(text_style(TextRole.CARD_TITLE))
         self.heading = self.name
         header.addWidget(self.name, 1)
         self.close_button = QPushButton(self)
@@ -53,11 +53,11 @@ class DecorationInfoCard(QFrame):
         self.bonus = QLabel(self)
         self.bonus.setWordWrap(True)
         self.bonus.setTextFormat(Qt.TextFormat.PlainText)
-        self.bonus.setStyleSheet(f"font-size:14px;color:{GARDEN_THEME['text_secondary']};")
+        self.bonus.setStyleSheet(f"{text_style(TextRole.BODY, include_weight=False)}color:{GARDEN_THEME['text_secondary']};")
         self.obtained = QLabel(self)
         self.obtained.setWordWrap(True)
         self.obtained.setTextFormat(Qt.TextFormat.PlainText)
-        self.obtained.setStyleSheet(f"font-size:13px;color:{GARDEN_THEME['text_secondary']};")
+        self.obtained.setStyleSheet(f"{text_style(TextRole.SECONDARY, include_weight=False)}color:{GARDEN_THEME['text_secondary']};")
         layout.addWidget(self.bonus)
         layout.addWidget(self.obtained)
         scene.installEventFilter(self)

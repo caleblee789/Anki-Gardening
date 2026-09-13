@@ -208,6 +208,70 @@ def test_batched_replay_preserves_exact_rewards_lineages_and_durable_restart(tmp
     reference_storage._reward_ledger.close()
 
 
+@pytest.mark.parametrize("indexed", [False, True])
+@pytest.mark.parametrize("future_cursor", [False, True])
+def test_local_answers_after_rewarded_history_reach_the_hud(tmp_path, monkeypatch, indexed, future_cursor):
+    from test_session_summary_integration import _AccumulatorSpy, _load_reviewer_module
+    from ankigarden.storage import DueObligationStatus
+
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    now = int(datetime(2026, 8, 28, 12).timestamp() * 1000)
+    previous = [(now - 86_400_000 + i, 7, 3, 10, 5, 2500, 500, 1) for i in range(3)]
+    engine, storage = _engine_at(tmp_path / "garden", previous, indexed=indexed,
+                                 current_day="2026-08-28")
+    storage.current_time_ms = lambda: now + 10_000
+    storage.due_obligations = lambda **kwargs: DueObligationStatus(review_count=100)
+    storage.deck_ids_for_cards = lambda ids: {7: 55}
+    assert engine.reconcile_reward_history()[0]
+    assert storage.state.total_reviews == 1  # An older answer already earned its reward.
+    storage._verified_history_high_water = previous[-1][0]
+    historical_bindings = storage.answer_lineage_bindings_for_cards({7})
+    if future_cursor:
+        storage.state.last_processed_revlog_id = now + 2 * 86_400_000
+
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    accumulator = _AccumulatorSpy()
+    handler._session_summary_accumulator = accumulator
+    handler._review_window_token = "local-review"
+    handler._review_window_started_after_revlog_id = storage.state.last_processed_revlog_id
+    handler.mark_history_reconciled()
+    monkeypatch.setattr(handler, "_ensure_reviewer_hud", lambda **kwargs: None)
+    monkeypatch.setattr(handler, "_show_committed_growth_feedback", lambda *args, **kwargs: None)
+    monkeypatch.setattr(handler, "_show_optional_progress_feedback", lambda: None)
+
+    for offset in range(2):
+        row = (now + offset, *previous[-1][1:])
+        storage.mw.col.db.connection.execute("INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", row)
+        before = storage.state.plants[0].growth_units
+        handler.on_answer(None, SimpleNamespace(id=7), 3)
+        assert storage.state.plants[0].growth_units > before
+        assert len(accumulator.events) == offset + 1
+        assert len(handler._pending_reviewer_results) == offset + 1
+        assert storage._reward_ledger.binding_for_revlog(row[0]) not in historical_bindings.values()
+        if indexed:
+            storage.history_index.append_committed(row, "2026-08-28")
+        # A duplicate callback still cannot mint or replay feedback.
+        handler.on_answer(None, SimpleNamespace(id=7), 3)
+        assert len(accumulator.events) == offset + 1
+        assert storage.state.total_reviews == offset + 2
+        handler.mark_history_reconciled()
+    # A genuinely deleted answer must still reuse its identity on reanswer,
+    # even if the disposable index has not caught up with Undo yet.
+    undone_lineage = storage._reward_ledger.binding_for_revlog(now + 1)
+    storage.mw.col.db.connection.execute("DELETE FROM revlog WHERE id=?", (now + 1,))
+    storage.stage_reanswer_hint(undone_lineage, now + 2)
+    storage.save()
+    handler.invalidate_history("review undo")
+    storage.mw.col.db.connection.execute(
+        "INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?)", (now + 2, *previous[-1][1:]),
+    )
+    handler.on_answer(None, SimpleNamespace(id=7), 3)
+    assert storage._reward_ledger.binding_for_revlog(now + 2) == undone_lineage
+    assert storage.state.total_reviews == 3
+    assert len(accumulator.events) == 2
+    storage._reward_ledger.close()
+
+
 def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswer(tmp_path, monkeypatch):
     import sys
     from ankigarden.runtime import ReconciliationCoordinator
@@ -259,6 +323,14 @@ def test_background_reconciliation_cancels_stale_reads_and_protects_undo_reanswe
     runtime.invalidate("collection edited")
     drain()
     assert completions == [True]
+    assert not storage.runtime_pending
+    # An add-on's unrelated config operation may complete between the answer
+    # hook and Anki's own operation notification. It cannot consume the local
+    # answer attribution and turn every subsequent answer into a history scan.
+    reviewer = object()
+    runtime.note_local_answer(reviewer)
+    assert not runtime.operation_finished(SimpleNamespace(config=True), None)
+    assert runtime.operation_finished(SimpleNamespace(card=True), reviewer)
     assert not storage.runtime_pending
     # A collection callback during sync must not release the suspension or
     # let an already queued query commit against the in-flight collection.

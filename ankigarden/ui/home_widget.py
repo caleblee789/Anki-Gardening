@@ -45,7 +45,7 @@ from .plant_display import (
     repair_unique_slot_items,
     scene_surface_variant,
 )
-from .theme import GARDEN_THEME
+from .theme import GARDEN_THEME, bind_palette_colors
 
 
 @dataclass(frozen=True)
@@ -796,33 +796,30 @@ HOME_WIDGET_STYLE = """
 # the Qt views. Literal fallbacks keep the stylesheet readable in snapshots;
 # this binding step makes token changes propagate instead of forking a WebView
 # palette.
-for _home_literal, _home_token in (
-    ("#081814", GARDEN_THEME["garden_background"]),
-    ("#08251C", GARDEN_THEME["dialog_surface"]),
-    ("#0D3026", GARDEN_THEME["raised_surface"]),
-    ("#123D31", GARDEN_THEME["selected_surface"]),
-    ("#174B3C", GARDEN_THEME["elevated_surface"]),
-    ("#315247", GARDEN_THEME["subtle_border"]),
-    ("#70998A", GARDEN_THEME["strong_border"]),
-    ("#F4F3DF", GARDEN_THEME["text_primary"]),
-    ("#B7C4BD", GARDEN_THEME["text_secondary"]),
-    ("#95A89F", GARDEN_THEME["text_muted"]),
-    ("#63D99F", GARDEN_THEME["action_accent"]),
-    ("#75E3AE", GARDEN_THEME["action_hover"]),
-    ("#4FC98E", GARDEN_THEME["action_pressed"]),
-    ("#F2A35B", GARDEN_THEME["warning"]),
-    ("#E7B94A", GARDEN_THEME["coin_accent"]),
-    ("#172721", GARDEN_THEME["disabled_surface"]),
-    ("#30443B", GARDEN_THEME["disabled_border"]),
-    ("#83968B", GARDEN_THEME["disabled_text"]),
-):
-    HOME_WIDGET_STYLE = HOME_WIDGET_STYLE.replace(
-        _home_literal,
-        _home_token,
-    ).replace(
-        _home_literal.lower(),
-        _home_token,
-    )
+HOME_WIDGET_STYLE = bind_palette_colors(
+    HOME_WIDGET_STYLE,
+    (
+        ("#081814", "garden_background"),
+        ("#08251C", "dialog_surface"),
+        ("#0D3026", "raised_surface"),
+        ("#123D31", "selected_surface"),
+        ("#174B3C", "elevated_surface"),
+        ("#315247", "subtle_border"),
+        ("#70998A", "strong_border"),
+        ("#F4F3DF", "text_primary"),
+        ("#B7C4BD", "text_secondary"),
+        ("#95A89F", "text_muted"),
+        ("#63D99F", "action_accent"),
+        ("#75E3AE", "action_hover"),
+        ("#4FC98E", "action_pressed"),
+        ("#F2A35B", "warning"),
+        ("#E7B94A", "coin_accent"),
+        ("#172721", "disabled_surface"),
+        ("#30443B", "disabled_border"),
+        ("#83968B", "disabled_text"),
+    ),
+    GARDEN_THEME,
+)
 
 
 def _plant_fallback(_stage: Any) -> str:

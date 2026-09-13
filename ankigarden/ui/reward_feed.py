@@ -11,21 +11,36 @@ from aqt.qt import (
 from ..reward_presentation import RewardFeedHistory, RewardHero, project_reward_detail_rows
 from .reviewer_hud import format_growth_units
 from .icons import garden_icon, garden_icon_pixmap
+from .growth_count_up import GrowthCountUp
 from .reward_rarity import reward_treatment
 from .theme import GARDEN_THEME
 
 
 class _FeedModel(QAbstractListModel):
+    PAGE_SIZE = 64
+
     def __init__(self, parent):
         super().__init__(parent)
         self.history = RewardFeedHistory()
         self.entries = []
+        self._visible_count = 0
 
     def rowCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self.entries)
+        return 0 if parent.isValid() else self._visible_count
+
+    def canFetchMore(self, parent=QModelIndex()):
+        return not parent.isValid() and self._visible_count < len(self.entries)
+
+    def fetchMore(self, parent=QModelIndex()):
+        if not self.canFetchMore(parent):
+            return
+        count = min(self.PAGE_SIZE, len(self.entries) - self._visible_count)
+        self.beginInsertRows(QModelIndex(), self._visible_count, self._visible_count + count - 1)
+        self._visible_count += count
+        self.endInsertRows()
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or not 0 <= index.row() < len(self.entries):
+        if not index.isValid() or not 0 <= index.row() < self._visible_count:
             return None
         entry = self.entries[-1 - index.row()]
         if role == Qt.ItemDataRole.UserRole:
@@ -38,13 +53,26 @@ class _FeedModel(QAbstractListModel):
     def append(self, bundle):
         before = len(self.entries)
         added, changed = self.history.append(bundle)
+        if added or changed:
+            # New answers return the feed to its newest rewards. Keep the
+            # entire history, but let Qt measure only one page until the user
+            # scrolls into older rewards. Painting was virtualized already;
+            # QListView's variable-height layout was still measuring every row.
+            inserted = min(added, self.PAGE_SIZE)
+            retained = min(self._visible_count, self.PAGE_SIZE - inserted)
+            if retained < self._visible_count:
+                self.beginRemoveRows(QModelIndex(), retained, self._visible_count - 1)
+                self._visible_count = retained
+                self.endRemoveRows()
         if added:
-            self.beginInsertRows(QModelIndex(), 0, added - 1)
+            self.beginInsertRows(QModelIndex(), 0, inserted - 1)
             self.entries.extend(self.history.entries[-added:])
+            self._visible_count += inserted
             self.endInsertRows()
         if changed and before:
             self.entries[before - 1] = self.history.entries[before - 1]
-            self.dataChanged.emit(self.index(added), self.index(added))
+            if added < self._visible_count:
+                self.dataChanged.emit(self.index(added), self.index(added))
         return added, changed
 
 
@@ -55,6 +83,7 @@ class _FeedDelegate(QStyledItemDelegate):
         self.artwork = artwork
         self.new_ids = set()
         self.progress = 1.0
+        self.growth_counts = {}
         self.title_font = QFont(view.font())
         self.title_font.setPixelSize(14)
         self.title_font.setWeight(QFont.Weight.DemiBold)
@@ -162,8 +191,10 @@ class _FeedDelegate(QStyledItemDelegate):
             value_top += detail_h + 3
         painter.setFont(self.value_font)
         value_left = text_left
+        counter = self.growth_counts.get(item.event_id)
+        growth_units = counter.value if counter is not None else item.growth_units
         for key, amount in (("coin", f"+{item.garden_coins:,}" if item.garden_coins else ""),
-                            ("growth", format_growth_units(item.growth_units, signed=True) if item.growth_units else "")):
+                            ("growth", format_growth_units(growth_units, signed=True) if item.growth_units else "")):
             if not amount:
                 continue
             painter.drawPixmap(QRect(value_left, value_top, 14, 14), self.icons[key])
@@ -225,8 +256,14 @@ class RewardFeed(QWidget):
 
     def _relayout(self):
         self._layout_pending = False
+        if not self.isVisible():
+            return
         self.view.doItemsLayout()
         self.set_available_height()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._relayout()
 
     def latest(self):
         self._stop_motion()
@@ -234,25 +271,89 @@ class RewardFeed(QWidget):
 
     def set_available_height(self, maximum=None):
         if maximum is not None:
-            self._maximum_height = max(72, int(maximum))
+            self._maximum_height = max(24, int(maximum))
         visible_count = min(4, self.model.rowCount())
         natural = sum(self.view.sizeHintForRow(i) for i in range(visible_count))
         self.setFixedHeight(max(1, min(self._maximum_height, natural + 2)))
 
-    def append(self, bundle, *, animate=True):
+    def _count_growth(self, entry, position, previous, *, animate):
+        identity = entry.item.event_id
+        counter = self.delegate.growth_counts.get(identity)
+        if not animate:
+            if counter is not None:
+                counter.stop()
+                self.delegate.growth_counts.pop(identity)
+                counter.deleteLater()
+            return
+        if counter is None:
+            def repaint(_value):
+                row = len(self.model.entries) - 1 - position
+                if self.isVisible() and 0 <= row < self.model.rowCount():
+                    self.view.viewport().update(self.view.visualRect(self.model.index(row)))
+            counter = GrowthCountUp(self, repaint)
+            self.delegate.growth_counts[identity] = counter
+            counter.retarget(previous, animate=False)
+            def finished():
+                if self.delegate.growth_counts.get(identity) is counter:
+                    self.delegate.growth_counts.pop(identity)
+                    counter.deleteLater()
+            counter.finished.connect(finished)
+        counter.retarget(entry.item.growth_units, animate=animate)
+
+    def export_count_state(self):
+        return {identity: counter.snapshot() for identity, counter in self.delegate.growth_counts.items()}
+
+    def restore_count_state(self, states):
+        if not isinstance(states, dict):
+            return
+        # Only the exposed page can own live numeric animations.
+        start = max(0, len(self.model.entries) - self.model.rowCount())
+        for position in range(start, len(self.model.entries)):
+            entry = self.model.entries[position]
+            state = states.get(entry.item.event_id)
+            if state is not None and self.animations_enabled:
+                self._count_growth(entry, position, int(state.get('value', 0)), animate=True)
+                self.delegate.growth_counts[entry.item.event_id].restore(state)
+
+    def settle_counts(self):
+        for counter in self.delegate.growth_counts.values():
+            counter.settle()
+            counter.deleteLater()
+        self.delegate.growth_counts.clear()
+
+    def append(self, bundle, *, animate=True, count_growth=False):
         bar = self.view.verticalScrollBar()
         before = bar.value()
-        self._stop_motion()
+        previous = self.model.entries[-1] if self.model.entries else None
         added, changed = self.model.append(bundle)
         if not added and not changed:
             return
+        self._stop_motion()
+        first = max(0, len(self.model.entries) - added - int(changed))
+        for position in range(first, len(self.model.entries)):
+            entry = self.model.entries[position]
+            if entry.item.kind == RewardHero.ROUTINE_GROWTH and entry.item.growth_units:
+                old_units = previous.item.growth_units if previous is not None and previous.item.event_id == entry.item.event_id else 0
+                self._count_growth(entry, position, old_units,
+                    animate=count_growth and self.animations_enabled)
+        visible_ids = {entry.item.event_id for entry in self.model.entries[-self.model.rowCount():]}
+        for identity in tuple(self.delegate.growth_counts):
+            if identity not in visible_ids:
+                counter = self.delegate.growth_counts.pop(identity)
+                counter.stop()
+                counter.deleteLater()
+        if not self.isVisible():
+            # Compact HUDs still record every reward, without laying out an
+            # invisible list on the critical path to their Growth pulse.
+            return
         self.view.doItemsLayout()
         self.set_available_height()
-        inserted_height = sum(self.view.sizeHintForRow(i) for i in range(added))
+        visible_added = min(added, self.model.rowCount())
+        inserted_height = sum(self.view.sizeHintForRow(i) for i in range(visible_added))
         if not added or not animate or not self.animations_enabled or not self.isVisible():
             bar.setValue(0)
             return
-        self.delegate.new_ids = {self.model.data(self.model.index(i), Qt.ItemDataRole.UserRole).item.event_id for i in range(added)}
+        self.delegate.new_ids = {self.model.data(self.model.index(i), Qt.ItemDataRole.UserRole).item.event_id for i in range(visible_added)}
         self.delegate.progress = 0.0
         start = min(bar.maximum(), before + inserted_height)
         bar.setValue(start)

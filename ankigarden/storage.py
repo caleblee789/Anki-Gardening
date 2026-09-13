@@ -156,6 +156,8 @@ def assign_stable_answer_identities(
     events: list[tuple[int, int, str]],
     existing_bindings: Mapping[str, str] | None = None,
     reanswer_hints: Mapping[str, int] | None = None,
+    *,
+    present_lineages: Iterable[str] = (),
 ) -> tuple[dict[int, str], dict[str, str]]:
     """Bind revlog rows to insertion-stable, undo-resistant answer lineages.
 
@@ -164,6 +166,9 @@ def assign_stable_answer_identities(
     reused (the normal undo/reanswer shape). A late synced row added alongside
     all existing rows receives a new monotonically allocated lineage, so it
     cannot shift or reroll any earlier answer.
+
+    Callers supplying only a window of history must also supply lineages whose
+    aliases still exist outside that window. Omitted history is not an Undo.
     """
 
     normalized = sorted({
@@ -251,7 +256,7 @@ def assign_stable_answer_identities(
     # lower-ID synced insertion must never consume an orphan that belongs to an
     # undo/reanswer replacement.  Prefer the same Anki day, but retain the
     # lineage across a day-boundary reanswer as the anti-reroll fail-safe.
-    assigned_lineages = set(identities.values())
+    assigned_lineages = set(identities.values()) | set(present_lineages)
     orphaned_lineages = [
         lineage
         for lineage in lineage_context
@@ -3477,6 +3482,32 @@ class GardenStorage:
             ).items()
         }
 
+    def present_answer_lineages(self, bindings: Mapping[str, str]) -> set[str]:
+        """Check alias presence beyond the review hook's current-day window.
+
+        Exact-ID lookups retain existing historical answers without loading
+        their contents or mistaking them for deleted Undo/reanswer candidates.
+        Use Anki's authority so this also works without the disposable index.
+        """
+        aliases = {int(key): lineage for key, lineage in bindings.items()}
+        if not aliases:
+            return set()
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            raise RevlogReadError("Anki review history is not available yet.")
+        present: set[str] = set()
+        revlog_ids = list(aliases)
+        for offset in range(0, len(revlog_ids), 900):
+            chunk = revlog_ids[offset:offset + 900]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = collection.db.all(
+                "SELECT id FROM revlog WHERE id IN (" + placeholders + ") "
+                "AND type IN (0, 1, 2, 3)",
+                *chunk,
+            )
+            present.update(aliases[int(row[0])] for row in rows)
+        return present
+
     def all_answer_lineage_bindings(self) -> dict[str, str]:
         if self._reward_ledger is None:
             return dict(self.state.answer_lineage_bindings)
@@ -4021,7 +4052,6 @@ class GardenStorage:
         """
 
         verified_through = max(0, int(getattr(self, "_verified_history_high_water", 0)))
-        normalized_after = max(verified_through, int(after_id))
         normalized_card = max(0, int(card_id))
         normalized_ease = int(ease)
         if normalized_card <= 0 or normalized_ease <= 0:
@@ -4030,6 +4060,16 @@ class GardenStorage:
         if collection is None or getattr(collection, "db", None) is None:
             raise RevlogReadError("Anki review history is not available yet.")
         day_start, day_end = self.current_scheduler_day_bounds_ms()
+        # A persisted scalar cursor can include future-dated imported history.
+        # It cannot hide today's answers from the already verified local path.
+        local_after = int(after_id)
+        if local_after >= int(day_end):
+            local_after = max(
+                (int(value) for value in self.state.processed_revlog_ids
+                 if int(value) < int(day_end)),
+                default=0,
+            )
+        normalized_after = max(verified_through, local_after)
         lower_bound = max(max(0, int(day_start) - 1), normalized_after)
         bounded_limit = min(MAX_PROCESSED_REVLOG_IDS, 2)
         try:

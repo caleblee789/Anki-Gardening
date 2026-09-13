@@ -1482,66 +1482,22 @@ def load_capture_scenario_contracts(
     *,
     contract: CaptureContract | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Load callable, checkpoint, and fixture identities offline."""
+    """Read current JSON metadata and inspect source without executing evidence."""
 
+    if not _is_current_contract_source(source_path):
+        raise CaptureValidationError((
+            "Legacy executable scenario metadata is unsupported; recapture "
+            "with the current JSON capture contract.",
+        ))
     module = _source_module(source_path)
     contract = contract or load_capture_contract(source_path)
-    current_surfaces = (
-        _current_surface_map() if _is_current_contract_source(source_path) else None
+    current_surfaces = _current_surface_map()
+    full_contract = load_capture_contract(source_path, profile="full")
+    full_labels = full_contract.labels
+    callable_rows = tuple(
+        (label, str(current_surfaces[label].get("executor", "")))
+        for label in full_labels
     )
-    selected_names = {
-        "EXHAUSTIVE_CAPTURE_FACE_GROUPS",
-        "EXHAUSTIVE_CAPTURE_FACE_LABELS",
-        "EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES",
-        "CAPTURE_SCENARIO_HIDDEN_METHOD_REFERENCES",
-        "CAPTURE_SCENARIO_SETUP_BOUNDARY",
-        "CAPTURE_SCENARIO_FRESH_LABELS",
-        "CAPTURE_SCENARIO_NURTURED_ACTIVE_LABELS",
-        "CAPTURE_SCENARIO_DEVELOPMENT_STRESS_LABELS",
-    }
-    selected_functions = {
-        "capture_scenario_internal_setups",
-        "capture_scenario_prerequisites",
-        "capture_scenario_checkpoint",
-    }
-    namespace: dict[str, Any] = {}
-    if current_surfaces is None:
-        selected: list[ast.stmt] = []
-        for node in module.body:
-            if isinstance(node, (ast.Assign, ast.AnnAssign)):
-                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                if any(
-                    isinstance(target, ast.Name) and target.id in selected_names
-                    for target in targets
-                ):
-                    selected.append(node)
-            elif isinstance(node, ast.FunctionDef) and node.name in selected_functions:
-                selected.append(node)
-        namespace = {"frozenset": frozenset, "range": range}
-        try:
-            exec(
-                compile(
-                    ast.Module(body=selected, type_ignores=[]),
-                    str(source_path),
-                    "exec",
-                ),
-                namespace,
-            )
-        except Exception as error:
-            raise CaptureValidationError(
-                (f"capture scenario metadata could not be evaluated: {error}",)
-            ) from error
-        full_labels = tuple(namespace.get("EXHAUSTIVE_CAPTURE_FACE_LABELS", ()))
-        callable_rows = tuple(
-            namespace.get("EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES", ())
-        )
-    else:
-        full_contract = load_capture_contract(source_path, profile="full")
-        full_labels = full_contract.labels
-        callable_rows = tuple(
-            (label, str(current_surfaces[label].get("executor", "")))
-            for label in full_labels
-        )
     callable_map = dict(callable_rows)
     if (
         not full_labels
@@ -1611,11 +1567,7 @@ def load_capture_scenario_contracts(
         ).hexdigest()
         method_references[name] = runner_method_references(node)
 
-    hidden_raw = (
-        {"_next_after": ("_next_step",)}
-        if current_surfaces is not None else
-        namespace.get("CAPTURE_SCENARIO_HIDDEN_METHOD_REFERENCES", {})
-    )
+    hidden_raw = {"_next_after": ("_next_step",)}
     if not isinstance(hidden_raw, dict):
         raise CaptureValidationError(
             ("CAPTURE_SCENARIO_HIDDEN_METHOD_REFERENCES must be a mapping",)
@@ -1756,26 +1708,17 @@ def load_capture_scenario_contracts(
         source_path,
         contract=contract,
     )
-    if current_surfaces is None:
-        internal_setups = namespace["capture_scenario_internal_setups"]
-        prerequisites = namespace["capture_scenario_prerequisites"]
-        checkpoint = namespace["capture_scenario_checkpoint"]
-    else:
-        internal_setups = lambda label: tuple(
-            current_surfaces[label].get("internal_setups", ())
-        )
-        prerequisites = lambda label: tuple(
-            current_surfaces[label].get("prerequisites", ())
-        )
-        checkpoint = lambda label: str(current_surfaces[label].get("checkpoint", ""))
+    internal_setups = lambda label: tuple(
+        current_surfaces[label].get("internal_setups", ())
+    )
+    prerequisites = lambda label: tuple(
+        current_surfaces[label].get("prerequisites", ())
+    )
+    checkpoint = lambda label: str(current_surfaces[label].get("checkpoint", ""))
     results: dict[str, dict[str, Any]] = {}
     for label in contract.labels:
         callable_name = str(callable_map.get(label, ""))
-        raw_surface = (
-            current_surfaces.get(label, {})
-            if current_surfaces is not None else
-            {}
-        )
+        raw_surface = current_surfaces.get(label, {})
         scenario_id = str(raw_surface.get("scenario_id", label))
         fixture_id = str(raw_surface.get("fixture_id", f"{label}-v1"))
         scenario_step = raw_surface.get("scenario_step", 1)
@@ -1810,14 +1753,13 @@ def load_capture_scenario_contracts(
             "method_inputs": method_inputs,
             "top_level_inputs": top_level_inputs,
         }
-        if current_surfaces is not None:
-            identity["surface_spec_dependency_digest"] = str(
-                current_surfaces[label].get("dependency_digest", "")
-            )
-            identity["support_module_inputs"] = {
-                name: hashlib.sha256((ROOT / "ankigarden" / "capture" / name).read_bytes()).hexdigest()
-                for name in ("workspace.py", "workspace_specs.py")
-            }
+        identity["surface_spec_dependency_digest"] = str(
+            current_surfaces[label].get("dependency_digest", "")
+        )
+        identity["support_module_inputs"] = {
+            name: hashlib.sha256((ROOT / "ankigarden" / "capture" / name).read_bytes()).hexdigest()
+            for name in ("workspace.py", "workspace_specs.py")
+        }
         identity["digest"] = _canonical_digest(identity)
         results[label] = identity
     return results

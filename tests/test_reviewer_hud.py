@@ -976,6 +976,18 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     assert ReviewGardenHud._collapsed_coin_delta(reconciled_zero) == 0
 
 
+def _wire_committed_details_stub(hud):
+    # Pure lifecycle tests finish the deferred presentation turn explicitly;
+    # real paint ordering is covered by the shared-hook Qt test.
+    def finish():
+        updates = hud._compact_secondary_updates
+        hud._compact_secondary_updates = []
+        for bundle, major, reveal in updates:
+            ReviewGardenHud._present_committed_reward_details(hud, bundle, major=major, reveal=reveal)
+    hud._flush_compact_secondary_updates = finish
+    hud.defer_until_feedback_paint = lambda callback: callback()
+
+
 def test_committed_entrypoint_respects_an_explicit_zero_applied_growth() -> None:
     animated: list[int] = []
     fake = SimpleNamespace(
@@ -1004,6 +1016,7 @@ def test_committed_entrypoint_respects_an_explicit_zero_applied_growth() -> None
         ),),
     )
 
+    _wire_committed_details_stub(fake)
     assert ReviewGardenHud.present_committed_result(
         fake,
         find,
@@ -1064,6 +1077,7 @@ def test_routine_answers_remain_reconciled_with_an_early_major_reward() -> None:
         animate_growth_delta=lambda _units: None,
     )
 
+    _wire_committed_details_stub(fake)
     assert ReviewGardenHud.present_reward(fake, major, reveal=False)
     for index in range(25):
         routine = RewardBundleProjection(
@@ -1115,6 +1129,7 @@ def test_committed_major_reward_is_idempotent_and_presented_while_collapsed() ->
         animate_growth_delta=lambda _units: None,
     )
 
+    _wire_committed_details_stub(fake)
     assert ReviewGardenHud.present_committed_result(fake, bundle)
     assert ReviewGardenHud.present_committed_result(fake, bundle)
     assert tuple(fake._reward_history) == (bundle,)
@@ -1221,6 +1236,7 @@ def test_early_next_commit_waits_for_hold_and_details_pause_archiving() -> None:
         animate_growth_delta=lambda _units: None,
     )
 
+    _wire_committed_details_stub(committed)
     assert ReviewGardenHud.present_committed_result(
         committed,
         new_bundle,
@@ -1266,6 +1282,7 @@ def test_collapsing_preserves_the_mounted_reward_and_running_hold() -> None:
         setProperty=lambda *_args: None,
         _sync_reward_dock_visibility=lambda: None,
         reposition=lambda: None,
+        _request_feedback_paint=lambda: None,
     )
 
     ReviewGardenHud.set_collapsed(fake, True)
@@ -1306,6 +1323,11 @@ def test_reward_remount_restores_the_readable_event_without_representing_it() ->
     inline_state = {"major_id": current.bundle_id, "current": {"caption": "Stored"}, "remaining_ms": 450}
     restored_inline = []
     exported = SimpleNamespace(
+        _session_totals=(0, 0, 0),
+        _session_footer=SimpleNamespace(property=lambda _key: 0),
+        _session_growth_count=SimpleNamespace(snapshot=lambda: {}),
+        _reward_feed=SimpleNamespace(export_count_state=lambda: {}, view=SimpleNamespace(
+            verticalScrollBar=lambda: SimpleNamespace(value=lambda: 0))),
         _collapsed_feedback=SimpleNamespace(export_state=lambda: inline_state),
         _history_reward_inspection=None,
         _current_reward=current,
@@ -1334,6 +1356,10 @@ def test_reward_remount_restores_the_readable_event_without_representing_it() ->
 
     presentations: list[tuple[object, dict[str, object]]] = []
     restored = SimpleNamespace(
+        _animations_enabled=False,
+        update_session_totals=lambda _snapshot: None,
+        _session_growth_count=SimpleNamespace(restore=lambda _state: None, settle=lambda: None,
+            state=lambda: 0, State=SimpleNamespace(Stopped=0)),
         _collapsed_feedback=SimpleNamespace(restore_state=restored_inline.append, resume=lambda: None),
         _seen_bundle_ids=set(),
         _reward_history=deque(),
@@ -1588,8 +1614,8 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
     assert "revision != self._coin_feedback_revision" in WIDGET_SOURCE
     assert "revision != self._growth_feedback_revision" in WIDGET_SOURCE
     assert "revision != self._today_feedback_revision" in WIDGET_SOURCE
-    assert "_PROJECTION_APPLY_DELAY_MS = 220" in WIDGET_SOURCE
-    assert "_ROUTINE_SESSION_RELEASE_MS = _PROJECTION_APPLY_DELAY_MS + _PROGRESS_FILL_MS" in WIDGET_SOURCE
+    assert "_PROJECTION_APPLY_DELAY_MS = 0" in WIDGET_SOURCE
+    assert "_ROUTINE_SESSION_RELEASE_MS = 0" in WIDGET_SOURCE
     assert '"hudRoutineSessionReleaseDelayMs", _ROUTINE_SESSION_RELEASE_MS' in WIDGET_SOURCE
     assert "def _finish_routine_projection_feedback" in WIDGET_SOURCE
     assert '"hudRoutineSessionUpdateDeferred"' in WIDGET_SOURCE
@@ -1723,8 +1749,7 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
         "def _highlight_session_changes",
         1,
     )[1].split("def _clear_session_highlight", 1)[0]
-    assert "QVariantAnimation(self)" in session_feedback
-    assert "self._set_session_metric_values(displayed)" in session_feedback
+    assert "QVariantAnimation(self)" not in session_feedback
     assert "widget.setMinimumWidth" not in session_feedback
     assert "changed = changed_metrics[index]" in session_feedback
     assert "changed_metrics=changed_metrics" in WIDGET_SOURCE

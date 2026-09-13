@@ -6708,16 +6708,15 @@ class GardenGameEngine:
                 reviews, key=lambda row: int(row.get("revlog_id", 0) or 0)
             )
             for payload in ordered:
+                previous_result = None
                 if pending is not None:
                     previous_payload, previous_award, previous_baseline = pending
                     if collect_results:
-                        results.append(self._committed_answer_result(
+                        previous_result = self._committed_answer_result(
                             payload=previous_payload,
                             award=previous_award,
                             baseline=previous_baseline,
-                        ))
-                    committed_count += 1
-                    pending = None
+                        )
                 baseline = (
                     self._committed_answer_baseline()
                     if collect_results else {}
@@ -6725,6 +6724,13 @@ class GardenGameEngine:
                 self._current_correlation_id = self._answer_correlation_id(payload)
                 award = self._register_review_in_memory(payload)
                 if award.correlation_id:
+                    # Only another accepted answer releases the previous one.
+                    # A trailing duplicate must not detach final-due rewards
+                    # from the last answer that actually earned them.
+                    if pending is not None:
+                        if previous_result is not None:
+                            results.append(previous_result)
+                        committed_count += 1
                     pending = (payload, award, baseline)
             if pending is not None and due_status is not None:
                 self._current_correlation_id = pending[1].correlation_id

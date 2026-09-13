@@ -150,9 +150,12 @@ class ReconciliationCoordinator:
 
     def operation_finished(self, changes: Any, handler: Any) -> bool:
         known_answer = handler is not None and handler is self._last_answer_handler
-        self._last_answer_handler = None
         if known_answer:
+            self._last_answer_handler = None
             return True
+        # Other add-ons can finish an operation between the answer hook and
+        # Anki's matching notification. Only that match consumes attribution;
+        # an unrelated operation still receives its normal invalidation below.
         self.storage.invalidate_due_snapshot()
         # Note text, deck selection and scheduler settings do not alter revlog.
         # Unknown card operations (including imports) need content verification.
