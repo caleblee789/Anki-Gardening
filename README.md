@@ -42,7 +42,7 @@ Seed → Sprout → Young → Mature → Flowering → Full Bloom.
     <td align="center">
       <img src="output/promo/anki-garden-growth-showcase.gif" width="300" height="300" alt="Dahlia progressing from Seed through all six growth stages to Full Bloom">
       <br>
-      <sub>Promotional Dahlia stage showcase.</sub>
+      <sub>Dahlia stage showcase.</sub>
     </td>
   </tr>
 </table>
