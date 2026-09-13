@@ -107,12 +107,14 @@ def _accumulator(
     *,
     start: SessionStartSnapshot | None = None,
 ) -> SessionSummaryAccumulator:
-    return SessionSummaryAccumulator(
+    accumulator = SessionSummaryAccumulator(
         session_id="session-local-1",
         started_at="2026-08-28T10:00:00Z",
         anki_day_id=DAY_ONE,
         start_snapshot=start or _start(),
     )
+    accumulator.hud_snapshot()
+    return accumulator
 
 
 def _event(
@@ -159,6 +161,16 @@ def _finish(
     *,
     end: SessionEndSnapshot | None = None,
 ):
+    from ankigarden.reward_counts import reward_drop_count
+    live = accumulator.live_snapshot(ended_at="2026-08-28T11:00:00Z", end_snapshot=end or SessionEndSnapshot(_today()))
+    hud = accumulator.hud_snapshot()
+    assert hud == {
+        "cards_completed": live.cards_completed,
+        "footer_growth_units": live.footer_growth_units,
+        "footer_coin_count": live.footer_coin_count,
+        "footer_find_count": live.footer_find_count,
+        "footer_drop_count": reward_drop_count(live),
+    }
     return accumulator.finalize(
         ended_at="2026-08-28T11:00:00Z",
         end_snapshot=end or SessionEndSnapshot(
@@ -591,6 +603,7 @@ def test_live_snapshot_is_exact_once_non_finalizing_and_matches_final_reducer():
             40,
         ),),
     )
+    accumulator.hud_snapshot()
     assert accumulator.accept_committed(event) is True
     assert accumulator.accept_committed(event) is False
     accumulator.accept_committed(_event(
@@ -637,6 +650,11 @@ def test_live_snapshot_is_exact_once_non_finalizing_and_matches_final_reducer():
     assert first.footer_growth_units == 2_625
     assert first.garden_coins_earned == 4
     assert first.footer_find_count == 1
+    hud = accumulator.hud_snapshot()
+    assert hud["footer_growth_units"] == first.footer_growth_units
+    assert hud["footer_coin_count"] == first.footer_coin_count
+    restored = SessionSummaryAccumulator.from_recovery_checkpoint(accumulator.recovery_checkpoint())
+    assert restored.hud_snapshot() == hud
 
     payload = accumulator.finalize(
         ended_at="2026-08-28T11:00:00Z",

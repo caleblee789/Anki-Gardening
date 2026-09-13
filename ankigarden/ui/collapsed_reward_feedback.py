@@ -9,9 +9,11 @@ from aqt.qt import (
 )
 
 from .icons import garden_icon
+from .growth_count_up import GrowthCountUp
 from .reward_rarity import reward_treatment
 from .session_summary import format_growth_units
 from .theme import GARDEN_THEME, apply_tabular_numerals
+from ..performance import RUNTIME_PERFORMANCE
 
 
 class _FadingLabel(QLabel):
@@ -34,6 +36,10 @@ class _FadingLabel(QLabel):
             painter.drawPixmap(self.contentsRect(), pixmap)
         else:
             painter.drawText(self.contentsRect(), self.alignment(), self.text())
+        painter.end()
+        callback = getattr(self, "_on_feedback_painted", None)
+        if callback is not None and self.isVisible() and self.opacity() >= 1.0:
+            callback()
 
 
 class _FadingRow(QWidget):
@@ -47,7 +53,7 @@ class _FadingRow(QWidget):
 
 
 class CollapsedRewardFeedback(QWidget):
-    """One inline slot: committed Growth, then milestone art, then Coins.
+    """One inline slot: other rewards, then accumulated committed Growth.
 
     This owns only the visual sequence. The HUD keeps the authoritative bundle,
     history, duplicate protection, and expanded-reward lifecycle.
@@ -58,6 +64,9 @@ class CollapsedRewardFeedback(QWidget):
         self.hud = hud
         self._major_id = ""
         self._seen_major_ids = set()
+        self._pending_growth_ids = []
+        self._painted_frame = None
+        self._icons = {}
         self._frames = deque()
         self._pending = {}
         self._current = None
@@ -95,8 +104,10 @@ class CollapsedRewardFeedback(QWidget):
         self.amount = _FadingLabel(self.metric_row)
         self.amount.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.amount.setTextFormat(Qt.TextFormat.PlainText)
+        self.amount._on_feedback_painted = self._feedback_painted
         apply_tabular_numerals(self.amount)
         metric.addWidget(self.amount)
+        self._growth_count = GrowthCountUp(self, self._paint_growth_amount)
         # Retained read-only capture accessor; not a second visible line.
         self.caption = QLabel(self)
         self.caption.hide()
@@ -113,34 +124,35 @@ class CollapsedRewardFeedback(QWidget):
         return bool(self._frames or (self._current is not None and self._current_major))
 
     def set_major(self, identity, frames, coins, allocations):
+        self.enqueue(identity, frames, coins, allocations)
+
+    def enqueue(self, identity, frames, coins, allocations):
+        """Accept each commit once, independently of the expanded reward dock."""
         if identity in self._seen_major_ids:
             self.resume()
             return
         self._seen_major_ids.add(identity)
         self._major_id = identity
         self.setProperty("rewardBundleId", identity)
-        # Preserve pending resource messages when a newer major event arrives.
-        # Decorative notices can coalesce, but committed Coins and Growth each
-        # retain a finite turn in the display sequence.
-        self._frames = deque(frames[-1:])
-        self.add_routine(allocations, coins)
-        if self._current is None:
-            self._advance()
+        RUNTIME_PERFORMANCE.answer_stage("feedback_enqueued", identity,
+            reason="earlier_feedback" if self._current else "ready")
+        for frame in frames:
+            self._frames.append({**frame, "answer_ids": (identity,)})
+        self.add_routine(allocations, coins, identity=identity)
 
-    def add_routine(self, allocations, coins=0):
-        # A routine answer should acknowledge its Growth immediately instead
-        # of waiting for the Coin frame's full reading time.
-        for label, units in (*allocations, ("Coins", coins)):
-            if units > 0:
-                resource = "Coins" if label == "Coins" else "Growth"
-                self._pending[resource] = self._pending.get(resource, 0) + units
-        if self._current is not None and not self._current_major and "Growth" in self._pending:
-            # A new answer need not wait behind an already displayed resource.
-            # Merge an in-flight Growth pulse; Coins have already been shown.
-            if self._current.get("label") == "Growth":
-                self._pending["Growth"] += self._current["units"]
+    def add_routine(self, allocations, coins=0, *, identity=""):
+        if coins > 0:
+            self._frames.append({**self._amount_frame("Coins", coins), "answer_ids": (identity,)})
+        growth = sum(max(0, int(units)) for _label, units in allocations)
+        if growth:
+            self._pending["Growth"] = self._pending.get("Growth", 0) + growth
+            self._pending_growth_ids.append(identity)
+        if (self._current is not None and self._current.get("label") == "Growth"
+                and not self._frames and growth):
+            # Continue one visible Growth pulse without queuing each card.
+            self._pending["Growth"] += self._current["units"]
             self._timer.stop()
-            self._advance()
+            self._advance(combine_growth=True)
             return
         if self._current is None:
             self._advance()
@@ -151,31 +163,34 @@ class CollapsedRewardFeedback(QWidget):
                 "icon": "coin" if coin else "growth", "duration": 950,
                 "color": GARDEN_THEME["coin_accent" if coin else "reviewer_hud_growth_strong"]}
 
-    def _advance(self):
+    def _advance(self, *, combine_growth=False):
         if self._disposed:
             return
         finished_major = self._current is not None and self._current_major
         self._current = None
         self._current_major = False
-        if "Growth" in self._pending:
-            self._current = self._amount_frame("Growth", self._pending.pop("Growth"))
-        elif self._frames:
+        if self._frames:
             self._current = self._frames.popleft()
-            self._current_major = True
-        elif self._pending:
-            label = next(iter(self._pending))
-            self._current = self._amount_frame(label, self._pending.pop(label))
+            self._current_major = "units" not in self._current
+        elif "Growth" in self._pending:
+            self._current = self._amount_frame("Growth", self._pending.pop("Growth"))
+            self._current["answer_ids"] = tuple(self._pending_growth_ids)
+            self._pending_growth_ids.clear()
         if finished_major:
             QTimer.singleShot(0, lambda: self.hud._maybe_archive_current_reward() if not self.hud._disposed else None)
         self.setProperty("sequencePending", self.major_pending)
         if self._current is None:
             self._clear_display()
             return
-        self._render(self._current)
+        for identity in self._current.get("answer_ids", ()):
+            RUNTIME_PERFORMANCE.answer_stage("feedback_eligible", identity,
+                reason=self._current.get("label", "reward"))
+        self._render(self._current, restart_count=not combine_growth)
         if self.hud._collapsed:
             self._timer.start(self._current["duration"])
         else:
             self._paused_ms = self._current["duration"]
+            self.suspend()
 
     def update_idle(self):
         nurture = getattr(getattr(self.hud, "_projection", None), "nurture", None)
@@ -186,24 +201,39 @@ class CollapsedRewardFeedback(QWidget):
         self.hud._collapsed_tab.setProperty("collapsedNextValueCopy", text)
         self.hud._collapsed_tab.setProperty("collapsedNextVisibleCopy", text if self._current is None else "")
 
-    def _render(self, frame, *, animate=True):
+    def _paint_growth_amount(self, units):
+        self.amount.setText(format_growth_units(units, signed=True))
+
+    def _render(self, frame, *, animate=True, restart_count=True):
+        self._painted_frame = None
         color = frame["color"]
         units = frame.get("units")
         self.caption.setText(str(frame.get("caption", "")))
         if units is not None:
             exact = f"+{units:,}" if frame["label"] == "Coins" else format_growth_units(units, signed=True)
             ratio = max(1.0, self.devicePixelRatioF())
-            icon = garden_icon(frame["icon"], color=color).pixmap(round(12 * ratio), round(12 * ratio))
-            icon.setDevicePixelRatio(ratio)
+            key = (frame["icon"], color, ratio)
+            icon = self._icons.get(key)
+            if icon is None:
+                icon = garden_icon(frame["icon"], color=color).pixmap(round(12 * ratio), round(12 * ratio))
+                icon.setDevicePixelRatio(ratio)
+                self._icons[key] = icon
             self.metric_icon.setPixmap(icon)
             self.metric_icon.show()
             self.amount.setStyleSheet(f"color:{color};font-size:13px;font-weight:600;")
             self.amount.ensurePolished()
             spacing = min(4, max(0, self.width() - 12 - self.amount.fontMetrics().horizontalAdvance(exact)))
             self.metric_row.layout().setSpacing(spacing)
-            self.amount.setText(exact)
+            if frame["label"] == "Growth":
+                if restart_count:
+                    self._growth_count.retarget(0, animate=False)
+                self._growth_count.retarget(units, animate=animate and self.hud._animations_enabled)
+            else:
+                self._growth_count.stop()
+                self.amount.setText(exact)
             tooltip = f"{exact} {frame['label']}"
         else:
+            self._growth_count.stop()
             self.metric_icon.hide()
             text = str(frame.get("caption", "Reward")).replace("\nReached", "").replace("\n", " ")
             self.amount.setStyleSheet(f"color:{color};font-size:12px;font-weight:600;")
@@ -217,9 +247,19 @@ class CollapsedRewardFeedback(QWidget):
         self.amount.setToolTip(tooltip)
         self.amount.setAccessibleName(tooltip)
         self.update_idle()
-        self._exchange(True, animate=animate)
+        # Readable on the first frame; the plant pulse supplies motion.
+        self._exchange(True, animate=False)
+        self.amount.update()
         if animate:
             self.hud.pulse_collapsed_plant(color)
+
+    def _feedback_painted(self):
+        if self._current is None or self._painted_frame is self._current:
+            return
+        self._painted_frame = self._current
+        for identity in self._current.get("answer_ids", ()):
+            RUNTIME_PERFORMANCE.answer_stage("feedback_painted", identity,
+                reason=self._current.get("label", "reward"))
 
     def _clear_display(self):
         self.update_idle()
@@ -272,9 +312,11 @@ class CollapsedRewardFeedback(QWidget):
             "seen_major_ids": tuple(self._seen_major_ids),
             "frames": tuple(dict(frame) for frame in self._frames),
             "pending": dict(self._pending),
+            "pending_growth_ids": tuple(self._pending_growth_ids),
             "current": dict(self._current) if self._current is not None else None,
             "current_major": self._current_major,
             "remaining_ms": max(1, remaining) if self._current is not None else 0,
+            "growth_count": self._growth_count.snapshot(),
         }
 
     def restore_state(self, state):
@@ -285,6 +327,7 @@ class CollapsedRewardFeedback(QWidget):
         self._seen_major_ids = set(state.get("seen_major_ids", ()))
         self._frames = deque(dict(frame) for frame in state.get("frames", ()))
         self._pending = dict(state.get("pending", {}))
+        self._pending_growth_ids = list(state.get("pending_growth_ids", ()))
         current = state.get("current")
         self._current = dict(current) if current is not None else None
         self._current_major = bool(state.get("current_major"))
@@ -295,31 +338,42 @@ class CollapsedRewardFeedback(QWidget):
             self._clear_display()
         else:
             self._render(self._current, animate=False)
+            if self._current.get("label") == "Growth":
+                self._growth_count.restore(state.get("growth_count"))
+                if not self.hud._animations_enabled:
+                    self._growth_count.settle()
 
     def clear_major(self):
+        # Expanded-dock archival must not erase independent compact feedback.
         self._major_id = ""
         self.setProperty("rewardBundleId", "")
-        self._frames.clear()
-        if self._current_major:
-            self._timer.stop()
-            self._current = None
-            self._current_major = False
-            self._advance()
+
+    def settle_count(self):
+        if self._current is not None and self._current.get("label") == "Growth":
+            self._growth_count.settle()
+        else:
+            self._growth_count.stop()
 
     def suspend(self):
         if self._timer.isActive():
             self._paused_ms = max(1, self._timer.remainingTime())
             self._timer.stop()
+        if self._growth_count.state() == self._growth_count.State.Running:
+            self._growth_count.pause()
 
     def resume(self):
         if self._current is not None and self.hud._collapsed and not self._timer.isActive():
             self._timer.start(self._paused_ms or self._current["duration"])
             self._paused_ms = 0
+        if self.hud._collapsed and self._growth_count.state() == self._growth_count.State.Paused:
+            self._growth_count.resume()
 
     def dispose(self):
         self._disposed = True
         self._timer.stop()
+        self._growth_count.stop()
         if self._motion is not None:
             self._motion.stop()
         self._frames.clear()
         self._pending.clear()
+        self._pending_growth_ids.clear()

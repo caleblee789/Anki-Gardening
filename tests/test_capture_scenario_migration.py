@@ -820,7 +820,7 @@ def test_legacy_capture_source_requires_exact_hash_and_unambiguous_archive(
     assert _legacy_capture_source_bytes(manifest, payload) is None
 
 
-def test_legacy_scenario_migration_is_bound_to_source_contract(
+def test_legacy_scenario_metadata_requires_recapture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -863,15 +863,11 @@ def test_legacy_scenario_migration_is_bound_to_source_contract(
         "load_capture_contract",
         lambda *_args, **_kwargs: SimpleNamespace(labels=labels),
     )
-    monkeypatch.setattr(
-        validate_ui_capture,
-        "load_capture_scenario_contracts",
-        lambda *_args, **_kwargs: scenarios,
-    )
-
-    assert _legacy_scenario_reuse_digests(manifest, payload) == _reuse_digests(
-        source_text
-    )
+    legacy_source = tmp_path / "capture_ui_faces.py"
+    legacy_source.write_bytes(source)
+    with pytest.raises(validate_ui_capture.CaptureValidationError, match="recapture"):
+        validate_ui_capture.load_capture_scenario_contracts(legacy_source)
+    assert _legacy_scenario_reuse_digests(manifest, payload) is None
 
     changed = copy.deepcopy(payload)
     changed["scenario_contract_digest"] = "d" * 64

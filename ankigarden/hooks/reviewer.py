@@ -8,7 +8,7 @@ import math
 import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 import uuid
 
 from aqt import mw
@@ -28,7 +28,10 @@ from ..growth import GROWTH_STAGES
 from ..garden_finds import standard_find_artwork_ref
 from ..notices import USER_NOTICES
 from ..performance import RUNTIME_PERFORMANCE, timed
-from ..storage import assign_stable_answer_identities, unprocessed_revlog_entries
+from ..storage import (
+    _parse_answer_lineage_key, assign_stable_answer_identities,
+    unprocessed_revlog_entries,
+)
 from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 from ..ui.reviewer_hud import (
     HUD_ANSWER_CONTROLS_SCHEMA_VERSION,
@@ -539,6 +542,7 @@ class ReviewerHookHandler:
             tuple[CommittedAnswerResult | None, CommittedSessionEvent]
         ] = []
         self._presented_reviewer_result_ids: set[str] = set()
+        self._pending_reviewer_acknowledgements: list[CommittedAnswerResult] = []
         self._session_summary_accumulator: SessionSummaryAccumulator | None = None
         self._saved_review_sessions: dict[str, Any] = {}
         self._restored_session_id = ""
@@ -1962,6 +1966,9 @@ class ReviewerHookHandler:
         local = [row for row in results if row.origin in {"local", "local_recovery"}]
         accumulator = self._session_summary_accumulator
         for result in local:
+            if RUNTIME_PERFORMANCE.enabled:
+                RUNTIME_PERFORMANCE.answer_stage("committed", str(result.event_id),
+                    related_answer_id=str(result.occurred_at_ms), reason="reconciled")
             if accumulator is not None and result.occurred_at_ms in self._review_window_answer_revlog_ids:
                 event = self._session_event_from_result(result)
                 if event is not None and accumulator.accept_committed(event):
@@ -2815,6 +2822,7 @@ class ReviewerHookHandler:
         self._persist_hud_preferences(reviewer_hud_collapsed=collapsed)
         self._ensure_reviewer_hud(force_collapsed=collapsed)
 
+    @timed("review.session-totals")
     def _update_reviewer_hud_session_totals(self) -> None:
         panel = getattr(self, "_reviewer_hud", None)
         accumulator = self._session_summary_accumulator
@@ -2822,7 +2830,7 @@ class ReviewerHookHandler:
         if accumulator is None or not callable(update_totals):
             return
         try:
-            snapshot = accumulator.live_snapshot(
+            snapshot = accumulator.hud_snapshot() if hasattr(accumulator, "hud_snapshot") else accumulator.live_snapshot(
                 ended_at=self._session_now_iso(),
                 end_snapshot=self._session_end_snapshot(refresh_today=False),
             )
@@ -2955,9 +2963,20 @@ class ReviewerHookHandler:
                 continue
             self._presented_reviewer_result_ids.add(result_id)
             if result is not None:
-                self._acknowledge_reviewer_result_feedback(result)
+                self._pending_reviewer_acknowledgements.append(result)
         self._pending_reviewer_results = remaining
         self._update_reviewer_hud_session_totals()
+        defer = getattr(panel, "defer_until_feedback_paint", None)
+        if callable(defer):
+            defer(self._finish_reviewer_feedback_acknowledgements)
+        else:
+            self._finish_reviewer_feedback_acknowledgements()
+
+    def _finish_reviewer_feedback_acknowledgements(self) -> None:
+        results = self._pending_reviewer_acknowledgements
+        self._pending_reviewer_acknowledgements = []
+        for result in results:
+            self._acknowledge_reviewer_result_feedback(result)
         self._retry_reviewer_feedback_acknowledgements()
 
     @timed("review.hud")
@@ -2969,6 +2988,16 @@ class ReviewerHookHandler:
     ) -> None:
         """Mount or refresh one focus-safe HUD inside the Reviewer webview."""
 
+        panel = getattr(self, "_reviewer_hud", None)
+        if (force_collapsed is None and force_dock is None
+                and str(getattr(mw, "state", "")) == "review"
+                and bool(getattr(panel, "feedback_paint_pending", False))):
+            # A next-question hook can arrive before the first paint of the
+            # answer result. Keep its scheduled refresh behind that paint too.
+            defer = getattr(panel, "defer_until_feedback_paint", None)
+            if callable(defer):
+                defer(self._ensure_reviewer_hud)
+                return
         self._reviewer_hud_refresh_queued = False
 
         if str(getattr(mw, "state", "") or "") != "review":
@@ -4346,6 +4375,7 @@ class ReviewerHookHandler:
         scheduler_day: str,
         existing_bindings: dict[str, str] | None = None,
         reanswer_hints: dict[str, int] | None = None,
+        present_lineages: Iterable[str] = (),
     ) -> dict[int, str]:
         """Prepare lineages without mutating live state before its transaction."""
 
@@ -4359,6 +4389,7 @@ class ReviewerHookHandler:
             eligible,
             existing_bindings,
             reanswer_hints,
+            present_lineages=present_lineages,
         )
         return identities
 
@@ -4375,6 +4406,10 @@ class ReviewerHookHandler:
         """Revoke local-answer proof without recursively notifying the app."""
 
         self._local_answer_fast_path_ready = False
+        if _reason == "review undo":
+            settle = getattr(getattr(self, "_reviewer_hud", None), "settle_growth_counts", None)
+            if callable(settle):
+                settle()
 
     def _report_history_invalidation(self, reason: str) -> None:
         self.invalidate_history(reason)
@@ -4440,8 +4475,13 @@ class ReviewerHookHandler:
                 if callable(pending_resolver)
                 else getattr(self.storage.state, "pending_reanswer_lineages", {})
             )
-            if pending:
-                return None
+            # An outstanding Undo belongs to its card, including reanswers on
+            # another scheduler day. It must not force every unrelated answer
+            # through a fresh history scan after history has been verified.
+            for lineage in pending:
+                parsed = _parse_answer_lineage_key(lineage)
+                if parsed is None or parsed[1] == card_id:
+                    return None
             proof = loader(
                 after_id=last_processed,
                 card_id=card_id,
@@ -4489,7 +4529,9 @@ class ReviewerHookHandler:
             tuple(row)
             for row in rows
             if len(row) >= 8
-            and int(row[0]) > floor
+            # A proven append belongs to this hook even when an imported
+            # future timestamp inflated the scalar cursor at session start.
+            and (proven_local_commit or int(row[0]) > floor)
             and int(row[1]) == card_id
             and int(row[2]) == int(ease)
             and queue_and_lapse_from_revlog_type(row[7], row[2]) is not None
@@ -4505,12 +4547,27 @@ class ReviewerHookHandler:
         newest_id = max((int(row[0]) for row in rows), default=0)
         return candidate_id if candidate_id == newest_id else 0
 
+    def _remember_deferred_answer(self, card: Any, ease: int, reason: str) -> None:
+        """Keep a failed local answer attached to its session for recovery."""
+        runtime = getattr(self.storage, "runtime_coordinator", None)
+        if runtime is None:
+            return
+        try:
+            revlog_id = runtime.defer_answer(card, ease, self._review_window_token)
+            RUNTIME_PERFORMANCE.answer_stage("deferred", str(revlog_id), reason=reason)
+            if revlog_id:
+                self._review_window_answer_revlog_ids.add(revlog_id)
+        except Exception:
+            logger.exception("Anki Garden: local review attribution could not be saved")
+
     def on_answer(self, reviewer: Any, card: Any, ease: int) -> None:
         started = RUNTIME_PERFORMANCE.begin()
+        RUNTIME_PERFORMANCE.answer_stage("hook")
         try:
             self._process_answer(reviewer, card, ease)
         finally:
             RUNTIME_PERFORMANCE.finish("review.answer", started)
+            RUNTIME_PERFORMANCE.answer_stage("hook_finished")
 
     def _process_answer(self, reviewer: Any, card: Any, ease: int) -> None:
         invalidator = getattr(self.storage, "invalidate_due_snapshot", None)
@@ -4521,14 +4578,10 @@ class ReviewerHookHandler:
             runtime.request("review answer")
             runtime.note_local_answer(reviewer)
             if getattr(self.storage, "runtime_pending", False):
+                RUNTIME_PERFORMANCE.answer_stage("deferred", reason="reconciliation")
                 if not self._review_window_token:
                     self._start_reviewer_session_totals(today_cards_available=False)
-                try:
-                    revlog_id = runtime.defer_answer(card, ease, self._review_window_token)
-                    if revlog_id:
-                        self._review_window_answer_revlog_ids.add(revlog_id)
-                except Exception:
-                    logger.exception("Anki Garden: local review attribution could not be saved")
+                self._remember_deferred_answer(card, ease, "reconciliation")
                 return
         if self._session_summary_accumulator is None:
             # The first-question hook is the authoritative pre-answer
@@ -4583,19 +4636,16 @@ class ReviewerHookHandler:
                 "Anki Garden: review-history ledger unavailable; deferring this answer to catch-up"
             )
             self._report_history_invalidation("review ledger unavailable")
+            self._remember_deferred_answer(card, ease, "review ledger unavailable")
             self._show_deferred_history_notice()
             return
         local_history = self._proven_local_answer(card, ease, last_processed)
+        RUNTIME_PERFORMANCE.answer_stage("history_ready")
         proven_local_commit = local_history is not None
         if local_history is None:
             if runtime is not None:
                 self._report_history_invalidation("local answer was ambiguous")
-                try:
-                    revlog_id = runtime.defer_answer(card, ease, self._review_window_token)
-                    if revlog_id:
-                        self._review_window_answer_revlog_ids.add(revlog_id)
-                except Exception:
-                    logger.exception("Anki Garden: local review attribution could not be saved")
+                self._remember_deferred_answer(card, ease, "ambiguous_local_answer")
                 return
             if bool(getattr(self, "_local_answer_fast_path_ready", False)):
                 self._report_history_invalidation("local answer was ambiguous")
@@ -4650,22 +4700,35 @@ class ReviewerHookHandler:
         )
         if current_review_revlog_id > 0:
             self._review_window_answer_revlog_ids.add(current_review_revlog_id)
-        binding_resolver = getattr(
-            self.storage, "answer_lineage_bindings_for_cards", None
-        )
-        existing_bindings = (
-            binding_resolver({int(row[1]) for row in day_rows})
-            if callable(binding_resolver)
-            else getattr(self.storage.state, "answer_lineage_bindings", {})
-        )
-        identities = self.stable_answer_identities(
-            day_rows,
-            scheduler_day=scheduler_day,
-            existing_bindings=existing_bindings,
-            reanswer_hints=getattr(
-                self.storage.state, "pending_reanswer_lineages", {}
-            ),
-        )
+        try:
+            binding_resolver = getattr(
+                self.storage, "answer_lineage_bindings_for_cards", None
+            )
+            existing_bindings = (
+                binding_resolver({int(row[1]) for row in day_rows})
+                if callable(binding_resolver)
+                else getattr(self.storage.state, "answer_lineage_bindings", {})
+            )
+            presence_resolver = getattr(self.storage, "present_answer_lineages", None)
+            present_lineages = (
+                presence_resolver(existing_bindings)
+                if callable(presence_resolver) else ()
+            )
+            identities = self.stable_answer_identities(
+                day_rows,
+                scheduler_day=scheduler_day,
+                existing_bindings=existing_bindings,
+                reanswer_hints=getattr(
+                    self.storage.state, "pending_reanswer_lineages", {}
+                ),
+                present_lineages=present_lineages,
+            )
+        except Exception:
+            logger.exception("Anki Garden: answer identity verification failed")
+            self._report_history_invalidation("answer identities unavailable")
+            self._remember_deferred_answer(card, ease, "answer identities unavailable")
+            self._show_deferred_history_notice()
+            return
         deck_ids = self._deck_ids_for_rows(rows)
         payloads = [
             payload
@@ -4719,6 +4782,7 @@ class ReviewerHookHandler:
         committed_results: tuple[CommittedAnswerResult, ...] = ()
         due_status: Any | None = None
         due_status_resolved = False
+        RUNTIME_PERFORMANCE.answer_stage("due_started")
         try:
             due_resolver = getattr(self.storage, "due_obligations", None)
             if callable(due_resolver):
@@ -4742,6 +4806,7 @@ class ReviewerHookHandler:
                 "Anki Garden: due status unavailable during answer commit",
                 exc_info=True,
             )
+        RUNTIME_PERFORMANCE.answer_stage("due_finished")
         try:
             # Commit every unseen row as one state transaction. In particular,
             # never jump the cursor to only the newest answer after an earlier
@@ -4760,6 +4825,8 @@ class ReviewerHookHandler:
                 committed_awards = tuple(
                     result.award for result in committed_results
                 )
+                for result in committed_results:
+                    RUNTIME_PERFORMANCE.answer_stage("committed", str(result.event_id))
                 committed_growth = sum(
                     max(0, int(result.award.total_growth))
                     for result in committed_results
@@ -4787,6 +4854,7 @@ class ReviewerHookHandler:
         except Exception:
             logger.exception("Anki Garden: review progress could not be saved")
             self._report_history_invalidation("review save failed")
+            self._remember_deferred_answer(card, ease, "review save failed")
             message = (
                 "Your card is safe in Anki, but Garden couldn’t save its Growth. "
                 "Open garden to try again."
@@ -4873,12 +4941,16 @@ class ReviewerHookHandler:
                     "Anki Garden: committed card could not enter Session Summary",
                     exc_info=True,
                 )
-        if self.state_changed is not None:
-            try:
-                self.state_changed("Card complete")
-            except Exception:
-                logger.debug("Anki Garden: unable to publish review state change", exc_info=True)
         self._pending_reviewer_results.extend(accepted_results)
+        panel = getattr(self, "_reviewer_hud", None)
+        if (runtime is not None and panel is not None
+                and str(getattr(mw, "state", "")) == "review"):
+            self._flush_pending_reviewer_results()
+        defer = getattr(panel, "defer_until_feedback_paint", None)
+        if callable(defer):
+            defer(self._publish_committed_review_change)
+        else:
+            self._publish_committed_review_change()
         if runtime is not None:
             self._queue_committed_hud_refresh()
         else:
@@ -4892,8 +4964,15 @@ class ReviewerHookHandler:
                 legacy_total_growth=max(0, int(committed_growth or 0)),
             )
 
+    def _publish_committed_review_change(self) -> None:
+        if self.state_changed is not None:
+            try:
+                self.state_changed("Card complete")
+            except Exception:
+                logger.debug("Anki Garden: unable to publish review state change", exc_info=True)
+
     def _queue_committed_hud_refresh(self) -> None:
-        """Let Anki finish the answer before drawing its committed feedback.
+        """Let readable feedback paint before refreshing the full projection.
 
         A question hook may draw first; in that case it consumes this request.
         Results remain queued until the mounted HUD accepts them, and the
@@ -4911,6 +4990,10 @@ class ReviewerHookHandler:
             if self._pending_reviewer_results:
                 self._flush_pending_reviewer_results()
 
+        defer = getattr(getattr(self, "_reviewer_hud", None), "defer_until_feedback_paint", None)
+        if callable(defer):
+            defer(refresh)
+            return
         try:
             from aqt.qt import QTimer
             QTimer.singleShot(0, refresh)

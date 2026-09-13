@@ -50,6 +50,9 @@ from .responsive import AdaptiveRegion, AdaptiveRow, COMPACT_MODE, WIDE_MODE
 from .theme import (
     BUTTON_MIN_HEIGHT,
     GARDEN_THEME,
+    TextRole,
+    raised_section_panel_style,
+    text_style,
     tool_button_stylesheet,
 )
 
@@ -425,11 +428,11 @@ class GardenStudioWidget(QWidget):
     def _build_ui(self) -> None:
         t = GARDEN_THEME
         self.setStyleSheet(f"""
-            QLabel[settingsHeading='true'] {{ color:{t['text_primary']}; font-size:16px; font-weight:600; }}
-            QLabel[settingsNote='true'] {{ color:{t['text_muted']}; font-size:13px; }}
+            QLabel[settingsHeading='true'] {{ color:{t['text_primary']}; {text_style(TextRole.SECTION_HEADING)} }}
+            QLabel[settingsNote='true'] {{ color:{t['text_muted']}; {text_style(TextRole.SECONDARY, include_weight=False)} }}
             QLabel[settingValue='true'] {{ color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }}
             QFrame[settingsSection='true'] {{ border:0; }}
-            QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
+            QFrame[settingsControls='true'] {{ {raised_section_panel_style(t)} }}
             QFrame[settingsAdvanced='true'] {{ background:transparent; border:0; }}
             QFrame[themeCard='true'] {{ background:transparent; border:0; }}
             QFrame[toggleSettingRow='true'] {{
@@ -437,7 +440,7 @@ class GardenStudioWidget(QWidget):
                 border:0;
             }}
             QComboBox {{ color:{t['text_primary']}; background:#142c27; border:1px solid {t['secondary_border']}; border-radius:8px; padding:0 28px 0 8px; min-height:36px; max-height:36px; }}
-            QComboBox:hover {{ border-color:#5b836f; }}
+            QComboBox:hover {{ border-color:{t['secondary_hover_border']}; }}
             QComboBox[keyboardFocusVisible='true']:focus {{ border:2px solid {t['focus_ring']}; padding:0 27px 0 7px; }}
             QComboBox::drop-down {{ border:0; width:24px; }}
             QComboBox QAbstractItemView {{ color:{t['text_primary']}; background:#142c27; selection-background-color:{t['action_accent']}; border:1px solid {t['secondary_border']}; }}

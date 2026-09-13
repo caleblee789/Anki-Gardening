@@ -25,8 +25,8 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest pillow
 
-      - name: Run fast test suite
-        run: timeout --foreground --signal=TERM 120s pytest -q
+      - name: Run default suite including annual engine parity
+        run: timeout --foreground --signal=TERM 3600s pytest -q --junitxml=build/release-evidence/default-tests.xml
 
       - name: Audit local artwork
         run: python scripts/audit_assets.py
@@ -64,7 +64,28 @@ jobs:
                   )
                   for path in package_files(PRODUCTION_BUILD)
               }
+              assert len(archive.namelist()) == len(expected)
               assert names == set(expected), (sorted(set(expected) - names), sorted(names - set(expected)))
               for name, payload in expected.items():
                   assert hashlib.sha256(payload).digest() == hashlib.sha256(archive.read(name)).digest(), name
+          from pathlib import Path
+          import json
+          from scripts.check_release_readiness import source_identity
+          evidence = Path('build/release-evidence')
+          evidence.mkdir(parents=True, exist_ok=True)
+          (evidence / 'package-identity.json').write_text(json.dumps({
+              'source': source_identity(),
+              'archive_sha256': hashlib.sha256(OUTPUT.read_bytes()).hexdigest(),
+              'source_archive_parity': True,
+          }, indent=2))
           PY
+
+      - name: Upload automated evidence and exact package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-evidence-${{ github.sha }}
+          path: |
+            build/release-evidence/
+            dist/anki_garden.ankiaddon
+          if-no-files-found: error

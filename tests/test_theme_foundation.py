@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import runpy
 from pathlib import Path
 from typing import Any
@@ -565,3 +566,58 @@ def test_foundation_stylesheet_composes_existing_and_opt_in_apis() -> None:
     assert "QToolButton {" in stylesheet
     assert "*[textRole='screen-title']" in stylesheet
     assert "QFrame[gardenRole='empty-state']" in stylesheet
+
+
+def test_text_declarations_preserve_inherited_properties() -> None:
+    scope = _theme_scope()
+    role = scope["TextRole"].BODY
+    scope["TEXT_ROLE_TOKENS"][role] = scope["TypographyToken"](17, 40, 500, 1.5)
+
+    assert scope["text_style"](role) == "font-size:17px;font-weight:500;"
+    assert scope["text_style"](role, include_weight=False) == "font-size:17px;"
+
+
+@pytest.mark.parametrize(
+    ("generator", "widget"),
+    (("button_stylesheet", "QPushButton"), ("tool_button_stylesheet", "QToolButton")),
+)
+def test_control_styles_consume_shared_decisions(generator: str, widget: str) -> None:
+    scope = _theme_scope()
+
+    def declarations(style: str, selector: str) -> dict[str, str]:
+        match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", style)
+        assert match is not None
+        return dict(tuple(part.strip() for part in item.split(":", 1))
+                    for item in match.group(1).split(";") if item.strip())
+
+    roles = {
+        (":enabled:hover", "border-color"): "secondary_hover_border",
+        (":enabled:pressed", "border-color"): "secondary_pressed_border",
+        ("[variant='destructive']", "background"): "destructive_surface",
+        ("[variant='destructive']", "border-color"): "destructive_border",
+        ("[variant='destructive']", "color"): "destructive_text",
+        ("[variant='destructive']:enabled:hover", "background"): "destructive_hover",
+        ("[variant='destructive']:enabled:pressed", "background"): "destructive_pressed",
+    }
+    for index, role in enumerate(roles.values()):
+        scope["GARDEN_THEME"][role] = f"#{index + 1:06x}"
+    scope["TEXT_ROLE_TOKENS"][scope["TextRole"].BUTTON_LABEL] = scope["TypographyToken"](17, 24, 500)
+    scope["BUTTON_QSS_HORIZONTAL_PADDING"][scope["ButtonSize"].PRIMARY] = 19
+    style = scope[generator]()
+
+    for (selector, property_name), role in roles.items():
+        assert declarations(style, widget + selector)[property_name] == scope["GARDEN_THEME"][role]
+    assert declarations(style, widget)["font-size"] == "17px"
+    assert declarations(style, widget)["font-weight"] == "500"
+    if widget == "QPushButton":
+        assert declarations(style, "QPushButton[buttonSize='primary']")["padding"] == "0 19px"
+        assert scope["BUTTON_SIZE_TOKENS"][scope["ButtonSize"].PRIMARY].horizontal_padding_px == 12
+
+
+def test_legacy_palette_binding_preserves_order_and_case_behavior() -> None:
+    scope = _theme_scope()
+    assert scope["bind_palette_colors"](
+        "color:#AABBCC; background:#aabbcc; border-color:#AaBbCc;",
+        (("#AABBCC", "first"), ("#112233", "second")),
+        {"first": "#112233", "second": "#445566"},
+    ) == "color:#445566; background:#445566; border-color:#AaBbCc;"

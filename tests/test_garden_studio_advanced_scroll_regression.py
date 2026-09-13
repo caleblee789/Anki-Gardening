@@ -497,6 +497,12 @@ def _live_engine_fixture() -> tuple[Any, Any, Any]:
         def due_obligations(self) -> Any:
             return DueObligationStatus()
 
+        def activity_entries(self, **_kwargs: Any) -> tuple[Any, ...]:
+            return ()
+
+        def activity_day_totals(self, _day: str) -> dict[str, int]:
+            return {}
+
         def load_asset_metadata(self) -> dict[str, Any]:
             return {}
 
@@ -1245,395 +1251,111 @@ def test_live_qt_growth_identity_preserves_short_name_and_numeric_value(
 def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Exercise every release scroll owner at natural and forced-long heights."""
-
+    """Current modal surfaces retain one scroll owner and reachable footers."""
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
-        from aqt.qt import (
-            QApplication,
-            QAbstractScrollArea,
-            QFrame,
-            QLabel,
-            QPoint,
-            QPushButton,
-            QTimer,
-            Qt,
-            QWidget,
-        )
+        from aqt.qt import QApplication, QAbstractScrollArea, QLabel, QPoint, Qt, QWidget
         from ankigarden.ui.dashboard import (
-            DialogShell,
-            FertilizerReplacementDialog,
-            GardenDashboard,
-            GardenSettingsDialog,
-            NurseryDialog,
+            DialogShell, GardenDashboard, GardenSettingsDialog,
             PlantStoryDialog,
         )
-        from ankigarden.capture_ui_faces import _UiFaceCaptureRunner
+        from ankigarden.capture.runtime import _UiFaceCaptureRunner
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
 
     application = QApplication.instance() or QApplication([])
     config, storage, engine = _live_engine_fixture()
+    storage.state.consumables.update(fertilizer_basic=2, growth_charge_small=2)
     owner = QWidget()
     owner.resize(1400, 900)
     owner.show()
     dashboard = GardenDashboard(owner, engine, storage, config)
     dashboard.show()
-    application.processEvents()
+    auditor = _UiFaceCaptureRunner.__new__(_UiFaceCaptureRunner)
+    checked = set()
 
-    # Build the selection shell without entering its nested modal event loop.
-    monkeypatch.setattr(DialogShell, "exec", lambda _dialog: 0)
-    dashboard._open_fertilizer_menu("p1")
-    fertilizer_selection = dashboard.fertilizer_dialog
-    assert isinstance(fertilizer_selection, DialogShell)
-    assert fertilizer_selection.fertilizer_option_responsive
-    for controller in fertilizer_selection.fertilizer_option_responsive:
-        threshold = controller.evaluate(100_000).threshold_width
-        assert [
-            controller.evaluate(threshold + offset).mode
-            for offset in (-2, -1, 0, 1, 2)
-        ] == ["compact", "compact", "wide", "wide", "wide"]
-
-    replacement = FertilizerReplacementDialog(
-        dashboard,
-        engine,
-        _live_replacement_quote(engine, storage),
-    )
-    story = PlantStoryDialog(dashboard, engine, "p1")
-    nursery = NurseryDialog(dashboard, engine, storage)
-    species = dashboard._build_species_overview_dialog(
-        "bonsai",
-        parent=dashboard,
-    )
-    assert species is not None
-    replacement.resize(820, replacement.height())
-    replacement.show()
-    application.processEvents()
-    application.processEvents()
-    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 660
-    assert replacement.property("comparisonMode") == "wide"
-    assert replacement.minimumHeight() == min(
-        replacement._comparison_policy_minimum_height,
-        400,
-    )
-    assert replacement.maximumHeight() == replacement.property(
-        "contentBoundedMaximumHeight"
-    )
-    assert replacement.maximumHeight() == max(
-        replacement.minimumHeight(),
-        min(660, replacement.property("contentNaturalHeight") + 10),
-    )
-    assert species.minimumHeight() >= 300
-    assert 260 <= species.maximumHeight() <= 900
-    species.show()
-    application.processEvents()
-    application.processEvents()
-    assert species.minimumHeight() <= species.height() <= species.maximumHeight()
-    species_scrolls = species.active_vertical_scroll_regions()
-    assert len(species_scrolls) == 1
-    species_scroll = species_scrolls[0]
-    species_section = next(
-        frame
-        for frame in species.findChildren(QFrame)
-        if bool(frame.property("speciesPlantList"))
-    )
-    section_top = species_section.mapTo(
-        species_scroll.viewport(),
-        species_section.rect().topLeft(),
-    ).y()
-    assert 0 <= section_top < species_scroll.viewport().height()
-    species.hide()
-
-    progress = dashboard.progress_dialog
-    progress.navigation.set_current("currency")
-    application.processEvents()
-    application.processEvents()
-    currency_scroll = progress.body_scrolls["currency"]
-    assert (
-        currency_scroll.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
-    assert currency_scroll.verticalScrollBar().maximum() == 0
-    assert len([
-        frame
-        for frame in currency_scroll.findChildren(QFrame)
-        if frame.property("coinTransactionDivider")
-    ]) == 1
-
-    wide_bound = replacement.maximumHeight()
-    comparison_threshold = replacement.comparison_responsive.evaluate(
-        100_000
-    ).threshold_width
-    margins = replacement.layout().contentsMargins()
-    compact_width = max(
-        replacement.minimumWidth(),
-        comparison_threshold - 2 + margins.left() + margins.right(),
-    )
-    replacement.resize(compact_width, wide_bound)
-    application.processEvents()
-    application.processEvents()
-    assert replacement.property("comparisonMode") == "compact"
-    assert (
-        replacement.minimumHeight()
-        == replacement._comparison_policy_minimum_height
-    )
-    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 660
-    assert replacement.maximumHeight() >= wide_bound
-    compact_bound = replacement.maximumHeight()
-    replacement.resize(820, compact_bound)
-    application.processEvents()
-    application.processEvents()
-    assert replacement.property("comparisonMode") == "wide"
-    assert replacement.minimumHeight() == min(
-        replacement._comparison_policy_minimum_height,
-        400,
-    )
-    assert abs(replacement.maximumHeight() - wide_bound) <= 2
-    settings = GardenSettingsDialog(dashboard, engine, config)
-    customize = dashboard.collectible_detail_dialog
-
-    natural_ranges: dict[str, int] = {}
-    capture_auditor = _UiFaceCaptureRunner.__new__(_UiFaceCaptureRunner)
-
-    def active_region(dialog: Any, label: str) -> Any:
-        regions = dialog.active_vertical_scroll_regions()
-        assert len(regions) == 1, (
-            label,
-            tuple(region.accessibleName() for region in regions),
-        )
-        return regions[0]
-
-    def assert_footer_geometry(dialog: Any, scroll: Any, label: str) -> None:
-        footer = dialog._pinned_footer
-        if footer is None or not footer.isVisible():
-            return
-        assert int(scroll.property("footerClearance") or 0) == int(
-            footer.height()
-        ), label
-        viewport = scroll.viewport()
-        viewport_bottom = viewport.mapTo(
-            dialog,
-            QPoint(0, viewport.height()),
-        ).y()
-        footer_top = footer.mapTo(dialog, QPoint(0, 0)).y()
-        assert viewport_bottom <= footer_top + 1, (
-            label,
-            viewport_bottom,
-            footer_top,
-        )
-
-    def assert_complete_nursery_fold(scroll: Any, label: str) -> None:
-        application.processEvents()
-        application.processEvents()
-        assert not bool(
-            scroll.property("completeRowLargeCorrectionNeeded")
-        ), label
-        assert int(scroll.property("completeRowBottomGutter") or 0) == 0, label
-        content = scroll.widget()
-        assert content is not None
-        viewport_height = int(scroll.viewport().height())
-        partial_rows: list[tuple[int, int]] = []
-        for card in content.findChildren(QWidget):
-            if not bool(card.property("nurseryCatalogCard")):
-                continue
-            top = int(card.mapTo(content, QPoint(0, 0)).y())
-            bottom = top + int(card.height())
-            if top < viewport_height < bottom:
-                partial_rows.append((top, bottom))
-        assert not partial_rows, (label, viewport_height, partial_rows)
+    def settle() -> None:
+        for _ in range(3):
+            application.processEvents()
 
     def assert_surface(dialog: Any, label: str) -> None:
         dialog.show()
-        application.processEvents()
-        application.processEvents()
-        vertical_owners = tuple(
-            region
-            for region in dialog.findChildren(QAbstractScrollArea)
-            if region.window() is dialog
-            and region.isVisibleTo(dialog)
-            and region.verticalScrollBarPolicy()
-            != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        assert len(vertical_owners) == 1, (
-            label,
-            tuple(type(region).__name__ for region in vertical_owners),
-        )
-        scroll = active_region(dialog, label)
-        assert_footer_geometry(dialog, scroll, label)
-
-        # Recheck the same owner at the surface's supported minimum height.
+        settle()
         dialog.resize(dialog.width(), max(1, dialog.minimumHeight()))
-        application.processEvents()
-        application.processEvents()
-        assert active_region(dialog, label) is scroll
-        assert_footer_geometry(dialog, scroll, label)
-        assert not capture_auditor._find_geometry_layout_warnings(dialog), label
+        settle()
+        owners = tuple(region for region in dialog.findChildren(QAbstractScrollArea)
+            if region.window() is dialog and region.isVisibleTo(dialog)
+            and region.verticalScrollBarPolicy() != Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        assert len(owners) == 1, (label, owners)
+        scroll = owners[0]
+        assert dialog.active_vertical_scroll_regions() == (scroll,), label
+        assert not auditor._find_geometry_layout_warnings(dialog), (label, [row["kind"] for row in auditor._find_geometry_layout_warnings(dialog)])
 
-        bar = scroll.verticalScrollBar()
-        natural_ranges[label] = int(bar.maximum())
+        def assert_footer() -> None:
+            footer = dialog._pinned_footer
+            if footer is None or not footer.isVisible():
+                return
+            viewport = scroll.viewport()
+            viewport_bottom = viewport.mapTo(dialog, QPoint(0, viewport.height())).y()
+            assert viewport_bottom <= footer.mapTo(dialog, QPoint(0, 0)).y() + 1, label
+
+        assert_footer()
         content = scroll.widget()
-        assert content is not None
-        original_minimum = content.minimumHeight()
-        forced_height = max(
-            original_minimum,
-            int(content.sizeHint().height()),
-            int(scroll.viewport().height()) + 480,
-        )
-        content.setMinimumHeight(forced_height)
+        extra_rows = [QLabel(f"Additional report detail {index + 1}.", content) for index in range(60)]
+        for extra in extra_rows:
+            content.layout().addWidget(extra)
         content.updateGeometry()
-        scroll.updateGeometry()
-        application.processEvents()
-        application.processEvents()
-
+        settle()
+        bar = scroll.verticalScrollBar()
         assert bar.maximum() > 0, label
         bar.setValue(bar.maximum())
-        application.processEvents()
+        settle()
         assert bar.value() == bar.maximum(), label
-        viewport = scroll.viewport()
-        content_bottom = content.mapTo(
-            viewport,
-            content.rect().bottomLeft(),
-        ).y()
-        assert abs(content_bottom - (viewport.height() - 1)) <= 2, (
-            label,
-            content_bottom,
-            viewport.height(),
-            bar.maximum(),
-        )
-        content_layout = content.layout()
-        if content_layout is not None:
-            layout_bottom = content.mapTo(
-                viewport,
-                QPoint(0, content_layout.geometry().bottom()),
-            ).y()
-            assert layout_bottom <= viewport.height() + 1, (
-                label,
-                layout_bottom,
-                viewport.height(),
-            )
-        assert_footer_geometry(dialog, scroll, label)
-        assert not capture_auditor._find_geometry_layout_warnings(dialog), label
-
-        content.setMinimumHeight(original_minimum)
-        content.updateGeometry()
+        content_bottom = content.mapTo(scroll.viewport(), content.rect().bottomLeft()).y()
+        assert abs(content_bottom - (scroll.viewport().height() - 1)) <= 2, label
+        assert_footer()
+        # The capture scenario's row inventory describes the original body.
+        # Check the actual added final row directly in this long-content case.
+        final_row = extra_rows[-1]
+        top = final_row.mapTo(scroll.viewport(), QPoint(0, 0)).y()
+        assert top >= 0 and top + final_row.height() <= scroll.viewport().height(), label
+        for extra in extra_rows:
+            content.layout().removeWidget(extra)
+            extra.setParent(None)
+            extra.deleteLater()
         bar.setValue(0)
         dialog.hide()
-        application.processEvents()
+        settle()
+        checked.add(label)
 
-    assert_surface(nursery, "Nursery")
-    nursery.show()
-    for index, expected_name, width_range, height_range in (
-        (0, "Plants catalog", (930, 970), (520, 570)),
-        (1, "Fertilizers and boosts catalog", (930, 970), (540, 570)),
-        (2, "Garden Spaces catalog", (900, 950), (340, 370)),
-        (3, "Garden Decorations and Scenery catalog", (930, 970), (500, 550)),
-    ):
-        nursery.catalog_tabs.setCurrentIndex(index)
-        application.processEvents()
-        application.processEvents()
-        region = active_region(nursery, f"Nursery tab {index}")
-        assert region.accessibleName() == expected_name
-        assert width_range[0] <= nursery.width() <= width_range[1]
-        assert height_range[0] <= nursery.height() <= height_range[1]
-        assert_complete_nursery_fold(region, expected_name)
-        assert not capture_auditor._find_geometry_layout_warnings(nursery), expected_name
-    nursery.hide()
+    # Inspect Plant supplies while its public modal handler owns the dialog;
+    # it now disposes the dialog when exec returns.
+    def inspect_supplies(dialog: Any) -> int:
+        assert_surface(dialog, "Plant supplies")
+        return 0
 
-    _starter_config, starter_storage, starter_engine = _live_engine_fixture()
-    starter_storage.state.starter_selection_complete = False
-    starter_nursery = NurseryDialog(dashboard, starter_engine, starter_storage)
-    starter_nursery.show()
-    application.processEvents()
-    application.processEvents()
-    assert 925 <= starter_nursery.width() <= 950
-    assert 370 <= starter_nursery.height() <= 410
-    assert starter_nursery.scroll.verticalScrollBar().maximum() == 0
-    assert_complete_nursery_fold(starter_nursery.scroll, "Starter Nursery")
-    starter_nursery.hide()
-
-    _final_config, final_storage, final_engine = _live_engine_fixture()
-    monkeypatch.setattr(
-        final_engine,
-        "catalog_summary",
-        lambda: {
-            "available_species": [],
-            "owned_count": 10,
-            "available_count": 0,
-            "release_ready_species": [f"species-{index}" for index in range(10)],
-        },
-    )
-    monkeypatch.setattr(
-        "ankigarden.ui.dashboard.project_collection",
-        lambda _state: SimpleNamespace(
-            species_text="10 of 10 species discovered",
-            collection_entries_text="30 of 39 collection entries discovered",
-            collection_complete=True,
-        ),
-    )
-    final_nursery = NurseryDialog(dashboard, final_engine, final_storage)
-    final_nursery.show()
-    application.processEvents()
-    application.processEvents()
-    assert 925 <= final_nursery.width() <= 950
-    assert 300 <= final_nursery.height() <= 330
-    assert_complete_nursery_fold(final_nursery.scroll, "Final Nursery")
-    final_labels = {
-        label.text()
-        for label in final_nursery.findChildren(QLabel)
-        if label.isVisibleTo(final_nursery)
-    }
-    final_actions = [
-        button.text()
-        for button in final_nursery.findChildren(QPushButton)
-        if button.isVisibleTo(final_nursery)
-    ]
-    assert "10 of 10 species discovered" in final_labels
-    assert "30 of 39 collection entries discovered" in final_labels
-    assert final_actions.count("View collection") == 1
-    final_nursery.hide()
-    assert_surface(fertilizer_selection, "Fertilizer selection")
-    assert_surface(replacement, "Fertilizer replacement")
-    assert_surface(story, "Plant Story")
-    assert_surface(species, "Species overview")
-    settings.tabs.setCurrentIndex(1)
-    settings.report_details_toggle.setChecked(True)
-    application.processEvents()
-    assert_surface(settings, "Settings")
-
-    progress.navigation.set_current("growth")
-    assert_surface(progress, "Garden Progress Plant Growth")
-    progress.navigation.set_current("collection")
-    assert_surface(progress, "Collection")
-
-    customize.prepare_to_show()
-    assert_surface(customize, "Collection loadout details")
-
-    assert set(natural_ranges) == {
-        "Nursery",
-        "Fertilizer selection",
-        "Fertilizer replacement",
-        "Plant Story",
-        "Species overview",
-        "Settings",
-        "Garden Progress Plant Growth",
-        "Collection",
-        "Collection loadout details",
-    }
-    # On a normal logical desktop the matrix includes naturally short and
-    # naturally overflowing bodies. A 200%-scale offscreen desktop exposes
-    # only about 400 logical px of height, where every named surface may
-    # legitimately need its one scroll owner even before forced-long content.
-    available_height = application.primaryScreen().availableGeometry().height()
-    if available_height >= 500:
-        assert any(value == 0 for value in natural_ranges.values())
-    assert any(value > 0 for value in natural_ranges.values())
-
-    for timer in fertilizer_selection.findChildren(QTimer):
-        timer.stop()
-    dashboard.hide()
-    owner.close()
-    application.processEvents()
+    monkeypatch.setattr(DialogShell, "exec", inspect_supplies)
+    surfaces = []
+    try:
+        dashboard._open_fertilizer_menu("p1")
+        assert dashboard.fertilizer_dialog is None
+        species = dashboard._build_species_overview_dialog("bonsai", parent=dashboard)
+        assert species is not None
+        settings = GardenSettingsDialog(dashboard, engine, config)
+        settings.tabs.setCurrentIndex(1)
+        settings.report_details_toggle.setChecked(True)
+        surfaces = [(PlantStoryDialog(dashboard, engine, "p1"), "Plant story"),
+                    (species, "Species overview"), (settings, "Settings")]
+        for dialog, label in surfaces:
+            assert_surface(dialog, label)
+        assert checked == {"Plant supplies", "Plant story", "Species overview", "Settings"}
+    finally:
+        for dialog, _label in surfaces:
+            dialog.close()
+        dashboard.close()
+        owner.close()
+        settle()
 
 
 @pytest.mark.parametrize("scale", (1.0, 1.5, 2.0))

@@ -3223,6 +3223,9 @@ def test_runtime_timing_finishes_for_early_reviewer_and_maintenance_failures(mon
         def finish(self, name, marker):
             self.finished.append((name, marker))
 
+        def answer_stage(self, stage, answer_id="", *, reason="", related_answer_id=""):
+            pass
+
     recorder = Recorder()
     monkeypatch.setattr(addon, "RUNTIME_PERFORMANCE", recorder)
     monkeypatch.setattr(reviewer_module, "RUNTIME_PERFORMANCE", recorder)

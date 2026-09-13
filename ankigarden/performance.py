@@ -14,7 +14,7 @@ import json
 import math
 import os
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from dataclasses import asdict, dataclass
 from functools import wraps
 from pathlib import Path
@@ -68,6 +68,34 @@ class RuntimePerformanceRecorder:
         self._lock = RLock()
         self._counters: dict[str, int] = defaultdict(int)
         self._lifetime: dict[str, dict[str, float | int]] = {}
+        self._answer_events: Deque[dict[str, object]] = deque(maxlen=self.max_samples * 24)
+        self._active_answer = ""
+        self._answer_actions: OrderedDict[str, str] = OrderedDict()
+
+    def answer_stage(self, stage: str, answer_id: str = "", *, reason: str = "", related_answer_id: str = "") -> None:
+        """Bounded monotonic milestones; never capture card contents."""
+        if not self.enabled:
+            return
+        now = self._clock()
+        with self._lock:
+            if stage == "action":
+                self._active_answer = answer_id or str(now)
+            elif stage == "hook" and not self._active_answer:
+                self._active_answer = str(now)
+            action = (self._answer_actions.get(related_answer_id)
+                      or self._answer_actions.get(answer_id) or self._active_answer)
+            if answer_id and action:
+                self._answer_actions[answer_id] = action
+                self._answer_actions.move_to_end(answer_id)
+                while len(self._answer_actions) > self.max_samples * 2:
+                    self._answer_actions.popitem(last=False)
+            self._answer_events.append({
+                "stage": stage, "answer_id": answer_id or self._active_answer,
+                "action_id": action, "at_ms": now * 1000,
+                "reason": reason,
+            })
+            if stage == "hook_finished":
+                self._active_answer = ""
 
     def begin(self) -> float | None:
         """Return a start marker, or ``None`` when diagnostics are disabled."""
@@ -149,6 +177,7 @@ class RuntimePerformanceRecorder:
                 "operations": [asdict(summary) for summary in self.summaries()],
                 "counters": dict(self._counters),
                 "lifetime": {name: dict(values) for name, values in self._lifetime.items()},
+                "answer_events": list(self._answer_events),
             }
 
     def write_json(self, destination: str | Path) -> Path:

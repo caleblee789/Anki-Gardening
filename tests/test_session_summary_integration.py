@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import importlib
 import os
 import re
@@ -519,7 +521,7 @@ class _ReviewerStorage:
         return None
 
     def pending_reanswer_lineages(self):
-        return {}
+        return self.state.pending_reanswer_lineages
 
     def load_proven_local_answer(self, **_kwargs):
         if not self.proven:
@@ -611,9 +613,10 @@ class _LegacyReviewerEngine:
         return False, ""
 
 
-def _exercise_reviewer_commit(monkeypatch, *, proven: bool):
+def _exercise_reviewer_commit(monkeypatch, *, proven: bool, pending_undo=None):
     reviewer_module = _load_reviewer_module(monkeypatch)
     storage = _ReviewerStorage(proven=proven)
+    storage.state.pending_reanswer_lineages = pending_undo or {}
     engine = _ReviewerEngine(storage)
     handler = reviewer_module.ReviewerHookHandler(engine, storage)
     accumulator = _AccumulatorSpy()
@@ -639,6 +642,50 @@ def _exercise_reviewer_commit(monkeypatch, *, proven: bool):
 
     handler._process_answer(None, SimpleNamespace(id=7), 3)
     return handler, storage, engine, accumulator, committed_event
+
+
+@pytest.mark.parametrize("failure_stage", ["identity", "save"])
+def test_failed_local_answers_retain_their_session_for_recovery(monkeypatch, failure_stage):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    storage = _ReviewerStorage(proven=True)
+    storage.runtime_pending = False
+    engine = _ReviewerEngine(storage)
+    deferred, invalidated = [], []
+
+    def defer(card, ease, token):
+        deferred.append((card.id, ease, token))
+        return storage.row[0]
+
+    storage.runtime_coordinator = SimpleNamespace(
+        request=lambda reason: True, note_local_answer=lambda reviewer: None,
+        defer_answer=defer,
+    )
+    handler = reviewer_module.ReviewerHookHandler(engine, storage, history_invalidated=invalidated.append)
+    accumulator = _AccumulatorSpy()
+    handler._session_summary_accumulator = accumulator
+    handler._review_window_token = "review-window"
+    handler.mark_history_reconciled()
+    event = object()
+    monkeypatch.setattr(handler, "_session_event_from_result", lambda result: event)
+
+    def fail(*args, **kwargs):
+        raise OSError("Temporary storage failure")
+
+    with monkeypatch.context() as failure:
+        owner, method = ((storage, "answer_lineage_bindings_for_cards") if failure_stage == "identity"
+                         else (engine, "apply_same_day_reviews_with_results"))
+        failure.setattr(owner, method, fail)
+        handler.on_answer(None, SimpleNamespace(id=7), 3)
+    assert invalidated
+    assert deferred == [(7, 3, "review-window")]
+    assert not accumulator.events
+    recovered = engine.apply_same_day_reviews_with_results(
+        [{"origin": "local_recovery"}], latest_revlog_id=storage.row[0],
+    )
+    handler.accept_reconciled_results(recovered)
+    handler.accept_reconciled_results(recovered)
+    assert accumulator.events == [event]
+    assert len(handler._pending_reviewer_results) == 1
 
 
 def test_legacy_commit_that_enters_footer_also_enters_reward_history(monkeypatch):
@@ -674,13 +721,21 @@ def test_legacy_commit_that_enters_footer_also_enters_reward_history(monkeypatch
     assert engine.evaluate_calls == [True]
 
 
-def test_only_a_proven_local_commit_enters_the_session_accumulator(monkeypatch):
+@pytest.mark.parametrize("pending_undo,fast_path", [
+    ({}, True),
+    ({"v1|2026-08-27|8|1": 1500}, True),
+    ({"v1|2026-08-27|7|1": 1500}, False),
+    ({"unknown-lineage": 1500}, False),
+])
+def test_only_a_proven_local_commit_enters_the_session_accumulator(monkeypatch, pending_undo, fast_path):
     _handler, storage, engine, accumulator, committed_event = _exercise_reviewer_commit(
         monkeypatch,
         proven=True,
+        pending_undo=pending_undo,
     )
 
-    assert storage.full_day_reads == 0
+    assert storage.full_day_reads == (0 if fast_path else 1)
+    assert storage.state.pending_reanswer_lineages == pending_undo
     assert [payload["revlog_id"] for payload in engine.committed_payloads] == [2_000]
     assert accumulator.events == [committed_event]
 

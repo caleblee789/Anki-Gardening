@@ -287,20 +287,21 @@ def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
         f"border:1px solid {palette['subtle_border']};border-radius:8px;}}"
     )
     layout = QVBoxLayout(tile)
-    layout.setContentsMargins(6 if compact else 8, 6, 6 if compact else 8, 6)
+    layout.setContentsMargins(3 if compact else 8, 6, 3 if compact else 8, 6)
     layout.setSpacing(4)
     caption = QLabel(label, tile)
     caption.setProperty("receiptMetricLabel", True)
     caption.setMinimumWidth(0)
-    caption.setWordWrap(True)
+    caption.setWordWrap(not compact)
     caption.setTextFormat(Qt.TextFormat.PlainText)
-    caption.setStyleSheet(f"color:{palette['text_secondary']};font-size:13px;font-weight:500;background:transparent;border:0;")
+    caption.setStyleSheet(f"color:{palette['text_secondary']};font-size:{11 if compact else 13}px;font-weight:500;background:transparent;border:0;")
     if compact:
-        caption.setMinimumHeight(caption.fontMetrics().lineSpacing() * 2)
         caption.setAlignment(Qt.AlignmentFlag.AlignTop)
     layout.addWidget(caption)
     number_row = QHBoxLayout()
-    number_row.setContentsMargins(0, 0, 0, 0)
+    # Compact headings use more of the tile width; keep amounts at their
+    # original six-pixel inset independently of that extra label space.
+    number_row.setContentsMargins(3 if compact else 0, 0, 3 if compact else 0, 0)
     number_row.setSpacing(4)
     icon = QLabel(tile)
     icon.setFixedSize(12 if compact else 14, 12 if compact else 14)

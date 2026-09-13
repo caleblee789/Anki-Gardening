@@ -31,8 +31,8 @@ Capture builds cannot overwrite the production artifact.
 # Default suite:
 ./.venv/bin/pytest -q
 
-# Package, capture, artwork, and live-Qt release evidence:
-./.venv/bin/pytest -q -o addopts='' -m release_evidence
+# Package, capture, artwork, and required Qt release evidence (Qt environment):
+python -m pytest -q -o addopts='' -m release_evidence --require-qt
 
 # Explicit union of both lanes:
 ./.venv/bin/pytest -q -o addopts=''
@@ -106,8 +106,8 @@ baseline checkout and production archive before applying an optimization.
 For an isolated candidate, call `scripts.package_addon.build(output=...)`;
 the production CLI intentionally targets the normal distribution path.
 
-The current v29 inventory contains 50 surfaces in five grouped contact sheets,
-with a 22-surface representative preflight. Removed interfaces retain reserved
+The current v29 inventory contains 53 surfaces in six grouped contact sheets,
+with a 23-surface representative preflight. Removed interfaces retain reserved
 IDs and are excluded from the active inventory. Build the production archive
 first, then capture representative and full profiles from that same package.
 
@@ -125,6 +125,98 @@ scoped command excludes that unrelated simulation:
 CI gives the fast lane a
 120-second outer timeout and each independently scheduled release-evidence
 shard a 60-second timeout.
+
+The Qt release command requires a Python environment with real Anki/PyQt6
+bindings, Pillow, pytest, ReportLab, and pypdf. CI uses Python 3.13 and
+`aqt[qt]==26.8.1` for its Qt shards. `--require-qt` stops immediately if those
+bindings are missing and turns skipped release-evidence cases into failures.
+The ordinary unit environment can still skip unavailable native checks; those
+skips never establish native acceptance. CI retains JUnit results and dependency
+versions for each release shard.
+
+### Freeze and check release readiness
+
+Keep an immutable production archive, source identity, JUnit XML, validation logs,
+native results, and open acceptance gates in one evidence directory. The release
+record uses schema version 1, `source` from
+`scripts.check_release_readiness.source_identity()`, a `package` artifact, and
+the named `REQUIRED_GATES` from that module. Artifact records contain paths
+relative to the evidence directory and SHA-256 hashes. Passing gates require
+retained evidence; native and approval gates also carry the exact package hash.
+Native endpoint gates record `platform: macOS` and their actual Anki version.
+Leave human review pending until the release owner actually approves it.
+
+```bash
+# Validate recorded source/artifact integrity while acceptance is in progress:
+./.venv/bin/python scripts/check_release_readiness.py /path/to/readiness.json --allow-pending
+# Final gate: exits unsuccessfully while any required acceptance is incomplete:
+./.venv/bin/python scripts/check_release_readiness.py /path/to/readiness.json
+```
+
+The gate checks current source and production payload parity, required JUnit
+results, artifact hashes, native version/package bindings, and pending approvals.
+It never treats an old scan or a capture completion marker as release approval.
+Changing source requires refreshing affected evidence and its source identity.
+
+Capture metadata uses the current JSON contract. Executable legacy scenario
+metadata is rejected; its images must be recaptured. The refinement handoff
+packager permits input files within the selected report directory. Use repeated
+`--evidence-root /explicit/input/directory` arguments for sibling capture sets
+or the production package directory. Snapshot paths and sheet filenames are
+checked before output is created; report hashes establish consistency, not
+trusted authorship. The balance PDF treats imported fields as literal text and
+accepts no image-resource inputs.
+
+## Shared UI styling
+
+[`ankigarden/ui/theme.py`](../ankigarden/ui/theme.py) owns shared presentation
+decisions and stays importable without Qt. Extend it before introducing another
+palette or styling system. Existing widgets continue to own their layouts,
+callbacks, state, and stylesheet application points.
+
+| Shared definition | Current consumers |
+| --- | --- |
+| `GARDEN_THEME` control border and destructive-state roles | Push-button and tool-button stylesheet generators; Settings select hover border |
+| `BUTTON_DEFAULT_HORIZONTAL_PADDING_PX`, `BUTTON_QSS_HORIZONTAL_PADDING`, `BUTTON_BORDER_WIDTH_PX` | Existing button generators, including compact-row, banner, secondary, primary, and onboarding selectors |
+| `TEXT_ROLE_TOKENS` and `text_style()` | Dialog body/subtitle/caption/badge rules; starter and receipt card titles; Settings, Shop, and Move headings; decoration inspector text; button label metrics |
+| `PLANT_DETAIL_TITLE_STYLE` | Plant Story heading and Progress plant-detail heading |
+| `SECTION_PANEL_RADIUS_PX` and `raised_section_panel_style()` | Section/stat-summary, progress-row, appearance-card, and Settings control panels |
+| `bind_palette_colors()` | Native dialog legacy-palette wrapper and Home WebView CSS initialization, with separate renderer-owned alias maps |
+| `DIALOG_LAYOUT_METRICS` in `dialog_foundations.py` | Existing dialog layout defaults; layout metrics remain separate from QSS declarations |
+
+`text_style(role)` emits only font size and weight. Use
+`include_weight=False` where the current widget inherits its weight. It does
+not set color, family, letter spacing, line height, minimum height, properties,
+or repolishing. `apply_text_role()` still has its existing geometry semantics;
+substituting it for a local font declaration can change wrapping and sizing.
+
+Preserve these intentional variants and local exceptions:
+
+- QSS padding for secondary/primary/onboarding buttons is 14/16/16 px; their
+  existing `horizontalPadding` metadata remains 12 px. Tool-button alignment,
+  selectors, and supported variants also retain their own contract.
+- Raised section panels use 10 px corners; opt-in semantic cards use 8 px.
+  Catalogue, stage-art, receipt, popover, and HUD shapes remain independent.
+- Plant-detail titles remain 19 px/600; legacy dialog titles remain 20 px/600,
+  separate from the screen-title role's 20 px/650.
+- Compact receipt labels remain 11 px. Reviewer/receipt sizing, counters,
+  animations, and specialized type treatments do not inherit main-window sizes.
+- The existing spacing enum and string lookup have different values for some
+  names. Do not interchange or normalize them during a styling extraction.
+- Legacy palette aliases are ordered substitutions, including existing
+  cascades. Compare the resolved styles, not just the literals in source.
+  Home CSS is bound when its module loads; this adds no runtime theme switching.
+
+Reuse a role when the decisions should change together. Keep a named variant or
+commented local exception when they should remain independent, even if today's
+values match. Never fill an inherited property simply to complete a token, move
+styles higher in the widget tree, or route behavior through a styling helper.
+Artwork coordinates, animation parameters, and one-off responsive measurements
+remain local. The foundation tests check declaration boundaries, control-token
+consumption, and ordered palette binding; they do not ban literals repo-wide.
+
+See the [styling refactor validation record](ui/styling-foundation-refactor-20260912.md)
+for the immutable baseline, candidate, captures, and retained limitations.
 
 The runtime target is Anki 25.07 through 26.08. Release acceptance installs the exact rebuilt archive into a separately keyed, disposable Anki 26.08 base/profile with sync disabled.
 

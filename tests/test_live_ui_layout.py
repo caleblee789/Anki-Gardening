@@ -428,7 +428,7 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     try:
-        from aqt.qt import QApplication, Qt, QWidget
+        from aqt.qt import QApplication, QLabel, Qt, QWidget
         from PyQt6.QtTest import QTest
         from ankigarden.ui.reviewer_hud import NurtureProjection, ReviewerHudProjection, TodayCardsProjection
         from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
@@ -447,6 +447,12 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
     try:
         # Receive totals while hidden/collapsed, then expand repeatedly with
         # the reported amount, a large session, and small totals again.
+        owner.show()
+        hud.set_collapsed(False)
+        QTest.qWait(40)
+        track = hud._checkpoint_track
+        track_bottom = track.mapTo(hud._body_contents, track.rect().bottomLeft()).y() + 1
+        assert hud._body_contents.height() - track_bottom == 8
         for growth_units, exact, count in ((185_145, "+1,851.45", 10),
                                            (123_456_789_000, "+1,234,567,890", 1_234_567_890),
                                            (12_600, "+126", 0)):
@@ -460,6 +466,12 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
             assert len({cell.y() for cell in cells}) == 1
             assert max(cell.height() for cell in cells) <= 80
             assert max(cell.width() for cell in cells) - min(cell.width() for cell in cells) <= 1
+            for tile in hud._session_metric_tiles:
+                caption = next(label for label in tile.findChildren(QLabel)
+                               if label.property("receiptMetricLabel"))
+                assert not caption.wordWrap()
+                assert caption.fontMetrics().horizontalAdvance(caption.text()) <= caption.contentsRect().width()
+                assert caption.height() < caption.fontMetrics().lineSpacing() * 2
             for amount, full in ((hud._session_growth, exact),
                                  (hud._session_coins, f"+{count:,}" if count else "0"),
                                  (hud._session_finds, f"{count:,}")):
@@ -482,12 +494,13 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
 
 
 @pytest.mark.parametrize("animations_enabled", [False, True])
-def test_compact_hud_acknowledges_growth_before_coins(monkeypatch, animations_enabled):
+def test_compact_hud_rewards_precede_coalesced_growth(monkeypatch, animations_enabled):
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     try:
         from dataclasses import replace
         from aqt.qt import QApplication, QWidget
+        from PyQt6.QtTest import QTest
         from ankigarden.ui.reviewer_hud import NurtureProjection, ReviewerHudProjection, TodayCardsProjection
         from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
     except (ImportError, ModuleNotFoundError):
@@ -509,33 +522,217 @@ def test_compact_hud_acknowledges_growth_before_coins(monkeypatch, animations_en
         # Committed compact progress and Growth do not wait for a reveal timer.
         assert hud.property("hudProgressPercent") == 20
         feedback = hud._collapsed_feedback
-        feedback.add_routine((("Growth", 1_000), ("Shared Growth", 200)), 3)
-        assert feedback.property("feedbackCopy") == "+12 Growth"
-        # Further answers retain every resource while the current frame is held.
-        feedback.add_routine((("Growth stored", 500),), 2)
+        feedback.enqueue("a", (), 3, (("Growth", 1_000), ("Shared Growth", 200)))
+        assert feedback.property("feedbackCopy") == "+3 Coins"
+        assert feedback.amount.opacity() == 1.0
+        feedback.enqueue("b", (), 2, (("Growth stored", 500),))
+        # Repeated delivery neither repeats a notice nor increases Growth.
+        feedback.enqueue("b", (), 2, (("Growth stored", 500),))
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == "+2 Coins"
+        feedback._timer.stop()
+        feedback._advance()
         assert feedback.property("feedbackCopy") == "+17 Growth"
-        feedback._timer.stop()
-        feedback._advance()
-        assert feedback.property("feedbackCopy") == "+5 Coins"
-        # A new card also starts Growth while the previous Coins are visible.
-        feedback.add_routine((("Growth", 300),), 1)
-        assert feedback.property("feedbackCopy") == "+3 Growth"
-        feedback._timer.stop()
-        feedback._advance()
-        assert feedback.property("feedbackCopy") == "+1 Coins"
+        count = feedback._growth_count
+        assert count.target == 1700
+        assert count.value == (0 if animations_enabled else 1700)
+        QTest.qWait(100)
+        if animations_enabled:
+            assert 0 < count.value < 1700
+        displayed = count.value
+        feedback.enqueue("c", (), 0, (("Growth", 300),))
+        assert feedback.property("feedbackCopy") == "+20 Growth"
+        assert count.value == (displayed if animations_enabled else 2000)
+        assert count.target == 2000
+        feedback.enqueue("c", (), 0, (("Growth", 300),))
+        assert count.target == 2000
+        feedback.suspend()
+        saved = feedback.export_state()
+        QTest.qWait(30)
+        assert count.value == saved["growth_count"]["value"]
+        feedback.restore_state(saved)
+        assert feedback.property("feedbackCopy") == "+20 Growth"
+        assert feedback.export_state()["remaining_ms"] == saved["remaining_ms"]
+        feedback.resume()
+        QTest.qWait(630)
+        assert feedback.amount.text() == "+20"
         feedback._timer.stop()
         feedback._advance()
         assert feedback.property("feedbackCopy") == ""
-        feedback.set_major("checkpoint", [{
+        feedback.enqueue("checkpoint", [{
             "caption": "Checkpoint", "color": "#ffffff", "duration": 1_150,
         }], 4, (("Growth", 1_200),))
-        assert feedback.property("feedbackCopy") == "+12 Growth"
-        feedback._timer.stop()
-        feedback._advance()
+        assert feedback.property("feedbackCopy") == "Checkpoint"
+        # Expanded reward archival cannot consume compact frames.
+        feedback.clear_major()
         assert feedback.property("feedbackCopy") == "Checkpoint"
         feedback._timer.stop()
         feedback._advance()
         assert feedback.property("feedbackCopy") == "+4 Coins"
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == "+12 Growth"
+        assert feedback._current["duration"] == 950
+        feedback.enqueue("bloom", [{
+            "caption": "Full Bloom", "color": "#ffffff", "duration": 1_650,
+        }], 0, ())
+        feedback._timer.stop()
+        feedback._advance()
+        assert feedback.property("feedbackCopy") == "Full Bloom"
+        assert feedback._current["duration"] == 1_650
+        hud.set_collapsed(False)
+        paused = feedback.export_state()["remaining_ms"]
+        hud.set_collapsed(True)
+        assert feedback.property("feedbackCopy") == "Full Bloom"
+        assert 0 < feedback._timer.remainingTime() <= paused
+
+    finally:
+        hud.dispose()
+        owner.close()
+        owner.deleteLater()
+        application.processEvents()
+
+
+@pytest.mark.parametrize("collapsed", [False, True])
+@pytest.mark.parametrize("animations_enabled", [False, True])
+def test_committed_hud_feedback_paints_before_secondary_work(monkeypatch, collapsed, animations_enabled):
+    """Exercise the answer hook, next-question refresh, and real Qt paint."""
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from aqt.qt import QApplication, QEvent, QObject, QWidget
+    from PyQt6.QtTest import QTest
+    from test_session_summary_integration import (
+        DAY, _load_reviewer_module, _ReviewerStorage, _ReviewerEngine,
+    )
+    from ankigarden.ui.reviewer_hud import NurtureProjection, ReviewerHudProjection, TodayCardsProjection
+    from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
+    from ankigarden.ui.session_summary import CommittedSessionEvent, PlantGrowthDelta
+
+    application = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    owner.resize(1200, 900)
+    owner.show()
+    hud = ReviewGardenHud(owner, animations_enabled=animations_enabled)
+    projection = ReviewerHudProjection(100,
+        TodayCardsProjection("in_progress", "Today", "1 / 20"),
+        NurtureProjection(True, plant_id="p1", plant_name="Rose", progress_percent=10),
+        collapsed, "right")
+    hud.update_projection(projection)
+    hud.update_session_totals({"footer_growth_units": 0, "footer_drop_count": 0})
+    QTest.qWait(10)
+    stages = []
+    target = hud._collapsed_feedback.amount if collapsed else hud._session_growth
+
+    class Observer(QObject):
+        def eventFilter(self, watched, event):
+            if event.type() == QEvent.Type.Paint and watched.isVisible():
+                stages.append("paint")
+            return False
+
+    observer = Observer(owner)
+    target.installEventFilter(observer)
+    module = _load_reviewer_module(monkeypatch)
+    reviewer = SimpleNamespace(web=owner)
+    module.mw.reviewer = reviewer
+    storage = _ReviewerStorage(proven=True)
+    storage.state.starter_selection_complete = True
+    storage.runtime_pending = False
+    storage.runtime_coordinator = SimpleNamespace(
+        request=lambda _reason: True, note_local_answer=lambda _reviewer: None,
+        answer_committed=lambda *_args: None,
+    )
+    engine = _ReviewerEngine(storage)
+    handler = module.ReviewerHookHandler(engine, storage,
+        state_changed=lambda _reason: stages.append("state"))
+    handler._reviewer_hud = hud
+    handler._reviewer_session_window = reviewer
+    monkeypatch.setattr(handler, "_hud_config_value", lambda key, default=None:
+        animations_enabled if key == "enable_animations" else default)
+    events = []
+    handler._session_summary_accumulator = SimpleNamespace(
+        current_anki_day_id=DAY,
+        accept_committed=lambda event: events.append(event) or True,
+        hud_snapshot=lambda: {"footer_growth_units": len(events) * 1000, "footer_drop_count": 0},
+    )
+    handler.mark_history_reconciled()
+    monkeypatch.setattr(handler, "_session_event_from_result", lambda result: CommittedSessionEvent(
+        event_id=result.event_id, anki_day_id=DAY, occurred_at="2026-08-28T10:00:00Z",
+        plant_growth=(PlantGrowthDelta("p1", "Rose", 1000),)))
+    monkeypatch.setattr(handler, "_committed_growth_snapshot", lambda _state: {})
+    monkeypatch.setattr(handler, "_acknowledge_reviewer_result_feedback", lambda _result: stages.append("ack"))
+    monkeypatch.setattr(handler, "_retry_reviewer_feedback_acknowledgements", lambda: None)
+    monkeypatch.setattr(handler, "_request_reviewer_answer_control_geometry", lambda *_args: None)
+    monkeypatch.setattr(module, "reviewer_overlay_parent", lambda _mw: owner)
+    monkeypatch.setattr(module, "project_reviewer_hud", lambda *_args, **_kwargs:
+        stages.append("projection") or replace(projection, nurture=replace(projection.nurture, progress_percent=11)))
+    try:
+        handler.on_answer(reviewer, SimpleNamespace(id=7), 3)
+        handler.on_question()
+        assert len(events) == 1
+        counter = hud._collapsed_feedback._growth_count if collapsed else hud._session_growth_count
+        assert counter.target == 1000
+        assert counter.value == (0 if animations_enabled else 1000)
+        assert not any(stage in stages for stage in ("ack", "state", "projection"))
+        if collapsed:
+            assert target.opacity() == 1.0
+        QTest.qWait(40)
+        assert "paint" in stages
+        for secondary in ("ack", "state", "projection"):
+            assert stages.index("paint") < stages.index(secondary)
+        if animations_enabled:
+            assert 0 < counter.value < 1000
+        else:
+            assert target.text() == "+10"
+        assert not hud.feedback_paint_pending
+        # An unchanged projection, duplicate callback, or totals refresh cannot
+        # restart the earned count. Completion remains exact after 600 ms.
+        elapsed = counter.currentTime()
+        handler.on_question()
+        hud.update_session_totals({"footer_growth_units": 1000, "footer_drop_count": 0})
+        assert counter.currentTime() >= elapsed
+        feed = hud._reward_feed
+        if not collapsed and animations_enabled:
+            assert len(feed.delegate.growth_counts) == 1
+            feed_counter = next(iter(feed.delegate.growth_counts.values()))
+            assert 0 < feed_counter.value < feed_counter.target == 1000
+        previous_value = counter.value
+        storage.row = (3_000, *storage.row[1:])
+        handler.on_answer(reviewer, SimpleNamespace(id=7), 3)
+        assert counter.target == 2000
+        assert counter.value == (previous_value if animations_enabled else 2000)
+        QTest.qWait(80)
+        bundle = hud.reward_history[-1]
+        count_time = counter.currentTime()
+        hud.present_committed_result(bundle, applied_growth_units=1000)
+        assert counter.target == 2000 and counter.currentTime() == count_time
+        # Remounts retain active counts and exact combined history amounts.
+        state = hud.export_reward_state()
+        displayed = counter.value
+        hud.dispose()
+        hud = ReviewGardenHud(owner, animations_enabled=animations_enabled)
+        handler._reviewer_hud = hud
+        hud.update_projection(projection)
+        hud.restore_reward_state(state)
+        counter = hud._collapsed_feedback._growth_count if collapsed else hud._session_growth_count
+        target = hud._collapsed_feedback.amount if collapsed else hud._session_growth
+        assert counter.value == displayed and counter.target == 2000
+        assert hud._reward_feed.model.entries[-1].item.growth_units == 2000
+        if not collapsed and animations_enabled:
+            assert hud._reward_feed.export_count_state() == state["feed_counts"]
+        QTest.qWait(630)
+        assert target.text() == "+20"
+        assert not hud._reward_feed.delegate.growth_counts
+        # An authoritative decrease snaps to its exact value immediately.
+        hud.set_collapsed(False)
+        hud.update_session_totals({"footer_growth_units": 3000, "footer_drop_count": 0})
+        handler.invalidate_history("review undo")
+        assert hud._session_growth_count.value == 3000
+        assert hud._session_growth_count.state() == hud._session_growth_count.State.Stopped
+        hud.update_session_totals({"footer_growth_units": 1000, "footer_drop_count": 0})
+        assert hud._session_growth.text() == "+10"
+        QTest.qWait(30)
+        assert hud._session_growth.text() == "+10"
     finally:
         hud.dispose()
         owner.close()
@@ -631,7 +828,7 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
         elif initial_session_state == "collapsed":
             hud.set_collapsed(True)
         hud.restore_reward_state({"feed_expanded": False})
-        for n in range(8):
+        for n in range(200):
             item = RewardItemProjection(f'coin-{n}', RewardHero.COIN_OR_BOOSTER, 'Checkpoint reward', 'Garden reward', garden_coins=2)
             hud.present_reward(RewardBundleProjection(f'answer-{n}', '2026-09-06T12:00:00Z', (item,)))
         hud.update_session_totals({"footer_growth_units": 12_600})
@@ -640,7 +837,9 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
         QTest.qWait(40)
         assert not hud._reward_feed.isVisibleTo(hud)
         assert not hud._reward_details_toggle.isVisibleTo(hud)
-        assert hud._reward_feed.model.rowCount() == 8
+        model = hud._reward_feed.model
+        assert len(model.entries) == 200
+        assert model.rowCount() < len(model.entries)
         assert hud._session_history_toggle.y() > max(tile.geometry().bottom() for tile in hud._session_metric_tiles)
         initial_height = hud.height()
         initial_footer = hud._session_footer.geometry()
@@ -652,6 +851,13 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
             assert opened[-1] == "activity"
             assert not hud._reward_feed.isVisibleTo(hud)
         assert opened == ["activity"] * 4
+        group = hud._session_totals_card
+        for point in (QPoint(2, 2), QPoint(group.width() - 3, group.height() - 3)):
+            previous_count = len(opened)
+            QTest.mouseClick(group, Qt.MouseButton.LeftButton, pos=point)
+            assert len(opened) == previous_count + 1
+            assert opened[-1] == "activity"
+        assert group.geometry().bottom() < hud._session_history_toggle.geometry().top()
         opened.clear()
         click(hud._session_history_toggle)
         assert not opened
@@ -671,11 +877,23 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
         bar = hud._reward_feed.view.verticalScrollBar()
         assert bar.maximum() > 0
         bar.setValue(bar.maximum())
+        # Scrolling older pages must reach every original reward, in order.
+        for _ in range(10):
+            QTest.qWait(10)
+            bar.setValue(bar.maximum())
+            if not model.canFetchMore():
+                break
+        assert not model.canFetchMore()
+        assert [model.data(model.index(i), Qt.ItemDataRole.UserRole).item.event_id
+                for i in range(model.rowCount())] == [f'coin-{i}' for i in reversed(range(200))]
         before_scroll = bar.value()
         item = RewardItemProjection('new-coin', RewardHero.COIN_OR_BOOSTER, 'Garden reward', 'Garden reward', garden_coins=3)
         hud.present_reward(RewardBundleProjection('new-answer', '2026-09-06T12:00:01Z', (item,)))
         assert before_scroll > 0
         assert bar.value() == 0
+        assert len(model.entries) == 201
+        assert model.rowCount() < len(model.entries)
+        assert model.data(model.index(0), Qt.ItemDataRole.UserRole).item.event_id == 'new-coin'
         # A native short reviewer must keep the Growth line above the pinned
         # totals and the visible feed, including after collapsing and expanding.
         owner.resize(1200, 480)
@@ -690,6 +908,43 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
         plant.booster_card_batches.clear()
         hud.update_projection(project_reviewer_hud(engine, storage.state))
         assert hud._consumables.isHidden()
+        # Activating or expiring counters changes only the space below the
+        # track, including when artwork must shrink in a short reviewer.
+        hud.restore_reward_state({"feed_expanded": False})
+        hud.present_reward(RewardBundleProjection('spacing-reward', '2026-09-06T12:00:02Z', (item,)), reveal=False)
+        for height, feed_expanded in ((900, False), (900, True), (480, False), (480, True)):
+            owner.resize(1200, height)
+            owner.setProperty("reviewerAnswerControlsTop", height)
+            if bool(hud._session_footer.property("historyExpanded")) != feed_expanded:
+                click(hud._session_history_chevron)
+            anchors = []
+            for families in ((), ("fertilizer",), ("fertilizer", "booster"), ("booster",), ()):
+                plant.fertilizer_card_batches = ([CardEffectBatch("fertilizer_premium", 800, 400, 44)]
+                                                if "fertilizer" in families else [])
+                plant.booster_card_batches = ([CardEffectBatch("booster_potion", 100, 100, 45)]
+                                             if "booster" in families else [])
+                hud.update_projection(replace(project_reviewer_hud(engine, storage.state), position=None, collapsed=False))
+                hud.set_collapsed(True)
+                hud.set_collapsed(False)
+                QTest.qWait(40)
+                anchors.append(tuple((w.mapTo(hud, QPoint()).x(), w.mapTo(hud, QPoint()).y(), w.width(), w.height())
+                                     for w in (hud._art_region, hud._percent, hud._checkpoint_track)))
+                track_bottom = hud._checkpoint_track.mapTo(hud, QPoint(0, hud._checkpoint_track.height())).y()
+                pills = [hud._consumable_pills[family] for family in families]
+                assert hud._consumables.isHidden() == (not families)
+                if pills:
+                    assert pills[0].mapTo(hud, QPoint()).y() - track_bottom == 6
+                    assert hud._consumables.height() == 24 * len(pills) + 6 * (len(pills) - 1)
+                    for pill in pills:
+                        assert pill.height() == 24
+                        previous_count = len(opened)
+                        click(pill)
+                        assert len(opened) == previous_count + 1
+                    end = pills[-1].mapTo(hud, QPoint(0, pills[-1].height())).y()
+                else:
+                    end = track_bottom
+                assert hud._session_totals_card.mapTo(hud, QPoint()).y() - end == 8, (height, feed_expanded, families)
+            assert all(anchor == anchors[0] for anchor in anchors)
     finally:
         hud.dispose()
         owner.close()

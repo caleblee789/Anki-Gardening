@@ -392,7 +392,8 @@ def test_answer_lineage_survives_sync_insertion_undo_and_day_remapping() -> None
     assert hinted[210] not in set(original.values())
 
 
-def test_local_answer_proof_requires_one_matching_unseen_appended_row() -> None:
+@pytest.mark.parametrize("future_cursor", [False, True])
+def test_local_answer_proof_requires_one_matching_unseen_appended_row(future_cursor) -> None:
     old_row = (150, 7, 3, 10, 5, 2500, 100, 1)
     new_row = (200, 7, 4, 20, 10, 2300, 100, 1)
 
@@ -414,9 +415,11 @@ def test_local_answer_proof_requires_one_matching_unseen_appended_row() -> None:
         processed_revlog_ids=[150],
     )
     storage.current_scheduler_day_bounds_ms = lambda: (100, 300)
+    storage._verified_history_high_water = 150
+    after_id = 10_000 if future_cursor else 150
 
     proof = storage.load_proven_local_answer(
-        after_id=150,
+        after_id=after_id,
         card_id=7,
         ease=4,
     )
@@ -427,7 +430,7 @@ def test_local_answer_proof_requires_one_matching_unseen_appended_row() -> None:
 
     db.appended = [new_row, (210, 8, 3, 10, 5, 2500, 100, 1)]
     assert storage.load_proven_local_answer(
-        after_id=150,
+        after_id=after_id,
         card_id=7,
         ease=4,
     ) is None

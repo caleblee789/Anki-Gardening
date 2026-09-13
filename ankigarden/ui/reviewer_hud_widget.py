@@ -7,6 +7,7 @@ from .copy import STORED_GROWTH_TOOLTIP
 from ..presentation import plant_stage_title
 
 from collections import deque
+import logging
 import re
 from typing import Any, Callable, Literal, Mapping, Optional
 
@@ -31,6 +32,8 @@ from .reviewer_hud import (
 from .reward_rarity import apply_reward_treatment, reward_treatment, rarity_badge_style, rarity_art_style, RewardTreatment
 from .reward_receipt import receipt_metric, reward_discovery_count
 from .theme import GARDEN_THEME, apply_tabular_numerals
+
+logger = logging.getLogger(__name__)
 
 
 try:  # Source-contract and projection tests run without Anki/Qt installed.
@@ -113,13 +116,13 @@ _COMPACT_REWARD_MIN_HEIGHT = 130
 _COMPACT_REWARD_MAX_HEIGHT = 150
 _REWARD_SCROLL_MAX_HEIGHT = 360
 _ANSWER_ROW_SWAP_MS = 150
-_PROJECTION_APPLY_DELAY_MS = 220
+_PROJECTION_APPLY_DELAY_MS = 0
 _PROGRESS_FILL_MS = 420
 _PLANT_PULSE_MS = 300
 _SESSION_HIGHLIGHT_MS = 600
 _FULL_BLOOM_PULSE_MS = 680
 _NEXT_PROJECTION_RESTORE_MS = 850
-_ROUTINE_SESSION_RELEASE_MS = _PROJECTION_APPLY_DELAY_MS + _PROGRESS_FILL_MS
+_ROUTINE_SESSION_RELEASE_MS = 0
 _SESSION_METRIC_FONT_PX = 12
 _SESSION_METRIC_SPACING = 3
 _TODAY_PROGRESS_SCALE = 1_000
@@ -1657,9 +1660,18 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self.setAccessibleName("Anki Garden review progress")
         self._apply_style()
         self._build_shell()
+        from .growth_count_up import GrowthCountUp
+        self._session_growth_count = GrowthCountUp(self, self._paint_session_growth)
+        self._session_growth_count.finished.connect(self._session_count_finished)
         from .collapsed_reward_feedback import CollapsedRewardFeedback
         self._collapsed_feedback = CollapsedRewardFeedback(self)
         self._collapsed_tab.layout().addWidget(self._collapsed_feedback)
+        self._after_feedback_paint: dict[Callable[[], None], None] = {}
+        self._feedback_paint_target = None
+        self._feedback_paint_flush_queued = False
+        for target in (self._collapsed_feedback.amount, self._collapsed_feedback.idle,
+                       self._session_growth):
+            target.installEventFilter(self)
 
         self._reward_timer = QTimer(self)
         self._reward_timer.setSingleShot(True)
@@ -1689,6 +1701,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def export_reward_state(self) -> dict[str, Any]:
         """Preserve the exact readable and queued reward state on remount."""
+
+        if getattr(self, "_compact_secondary_updates", None):
+            self._flush_compact_secondary_updates()
 
         pending: list[Any] = []
         pending_ids: set[str] = set()
@@ -1720,6 +1735,14 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "current": current,
             "collapsed_feedback": (self._collapsed_feedback.export_state()
                                    if getattr(self, "_collapsed_feedback", None) is not None else None),
+            "session_snapshot": {
+                "footer_growth_units": self._session_totals[0],
+                "footer_coin_count": self._session_totals[1],
+                "footer_drop_count": self._session_totals[2],
+                "footer_find_count": self._session_footer.property("sessionFinds") or 0,
+            },
+            "session_count": self._session_growth_count.snapshot(),
+            "feed_counts": self._reward_feed.export_count_state(),
         }
 
     def _capture_current_reward_runtime_state(self) -> dict[str, Any] | None:
@@ -1785,6 +1808,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         if hasattr(self, "_reward_feed"):
             for bundle in self._reward_history:
                 self._reward_feed.append(bundle, animate=False)
+            self._reward_feed.restore_count_state(snapshot.get("feed_counts"))
             self._session_footer.setProperty("historyExpanded", bool(snapshot.get("feed_expanded", True)))
             QTimer.singleShot(0, lambda: self._reward_feed.view.verticalScrollBar().setValue(int(snapshot.get("feed_scroll", 0))))
         self._sync_history_rows()
@@ -1794,6 +1818,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         feedback = getattr(self, "_collapsed_feedback", None)
         if feedback is not None:
             feedback.restore_state(snapshot.get("collapsed_feedback"))
+        if "session_snapshot" in snapshot:
+            self.update_session_totals(snapshot["session_snapshot"])
+            self._session_growth_count.restore(snapshot.get("session_count"))
+            if not self._animations_enabled:
+                self._session_growth_count.settle()
+            self._session_count_animation = (self._session_growth_count
+                if self._session_growth_count.state() != self._session_growth_count.State.Stopped else None)
         if current_identity:
             self._show_reward(
                 current_bundle,
@@ -1864,6 +1895,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 self._clear_session_highlight(self._session_feedback_revision)
         if hasattr(self, "_reward_feed"):
             self._reward_feed.animations_enabled = self._animations_enabled
+            if not self._animations_enabled:
+                self._reward_feed.settle_counts()
+                self._collapsed_feedback.settle_count()
         self._header.set_callback(None)
         self._header.setCursor(Qt.CursorShape.OpenHandCursor)
         self._plant_card.set_callback(self._open_plant)
@@ -2117,6 +2151,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             QSizePolicy.Policy.Preferred,
         )
         body = QVBoxLayout(self._body_contents)
+        body.setAlignment(Qt.AlignmentFlag.AlignTop)
         body.setContentsMargins(10, 10, 10, 10)
         body.setSpacing(10)
         self._body_layout = body
@@ -2457,10 +2492,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
         self._consumables = QFrame(self._body_contents)
         self._consumables.setObjectName("reviewerHudConsumables")
+        self._consumables.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         effects = QVBoxLayout(self._consumables)
-        effects.setContentsMargins(12, 0, 12, 6)
+        effects.setContentsMargins(12, 0, 12, 0)
         effects.setSpacing(6)
-        effects.addStretch(1)
         self._consumable_pills = {}
         for family in ("fertilizer", "booster"):
             pill = QToolButton(self._consumables)
@@ -2476,7 +2511,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             apply_tabular_numerals(pill)
             effects.addWidget(pill)
             self._consumable_pills[family] = pill
-        effects.addStretch(1)
         self._consumables.hide()
         body.addWidget(self._consumables)
 
@@ -2794,13 +2828,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._session_footer.setMinimumHeight(76)
         self._session_footer.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         footer = QVBoxLayout(self._session_footer)
-        footer.setContentsMargins(0, 6, 0, 8)
+        footer.setContentsMargins(0, 8, 0, 8)
         footer.setSpacing(6)
         self._session_totals_card = _ClickableFrame(self._session_footer, self._open_activity)
         self._session_totals_card.setObjectName("reviewerHudSessionTotals")
         self._session_totals_card.setAccessibleName("Open Progress Activity")
         totals_layout = QVBoxLayout(self._session_totals_card)
-        totals_layout.setContentsMargins(0, 0, 0, 0)
+        totals_layout.setContentsMargins(6, 6, 6, 6)
         totals_layout.setSpacing(6)
         footer.addWidget(self._session_totals_card)
         heading_row = QHBoxLayout()
@@ -3220,6 +3254,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         # presenting the event as though it had just been committed again.
         self._sync_reward_dock_visibility()
         self.reposition()
+        if changed:
+            self._request_feedback_paint()
         if changed and notify:
             _call(self._on_toggle_collapsed, self._collapsed)
 
@@ -3318,13 +3354,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._update_consumables(projection.active_consumables)
         self.show()
         self.raise_()
-        if animate and not projection.collapsed:
-            # The committed reward dock begins its reveal before header and
-            # plant values move. The compact rail has no visible reward dock
-            # to wait for; its progress should acknowledge the answer now.
-            QTimer.singleShot(_PROJECTION_APPLY_DELAY_MS, apply_changed_values)
-        else:
-            apply_changed_values()
+        # Committed numbers do not wait for a celebration entrance. Motion
+        # decorates the update without delaying the visible result.
+        apply_changed_values()
 
     def _finish_routine_projection_feedback(self, revision: int) -> None:
         """Release footer totals only after the committed progress fill settles."""
@@ -4575,6 +4607,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
         self._art_region.setFixedHeight(max(1, int(region_height)))
         self._plant_art.setFixedSize(max(1, int(art_size)), max(1, int(art_size)))
+        self._plant_layout.invalidate()
+        self._plant_card.updateGeometry()
+        self._body_layout.invalidate()
         source = getattr(self, "_plant_full_pixmap", None)
         try:
             if source is None or source.isNull():
@@ -4621,9 +4656,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             body_margin,
             body_margin,
             body_margin,
-            body_margin,
+            body_margin if full_bloom else (8 if self._reward_dock.isHidden() else 0),
         )
-        self._body_layout.setSpacing(body_spacing)
+        self._body_layout.setSpacing(body_spacing if full_bloom else 6)
         today_min, today_max, today_vertical_margin = (
             (58, 68, 6),
             (56, 64, 4),
@@ -4645,7 +4680,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 12,
                 plant_vertical_margin,
                 12,
-                plant_vertical_margin,
+                0,
             )
             self._plant_layout.setSpacing(plant_spacing)
             self._resize_normal_plant_art(region_height, art_size)
@@ -5017,31 +5052,16 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 animate=False,
                 previous=None,
             )
+        # Restoring the projection resets art sizes and optional rows. Fit the
+        # restored body before Qt paints it; otherwise the celebration timer
+        # leaves the larger defaults inside the previous compact viewport
+        # until another reviewer update happens to reposition the HUD.
+        self.reposition()
 
     def update_session_totals(self, snapshot: Any) -> None:
         """Consume the canonical live Session Summary snapshot directly."""
-
-        if (
-            (
-                self._checkpoint_track.checkpoint_crossing_active
-                or self._today_completion_feedback_active
-                or self._routine_projection_feedback_active
-            )
-            and not self._applying_deferred_checkpoint_feedback
-        ):
-            self._deferred_session_snapshot = snapshot
-            self.setProperty(
-                "hudCheckpointSessionUpdateDeferred",
-                self._checkpoint_track.checkpoint_crossing_active,
-            )
-            self.setProperty("hudResultSessionUpdateDeferred", True)
-            self.setProperty(
-                "hudRoutineSessionUpdateDeferred",
-                self._routine_projection_feedback_active,
-            )
-            if self._checkpoint_track.checkpoint_crossing_active:
-                self._register_checkpoint_feedback_flush()
-            return
+        # These are already committed totals, not the sequential reward
+        # notices. A progress-fill or checkpoint animation cannot gate them.
         self._deferred_session_snapshot = None
 
         growth_units = _integer(_value(snapshot, "footer_growth_units", default=0))
@@ -5056,7 +5076,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             stored = _value(snapshot, "stored_growth", default=None)
             growth_units += _integer(_value(stored, "added_units", default=0))
         coins = _session_coin_count(snapshot)
-        finds = reward_discovery_count(snapshot)
+        finds = _value(snapshot, "footer_drop_count", default=None)
+        if finds is None:
+            finds = reward_discovery_count(snapshot)
         previous = self._session_totals
         current = (growth_units, coins, finds)
         if current == previous and self._session_footer.property("sessionFinds") == _session_find_count(snapshot):
@@ -5114,6 +5136,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         values: tuple[int, int, int],
     ) -> None:
         normalized = tuple(_integer(value) for value in values)
+        self._session_growth_count.retarget(normalized[0], animate=False)
         for index, widget in enumerate(self._session_metric_widgets()):
             amount = normalized[index]
             text = (format_growth_units(amount, signed=bool(amount)) if index == 0
@@ -5121,6 +5144,20 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             widget.setText(text)
         self._sync_session_metric_wrap()
         self._displayed_session_totals = normalized
+
+    def _paint_session_growth(self, units: int) -> None:
+        self._session_growth.setText(format_growth_units(units, signed=bool(units)))
+        self._displayed_session_totals = (units, *self._displayed_session_totals[1:])
+
+    def _session_count_finished(self) -> None:
+        self._session_count_animation = None
+
+    def settle_growth_counts(self) -> None:
+        """End transient counting at committed values across an Undo boundary."""
+        self._stop_session_count_animation()
+        self._session_growth_count.settle()
+        self._collapsed_feedback.settle_count()
+        self._reward_feed.settle_counts()
 
     def _stop_session_count_animation(self) -> None:
         animation = self._session_count_animation
@@ -5140,43 +5177,19 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
     ) -> None:
         self._session_feedback_revision += 1
         revision = self._session_feedback_revision
-        self._stop_session_count_animation()
+        self._session_coins.setText(f"+{current[1]:,}" if current[1] else "0")
+        self._session_finds.setText(f"{current[2]:,}")
+        self._displayed_session_totals = (self._displayed_session_totals[0], *current[1:])
+        self._session_growth_count.retarget(current[0])
+        self._session_count_animation = (self._session_growth_count
+            if self._session_growth_count.state() != self._session_growth_count.State.Stopped else None)
         for index, widget in enumerate(self._session_metric_widgets()):
             changed = changed_metrics[index]
             widget.setProperty("metricChanged", changed)
             _repolish(widget)
-        animation = QVariantAnimation(self)
-        animation.setStartValue(0.0)
-        animation.setEndValue(1.0)
-        animation.setDuration(_SESSION_HIGHLIGHT_MS)
-        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        def animate_value(raw: Any) -> None:
-            if self._session_count_animation is not animation:
-                return
-            progress = max(0.0, min(1.0, float(raw)))
-            displayed = tuple(
-                displayed_previous[index]
-                + round(
-                    (current[index] - displayed_previous[index]) * progress
-                )
-                if changed_metrics[index]
-                else current[index]
-                for index in range(3)
-            )
-            self._set_session_metric_values(displayed)
-
-        def finish() -> None:
-            if self._session_count_animation is not animation:
-                return
-            self._session_count_animation = None
-            self._set_session_metric_values(current)
-            self._clear_session_highlight(revision)
-
-        animation.valueChanged.connect(animate_value)
-        animation.finished.connect(finish)
-        self._session_count_animation = animation
-        animation.start()
+        self._sync_session_metric_wrap()
+        QTimer.singleShot(_SESSION_HIGHLIGHT_MS,
+                         lambda: self._clear_session_highlight(revision))
 
     def _clear_session_highlight(self, revision: int) -> None:
         if self._disposed or revision != self._session_feedback_revision:
@@ -5306,24 +5319,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         applied_growth_units: int = 0,
         reveal: bool = True,
     ) -> bool:
-        """Accept one exact committed answer and coordinate its HUD feedback."""
-
+        """Accept one exact commit; paint it before secondary display work."""
         identity = _bundle_id(bundle)
         if not identity:
             return False
         if identity in self._seen_bundle_ids:
             return True
-        if getattr(self, "_history_reward_inspection", None) is not None:
-            # A history row is inspection-only. Restore the live event before
-            # applying new-commit archive and queue rules.
-            self._close_history_reward_inspection()
-        if self._current_reward is not None:
-            # A stable duplicate returned above and cannot satisfy this gate.
-            # The live reveal archives only after both this distinct commit
-            # and its reader-safe minimum hold have occurred.
-            self._reward_next_commit_seen = True
-            self.setProperty("hudRewardNextCommitSeen", True)
-            ReviewGardenHud._maybe_archive_current_reward(self)
         seen_commit_ids = getattr(self, "_seen_commit_ids", None)
         if seen_commit_ids is None:
             seen_commit_ids = set()
@@ -5331,48 +5332,113 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         seen_commit_ids.add(identity)
         self._seen_bundle_ids.add(identity)
         major = not _bundle_routine_only(bundle)
-        # History reconciles to every accepted bundle, including routine
-        # Growth, while only major bundles enter the reveal queue.
         self._reward_history.append(bundle)
-        if hasattr(self, "_reward_feed"):
-            self._reward_feed.append(bundle, animate=reveal and not self._collapsed)
+        growth_units = max(0, int(applied_growth_units or 0))
+        feedback = getattr(self, "_collapsed_feedback", None)
+        if self._collapsed and feedback is not None:
+            feedback.enqueue(identity,
+                ReviewGardenHud._collapsed_reward_frames(self, bundle) if major and reveal else (),
+                ReviewGardenHud._collapsed_coin_delta(bundle),
+                ReviewGardenHud._collapsed_growth_allocations(bundle, growth_units))
+        elif hasattr(self, "_reward_feed"):
+            # The feed itself is the visible expanded receipt. Exact numbers
+            # must not fade in or wait for the hidden legacy reveal lifecycle.
+            self._reward_feed.append(bundle, animate=False, count_growth=True)
+            self._sync_reward_dock_visibility()
+            if growth_units and self._animations_enabled:
+                self._start_plant_motion()
+        updates = getattr(self, "_compact_secondary_updates", None)
+        if updates is None:
+            updates = []
+            self._compact_secondary_updates = updates
+        updates.append((bundle, major, reveal))
+        self.defer_until_feedback_paint(self._flush_compact_secondary_updates)
+        return True
+
+    def _flush_compact_secondary_updates(self) -> None:
+        """Refresh history and legacy celebrations after either view paints."""
+        if self._disposed:
+            return
+        updates = getattr(self, "_compact_secondary_updates", [])
+        self._compact_secondary_updates = []
+        for bundle, major, reveal in updates:
+            self._reward_feed.append(bundle, animate=False, count_growth=not self._collapsed)
+            self._present_committed_reward_details(bundle, major=major, reveal=reveal)
         self._reward_history_page = 0
         self.setProperty("hudRewardHistoryCount", len(self._reward_history))
         self._sync_history_rows()
-        growth_units = max(0, int(applied_growth_units or 0))
-        if growth_units:
-            self.animate_growth_delta(growth_units)
-        feedback = getattr(self, "_collapsed_feedback", None)
-        if self._collapsed and not major and feedback is not None:
-            coins = ReviewGardenHud._collapsed_coin_delta(bundle)
-            feedback.add_routine(ReviewGardenHud._collapsed_growth_allocations(bundle, growth_units), coins)
+        self._sync_unseen_badge()
+
+    def _present_committed_reward_details(self, bundle: Any, *, major: bool, reveal: bool) -> None:
+        if getattr(self, "_history_reward_inspection", None) is not None:
+            self._close_history_reward_inspection()
+        if self._current_reward is not None:
+            self._reward_next_commit_seen = True
+            self.setProperty("hudRewardNextCommitSeen", True)
+            ReviewGardenHud._maybe_archive_current_reward(self)
         if major and (self._collapsed or not reveal):
             self._unseen_major += 1
-            self._sync_unseen_badge()
         if not reveal or not major:
-            return True
-        if (
-            not self._collapsed
-            and _bundle_has_kind(bundle, "checkpoint")
-            and self._checkpoint_track.checkpoint_crossing_active
-        ):
+            return
+        if (not self._collapsed and _bundle_has_kind(bundle, "checkpoint")
+                and self._checkpoint_track.checkpoint_crossing_active):
             self._checkpoint_pending_bundles.append(bundle)
 
             def release_checkpoint_bundle() -> None:
                 identity = _bundle_id(bundle)
-                self._checkpoint_pending_bundles = [
-                    candidate
+                self._checkpoint_pending_bundles = [candidate
                     for candidate in self._checkpoint_pending_bundles
-                    if _bundle_id(candidate) != identity
-                ]
+                    if _bundle_id(candidate) != identity]
                 self._enqueue_reward_reveal(bundle)
 
-            self._checkpoint_track.when_checkpoint_reached(
-                release_checkpoint_bundle
-            )
-            return True
+            self._checkpoint_track.when_checkpoint_reached(release_checkpoint_bundle)
+            return
         self._enqueue_reward_reveal(bundle)
-        return True
+
+    @property
+    def feedback_paint_pending(self) -> bool:
+        return bool(getattr(self, "_after_feedback_paint", None))
+
+    def defer_until_feedback_paint(self, callback: Callable[[], None]) -> None:
+        """Coalesce work behind a natural paint, never a reward reading hold."""
+        self._after_feedback_paint[callback] = None
+        self._request_feedback_paint()
+
+    def _request_feedback_paint(self) -> None:
+        if not self.feedback_paint_pending:
+            return
+        if self._disposed or not self.isVisible():
+            self._queue_after_feedback_paint()
+            return
+        if self._collapsed:
+            feedback = self._collapsed_feedback
+            target = feedback.amount if feedback._current is not None else feedback.idle
+        else:
+            target = self._session_growth
+        self._feedback_paint_target = target
+        if target.isVisible():
+            target.update()
+        else:
+            # Hidden views cannot produce readable feedback. Do not retain
+            # durable acknowledgements or controller callbacks indefinitely.
+            self._queue_after_feedback_paint()
+
+    def _queue_after_feedback_paint(self) -> None:
+        if self._feedback_paint_flush_queued or not self.feedback_paint_pending:
+            return
+        self._feedback_paint_flush_queued = True
+        QTimer.singleShot(0, self._flush_after_feedback_paint)
+
+    def _flush_after_feedback_paint(self) -> None:
+        self._feedback_paint_flush_queued = False
+        callbacks = tuple(self._after_feedback_paint)
+        self._after_feedback_paint.clear()
+        self._feedback_paint_target = None
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception:
+                logger.exception("Anki Garden: post-feedback refresh failed")
 
     def present_reward(self, bundle: Any, *, reveal: bool = True) -> bool:
         """Backward-compatible delegate for callers without exact applied units."""
@@ -6004,7 +6070,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def _sync_history_rows(self) -> None:
         if hasattr(self, "_reward_feed"):
-            count = self._reward_feed.model.rowCount()
+            count = len(self._reward_feed.model.entries)
             self._projected_history_count = count
             available = bool(count or self._session_has_results)
             self._session_footer.setProperty("historyAvailable", available)
@@ -6393,6 +6459,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 natural_width = max(1, reviewer_hud_width(width) - 2)
 
                 def natural_height(widget: Any, layout: Any) -> int:
+                    if widget is self._reward_dock:
+                        self._reward_surface.layout().invalidate()
+                        self._reward_surface.updateGeometry()
                     layout.invalidate()
                     layout.activate()
                     widget.updateGeometry()
@@ -6402,11 +6471,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                         width_height = int(layout.heightForWidth(natural_width))
                     except (AttributeError, RuntimeError, TypeError, ValueError):
                         width_height = -1
-                    return max(
-                        size_hint,
-                        layout_hint,
-                        width_height if width_height >= 0 else 0,
-                    )
+                    # The unconstrained hint can wrap text at a much narrower
+                    # preferred width. That extra line is blank space once
+                    # the HUD is laid out at its actual width.
+                    return max(1, width_height) if width_height >= 0 else max(size_hint, layout_hint)
 
                 # Word-wrapped plant and reward labels can grow after their
                 # text changes but before Qt updates the widget-level size
@@ -6416,8 +6484,19 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 self._apply_body_compact_level(1)
                 body_height = natural_height(self._body_contents, body_layout)
                 uncompacted_body_height = body_height
+                # Budget for both counters when choosing the artwork size,
+                # but render only the rows that are actually active. This
+                # keeps the track anchored as counters appear or expire.
+                consumable_heights = [pill.height() for pill in self._consumable_pills.values()]
+                counter_gap = self._consumables.layout().spacing()
+                maximum_counters = sum(consumable_heights) + counter_gap * (len(consumable_heights) - 1)
+                visible_counters = (
+                    self._consumables.sizeHint().height() + body_layout.spacing()
+                    if not self._consumables.isHidden() else 0
+                )
+                counter_reserve = max(0, maximum_counters + body_layout.spacing() - visible_counters)
                 if hasattr(self, "_reward_feed"):
-                    room = reviewer_hud_safe_bottom(height, detected_top) - HUD_TOP_MARGIN - 46 - body_height - self._session_footer.sizeHint().height() - 20
+                    room = reviewer_hud_safe_bottom(height, detected_top) - HUD_TOP_MARGIN - 46 - body_height - counter_reserve - self._session_footer.sizeHint().height() - 20
                     self._reward_feed.set_available_height(min(216, max(72, room)))
                 reward_height = (
                     natural_height(self._reward_dock, reward_layout)
@@ -6446,21 +6525,27 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                         )
                 else:
                     for compact_level in (1, 2):
-                        if 46 + body_height + reward_height <= min(420 + reward_height, available_height):
+                        if 46 + body_height + counter_reserve + reward_height <= min(420 + reward_height, available_height):
                             break
                         self._apply_body_compact_level(compact_level)
                         body_height = natural_height(
                             self._body_contents,
                             body_layout,
                         )
-                    overflow = max(0, 46 + body_height + reward_height - available_height)
+                    overflow = max(0, 46 + body_height + counter_reserve + reward_height - available_height)
                     if overflow:
                         # The pinned totals/feed must not push the Growth line
                         # below the plant viewport. Spend the remaining space
                         # on artwork only after reserving the readable rows.
-                        art_height = max(48, self._art_region.height() - overflow)
-                        self._resize_normal_plant_art(art_height, max(44, art_height - 4))
+                        art_height = max(32, self._art_region.height() - overflow)
+                        self._resize_normal_plant_art(art_height, max(28, art_height - 4))
                         body_height = natural_height(self._body_contents, body_layout)
+                    remaining_overflow = max(0, 46 + body_height + counter_reserve + reward_height - available_height)
+                    if remaining_overflow and self._reward_feed.isVisible():
+                        # Once artwork reaches its minimum, scroll the reward
+                        # list in the remaining room rather than cover counters.
+                        self._reward_feed.set_available_height(self._reward_feed.height() - remaining_overflow)
+                        reward_height = natural_height(self._reward_dock, reward_layout)
                 # The styled shell contributes a one-pixel border on both
                 # vertical edges. Include both the independently anchored
                 # reward dock and the 44px header so the dock never steals
@@ -6592,6 +6677,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         return False
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
+        if watched is getattr(self, "_feedback_paint_target", None):
+            if event.type() in {QEvent.Type.Paint, QEvent.Type.Hide}:
+                # The queued callback runs after this paint event returns.
+                self._queue_after_feedback_paint()
         if watched is getattr(self, "_effect_details", None) and event.type() == QEvent.Type.Hide:
             self._effect_details_requested = False
         if watched in (getattr(self, "_header", None), getattr(self, "_header_actions", None), getattr(self, "_collapsed_tab", None)):
@@ -6608,8 +6697,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def dispose(self) -> None:
         self._disposed = True
+        self._queue_after_feedback_paint()
         if hasattr(self, "_reward_feed"):
             self._reward_feed._stop_motion()
+            self._reward_feed.settle_counts()
         self._plant_size_cache.clear()
         self._plant_geometry_cache.clear()
         pulse = getattr(self, "_rarity_pulse", None)

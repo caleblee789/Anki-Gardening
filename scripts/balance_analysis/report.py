@@ -908,7 +908,7 @@ def build_pdf(report: Mapping[str, Any], output_path: Path) -> Path:
         from reportlab.platypus import (
             KeepTogether,
             PageBreak,
-            Paragraph,
+            Paragraph as ReportParagraph,
             SimpleDocTemplate,
             Spacer,
             Table,
@@ -918,6 +918,17 @@ def build_pdf(report: Mapping[str, Any], output_path: Path) -> Path:
         raise RuntimeError(
             "ReportLab is required. Use the bundled Codex workspace Python runtime."
         ) from error
+
+    from xml.sax.saxutils import escape
+
+    def Paragraph(text, style):
+        # Frozen reports supply text, never markup or resource locations.
+        # This renderer has no image inputs; its only authored markup is the
+        # fixed line separator in paragraph_lines below.
+        return ReportParagraph(escape(str(text)), style)
+
+    def paragraph_lines(lines, style):
+        return ReportParagraph("<br/>".join(escape(str(line)) for line in lines), style)
 
     rl_config.invariant = 1
     output_path = Path(output_path)
@@ -1121,7 +1132,7 @@ def build_pdf(report: Mapping[str, Any], output_path: Path) -> Path:
     story.extend([
         Spacer(1, 1.05 * inch),
         Paragraph("Anki Garden", styles["CoverMeta"]),
-        Paragraph("Economy, Progression,<br/>and Rewards Analysis", styles["Cover"]),
+        paragraph_lines(("Economy, Progression,", "and Rewards Analysis"), styles["Cover"]),
         Paragraph(
             "A source-frozen review of the implemented 2.2.0 balance. It reports "
             "catalog definitions and modeled outcomes; it does not constitute "
@@ -1657,27 +1668,27 @@ def build_pdf(report: Mapping[str, Any], output_path: Path) -> Path:
             story.append(Spacer(1, 3))
             endgame_growth_data = [[
                 Paragraph("Cohort", styles["MicroHeader"]),
-                Paragraph("Storage<br/>current", styles["MicroHeader"]),
-                Paragraph("Storage<br/>lifetime", styles["MicroHeader"]),
-                Paragraph(
-                    "Landmark Growth<br/>tiers F / A / C",
+                paragraph_lines(("Storage", "current"), styles["MicroHeader"]),
+                paragraph_lines(("Storage", "lifetime"), styles["MicroHeader"]),
+                paragraph_lines(
+                    ("Landmark Growth", "tiers F / A / C"),
                     styles["MicroHeader"],
                 ),
-                Paragraph(
-                    "Mastery Growth<br/>ranks F / A / C",
+                paragraph_lines(
+                    ("Mastery Growth", "ranks F / A / C"),
                     styles["MicroHeader"],
                 ),
-                Paragraph("Legacy<br/>level / progress", styles["MicroHeader"]),
-                Paragraph(
-                    "Claimable<br/>Garden Coin need",
+                paragraph_lines(("Legacy", "level / progress"), styles["MicroHeader"]),
+                paragraph_lines(
+                    ("Claimable", "Garden Coin need"),
                     styles["MicroHeader"],
                 ),
             ]]
             endgame_coin_data = [[
                 Paragraph("Cohort", styles["MicroHeader"]),
-                Paragraph("Gross<br/>Garden Coins", styles["MicroHeader"]),
-                Paragraph("Spent<br/>Garden Coins", styles["MicroHeader"]),
-                Paragraph("Remaining<br/>Garden Coins", styles["MicroHeader"]),
+                paragraph_lines(("Gross", "Garden Coins"), styles["MicroHeader"]),
+                paragraph_lines(("Spent", "Garden Coins"), styles["MicroHeader"]),
+                paragraph_lines(("Remaining", "Garden Coins"), styles["MicroHeader"]),
                 Paragraph(
                     "Finite permanent Garden Coin demand remaining",
                     styles["MicroHeader"],
@@ -1721,24 +1732,22 @@ def build_pdf(report: Mapping[str, Any], output_path: Path) -> Path:
                     cohort_id.title(),
                     endgame_value("growth.stored_balance_units"),
                     endgame_value("growth.routed_to_storage_units_lifetime"),
-                    Paragraph(
-                        endgame_value("landmarks.growth_funded_units")
-                        + "<br/>"
-                        + " / ".join((
+                    paragraph_lines(
+                        (endgame_value("landmarks.growth_funded_units"),
+                        " / ".join((
                             endgame_value("landmarks.tiers_funded"),
                             endgame_value("landmarks.tiers_claimable"),
                             endgame_value("landmarks.tiers_claimed"),
-                        )),
+                        ))),
                         styles["MicroCell"],
                     ),
-                    Paragraph(
-                        endgame_value("mastery.growth_funded_units")
-                        + "<br/>"
-                        + " / ".join((
+                    paragraph_lines(
+                        (endgame_value("mastery.growth_funded_units"),
+                        " / ".join((
                             endgame_value("mastery.ranks_funded"),
                             endgame_value("mastery.ranks_claimable"),
                             endgame_value("mastery.ranks_claimed"),
-                        )),
+                        ))),
                         styles["MicroCell"],
                     ),
                     Paragraph(
