@@ -6,6 +6,7 @@ from ..presentation import PlantIdentity, plant_species_name, plant_stage_event
 import logging
 import math
 import re
+import sys
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from typing import Any, Callable, Iterable, Mapping
@@ -4266,15 +4267,23 @@ class ReviewerHookHandler:
             notice.setObjectName("ankiGardenReviewerStarterNotice")
             notice.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
             notice.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            windows_layout = None
+            notice_padding = "0" if sys.platform == "win32" else "7px 10px"
             notice.setStyleSheet(
                 f"QFrame#ankiGardenReviewerStarterNotice {{ background:{GARDEN_THEME['elevated_surface']}; "
-                f"border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:8px; padding:7px 10px; }}"
+                f"border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:8px; padding:{notice_padding}; }}"
                 f"QLabel {{ color:{GARDEN_THEME['text_primary']}; font-size:12px; }}"
             )
             label = QLabel(REVIEWER_NO_STARTER_NOTICE, notice)
             label.setWordWrap(True)
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             label.setAccessibleName(REVIEWER_NO_STARTER_NOTICE)
+            if sys.platform == "win32":
+                from aqt.qt import QVBoxLayout
+
+                windows_layout = QVBoxLayout(notice)
+                windows_layout.setContentsMargins(10, 7, 10, 7)
+                windows_layout.addWidget(label)
             notice.adjustSize()
             parent_width = max(1, int(parent.width()))
             parent_height = max(1, int(parent.height()))
@@ -4283,6 +4292,9 @@ class ReviewerHookHandler:
                 max(1, parent_width - 24),
             )
             notice.setFixedWidth(notice_width)
+            if windows_layout is not None:
+                notice.setFixedHeight(windows_layout.totalHeightForWidth(notice_width))
+                windows_layout.activate()
             x, y = reviewer_reward_overlay_position(
                 parent_width,
                 parent_height,

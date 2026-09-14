@@ -4,7 +4,7 @@
 
 Anki Garden is a free add-on for desktop Anki. Grow plants as you answer cards, collect new species, and customize your garden with scenery and decorations.
 
-**Version 2.2.0** | [Get started](#get-started) | [Progression and rewards](docs/progression-rewards-effects-reference.md) | [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
+**Version 2.2.0** | [Watch the 26-second demo](release-copy/media/anki-garden-demo.mp4) | [Get started](#get-started) | [Progression and rewards](docs/progression-rewards-effects-reference.md) | [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
 
 This checkout is a release candidate. See the [release notes](docs/release-notes-2.2.0.md)
 for its acceptance and publication status.
@@ -70,7 +70,7 @@ Garden settings let you adjust animations, reviewer panels, and reward summaries
 
 ## Compatibility and limitations
 
-**Tested on macOS with Anki 26.08.1.** Windows and Linux have not been verified.
+**Release-candidate checks:** Anki 26.08.1 on macOS and Windows 11 ARM (native ARM and emulated x64), at 100% application scaling. Final release acceptance is pending. Physical Intel/AMD Windows hardware and Linux remain unverified.
 
 The Garden interface runs only in desktop Anki, not AnkiMobile, AnkiDroid, or the AnkiWeb website. Inventory and settings are stored locally and do not sync between computers. Reviews from another device can earn rewards when their history syncs back to desktop Anki.
 
@@ -82,7 +82,7 @@ Compatibility with other add-ons may vary. See the [add-on interaction audit](do
 
 [Open an issue](https://github.com/caleblee789/Anki-Gardening/issues) to report a bug or suggest an improvement. Include your Garden version, Anki version, operating system, and what happened versus what you expected.
 
-Screenshots and error messages are helpful, but remove private information first. Do not upload collections, private card content, patient information, or personal file paths.
+For troubleshooting, use **Copy support report** in Garden settings. Review it before sharing. Screenshots and error messages are helpful, but remove private information first. Do not upload collections, private card content, patient information, or personal file paths.
 
 ## Development and maintenance
 

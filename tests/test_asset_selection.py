@@ -939,7 +939,7 @@ def test_reroll_cycles_through_local_alternatives(tmp_path):
     assert len(storage.save_calls) == 2
     cycles = storage._meta[AssetManager._LOCAL_CATALOG_CYCLES_KEY]
     assert cycles["plants:bonsai_mature"] == {
-        "local_path": "assets/plants/bonsai/mature/a.svg",
+        "local_path": str(Path("assets/plants/bonsai/mature/a.svg")),
         "catalog_cycle_index": 0,
     }
 
@@ -1028,7 +1028,7 @@ def test_reroll_accepts_legacy_local_cycle_without_rewriting_legacy_record(tmp_p
     assert picked.name == "b.svg"
     assert storage._meta[cache_key] == legacy_record
     assert storage._meta[AssetManager._LOCAL_CATALOG_CYCLES_KEY][cache_key] == {
-        "local_path": "assets/plants/bonsai/mature/b.svg",
+        "local_path": str(Path("assets/plants/bonsai/mature/b.svg")),
         "catalog_cycle_index": 1,
     }
     assert len(storage.save_calls) == 1

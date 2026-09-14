@@ -6,17 +6,70 @@
     "ANKIWEB_CODE"
   ],
   "media_sha256": {
-    "anki-garden-review-hud.gif": "db096442cd3ed985a4c014dcfbb5cb81986114c706de7d127d3bf88948e5a2fc",
-    "anki-garden-review-hud.mp4": "edf574f273544291496abccaba38cf082a7b9d1d73f069efd6082a3933149318",
-    "anki-garden-poster.png": "dfb365c0c5ac10b759f82d19589f2580ce0b31c6b93e55c13f8e90130ec217fe"
+    "anki-garden-review-hud.gif": "13b5fbf0844ac8ea462e6927ab636d5b0ad8ee69a40125f008e5f33ab033d9fe",
+    "anki-garden-review-hud.mp4": "1116d86717188bda3ef44c35976cf582bb43f6042b27db857d53698c5d718524",
+    "anki-garden-poster.png": "dfb365c0c5ac10b759f82d19589f2580ce0b31c6b93e55c13f8e90130ec217fe",
+    "anki-garden-demo.mp4": "56591cc05d953a8a0be163f92c04ad0b757e88e2366fa8a9b81506469823dbf7"
   },
   "word_counts": {
-    "README.md": 934,
-    "ANKIWEB.md": 528,
-    "REDDIT.md": 317
+    "README.md": 811,
+    "ANKIWEB.md": 498,
+    "REDDIT.md": 326
   },
   "licenses": {
     "code": "AGPL-3.0-or-later",
     "project_artwork": "CC-BY-4.0; rights held only; third-party exclusions"
+  },
+  "demo": "media/anki-garden-demo.mp4",
+  "reddit_variants": [
+    {
+      "community": "r/Anki",
+      "title": "I made Anki Garden: grow a garden while you study (free desktop add-on)",
+      "file": "REDDIT.md"
+    },
+    {
+      "community": "r/medicalschoolanki",
+      "title": "I made Anki Garden: grow a garden while you study (free desktop add-on)",
+      "file": "REDDIT.md"
+    },
+    {
+      "community": "r/GetStudying",
+      "title": "I made Anki Garden: grow a garden while you study (free desktop add-on)",
+      "file": "REDDIT.md"
+    }
+  ],
+  "launch_status": {
+    "public_release": "pending owner approval and final acceptance",
+    "recap_export": "deferred by the separate task; excluded from active source and release package",
+    "volunteer_first_use": "pending real volunteers; no observations fabricated",
+    "hosted_ci": "blocked before execution by GitHub billing/spending restriction",
+    "community_rules": "recheck before publishing each post",
+    "application": "evaluate verified adoption two to four weeks after launch",
+    "native_acceptance": "Current package has scoped native macOS/Windows evidence; remaining release checks and owner acceptance are pending.",
+    "readiness_record": "build/release-launch-20260913/readiness.json"
+  },
+  "traction": {
+    "observations": [],
+    "fields": [
+      "date",
+      "source",
+      "downloads",
+      "confirmed_installations",
+      "followup_cohort_size",
+      "followup_respondents",
+      "continued_use_day_7",
+      "organic_shares",
+      "user_issues",
+      "fixes_shipped"
+    ],
+    "notes": "Downloads are not unique active users. Follow-up is voluntary; record denominators and response rates. No telemetry."
+  },
+  "verification": {
+    "scoped_default": "1801 passed, 17 intentional skips; annual production-engine case retained with unchanged-input provenance",
+    "required_qt": "863 passed, zero skipped; final run exit code 0",
+    "assets": "passed",
+    "compile": "passed",
+    "media": "Fresh current-package native footage; 26-second demo and 10-second reviewer showcase; both MP4s and GIF decode without errors",
+    "publication": "not performed"
   }
 }

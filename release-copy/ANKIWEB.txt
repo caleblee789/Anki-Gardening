@@ -1,12 +1,10 @@
-Anki Garden: Grow a garden while you study
-
 Grow a garden while you study.
 
 Anki Garden is a free desktop Anki add-on that turns card answers into plant growth. Start with a seed, collect new plants, and customize your garden with scenery and decorations.
 
 No watering. No plant decay. Keep what you have earned when you take a break.
 
-[Insert image: Anki Garden promotional artwork; media/anki-garden-poster.png]
+Anki Garden promotional artwork: media/anki-garden-poster.png
 
 What you can do
 
@@ -15,9 +13,9 @@ What you can do
 - Earn rewards while studying, including Coins, Growth, and Garden Finds.
 - Choose how much you see. Keep a compact progress tile in the reviewer or expand it for plant details, session totals, and recent rewards.
 
-[Insert image: Anki Garden reviewer demonstration; media/anki-garden-review-hud.gif]
+Anki Garden reviewer demonstration: media/anki-garden-review-hud.gif
 
-Reviewer showcase with several reward states. The sequence is not representative of typical reward frequency.
+*Current reviewer showcase with prepared rare reward examples, not typical reward frequency.*
 
 Made to fit normal Anki study
 
@@ -38,7 +36,7 @@ Open Progress → Activity to view Study rewards and the Finish all cards due to
 
 Compatibility and current limitations
 
-Preview testing: macOS with Anki 26.08.1. Final-package validation is still pending; Windows and Linux have not been verified for this release.
+Preview testing: Anki 26.08.1 on macOS and Windows 11 ARM (native ARM and emulated x64), at 100% application scaling. Final release acceptance is pending. Physical Intel/AMD Windows hardware and Linux remain unverified.
 
 Desktop only. The Garden interface does not run inside AnkiMobile, AnkiDroid, or the AnkiWeb website. Garden inventory and settings do not synchronize between computers. Synced review history can earn rewards when it reaches desktop; compatibility with a particular sync workflow still depends on the tested build.
 
@@ -56,6 +54,4 @@ Artwork includes AI-generated assets. Third-party assets retain their own terms.
 
 Questions and bug reports are welcome in the comments on this listing.
 
-The development repository is currently private.
-
-For a bug report, include your Garden version, Anki version, operating system, and steps to reproduce the problem. Remove private information from screenshots and error messages. This is an independent add-on, not an official Anki product.
+Source and support: GitHub: https://github.com/caleblee789/Anki-Gardening.

@@ -1438,7 +1438,7 @@ class AssetManager:
         if suffix not in self.SUPPORTED_FORMATS:
             return False
         try:
-            rel_path = str(resolved.relative_to(self._addon_root))
+            rel_path = resolved.relative_to(self._addon_root).as_posix()
         except ValueError:
             return False
         expected_format = self._manifest_format_for(rel_path)

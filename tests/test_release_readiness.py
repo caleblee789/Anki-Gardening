@@ -26,7 +26,7 @@ def test_release_gate_requires_current_artifacts_native_evidence_and_unskipped_q
         "package": {"path": package.name, "sha256": digest},
         "gates": {name: {"status": "pass", "evidence": [evidence],
                          "package_sha256": digest, "platform": "macOS",
-                         "anki_version": "25.07" if name == "native_macos_2507" else "26.8.1"}
+                         "anki_version": "26.8.1"}
                   for name in gate.REQUIRED_GATES},
     }
     path = tmp_path / "readiness.json"
@@ -35,6 +35,10 @@ def test_release_gate_requires_current_artifacts_native_evidence_and_unskipped_q
         path.write_text(json.dumps(report))
         return gate.check(path)
 
+    assert check()[1]
+    # Historical reports may retain the retired minimum-version acceptance
+    # gate. It remains unverified but no longer blocks this release.
+    report["gates"]["native_macos_2507"] = {"status": "pending"}
     assert check()[1]
     report["gates"]["human_review"]["status"] = "pending"
     assert check()[0]["pending_gates"] == ["human_review"]

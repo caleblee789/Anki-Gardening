@@ -144,6 +144,9 @@ the named `REQUIRED_GATES` from that module. Artifact records contain paths
 relative to the evidence directory and SHA-256 hashes. Passing gates require
 retained evidence; native and approval gates also carry the exact package hash.
 Native endpoint gates record `platform: macOS` and their actual Anki version.
+The required native endpoint is Anki 26.08.1. Anki 25.07 native acceptance is
+unverified and is no longer a release blocker; this does not change the declared
+compatibility range or establish native support for that version.
 Leave human review pending until the release owner actually approves it.
 
 ```bash

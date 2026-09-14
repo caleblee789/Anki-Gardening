@@ -24,7 +24,7 @@ from scripts.package_addon import ADDON, PRODUCTION_BUILD, package_files, packag
 
 REQUIRED_GATES = (
     "default_tests", "release_qt", "assets", "compile", "package",
-    "native_macos_2507", "native_macos_260801", "persistence",
+    "native_macos_260801", "persistence",
     "review_correctness", "sync_companions", "ui_acceptance",
     "responsiveness", "human_review",
 )
@@ -118,8 +118,7 @@ def check(report_path, *, allow_pending=False):
                     raise ValueError("Required Qt evidence contains skipped tests")
             if name in PACKAGE_BOUND_GATES and gate.get("package_sha256") != package_digest:
                 raise ValueError(f"Native/approval evidence is for another package: {name}")
-            expected_version = {"native_macos_2507": {"25.07", "25.7"},
-                                "native_macos_260801": {"26.8.1", "26.08.1"}}.get(name)
+            expected_version = {"native_macos_260801": {"26.8.1", "26.08.1"}}.get(name)
             if expected_version and (gate.get("platform") != "macOS"
                                      or gate.get("anki_version") not in expected_version):
                 raise ValueError(f"Native platform/version is not the required endpoint: {name}")

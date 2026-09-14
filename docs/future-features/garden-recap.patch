@@ -1,0 +1,825 @@
+diff --git a/ankigarden/ui/dashboard.py b/ankigarden/ui/dashboard.py
+index 1b5a265..21a5dfa 100644
+--- a/ankigarden/ui/dashboard.py
++++ b/ankigarden/ui/dashboard.py
+@@ -24664,10 +24664,12 @@ class GardenDashboard(DialogShell):
+             resources = getattr(self, "workspace_resources", self.workspace_coins)
+             resource_width = resources.width()
+             navigation_width = self.workspace_navigation.sizeHint().width()
++            more_width = (self.garden_more_btn.width() + self.header_grid.horizontalSpacing()
++                          if hasattr(self, "garden_more_btn") and not self.garden_more_btn.isHidden() else 0)
+             wrapped = (
+                 hasattr(self, "workspace_stored_growth")
+                 and not self.workspace_stored_growth.isHidden()
+-                and self.width() < 100 + navigation_width + resource_width + 104
++                and self.width() < 100 + navigation_width + resource_width + 104 + more_width
+             )
+             if getattr(self, "_resources_wrapped", None) != wrapped:
+                 self._resources_wrapped = wrapped
+@@ -24678,7 +24680,7 @@ class GardenDashboard(DialogShell):
+                 )
+                 self.header_grid.setVerticalSpacing(6 if wrapped else 0)
+                 self.top_bar.setFixedHeight(96 if wrapped else 60)
+-            remaining = self.width() - navigation_width - (0 if wrapped else resource_width) - 104
++            remaining = self.width() - navigation_width - (0 if wrapped else resource_width) - 104 - more_width
+             self.title_stack_widget.setFixedWidth(max(100, min(180, remaining)))
+             self.garden_stats_bar.hide()
+             return
+@@ -25005,6 +25007,7 @@ class GardenDashboard(DialogShell):
+             and event.type() == QEvent.Type.MouseButtonPress
+             and belongs_to_dashboard
+             and not self._is_widget_descendant(watched, self.plant_card)
++            and not self._is_widget_descendant(watched, getattr(self, "garden_more_btn", None))
+             and watched is not self.scene
+         ):
+             self.scene.dismiss_selection()
+@@ -28670,6 +28673,23 @@ class GardenDashboard(DialogShell):
+         self.settings_btn.setToolTip("Garden settings")
+         self.header_grid.addWidget(self.settings_btn, 0, 3)
+         self.settings_btn.show()
++        self.garden_more_btn = GardenIconButton("overflow", "More garden actions", self.top_bar)
++        self.garden_more_btn.setFixedSize(self.settings_btn.size())
++        self.garden_more_btn.setStyleSheet(self.settings_btn.styleSheet() +
++                                          "QPushButton::menu-indicator {image:none;width:0;}")
++        recap_menu = QMenu(self.garden_more_btn)
++        recap_menu.setAccessibleName("More garden actions")
++        recap_menu.setStyleSheet(f"""
++            QMenu {{background:{GARDEN_THEME['raised_surface']};color:{GARDEN_THEME['text_primary']};
++                border:1px solid {GARDEN_THEME['strong_border']};border-radius:8px;padding:6px;}}
++            QMenu::item {{padding:8px 16px;border-radius:4px;}}
++            QMenu::item:selected {{background:{GARDEN_THEME['selected_surface']};}}
++            QMenu::item:disabled {{color:{GARDEN_THEME['text_muted']};}}
++        """)
++        self.garden_more_btn.setMenu(recap_menu)
++        self.header_grid.addWidget(self.garden_more_btn, 0, 4)
++        from .garden_recap import _GardenRecapExport
++        self._recap_export = _GardenRecapExport(self, recap_menu.addAction("Save garden recap…"))
+         self.workspace_buttons["garden"].setChecked(True)
+         self.setProperty("workspaceSection", "garden")
+         self._garden_scene_page = garden_page
+@@ -28778,6 +28798,7 @@ class GardenDashboard(DialogShell):
+             if target == "today" and activity is not None and subsection:
+                 QTimer.singleShot(0, lambda page=activity, requested=str(subsection): page.focus_section(requested))
+         self._workspace_section = key
++        self.garden_more_btn.setVisible(key == "garden")
+         self.workspace_stack.setCurrentWidget(self.workspace_pages[key])
+         for name, button in self.workspace_buttons.items():
+             button.setChecked(name == key)
+diff --git a/ankigarden/ui/scene.py b/ankigarden/ui/scene.py
+index b53876b..b3fb1a9 100644
+--- a/ankigarden/ui/scene.py
++++ b/ankigarden/ui/scene.py
+@@ -1726,82 +1726,99 @@ class GardenSceneWidget(QWidget):
+ 
+     def paintEvent(self, _event: Any) -> None:
+         performance_started = RUNTIME_PERFORMANCE.begin()
+-        # Phase only animates the fallback sun and fallback flower petals.
+-        # Static raster scenery must not keep repainting an unchanged canvas.
+-        self._ambient_motion_visible = False
+         painter = QPainter(self)
++        try:
++            self._paint_scene(painter)
++        finally:
++            painter.end()
++        self._sync_animation_timer()
++        RUNTIME_PERFORMANCE.finish("scene.paint", performance_started)
++
++    def _paint_scene(
++        self, painter: QPainter, *, artwork_only: bool = False,
++        artwork_bounds: QRectF | None = None,
++    ) -> None:
++        """Paint the same scene into a widget or a private keepsake canvas."""
++        self._ambient_motion_visible = False
+         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
++        if artwork_only:
++            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+         viewport = self.rect()
+         r = self._garden_canvas_rect()
+-        painter.fillRect(viewport, QColor(GARDEN_THEME["garden_background"]))
++        if not artwork_only:
++            painter.fillRect(viewport, QColor(GARDEN_THEME["garden_background"]))
+         painter.save()
+-        painter.setClipRect(r)
++        painter.setClipRect(artwork_bounds if artwork_only and artwork_bounds is not None else r)
+         try:
+-            sky = QLinearGradient(r.left(), r.top(), r.left(), r.bottom())
+-            health = self._clamp(self._coerce_float(self.scene.get("health", 0.7), 0.7), 0.0, 1.0)
+-            glow = min(255, 90 + int(120 * health))
+-            night = bool(self.scene.get("night_mode", False))
+-            if night:
+-                sky.setColorAt(0.0, QColor(11, 18, 38))
+-                sky.setColorAt(0.55, QColor(20, 38, 64))
+-                sky.setColorAt(1.0, QColor(12, 24, 30))
++            if artwork_only:
++                if not self._draw_background_asset(painter, r, opacity=1.0):
++                    raise RuntimeError("Garden background unavailable")
+             else:
+-                sky.setColorAt(0.0, QColor(18, 26, 46))
+-                sky.setColorAt(0.55, QColor(27, 60, 72))
+-                sky.setColorAt(1.0, QColor(16, 30, 26))
+-            painter.fillRect(r, sky)
+-            background_drawn = self._draw_background_asset(
+-                painter,
+-                r,
+-                edge_rect=viewport,
+-            )
+-            growth = self._clamp(self._coerce_float(self.scene.get("growth", 0.0), 0.0), 0.0, 1.0)
+-
+-            if not background_drawn:
+-                self._ambient_motion_visible = True
+-                sun_x = r.x() + r.width() * (0.75 + 0.02 * math.sin(self.phase / 4))
+-                sun_y = r.y() + r.height() * 0.2
+-                painter.setPen(Qt.PenStyle.NoPen)
+-                painter.setBrush(QColor(255, 220, 130, 95))
+-                painter.drawEllipse(QRectF(sun_x - 55, sun_y - 55, 110, 110))
+-                painter.setBrush(QColor(150, 255, 170, int(18 + growth * 40)))
+-                painter.drawEllipse(QRectF(sun_x - 80, sun_y - 80, 160, 160))
+-
+-                ground = QLinearGradient(
+-                    r.left(),
+-                    r.y() + r.height() * 0.56,
+-                    r.left(),
+-                    r.bottom(),
++                sky = QLinearGradient(r.left(), r.top(), r.left(), r.bottom())
++                health = self._clamp(self._coerce_float(self.scene.get("health", 0.7), 0.7), 0.0, 1.0)
++                glow = min(255, 90 + int(120 * health))
++                night = bool(self.scene.get("night_mode", False))
++                if night:
++                    sky.setColorAt(0.0, QColor(11, 18, 38))
++                    sky.setColorAt(0.55, QColor(20, 38, 64))
++                    sky.setColorAt(1.0, QColor(12, 24, 30))
++                else:
++                    sky.setColorAt(0.0, QColor(18, 26, 46))
++                    sky.setColorAt(0.55, QColor(27, 60, 72))
++                    sky.setColorAt(1.0, QColor(16, 30, 26))
++                painter.fillRect(r, sky)
++                background_drawn = self._draw_background_asset(
++                    painter,
++                    r,
++                    edge_rect=viewport,
+                 )
+-                ground.setColorAt(0.0, QColor(45, 90, 54))
+-                ground.setColorAt(1.0, QColor(26, 54, 32))
+-                painter.setBrush(ground)
+-                painter.drawRoundedRect(
+-                    QRectF(
+-                        r.x(),
++                growth = self._clamp(self._coerce_float(self.scene.get("growth", 0.0), 0.0), 0.0, 1.0)
++
++                if not background_drawn:
++                    self._ambient_motion_visible = True
++                    sun_x = r.x() + r.width() * (0.75 + 0.02 * math.sin(self.phase / 4))
++                    sun_y = r.y() + r.height() * 0.2
++                    painter.setPen(Qt.PenStyle.NoPen)
++                    painter.setBrush(QColor(255, 220, 130, 95))
++                    painter.drawEllipse(QRectF(sun_x - 55, sun_y - 55, 110, 110))
++                    painter.setBrush(QColor(150, 255, 170, int(18 + growth * 40)))
++                    painter.drawEllipse(QRectF(sun_x - 80, sun_y - 80, 160, 160))
++
++                    ground = QLinearGradient(
++                        r.left(),
+                         r.y() + r.height() * 0.56,
+-                        r.width(),
+-                        r.height() * 0.44,
+-                    ),
+-                    0,
+-                    0,
+-                )
+-            # Blend only the background perimeter. Foreground artwork and hit
+-            # geometry are painted afterwards and retain their original anchors.
+-            edge = min(36.0, r.width() / 12.0, r.height() / 12.0)
+-            base = QColor(GARDEN_THEME["garden_background"])
+-            clear = QColor(base)
+-            clear.setAlpha(0)
+-            for x1, y1, x2, y2, area in (
+-                (r.left(), r.top(), r.left() + edge, r.top(), QRectF(r.left(), r.top(), edge, r.height())),
+-                (r.right(), r.top(), r.right() - edge, r.top(), QRectF(r.right() - edge, r.top(), edge, r.height())),
+-                (r.left(), r.top(), r.left(), r.top() + edge, QRectF(r.left(), r.top(), r.width(), edge)),
+-                (r.left(), r.bottom(), r.left(), r.bottom() - edge, QRectF(r.left(), r.bottom() - edge, r.width(), edge)),
+-            ):
+-                fade = QLinearGradient(x1, y1, x2, y2)
+-                fade.setColorAt(0, base)
+-                fade.setColorAt(1, clear)
+-                painter.fillRect(area, fade)
++                        r.left(),
++                        r.bottom(),
++                    )
++                    ground.setColorAt(0.0, QColor(45, 90, 54))
++                    ground.setColorAt(1.0, QColor(26, 54, 32))
++                    painter.setBrush(ground)
++                    painter.drawRoundedRect(
++                        QRectF(
++                            r.x(),
++                            r.y() + r.height() * 0.56,
++                            r.width(),
++                            r.height() * 0.44,
++                        ),
++                        0,
++                        0,
++                    )
++                # Blend only the background perimeter. Foreground artwork and hit
++                # geometry are painted afterwards and retain their original anchors.
++                edge = min(36.0, r.width() / 12.0, r.height() / 12.0)
++                base = QColor(GARDEN_THEME["garden_background"])
++                clear = QColor(base)
++                clear.setAlpha(0)
++                for x1, y1, x2, y2, area in (
++                    (r.left(), r.top(), r.left() + edge, r.top(), QRectF(r.left(), r.top(), edge, r.height())),
++                    (r.right(), r.top(), r.right() - edge, r.top(), QRectF(r.right() - edge, r.top(), edge, r.height())),
++                    (r.left(), r.top(), r.left(), r.top() + edge, QRectF(r.left(), r.top(), r.width(), edge)),
++                    (r.left(), r.bottom(), r.left(), r.bottom() - edge, QRectF(r.left(), r.bottom() - edge, r.width(), edge)),
++                ):
++                    fade = QLinearGradient(x1, y1, x2, y2)
++                    fade.setColorAt(0, base)
++                    fade.setColorAt(1, clear)
++                    painter.fillRect(area, fade)
+             plant_rows = self._layout_plants(self.width(), self.height())
+             self._feature_layer_trace = ["background"]
+             self._draw_garden_landmark(painter, r)
+@@ -1944,6 +1961,10 @@ class GardenSceneWidget(QWidget):
+                         painter.translate(-anchor_x, -anchor_y)
+                     asset_drawn = self._draw_plant_asset(painter, layout, plant)
+                     if not asset_drawn:
++                        if artwork_only:
++                            painter.restore()
++                            painter.restore()
++                            raise RuntimeError("Garden plant artwork unavailable")
+                         self._draw_plant(painter, x, base_y, plant, idx)
+                     painter.restore()
+                     self._draw_mastery_overlay(painter, layout, plant)
+@@ -1965,6 +1986,8 @@ class GardenSceneWidget(QWidget):
+             # rows. Paint its complete silhouette after their vessel fronts;
+             # otherwise the middle bed incorrectly cuts off tall hooks/posts.
+             self._draw_garden_feature(painter, r)
++            if artwork_only:
++                return
+ 
+             # Selected and keyboard-focus contours are a final UI layer so the
+             # visible lower vessel edge remains outlined at the surface seam.
+@@ -2032,12 +2055,12 @@ class GardenSceneWidget(QWidget):
+             # Selected-plant details and real keyboard-focusable actions live in
+             # the compact native card positioned over this canvas.
+         except Exception:
++            if artwork_only:
++                raise
+             self._clear_hit_targets()
+             self._draw_fallback_scene(painter, r)
+         finally:
+             painter.restore()
+-        self._sync_animation_timer()
+-        RUNTIME_PERFORMANCE.finish("scene.paint", performance_started)
+ 
+     def _draw_landmark_affordances(self, painter: QPainter) -> None:
+         """Trace the exposed building edges above their shaped click targets."""
+@@ -4263,6 +4286,7 @@ class GardenSceneWidget(QWidget):
+         rect: Any,
+         *,
+         edge_rect: Any | None = None,
++        opacity: float = 0.98,
+     ) -> bool:
+         fallback_path, _placement = self._asset_record("background")
+         surface_path, _occlusion_path, _surface_variant, _variant_name = self._surface_asset_record(
+@@ -4276,7 +4300,7 @@ class GardenSceneWidget(QWidget):
+             painter,
+             path,
+             box,
+-            opacity=0.98,
++            opacity=opacity,
+             focal=GARDEN_BACKGROUND_FOCAL,
+         )
+         return foreground_drawn
+diff --git a/ankigarden/ui/garden_recap.py b/ankigarden/ui/garden_recap.py
+new file mode 100644
+index 0000000..0dd7cb1
+--- /dev/null
++++ b/ankigarden/ui/garden_recap.py
+@@ -0,0 +1,348 @@
++"""Private, local keepsake export; never owns or advances gameplay state."""
++
++from __future__ import annotations
++
++import logging
++from copy import deepcopy
++from dataclasses import dataclass
++from datetime import date
++from pathlib import Path
++from typing import Any
++
++from aqt.qt import (
++    QApplication, QDialog, QFileDialog, QFont, QImage, QIODevice, QLabel,
++    QObject, QPainter, QPainterPath, QPen, QPushButton, QRectF, QSaveFile,
++    QStandardPaths, QTimer, Qt, QColor,
++)
++
++from .landmark_display import project_landmark_artwork_rect
++from .plant_display import GARDEN_CANVAS_HEIGHT, GARDEN_CANVAS_WIDTH
++from .scene import GardenSceneWidget
++
++
++logger = logging.getLogger(__name__)
++
++
++@dataclass(frozen=True)
++class _RecapStyle:
++    size: tuple[int, int] = (1800, 1200)
++    heading: tuple[int, int, int, int] = (64, 40, 1672, 84)
++    subtitle: tuple[int, int, int, int] = (64, 132, 1672, 42)
++    viewport: tuple[int, int, int, int] = (64, 206, 1672, 900)
++    footer: tuple[int, int, int, int] = (64, 1132, 1672, 30)
++    text_sizes: tuple[int, int, int] = (70, 32, 24)
++    paper: str = "#F6F3EB"
++    ink: tuple[str, str, str] = ("#284438", "#647266", "#66746A")
++    border: str = "#D9DED3"
++    corner_radius: int = 24
++
++
++_STYLE = _RecapStyle()
++
++
++@dataclass(frozen=True)
++class _RecapContext:
++    exported_on: date
++    scene: dict[str, Any]
++
++    @property
++    def filename(self) -> str:
++        return f"anki-garden-recap-{self.exported_on.year}.png"
++
++    @property
++    def subtitle(self) -> str:
++        return f"{self.exported_on.year} Year in Review"
++
++
++def _capture_recap_context(engine: Any, exported_on: date | None = None) -> _RecapContext:
++    """Copy only committed artwork inputs, without UI selectors or history reads."""
++    exported_on = exported_on or date.today()
++    state = engine.state
++
++    def asset(method: str, *args: Any) -> Any:
++        # These existing resolvers read the local registry; they do not fetch,
++        # reroll, equip, initialize gameplay, or persist asset choices.
++        resolved = getattr(engine, method)(*args)
++        return deepcopy(resolved.to_payload()) if resolved is not None else None
++
++    landmark = asset("resolve_landmark_asset")
++    scene = {
++        "theme": str(engine.config.value("visual_theme", "verdant_twilight")),
++        "scenery": state.selected_background,
++        "visible_scenery": state.selected_background,
++        "garden_feature": state.displayed_garden_feature,
++        "garden_feature_visible": True,
++        "unlocked_slots": state.unlocked_slots,
++        "landmark_id": state.garden_project.displayed_project_id if landmark else "",
++        "show_status_overlay": False,
++        "show_locked_bed_badges": False,
++        "motion_enabled": False,
++        "stage_transitions": [],
++        "asset_paths": {
++            "background": asset("resolve_background_asset"),
++            "garden_feature": asset("resolve_garden_feature_asset"),
++            "garden_overlay": asset("resolve_garden_overlay_asset"),
++            "landmark": landmark,
++        },
++        "plants": [
++            {
++                # Ephemeral identities suffice for the renderer. Personal
++                # names, persistent IDs, counters and memories never enter it.
++                "plant_id": f"bed-{plant.slot_index}",
++                "slot_index": plant.slot_index,
++                "species": plant.species,
++                "stage": plant.growth_stage,
++                "asset": asset("resolve_plant_asset", plant.species, plant.growth_stage),
++            }
++            for plant in state.plants if plant.slot_index is not None
++        ],
++    }
++    return _RecapContext(exported_on, deepcopy(scene))
++
++
++def _artwork_bounds(snapshot: GardenSceneWidget) -> QRectF:
++    """Contain the design canvas plus silhouettes, protecting rounded corners."""
++    bounds = snapshot._garden_canvas_rect()
++    artwork: list[QRectF] = []
++    for _plant, layout in snapshot._layout_plants(snapshot.width(), snapshot.height()):
++        visible = layout.visible
++        artwork.append(QRectF(visible.x, visible.y, visible.width, visible.height))
++    decoration = snapshot.decoration_visible_geometry()
++    if decoration is not None:
++        artwork.append(decoration)
++    if snapshot.scene.get("landmark_id"):
++        artwork.append(QRectF(*project_landmark_artwork_rect(
++            bounds.x(), bounds.y(), bounds.width(), bounds.height(),
++            snapshot.scene["landmark_id"],
++        )))
++    for rect in artwork:
++        # No margin is added where the authored scene already has clearance.
++        pad = _STYLE.corner_radius
++        bounds = bounds.united(rect.adjusted(-pad, -pad, pad, pad))
++    return bounds
++
++
++def _render_recap(context: _RecapContext) -> QImage:
++    """GUI-thread painting from source assets into fixed physical pixel buffers."""
++    snapshot = GardenSceneWidget(interactive=False)
++    painter: QPainter | None = None
++    try:
++        snapshot.resize(int(GARDEN_CANVAS_WIDTH), int(GARDEN_CANVAS_HEIGHT))
++        # This instance is never shown, parented into the live page, or focused.
++        snapshot.set_scene(deepcopy(context.scene))
++        bounds = _artwork_bounds(snapshot)
++        viewport = QRectF(*_STYLE.viewport)
++        scene_image = QImage(int(viewport.width()), int(viewport.height()), QImage.Format.Format_RGB32)
++        source_path, *_ = snapshot._surface_asset_record(snapshot.width(), snapshot.height())
++        if not source_path:
++            source_path, _ = snapshot._asset_record("background")
++        source = snapshot._pixmap_for(source_path) if source_path else None
++        if source is None:
++            raise RuntimeError("Garden background unavailable")
++        # The current renderer contains a fixed 3:2 scene and cannot extend
++        # background-only artwork. Use a quiet color sampled from that scenery.
++        source_image = source.toImage()
++        edges = [source_image.copy(x, 0, 1, source.height()).scaled(
++            1, 1, Qt.AspectRatioMode.IgnoreAspectRatio,
++            Qt.TransformationMode.SmoothTransformation,
++        ).pixelColor(0, 0) for x in (0, source.width() - 1)]
++        matte = QColor(*[sum(getattr(edge, channel)() for edge in edges) // len(edges)
++                         for channel in ("red", "green", "blue")])
++        scene_image.fill(matte)
++        scale = min(viewport.width() / bounds.width(), viewport.height() / bounds.height())
++        painter = QPainter(scene_image)
++        painter.translate(
++            (viewport.width() - bounds.width() * scale) / 2,
++            (viewport.height() - bounds.height() * scale) / 2,
++        )
++        painter.scale(scale, scale)
++        painter.translate(-bounds.x(), -bounds.y())
++        snapshot._paint_scene(painter, artwork_only=True, artwork_bounds=bounds)
++        painter.end()
++
++        image = QImage(*_STYLE.size, QImage.Format.Format_RGB32)
++        image.fill(QColor(_STYLE.paper))
++        painter = QPainter(image)
++        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
++        clip = QPainterPath()
++        clip.addRoundedRect(viewport, _STYLE.corner_radius, _STYLE.corner_radius)
++        painter.save()
++        painter.setClipPath(clip)
++        painter.drawImage(viewport.topLeft(), scene_image)
++        painter.restore()
++        painter.setPen(QPen(QColor(_STYLE.border), 1))
++        painter.setBrush(Qt.BrushStyle.NoBrush)
++        painter.drawPath(clip)
++        for index, (text, box) in enumerate((
++            ("Anki Garden Recap", _STYLE.heading),
++            (context.subtitle, _STYLE.subtitle),
++            ("Anki Garden", _STYLE.footer),
++        )):
++            font = QFont(QApplication.font())
++            font.setPixelSize(_STYLE.text_sizes[index])
++            font.setWeight(QFont.Weight.DemiBold if index == 0 else QFont.Weight.Normal)
++            painter.setFont(font)
++            painter.setPen(QColor(_STYLE.ink[index]))
++            painter.drawText(QRectF(*box), Qt.AlignmentFlag.AlignCenter, text)
++        painter.end()
++        return image
++    finally:
++        if painter is not None and painter.isActive():
++            painter.end()
++        snapshot.timer.stop()
++        snapshot.clear_render_caches()
++        snapshot.deleteLater()
++
++
++def _write_recap(image: QImage, destination: str) -> None:
++    """Encode off the GUI thread; never truncate an existing destination."""
++    output = QSaveFile(destination)
++    output.setDirectWriteFallback(False)
++    try:
++        if not output.open(QIODevice.OpenModeFlag.WriteOnly):
++            raise OSError("Could not create temporary output")
++        if not image.save(output, "PNG"):
++            raise OSError("Could not encode image")
++        if not output.commit():
++            raise OSError("Could not commit image")
++    finally:
++        if output.isOpen():
++            output.cancelWriting()
++
++
++class _GardenRecapExport(QObject):
++    def __init__(self, dashboard: Any, action: Any) -> None:
++        super().__init__(dashboard)
++        self._dashboard = dashboard
++        self._action = action
++        self._context: _RecapContext | None = None
++        self._image: QImage | None = None
++        self._destination = ""
++        self._busy = False
++        self._disposed = False
++        self._render_timer = QTimer(self)
++        self._render_timer.setSingleShot(True)
++        self._render_timer.timeout.connect(self._render_and_write)
++        self._retry_timer = QTimer(self)
++        self._retry_timer.setSingleShot(True)
++        self._retry_timer.timeout.connect(self._choose_destination)
++        dashboard.destroyed.connect(self._dispose)
++        action.triggered.connect(self.start)
++
++    def start(self) -> None:
++        if self._busy or self._disposed:
++            return
++        self._busy = True
++        self._action.setEnabled(False)
++        try:
++            self._context = _capture_recap_context(self._dashboard.engine)
++            self._destination = self._context.filename
++            self._choose_destination()
++        except Exception:
++            logger.exception("Anki Garden: recap snapshot failed")
++            self._failure()
++
++    def _choose_destination(self) -> None:
++        dialog = QFileDialog(self._dashboard, "Save garden recap")
++        try:
++            dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
++            dialog.setFileMode(QFileDialog.FileMode.AnyFile)
++            dialog.setNameFilter("PNG image (*.png)")
++            dialog.setDefaultSuffix("png")
++            destination = Path(self._destination)
++            dialog.setDirectory(str(destination.parent) if destination.is_absolute() else
++                                QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation))
++            dialog.selectFile(destination.name)
++            while True:
++                if dialog.exec() != QDialog.DialogCode.Accepted:
++                    self._finish()
++                    return
++                chosen = dialog.selectedFiles()[0]
++                if chosen.lower().endswith(".png"):
++                    break
++                # Reconfirm the actual PNG destination, including overwrite,
++                # on platforms that allow typing an unrelated suffix.
++                dialog.selectFile(chosen + ".png")
++            self._destination = chosen
++        finally:
++            dialog.deleteLater()
++        self._dashboard.toast_region.show_message("Saving garden recap…")
++        self._render_timer.start(0)
++
++    def _render_and_write(self) -> None:
++        try:
++            if self._image is None:
++                if self._context is None:
++                    raise RuntimeError("No recap snapshot")
++                self._image = _render_recap(self._context)
++            # Only the detached image and filename cross the thread boundary.
++            image, destination = self._image, self._destination
++            self._dashboard.mw_window.taskman.run_in_background(
++                lambda: _write_recap(image, destination), self._written,
++            )
++        except Exception:
++            logger.exception("Anki Garden: recap rendering failed")
++            self._failure()
++
++    def _written(self, future: Any) -> None:
++        if self._disposed:
++            return
++        try:
++            future.result()
++        except Exception:
++            logger.exception("Anki Garden: recap writing failed")
++            self._failure()
++        else:
++            self._finish()
++            self._dashboard.toast_region.show_message("Garden recap saved.")
++
++    def _failure(self) -> None:
++        from .dashboard import GardenDialog, _set_button_variant
++        from .dialog_foundations import DialogSizeClass
++        from .theme import ControlVariant
++
++        dialog = GardenDialog(self._dashboard, "Couldn’t save garden recap")
++        try:
++            dialog.apply_size_policy(DialogSizeClass.TRANSACTION)
++            message = QLabel("The image could not be saved. Try again or choose another location.", dialog)
++            message.setWordWrap(True)
++            dialog.body_layout.addWidget(message)
++            cancel, retry = QPushButton("Cancel", dialog), QPushButton("Try Again", dialog)
++            _set_button_variant(cancel, ControlVariant.SECONDARY.value)
++            _set_button_variant(retry, ControlVariant.PRIMARY.value)
++            cancel.clicked.connect(dialog.reject)
++            retry.clicked.connect(dialog.accept)
++            dialog.footer_layout.addStretch(1)
++            dialog.footer_layout.addWidget(cancel)
++            dialog.footer_layout.addWidget(retry)
++            retry.setDefault(True)
++            dialog.footer.show()
++            accepted = dialog.exec() == QDialog.DialogCode.Accepted
++        finally:
++            dialog.deleteLater()
++        # Let the closed error dialog leave the native window stack before
++        # opening another save panel. Otherwise macOS can return to Anki's
++        # main window when that panel closes, hiding the Garden behind it.
++        if self._dashboard.isVisible():
++            self._dashboard.raise_()
++            self._dashboard.activateWindow()
++        if accepted and self._context is not None:
++            self._retry_timer.start(0)
++        else:
++            self._finish()
++
++    def _finish(self) -> None:
++        self._render_timer.stop()
++        self._retry_timer.stop()
++        self._context = None
++        self._image = None
++        self._destination = ""
++        self._busy = False
++        self._action.setEnabled(True)
++
++    def _dispose(self) -> None:
++        self._disposed = True
++        self._render_timer.stop()
++        self._retry_timer.stop()
++        self._context = None
++        self._image = None
+diff --git a/tests/test_garden_recap.py b/tests/test_garden_recap.py
+new file mode 100644
+index 0000000..6b0a726
+--- /dev/null
++++ b/tests/test_garden_recap.py
+@@ -0,0 +1,175 @@
++"""Keepsake contracts: committed input, portable pixels, and safe local writes."""
++from __future__ import annotations
++
++from copy import deepcopy
++from datetime import date
++import struct
++
++import pytest
++
++
++pytestmark = pytest.mark.release_evidence
++
++
++@pytest.fixture
++def recap(monkeypatch):
++    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
++    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
++    pytest.importorskip("aqt.qt")
++    from aqt.qt import QApplication, QEvent
++    from ankigarden.ui import garden_recap
++    app = QApplication.instance() or QApplication([])
++    yield garden_recap
++    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
++
++
++@pytest.mark.parametrize("year", [2026, 2027])
++def test_snapshot_uses_committed_artwork_and_one_local_date(recap, year):
++    from test_engine import make_engine
++    engine, storage = make_engine()
++    storage.state.garden_name = "PRIVATE GARDEN"
++    storage.state.plants[0].name = "PRIVATE PLANT"
++    before, saves = deepcopy(storage.state.to_dict()), storage.save_count
++    context = recap._capture_recap_context(engine, date(year, 12, 31))
++    assert context.filename == f"anki-garden-recap-{year}.png"
++    assert context.subtitle == f"{year} Year in Review"
++    assert storage.state.to_dict() == before
++    assert storage.save_count == saves
++    assert "PRIVATE" not in repr(context.scene)
++    committed = deepcopy(context.scene)
++    storage.state.plants[0].slot_index = 4
++    storage.state.plants[0].growth_points = 9000
++    storage.state.selected_background = "snowy"
++    assert context.scene == committed
++    assert context.scene["plants"][0]["slot_index"] == 0
++    assert context.scene["plants"][0]["stage"] == "seed"
++    assert context.scene["visible_scenery"] != "snowy"
++
++
++@pytest.mark.parametrize("populated", [False, True])
++def test_encoded_png_is_opaque_fixed_size_and_free_of_metadata(recap, tmp_path, populated):
++    from aqt.qt import QColor, QImage, QPalette, QApplication
++    from test_engine import make_engine
++    from ankigarden.models.state import Plant, GROWTH_THRESHOLDS
++    engine, storage = make_engine()
++    if populated:
++        storage.state.plants = [Plant(f"private-{i}", species, "Private", i, growth_points=GROWTH_THRESHOLDS[-1])
++                                for i, species in enumerate(("sunflower", "foxglove", "wisteria", "japanese_maple", "rose", "bonsai"))]
++        storage.state.unlocked_slots = 6
++    context = recap._capture_recap_context(engine, date(2027, 1, 1))
++    image = recap._render_recap(context)
++    path = tmp_path / "keepsake.png"
++    recap._write_recap(image, str(path))
++    encoded = path.read_bytes()
++    assert encoded[:8] == b"\x89PNG\r\n\x1a\n"
++    chunks, offset = [], 8
++    while offset < len(encoded):
++        length = struct.unpack_from(">I", encoded, offset)[0]
++        chunks.append(encoded[offset + 4:offset + 8])
++        offset += length + 12
++    assert set(chunks) <= {b"IHDR", b"IDAT", b"IEND", b"pHYs", b"sRGB", b"gAMA", b"cHRM"}
++    decoded = QImage(str(path))
++    assert (decoded.width(), decoded.height()) == (1800, 1200)
++    assert not decoded.hasAlphaChannel()
++    assert decoded.textKeys() == []
++    assert decoded.pixelColor(0, 0).name().upper() == "#F6F3EB"
++    assert decoded.pixelColor(1799, 1199) == decoded.pixelColor(0, 0)
++    # A host-theme change must not change any output pixel.
++    app = QApplication.instance()
++    original = app.palette()
++    dark = QPalette(original)
++    dark.setColor(QPalette.ColorRole.Window, QColor("#080808"))
++    dark.setColor(QPalette.ColorRole.WindowText, QColor("#FFFFFF"))
++    try:
++        app.setPalette(dark)
++        assert recap._render_recap(context) == image
++    finally:
++        app.setPalette(original)
++
++
++@pytest.mark.parametrize("existing", [False, True])
++def test_failed_encoding_preserves_destination_and_removes_partial_output(recap, tmp_path, existing):
++    path = tmp_path / "garden.png"
++    original = b"Existing destination must survive"
++    if existing:
++        path.write_bytes(original)
++
++    class FailedImage:
++        def save(self, output, _format):
++            output.write(b"incomplete PNG")
++            return False
++
++    with pytest.raises(OSError):
++        recap._write_recap(FailedImage(), str(path))
++    assert path.read_bytes() == original if existing else not path.exists()
++    assert set(tmp_path.iterdir()) == ({path} if existing else set())
++
++
++def test_cancel_and_write_retry_keep_one_snapshot_and_release_resources(recap, monkeypatch, tmp_path):
++    from concurrent.futures import Future
++    from types import SimpleNamespace
++    from aqt.qt import QAction, QApplication, QDialog, QFileDialog, QImage, QWidget
++    from ankigarden.ui.dashboard import GardenDialog
++    from test_engine import make_engine
++
++    engine, storage = make_engine()
++    before = deepcopy(storage.state.to_dict())
++    tasks, notices, renders = [], [], []
++    destinations = iter([None, str(tmp_path / "first.png"), str(tmp_path / "renamed.png")])
++
++    class SaveDialog(QFileDialog):
++        def exec(self):
++            self.chosen = next(destinations)
++            return QDialog.DialogCode.Accepted if self.chosen else QDialog.DialogCode.Rejected
++
++        def selectedFiles(self):
++            return [self.chosen]
++
++    real_render = recap._render_recap
++
++    def render(context):
++        renders.append(context)
++        return real_render(context)
++
++    monkeypatch.setattr(recap, "QFileDialog", SaveDialog)
++    monkeypatch.setattr(recap, "_render_recap", render)
++    monkeypatch.setattr(GardenDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
++    owner = QWidget()
++    owner.engine = engine
++    owner.toast_region = SimpleNamespace(show_message=notices.append)
++    owner.mw_window = SimpleNamespace(taskman=SimpleNamespace(
++        run_in_background=lambda work, done: tasks.append((work, done))))
++    action = QAction(owner)
++    flow = recap._GardenRecapExport(owner, action)
++    app = QApplication.instance()
++    try:
++        flow.start()  # User cancels the native destination dialog.
++        assert not renders and not tasks and not list(tmp_path.iterdir())
++        assert action.isEnabled() and storage.state.to_dict() == before
++        flow.start()
++        flow.start()  # A second activation must not create another dialog/export.
++        app.processEvents()
++        assert len(renders) == 1 and len(tasks) == 1 and not action.isEnabled()
++        original_image = QImage(flow._image)
++        _work, done = tasks.pop()
++        failure = Future()
++        failure.set_exception(OSError("simulated write failure"))
++        done(failure)
++        # Gameplay may change while the save flow is open. Retry retains the
++        # original image/context rather than exporting that later garden.
++        storage.state.plants[0].slot_index = 5
++        storage.state.selected_background = "snowy"
++        app.processEvents()
++        app.processEvents()
++        assert len(renders) == 1 and len(tasks) == 1
++        work, done = tasks.pop()
++        work()
++        success = Future()
++        success.set_result(None)
++        done(success)
++        assert QImage(str(tmp_path / "renamed.png")) == original_image
++        assert action.isEnabled() and not flow._busy
++        assert flow._context is None and flow._image is None
++        assert notices[-1] == "Garden recap saved."
++    finally:
++        owner.deleteLater()

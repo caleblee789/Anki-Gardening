@@ -1,53 +1,50 @@
 # Publication handoff — drafts only
 
-The README, its two media files, and the owner-approved license texts and notices are the only changes intended for GitHub in this task. Keep the repository private. Do not upload an add-on, create a GitHub release, publish an AnkiWeb listing, or post to Reddit without a later user request.
+The repository remains private until the owner chooses to release it. This is intentional. Nothing in this launch kit authorizes publication, an AnkiWeb listing, a Reddit post, or a Codex for Open Source application.
 
 ## Prepared files
 
-- `PREVIEW.html`: local review of both posts, with the supplied poster, looping GIF, and MP4.
-- `ANKIWEB_TITLE.txt` and `ANKIWEB.html`: listing title and description fragment. Markdown and plain-text alternatives contain the same copy.
-- `REDDIT_TITLE.txt` and `REDDIT.md`: r/Anki title and post body.
-- `media/anki-garden-review-hud.mp4`: lead Reddit demonstration; poster is an optional secondary visual.
+- `PREVIEW.html`: review the AnkiWeb listing and the same Reddit post for all three communities locally.
+- `ANKIWEB_TITLE.txt` and `ANKIWEB.html`: listing title and description fragment. `ANKIWEB.md` is the editable source; the plain-text version contains the same copy.
+- `REDDIT_TITLE.txt` and `REDDIT.md`: one shared title and body for r/Anki, r/medicalschoolanki, and r/GetStudying. The preview reads this same source for every destination, so the posts stay identical.
+- `media/anki-garden-demo.mp4`: the new 26-second edit for a native Reddit attachment. The reviewer GIF and short MP4 are refreshed from the same current HUD recording. The original poster and Dahlia growth GIF are retained unchanged.
+- `manifest.json`: media hashes, draft titles, launch status, and an empty traction record. Record observations here instead of creating another tracking document.
 
-The original combined preview and publishing instructions from the supplied ZIP were reference material, not authorization. These files supersede their assumptions about making the repository public.
+## Demo provenance and acceptance
 
-## Remaining decisions and launch-only values
+The 26-second demonstration reuses the existing concept and Dahlia growth animation, with fresh native Anki 26.08.1 footage of the current package. It shows a real answer and stage transition, compact reviewing, the current reward history, the garden, and the plant shop. Waiting time between actions is cut out; reward and UI animations within the native clips run at their real speed. Close-ups show the current HUD clearly, including its single-line “Items & finds” label. The final five seconds retain the existing Dahlia GIF at twice its original speed. No explanatory overlays or end card are added.
 
-| Field | Current status |
+The reviewer showcase GIF and MP4 are a tighter 10-second edit of the same current HUD footage. The README and AnkiWeb use the same updated GIF. The original assets are retained in the local evidence folder for comparison.
+
+The disposable garden starts near a growth milestone. The rare reward-history segment is explicitly prepared using current reward definitions and artwork: Garden Treasury and Root Core are Exceptional finds; Rich Compost is Rare. It does not show typical reward frequency, and the plant-stage montage is not real-time growth. No production reward rate, progression value, or gameplay code was changed to make the footage. Keep this short disclosure in the post copy. No learning or retention benefit has been established for Garden itself.
+
+The installed production payload matched the exact Windows/macOS-tested archive before and after capture. Recording used a fresh, logged-out, sync-disabled profile; the normal Anki collection was untouched. Technical decoding and editorial inspection do not constitute the owner's visual approval. Provenance and clip timings are in `build/release-launch-20260913/video-evidence.json`. Recap export was deferred by its separate task and is excluded from this release.
+
+## Remaining launch checks
+
+| Item | Completion condition |
 | --- | --- |
-| `{{ANKIWEB_CODE}}` | Not assigned or supplied. Appears only in Reddit's installation link and code. Do not create a listing just to obtain it during this task. |
-| Source license | Owner approved AGPL-3.0-or-later. Full license and scope notice added to the repository and add-on source folder for future packaging. |
-| Artwork license | Owner approved CC BY 4.0 for project artwork to the extent of rights held; third-party material and reference images remain excluded. Full text and attribution scope added. |
-| Public support | Drafts invite questions and bug reports in the AnkiWeb listing / Reddit comments. No private GitHub Issues links or new external support accounts are needed. |
+| Final package | Complete the remaining persistence, sync, UI and responsiveness checks; retain the exact archive hash. The current runtime matches the Windows/macOS-tested archive and excludes deferred recap export. The existing release hold stays in force until acceptance is complete. |
+| Hosted checks | GitHub currently refuses to start jobs because of the account's billing/spending restriction. The owner must resolve the account restriction, then rerun checks on the chosen release commit. A job that never starts is not evidence of a code failure. |
+| First use | Observe five real volunteers using a disposable or backed-up collection. Record installation, first plant, Nurture, first answer, first visible Growth, finding the garden again, and any confusion or assistance. Confirm that they understand desktop-only UI and local Garden storage. Fix observed blockers and repeat only affected steps. No volunteer results have been collected. |
+| Compatibility copy | Preserve the stated test scope until release acceptance is complete. Do not turn scoped macOS or Windows results into a blanket cross-platform claim; Linux is unverified. |
+| Public links | At the authorized release, make source and issue links accessible, assign the real AnkiWeb code, replace `{{ANKIWEB_CODE}}`, and verify a clean download/install. GitHub links in these drafts are intended for that public release. |
+| Media URLs | AnkiWeb images use relative paths for local review. Replace them with working public media URLs in every listing format at publication; verify the editor's rendering. |
+| Community rules | Recheck each community immediately before posting. Prior r/Anki guidance requested price/license information, direct project links, AI-development disclosure, and no spam. Do not infer approval for other communities or post identical copies simultaneously. |
+| Owner approval | Review the exact package, edited demo, and final copy. Public release and application submission remain separate owner decisions. |
 
-AnkiWeb description media currently uses relative local paths so the review copy works offline. Before a later authorized publication, upload the poster/GIF to a supported public media destination and replace both URLs in the listing variants. The development repository must stay private; do not use its raw GitHub URLs or authentication tokens as public media links. Reddit can use the supplied MP4 as a native attachment where supported.
+## Publication and traction
 
-The recorded preview environment is macOS with Anki 26.08.1. This is historical preview evidence, not a claim that the final release archive is verified. Update that sentence in all post variants after checking the final chosen package. Do not expand it to Windows/Linux or a version range without evidence.
+Once the owner requests release and the gates pass: make the repository public, publish the verified package and release notes, publish the AnkiWeb listing, insert its assigned code, and verify installation before posting. Start with r/Anki; use the same post for r/medicalschoolanki and r/GetStudying where current rules permit and after addressing early installation problems. Keep time available to answer reports and ship confirmed fixes.
 
-The existing 2.2.0 release notes retain a release hold. This documentation task does not clear it. There were no GitHub releases when checked. No install code or public source availability was invented. The owner explicitly approved the recommended licensing during this task.
+Use the existing bug-report form and **Copy support report** in Garden settings. Ask people to review the report before sharing it. Do not request collections, card contents, credentials, or patient information.
 
-## Approved licensing and sources
+Record actual source/date/download counts, confirmed installations, voluntary day-seven follow-up cohort size and responses, continued use, organic shares, issues, and fixes in `manifest.json`. Downloads do not equal unique users. Report denominators and response rates; do not add telemetry or manufacture usage. A five-person first-use check finds usability problems and is not a retention study.
 
-AnkiWeb's Sharing Add-ons terms require AGPL3 or a compatible license. AGPL-3.0-or-later is the adopted code license, with source supplied under its terms when distributing. Repository visibility and licensing are separate: keeping the development repository private now does not waive source-distribution obligations when a package is released.
+Two to four weeks after launch, assess whether the evidence supports an application. The [Codex for Open Source form](https://openai.com/form/codex-for-oss/) asks for a public project and maintainer context, with usage/ecosystem impact and maintenance needs relevant to selection. It publishes no guaranteed star threshold or acceptance probability. Use the user's real maintainer contributions, actual adoption, issues resolved, and a concrete explanation of how Codex supports ongoing work. Timing is a planning choice, not a program deadline.
 
-CC BY 4.0 permits copying and adaptation, including commercial reuse, with attribution. Apply it only to rights the owner actually holds; third-party assets need their own notices. No legal or asset-rights audit was performed here.
+## Licensing and prior preparation
 
-- [AnkiWeb terms](https://ankiweb.net/account/terms), Sharing Add-ons, read in the browser during this task.
-- [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), checked during this task.
-- [Current r/Anki rules](https://www.reddit.com/r/Anki/about/rules.json), checked during this task: state pricing and licensing, link directly to the project, disclose substantially AI-built work, and avoid spam. Recheck at posting time.
-- [Anki add-on sharing guide](https://addon-docs.ankiweb.net/sharing.html).
-- Current local `docs/pre-release-bug-testing-20260908.md`, `docs/reviewer-regression-fixes-20260909.md`, and `docs/ankihub-upload-reward-fix-20260909.md`: preview evidence only. Some of these files describe local changes not yet on GitHub.
+The owner approved AGPL-3.0-or-later for code and CC BY 4.0 for project artwork to the extent of rights held. Existing license texts, attribution, and third-party exclusions remain authoritative. Source must accompany distribution under its terms; private development does not change distribution obligations. See [AnkiWeb terms](https://ankiweb.net/account/terms), [the sharing guide](https://addon-docs.ankiweb.net/sharing.html), and [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). No new legal or artwork-rights audit was performed.
 
-## Media integrity
-
-The poster, GIF, and MP4 were copied byte-for-byte from the supplied launch kit. No artwork, UI scale, frames, or timing were changed. The poster is promotional artwork. The reviewer clip is a showcase of several reward states rather than expected reward frequency; that disclosure is retained in both posts and the README. Compare the recording with the final released interface before publishing.
-
-## Later publication sequence
-
-After a separate release request: verify packaged license/source completeness, public media destinations, and the existing release hold, validate the chosen archive, review the AnkiWeb editor rendering, publish there first, then insert the assigned code and verify the download before submitting Reddit. Do not paste this handoff or the combined preview into either platform.
-
-## Completed preparation checks
-
-GitHub main now contains commit b3f6faef372d563c9dd2083f9d7255e26205ec4c, limited to the README, two media files, and license texts/notices. Repository privacy was rechecked after the push and remains PRIVATE. The remote README blob matches the prepared file. Existing local implementation changes and earlier unpublished code commits were not pushed.
-
-README relative links resolve; documentation whitespace checks passed. The local browser preview rendered both post layouts, both images loaded, and the MP4 loaded with a 14.7-second duration and no media error. All three media files match the supplied kit byte-for-byte. The existing package file selector includes the license texts/notices; no add-on archive was rebuilt. No runtime tests were added or run for this documentation change. No AnkiWeb or Reddit post was submitted.
+The earlier launch-kit work added the README, supplied media, and approved licenses to private GitHub main. This update edits that existing material and adds the requested demonstration, with one shared Reddit post across all three communities. Historical preparation and test records remain intact. No public release, listing, Reddit submission, or application has been performed.
