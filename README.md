@@ -4,7 +4,7 @@
 
 Anki Garden is a free add-on for desktop Anki. Grow plants as you answer cards, collect new species, and customize your garden with scenery and decorations.
 
-**Version 2.2.0** | [Watch the 26-second demo](release-copy/media/anki-garden-demo.mp4) | [Get started](#get-started) | [Progression and rewards](docs/progression-rewards-effects-reference.md) | [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
+**Version 2.2.0** | [Watch the demo](docs/images/anki-garden-demo.mp4) | [Get started](#get-started) | [Progression and rewards](docs/progression-rewards-effects-reference.md) | [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
 
 This checkout is a release candidate. See the [release notes](docs/release-notes-2.2.0.md)
 for its acceptance and publication status.
