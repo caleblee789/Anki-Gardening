@@ -105,6 +105,36 @@ def test_toast_replacement_expiry_and_disposal_when_qt_is_available(monkeypatch)
 pytestmark = pytest.mark.release_evidence
 
 
+def test_windows_starter_notice_fits_wrapped_text_and_reviewer(monkeypatch):
+    from types import SimpleNamespace
+    from aqt.qt import QApplication, QLabel, QWidget
+    from test_session_summary_integration import _load_reviewer_module
+
+    application = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    module = _load_reviewer_module(monkeypatch)
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"), raising=False)
+    monkeypatch.setattr(module, "reviewer_overlay_parent", lambda _mw: owner)
+    handler = module.ReviewerHookHandler(SimpleNamespace(), SimpleNamespace())
+    try:
+        for width in (180, 720):
+            owner.resize(width, 480)
+            owner.show()
+            handler._show_no_starter_notice()
+            application.processEvents()
+            notice = handler._reviewer_notice
+            assert notice is not None and notice.isVisible()
+            label = notice.findChild(QLabel)
+            assert owner.rect().contains(notice.geometry())
+            assert notice.contentsRect().contains(label.geometry())
+            assert label.height() >= label.heightForWidth(label.width())
+            handler._hide_no_starter_notice()
+    finally:
+        handler._hide_no_starter_notice()
+        owner.close()
+        owner.deleteLater()
+
+
 def test_starter_previews_cycle_independently_without_choosing_a_plant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -599,6 +629,7 @@ def test_compact_hud_rewards_precede_coalesced_growth(monkeypatch, animations_en
 def test_committed_hud_feedback_paints_before_secondary_work(monkeypatch, collapsed, animations_enabled):
     """Exercise the answer hook, next-question refresh, and real Qt paint."""
     from dataclasses import replace
+    from pathlib import Path
     from types import SimpleNamespace
     from aqt.qt import QApplication, QEvent, QObject, QWidget
     from PyQt6.QtTest import QTest
@@ -616,22 +647,35 @@ def test_committed_hud_feedback_paints_before_secondary_work(monkeypatch, collap
     hud = ReviewGardenHud(owner, animations_enabled=animations_enabled)
     projection = ReviewerHudProjection(100,
         TodayCardsProjection("in_progress", "Today", "1 / 20"),
-        NurtureProjection(True, plant_id="p1", plant_name="Rose", progress_percent=10),
+        NurtureProjection(True, plant_id="p1", plant_name="Mature Bonsai",
+            progress_percent=87, stage_key="mature", next_stage_key="flowering",
+            stage_points=7885, stage_goal=9000,
+            next_checkpoint_percent=100, next_checkpoint_reward_coins=8,
+            checkpoint_line="1,115 Growth to next milestone", estimate_line="About 86 cards",
+            effect_chips=("Seedling Sign\nAppearance only", "Verdant Twilight\nAppearance only"),
+            art_path=str(Path(__file__).resolve().parents[1] / "ankigarden/assets/v6_storybook_gouache/plants/bonsai/mature/bonsai_mature_twilight_v6.webp")),
         collapsed, "right")
     hud.update_projection(projection)
     hud.update_session_totals({"footer_growth_units": 0, "footer_drop_count": 0})
     QTest.qWait(10)
     stages = []
+    overlaps = []
     target = hud._collapsed_feedback.amount if collapsed else hud._session_growth
 
     class Observer(QObject):
         def eventFilter(self, watched, event):
             if event.type() == QEvent.Type.Paint and watched.isVisible():
-                stages.append("paint")
+                if watched is target:
+                    stages.append("paint")
+                if watched is hud._percent:
+                    art, growth, track = (widget.geometry() for widget in
+                        (hud._art_region, hud._percent, hud._checkpoint_track))
+                    if art.bottom() >= growth.top() or growth.bottom() >= track.top():
+                        overlaps.append((art.getRect(), growth.getRect(), track.getRect()))
             return False
 
     observer = Observer(owner)
-    target.installEventFilter(observer)
+    application.installEventFilter(observer)
     module = _load_reviewer_module(monkeypatch)
     reviewer = SimpleNamespace(web=owner)
     module.mw.reviewer = reviewer
@@ -665,7 +709,7 @@ def test_committed_hud_feedback_paints_before_secondary_work(monkeypatch, collap
     monkeypatch.setattr(handler, "_request_reviewer_answer_control_geometry", lambda *_args: None)
     monkeypatch.setattr(module, "reviewer_overlay_parent", lambda _mw: owner)
     monkeypatch.setattr(module, "project_reviewer_hud", lambda *_args, **_kwargs:
-        stages.append("projection") or replace(projection, nurture=replace(projection.nurture, progress_percent=11)))
+        stages.append("projection") or replace(projection, nurture=replace(projection.nurture, progress_percent=88, stage_points=7898)))
     try:
         handler.on_answer(reviewer, SimpleNamespace(id=7), 3)
         handler.on_question()
@@ -677,6 +721,7 @@ def test_committed_hud_feedback_paints_before_secondary_work(monkeypatch, collap
         if collapsed:
             assert target.opacity() == 1.0
         QTest.qWait(40)
+        assert not overlaps
         assert "paint" in stages
         for secondary in ("ack", "state", "projection"):
             assert stages.index("paint") < stages.index(secondary)
@@ -733,7 +778,14 @@ def test_committed_hud_feedback_paints_before_secondary_work(monkeypatch, collap
         assert hud._session_growth.text() == "+10"
         QTest.qWait(30)
         assert hud._session_growth.text() == "+10"
+        # A changed projection must leave the growth row below the artwork,
+        # even when the next paint precedes Qt's queued child-layout pass.
+        hud.update_projection(replace(projection, collapsed=False,
+            nurture=replace(projection.nurture, stage_points=7900)))
+        hud._percent.repaint()
+        assert not overlaps
     finally:
+        application.removeEventFilter(observer)
         hud.dispose()
         owner.close()
         owner.deleteLater()

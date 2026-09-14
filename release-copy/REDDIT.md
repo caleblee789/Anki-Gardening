@@ -1,4 +1,4 @@
-I'm a medical student, and I wanted something in Anki that felt like building a collection rather than just bringing the due count back to zero.
+I wanted something in Anki that felt like building a collection rather than just bringing the due count back to zero.
 
 I made **Anki Garden**, a free desktop Anki add-on. Your card answers grow plants, earn Coins, and unlock more of the garden.
 
@@ -14,10 +14,10 @@ Again, Hard, Good, and Easy give the same base Growth, so you should still answe
 **Price:** Free. Coins are in-game currency.  
 **Source-code license:** [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)  
 **Artwork and third-party asset terms:** Project artwork: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), to the extent of rights held by the project; third-party material retains its own terms.  
-**Preview testing:** macOS with Anki 26.08.1; final-package validation is pending. Windows and Linux remain unverified. The Garden interface runs on desktop, and Garden inventory and settings do not sync between computers.
+**Preview testing:** Anki 26.08.1 on macOS and Windows 11 ARM (native ARM and emulated x64), at 100% application scaling. Final release acceptance is pending. Physical Intel/AMD Windows hardware and Linux remain unverified. The Garden interface runs on desktop, and Garden inventory and settings do not sync between computers.
 
 Development was substantially AI-assisted with Codex. I direct the project and am responsible for reviewing changes, validating releases, and maintaining it.
 
-Artwork includes AI-generated assets. The clip showcases several reward states, not typical reward frequency. Stored Growth is saved but cannot be spent in this version.
+Artwork includes AI-generated assets. The previews use a prepared garden and rare reward examples, not typical reward frequency. The plant-growth montage is a stage showcase, not real-time growth. Stored Growth is saved but cannot be spent in this version.
 
-The development repository is currently private. Questions and bug reports are welcome in the comments. For bug reports, include your Garden version, Anki version, operating system, and steps to reproduce. **Was anything confusing when you started your first plant?**
+**Source and support:** [GitHub](https://github.com/caleblee789/Anki-Gardening). Questions and bug reports are welcome in the comments. **Was anything confusing when you started your first plant?**

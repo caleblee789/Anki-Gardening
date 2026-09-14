@@ -1,0 +1,32 @@
+name: Bug report
+description: Report an Anki Garden problem.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include only information needed to understand the problem. Do not attach collections, card content, patient information, or account credentials.
+  - type: input
+    id: versions
+    attributes:
+      label: Garden version, Anki version, and operating system
+      placeholder: "Garden 2.2.0; Anki 26.08.1; macOS / Windows / Linux"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include relevant add-ons and whether the problem also occurs after restarting Anki.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional support report or screenshot
+      description: Use Copy support report in Garden settings. Review and remove private information before sharing.

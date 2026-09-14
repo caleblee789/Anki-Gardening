@@ -1,5 +1,28 @@
 # Pre-release hardening — September 12–13, 2026
 
+The candidate and results below are historical. The September 13 launch-preparation
+[record](../build/release-launch-20260913/readiness.json) retains a newer local
+snapshot and explicitly pending acceptance. Anki 25.07 native acceptance is no
+longer a required release gate. The separate Windows task verified its three fixes
+on Windows 11 ARM (native ARM and emulated x64) and macOS with Anki 26.08.1 at
+100% scaling. The current runtime matches that tested archive exactly; recap
+export was deferred by its separate task and is excluded from active source.
+See its [scope and limits](../build/windows-vm-qa-20260913/REPORT.md).
+
+The launch update edits the existing README and publication drafts, refreshes the
+26-second demo and 10-second reviewer showcase with current native footage, and
+prepares support and traction tracking. The existing Dahlia animation is reused.
+The three Reddit destinations share one title and body. A resumed
+dedicated-account QA profile preserved plants, currency, inventory, supplies,
+total reviews and settings across a day boundary; daily counters and history
+caches refreshed. Reinstall and remaining native sync/UI/responsiveness acceptance
+were interrupted when the Mac locked. GitHub jobs are blocked before execution
+by an account billing/spending restriction. Real volunteer observations and the
+owner's approval remain pending. The [publication handoff](../release-copy/PUBLISHING_NOTES.md)
+contains the current launch sequence; no publication or application was performed.
+
+## Historical candidate and evidence
+
 The intended candidate retains the existing gameplay, storage schema, public
 APIs, and accepted pacing. This work hardens developer tools, restores active
 checks, and makes missing acceptance evidence block release. Publication and

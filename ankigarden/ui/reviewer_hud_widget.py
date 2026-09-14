@@ -6571,6 +6571,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             )
             self.setFixedSize(geometry[2], geometry[3])
             self.move(geometry[0], geometry[1])
+            # A same-sized shell does not reflow the plant's invalidated
+            # layout. Settle its rows before a paint can use the temporary
+            # geometry from restoring details during a projection update.
+            self._plant_layout.activate()
             self.setProperty("hudContentHeight", int(content_height or geometry[3]))
             self.setProperty("reviewerViewportWidth", width)
             self.setProperty("reviewerViewportHeight", height)
