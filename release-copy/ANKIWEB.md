@@ -2,9 +2,11 @@
 
 Anki Garden is a free desktop Anki add-on that turns card answers into plant growth. Start with a seed, collect new plants, and customize your garden with scenery and decorations.
 
-**No watering. No plant decay. Keep what you have earned when you take a break.**
+**Keep your attention on studying.** Garden can stay as a small progress tile while you review. Open it afterward to see what grew, check your rewards, and choose what to add next.
 
-![Anki Garden promotional artwork](media/anki-garden-poster.png)
+<video controls playsinline preload="none" width="1440" height="1080" style="max-width:100%;height:auto" poster="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-reddit-lead.png" aria-label="Anki Garden demo" src="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-demo.mp4"><a href="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-demo.mp4"><img src="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-reddit-lead.png" alt="Watch Anki Garden grow while you study" width="960"></a></video>
+
+[Watch the demo](https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-demo.mp4)
 
 ## What you can do
 
@@ -13,11 +15,13 @@ Anki Garden is a free desktop Anki add-on that turns card answers into plant gro
 - **Earn rewards while studying**, including Coins, Growth, and Garden Finds.
 - **Choose how much you see.** Keep a compact progress tile in the reviewer or expand it for plant details, session totals, and recent rewards.
 
-![Anki Garden reviewer demonstration](media/anki-garden-review-hud.gif)
+<video controls playsinline preload="none" width="720" height="720" style="display:block;width:100%;max-width:480px;height:auto;margin:24px auto" poster="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-growth-stages-poster.png" aria-label="Dahlia growing through all six stages" src="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-growth-stages.mp4"><a href="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-growth-stages.mp4"><img src="https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-growth-stages.gif" alt="Dahlia growing from Seed to Full Bloom" width="480"></a></video>
 
-*Current reviewer showcase with prepared rare reward examples, not typical reward frequency.*
+[Watch Dahlia grow from Seed to Full Bloom](https://github.com/caleblee789/Anki-Gardening/releases/download/v2.2.0/anki-garden-growth-stages.mp4)
 
 ## Made to fit normal Anki study
+
+**No watering. No plant decay.** Keep your plants and rewards when you take a break.
 
 Again, Hard, Good, and Easy give the same base Growth. Choose your answer according to your recall, not the garden.
 
@@ -32,26 +36,13 @@ Your nurtured plant receives Growth, and other unfinished planted plants receive
 3. Place it in a bed and choose **Nurture**.
 4. Study as usual. Return through **Open garden** or the reviewer panel.
 
-Open **Progress → Activity** to view Study rewards and the **Finish all cards due today** milestone. Use Garden settings to reduce animations or change which panels and summaries appear.
+Use Garden settings to reduce animations and choose which panels and summaries appear.
 
 ## Compatibility and current limitations
 
-**Preview testing:** Anki 26.08.1 on macOS and Windows 11 ARM (native ARM and emulated x64), at 100% application scaling. Final release acceptance is pending. Physical Intel/AMD Windows hardware and Linux remain unverified.
+**Preview testing:** Anki 26.08.1 on macOS and Windows 11 ARM
 
-**Desktop only.** The Garden interface does not run inside AnkiMobile, AnkiDroid, or the AnkiWeb website. Garden inventory and settings do not synchronize between computers. Synced review history can earn rewards when it reaches desktop; compatibility with a particular sync workflow still depends on the tested build.
 
-Stored Growth is saved but cannot be spent in this version. Compatibility with other add-ons may vary. The first study-history update can take longer with a large collection.
-
-## Price, licensing, and development
-
-**Price:** Free.  
-**Source-code license:** [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)  
-**Artwork and third-party asset terms:** Project artwork: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), to the extent of rights held by the project; third-party material retains its own terms.
-
-Developed and maintained by **Caleb Meadows**. Development is substantially AI-assisted with Codex; I direct the project and am responsible for reviewing changes, release validation, and maintenance.
-
-Artwork includes AI-generated assets. Third-party assets retain their own terms.
-
-Questions and bug reports are welcome in the comments on this listing.
+Questions and bug reports are welcome in the comments on this listing. GitHub is preferred!
 
 **Source and support:** [GitHub](https://github.com/caleblee789/Anki-Gardening).

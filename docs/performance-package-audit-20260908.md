@@ -1,13 +1,16 @@
 # Performance and package audit
 
-The rebuilt add-on is **92.12 MiB**, down from **102.97 MiB**: **10.85 MiB / 10.53% smaller**. The baseline was built from the current working tree before this audit, including the existing UI work. The audit preserves active artwork, layout, controls, reward rules, and saved-state values.
+Historical September 8 measurements. See [release status](README.md#release-status)
+for the current package and final testing.
+
+The rebuilt add-on was **92.12 MiB**, down from **102.97 MiB**: **10.85 MiB / 10.53% smaller**. The baseline was built from the working tree before this audit, including the existing UI work. The audit preserved active artwork, layout, controls, reward rules, and saved-state values.
 
 | Package | Bytes | Entries |
 | --- | ---: | ---: |
 | Baseline | 107,971,694 | 273 |
 | Optimized | 96,598,301 | 263 |
 
-The installable result is [dist/anki_garden.ankiaddon](../dist/anki_garden.ankiaddon), SHA-256 `4dc24e569a73fb1a5371b7782df2111ea0fed05c5559aec4168a640660be0216`.
+The audit's resulting archive had SHA-256 `4dc24e569a73fb1a5371b7782df2111ea0fed05c5559aec4168a640660be0216`; that historical identity does not describe the mutable `dist/anki_garden.ankiaddon` path today.
 
 ## Package findings
 

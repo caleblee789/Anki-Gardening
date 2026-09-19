@@ -6,47 +6,40 @@
     "ANKIWEB_CODE"
   ],
   "media_sha256": {
-    "anki-garden-review-hud.gif": "13b5fbf0844ac8ea462e6927ab636d5b0ad8ee69a40125f008e5f33ab033d9fe",
-    "anki-garden-review-hud.mp4": "1116d86717188bda3ef44c35976cf582bb43f6042b27db857d53698c5d718524",
+    "anki-garden-demo.mp4": "ac80fcaa952a82f77bd16334bdd2fd00fce3b523ab8d43050d279dfc726dfc04",
+    "anki-garden-expanded-hud.png": "7e0bfad952cbdc3f2bb195f0af81c85b0637f490e805315e8acec2eb990beed4",
+    "anki-garden-growth-stages-poster.png": "5c327bc87c181970047ede23f310f7da1bee89394370209e03bd9dc4da059423",
+    "anki-garden-growth-stages.gif": "4172ce8c41578e3a5a820c84f83b7741ac5bffb6e5e43f6b385cce4c061e69b6",
+    "anki-garden-growth-stages.mp4": "5377c888f976b84484dc7ee790ff5f5c38630c2243696038670521a4594301ff",
     "anki-garden-poster.png": "dfb365c0c5ac10b759f82d19589f2580ce0b31c6b93e55c13f8e90130ec217fe",
-    "anki-garden-demo.mp4": "56591cc05d953a8a0be163f92c04ad0b757e88e2366fa8a9b81506469823dbf7"
+    "anki-garden-reddit-lead.png": "f70f9d00c131a356887eccdf5d151f9d001d69c14907a39f6b8fd01e39e6f8bd",
+    "anki-garden-review-hud.gif": "93b8708f5590f15b7198515b264f9da27e358ec0a38d0a3ad87cda5b4a924b10",
+    "anki-garden-review-hud.mp4": "f57d437f880c19a707cadd50df2184e542a2409c8a4301d4f29c9d503b10ced2"
   },
   "word_counts": {
-    "README.md": 811,
-    "ANKIWEB.md": 498,
-    "REDDIT.md": 326
+    "README.md": 879,
+    "ANKIWEB.md": 389,
+    "REDDIT.md": 311
   },
   "licenses": {
     "code": "AGPL-3.0-or-later",
     "project_artwork": "CC-BY-4.0; rights held only; third-party exclusions"
   },
   "demo": "media/anki-garden-demo.mp4",
-  "reddit_variants": [
-    {
-      "community": "r/Anki",
-      "title": "I made Anki Garden: grow a garden while you study (free desktop add-on)",
-      "file": "REDDIT.md"
-    },
-    {
-      "community": "r/medicalschoolanki",
-      "title": "I made Anki Garden: grow a garden while you study (free desktop add-on)",
-      "file": "REDDIT.md"
-    },
-    {
-      "community": "r/GetStudying",
-      "title": "I made Anki Garden: grow a garden while you study (free desktop add-on)",
-      "file": "REDDIT.md"
-    }
-  ],
+  "reddit_post": {
+    "title": "I made Anki Garden: grow a garden while you study (free gamification add-on)",
+    "file": "REDDIT.md",
+    "use": "One shared post for each approved Reddit destination"
+  },
   "launch_status": {
-    "public_release": "pending owner approval and final acceptance",
+    "public_release": "owner authorized; publication in progress",
     "recap_export": "deferred by the separate task; excluded from active source and release package",
     "volunteer_first_use": "pending real volunteers; no observations fabricated",
-    "hosted_ci": "blocked before execution by GitHub billing/spending restriction",
+    "hosted_ci": "Local release checks passed; hosted status tracked separately.",
     "community_rules": "recheck before publishing each post",
     "application": "evaluate verified adoption two to four weeks after launch",
-    "native_acceptance": "Current package has scoped native macOS/Windows evidence; remaining release checks and owner acceptance are pending.",
-    "readiness_record": "build/release-launch-20260913/readiness.json"
+    "native_acceptance": "Exact package passed native macOS verification.",
+    "readiness_record": "build/final-release-20260915/readiness.json"
   },
   "traction": {
     "observations": [],
@@ -66,10 +59,31 @@
   },
   "verification": {
     "scoped_default": "1801 passed, 17 intentional skips; annual production-engine case retained with unchanged-input provenance",
-    "required_qt": "863 passed, zero skipped; final run exit code 0",
+    "required_qt": "863 passed, zero skipped in fresh publication run",
     "assets": "passed",
     "compile": "passed",
-    "media": "Fresh current-package native footage; 26-second demo and 10-second reviewer showcase; both MP4s and GIF decode without errors",
+    "media": "Native current-package footage; 34.4-second continuous-review and garden demo with a full undiscovered plant shop and three rare scenery examples, plus a separate 10-second Dahlia growth video; all videos decode without errors.",
     "publication": "not performed"
+  },
+  "reddit_media": {
+    "thumbnail": "media/anki-garden-reddit-lead.png",
+    "videos": [
+      "media/anki-garden-demo.mp4",
+      "media/anki-garden-growth-stages.mp4"
+    ]
+  },
+  "draft_status": {
+    "copy": "approved for AnkiWeb publication; Reddit draft requested",
+    "media": "Current native demo and separate Dahlia stages embedded; final lead thumbnail retained.",
+    "public_posting": "not performed; real AnkiWeb code, public media URLs and destination rendering checks remain",
+    "verification": "Single universal Reddit preview checked at 390px and default desktop width with no visible horizontal overflow; current REDDIT.md emphasis and copy are reflected; media paths and hashes verified."
+  },
+  "ankiweb_media": {
+    "thumbnail": "media/anki-garden-reddit-lead.png",
+    "video": "media/anki-garden-demo.mp4",
+    "fallback": "Direct playback links are always visible; use linked lead image if the listing strips the video element.",
+    "animated_growth": "media/anki-garden-growth-stages.gif",
+    "growth_video": "media/anki-garden-growth-stages.mp4",
+    "growth_poster": "media/anki-garden-growth-stages-poster.png"
   }
 }

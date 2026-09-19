@@ -30,4 +30,6 @@ The default Garden window is 1040 × 720, with an 860 × 580 minimum clamped to 
 
 The nurtured-plant bar is approximately 72 px high, with 40 px artwork and a progress group bounded to 480 px. It is hidden during starter choice and initial placement. The floating menu prefers 304 px width, has content-driven height, and retains Close above a single scrolling content region in constrained viewports. Clicking the selected plant again, background click, Close, Escape, or leaving the Garden tab dismisses it. More and owned dialogs handle their own Escape first. Routine refreshes update an existing selection without opening a dismissed menu.
 
-Capture contract v27 covers 18 representative and 36 full surfaces in two and five sheets. The v25/v26 contracts and historical captures remain preserved. Current Garden validation is recorded in the [plant-menu verification report](plant-menu-overhaul-20260904.md); the broader redesign history remains in [the redesign report](ui-redesign-2.2.0.md).
+The [UI surface inventory](../ui-surface-inventory.md) owns active capture
+coverage. The [plant-menu verification report](plant-menu-overhaul-20260904.md)
+and [redesign report](ui-redesign-2.2.0.md) retain the earlier implementation and validation history.

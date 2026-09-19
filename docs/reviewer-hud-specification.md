@@ -67,4 +67,7 @@ All three headers omit the former Growth logo. Coin, Growth, and Discovery icons
 
 Use existing checks and focused native rendering. Do not create a broad new test or accessibility matrix for this presentation work. Check actual text bounds, art clarity, three-box alignment, removed daily bars, fixed-open details, event priority, rapid reward aggregation, and pause/remount continuity.
 
-The current capture contract is v29: 51 full-profile surfaces across five contact sheets, with 22 representative surfaces. This lane owns the seven Sheet 5 integration/reward surfaces. Its focused captures and 35-frame reward gallery do not imply combined five-sheet release approval. Current evidence and implementation details are recorded in [the Sheet 5 handoff](ui/reviewer-release-polish-20260905.md).
+The [UI surface inventory](ui-surface-inventory.md) owns active capture coverage
+and sheet assignments. The [September 5 Sheet 5 handoff](ui/reviewer-release-polish-20260905.md)
+retains its focused captures and 35-frame reward gallery as historical evidence.
+Use [release status](README.md#release-status) for current acceptance.

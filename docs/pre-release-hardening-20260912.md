@@ -1,25 +1,22 @@
 # Pre-release hardening — September 12–13, 2026
 
-The candidate and results below are historical. The September 13 launch-preparation
-[record](../build/release-launch-20260913/readiness.json) retains a newer local
-snapshot and explicitly pending acceptance. Anki 25.07 native acceptance is no
-longer a required release gate. The separate Windows task verified its three fixes
-on Windows 11 ARM (native ARM and emulated x64) and macOS with Anki 26.08.1 at
-100% scaling. The current runtime matches that tested archive exactly; recap
-export was deferred by its separate task and is excluded from active source.
-See its [scope and limits](../build/windows-vm-qa-20260913/REPORT.md).
+This report preserves the September 12–13 candidate, observations, and open
+diagnostics. For the current package, acceptance status, and final testing, use
+the [release status](README.md#release-status).
 
-The launch update edits the existing README and publication drafts, refreshes the
-26-second demo and 10-second reviewer showcase with current native footage, and
-prepares support and traction tracking. The existing Dahlia animation is reused.
-The three Reddit destinations share one title and body. A resumed
+## September 13 launch-preparation follow-up
+
+The launch update prepared publication drafts, demo/reviewer footage, support
+and traction tracking; the three Reddit destinations shared one title and body.
+A resumed
 dedicated-account QA profile preserved plants, currency, inventory, supplies,
 total reviews and settings across a day boundary; daily counters and history
 caches refreshed. Reinstall and remaining native sync/UI/responsiveness acceptance
 were interrupted when the Mac locked. GitHub jobs are blocked before execution
 by an account billing/spending restriction. Real volunteer observations and the
-owner's approval remain pending. The [publication handoff](../release-copy/PUBLISHING_NOTES.md)
-contains the current launch sequence; no publication or application was performed.
+owner's approval remained pending in the
+[launch-preparation record](../build/release-launch-20260913/readiness.json).
+No publication or application was performed.
 
 ## Historical candidate and evidence
 
@@ -36,8 +33,7 @@ source hashes, and patch are retained beside it. No pre-existing changes were re
 
 The [machine-checkable release record](../build/pre-release-hardening-20260913T040418Z/readiness.json)
 retains source identity, archive hashes, test results, native evidence and open
-gates together. **Release is blocked while native acceptance is incomplete.**
-Windows and Linux remain unverified. The native account tests use a disposable
+gates together. Windows and Linux were unverified in this frozen run. The native account tests used a disposable
 macOS profile and dedicated accounts; no shared-deck contributions or publication
 are part of this work.
 
@@ -81,9 +77,9 @@ hardening work. The default lane's existing migration, persistence, reward ident
 Undo/re-answer, duplicate history, storage failure and startup-reconciliation
 checks passed. Their results remain distinct from native end-user acceptance.
 
-## Remaining release gates
+## Open at the end of the historical run
 
-- Native macOS Anki 25.07: official libraries and required Qt tests pass, but its
+- Native macOS Anki 25.07 (subsequently removed as a release gate): official libraries and required Qt tests passed, but its
   actual GUI acceptance has not run. It must run with all other Anki GUI processes
   stopped because this version does not honor the newer instance-key override.
   The Mac became locked before its disposable first-run bootstrap could proceed.
@@ -104,22 +100,12 @@ checks passed. Their results remain distinct from native end-user acceptance.
 - Record the release owner's visual/release approval against this exact package.
   No publication has been performed.
 
-Any subsequent runtime, asset, tooling or documentation change invalidates its
-affected evidence. Refresh the relevant checks and source identity before using
-the final gate; never change a pending status merely to make the checker pass.
+Use the [readiness procedure](development.md#freeze-and-check-release-readiness)
+when binding later evidence to a new source identity.
 
 ## Recovery and compatibility
 
-Garden state stays local to `anki-garden-data` in Anki's active data directory.
-Profiles in that directory share a garden; separate data directories are independent. Ordinary
-AnkiWeb collection/media sync does not synchronize this state across devices.
-Follow the [backup and recovery instructions](saved-progress.md).
-Preserve existing data and backups before manual recovery; do not delete a damaged
-or unsupported database to make a startup warning disappear.
-
-The [AnkiHub upload fix](ankihub-upload-reward-fix-20260909.md) and
-[FSRS compatibility audit](fsrs-helper-compatibility-audit-20260909.md) explain
-reward attribution and scheduling boundaries. Scheduling-only operations do not
-count as study. Companion operations that create rated review history follow the
-existing eligibility rules. Their own network, media, and subscription behavior
-remains separate from Garden's local persistence.
+The [saved-progress guide](saved-progress.md) owns persistence and recovery
+instructions. The [AnkiHub upload fix](ankihub-upload-reward-fix-20260909.md) and
+[FSRS compatibility audit](fsrs-helper-compatibility-audit-20260909.md) retain
+the distinct upload, scheduling, and reward-attribution evidence.

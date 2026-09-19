@@ -1,23 +1,38 @@
-I wanted something in Anki that felt like building a collection rather than just bringing the due count back to zero.
+I wanted an Anki gamification add-on that was fun (obviously), motivating, and rewarding **without being overly distracting**.
 
-I made **Anki Garden**, a free desktop Anki add-on. Your card answers grow plants, earn Coins, and unlock more of the garden.
+So I developed **Anki Garden**, a free, open-source desktop add-on. As you answer cards, you grow plants, earn Coins, receive random drops, and unlock more of the garden.
+
+You can keep your rewards and progress in a small tile while you study, then open the garden afterward to see what grew, check your rewards, and decide what to unlock next. For me, most of the fun is seeing that progress after a study session.
+
+Reviews completed on another device can also earn Garden rewards after you sync on desktop.
+
+<video controls playsinline preload="none" width="1440" height="1080" poster="media/anki-garden-reddit-lead.png" aria-label="Anki Garden demo" src="media/anki-garden-demo.mp4"></video>
 
 **Install:** [AnkiWeb](https://ankiweb.net/shared/info/{{ANKIWEB_CODE}})  
 **Add-on code:** `{{ANKIWEB_CODE}}`
 
-There are ten plant species with six growth stages, plus scenery, decorations, supplies, and achievements. The reviewer can stay as a small progress tile or expand to show your plant and recent rewards.
+**Progression**
 
-The part I cared about most: **it shouldn't become another thing you have to look after.** Plants don't need watering or decay when you take a break. Earned streak Growth bonuses stay unlocked even after the streak ends.
+There are ten plant species with six growth stages, plus scenery, decorations, supplies, and achievements.
 
-Again, Hard, Good, and Easy give the same base Growth, so you should still answer based on what you actually remembered. Fertilizer also lasts for card answers, not a timer running while you're away. Animations and reward summaries can be adjusted in settings.
+<video controls playsinline preload="none" width="720" height="720" style="display:block;width:100%;max-width:480px;height:auto;margin:24px auto" poster="media/anki-garden-growth-stages-poster.png" aria-label="Dahlia growing through all six stages" src="media/anki-garden-growth-stages.mp4"><a href="media/anki-garden-growth-stages.mp4"><img src="media/anki-garden-growth-stages.gif" alt="Dahlia growing from Seed to Full Bloom" width="480"></a></video>
 
-**Price:** Free. Coins are in-game currency.  
-**Source-code license:** [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html)  
-**Artwork and third-party asset terms:** Project artwork: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), to the extent of rights held by the project; third-party material retains its own terms.  
-**Preview testing:** Anki 26.08.1 on macOS and Windows 11 ARM (native ARM and emulated x64), at 100% application scaling. Final release acceptance is pending. Physical Intel/AMD Windows hardware and Linux remain unverified. The Garden interface runs on desktop, and Garden inventory and settings do not sync between computers.
+- Hard, Good, and Easy all give the same base Growth, so you should still answer based on what you actually remembered.
+- You earn Growth bonuses based on the length of your longest Anki streak, and those bonuses stay unlocked even after the streak ends.
+- You can use Fertilizer to boost the Growth you receive for each card.
+- As you study, you also have a chance to receive random drops. Some are very rare and unlock powerful rewards.
 
-Development was substantially AI-assisted with Codex. I direct the project and am responsible for reviewing changes, validating releases, and maintaining it.
+**Start your garden**
 
-Artwork includes AI-generated assets. The previews use a prepared garden and rare reward examples, not typical reward frequency. The plant-growth montage is a stage showcase, not real-time growth. Stored Growth is saved but cannot be spent in this version.
+1. Install using the add-on code and restart Anki.
+2. Select **Choose a plant** on Anki's home screen. Your first starter is free.
+3. Place it in a bed and choose **Nurture**.
+4. Study as usual. View your progress by selecting **Open garden** on Anki's dashboard or using the reviewer panel.
 
-**Source and support:** [GitHub](https://github.com/caleblee789/Anki-Gardening). Questions and bug reports are welcome in the comments. **Was anything confusing when you started your first plant?**
+I would love to hear your suggestions in the comments!
+
+**Source:** [GitHub](https://github.com/caleblee789/Anki-Gardening)
+
+**Price and license:** Free. Code is AGPL-3.0-or-later; project artwork is CC BY 4.0, subject to the repository's attribution and third-party exclusions.
+
+**Development disclosure:** I built Anki Garden with substantial help from Codex; the project includes AI-generated artwork.

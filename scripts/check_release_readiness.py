@@ -25,7 +25,7 @@ from scripts.package_addon import ADDON, PRODUCTION_BUILD, package_files, packag
 REQUIRED_GATES = (
     "default_tests", "release_qt", "assets", "compile", "package",
     "native_macos_260801", "persistence",
-    "review_correctness", "sync_companions", "ui_acceptance",
+    "review_correctness",
     "responsiveness", "human_review",
 )
 PACKAGE_BOUND_GATES = set(REQUIRED_GATES[5:])

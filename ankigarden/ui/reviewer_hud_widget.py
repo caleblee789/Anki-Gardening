@@ -6649,7 +6649,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         if kind == QEvent.Type.ContextMenu:
             menu = QMenu(self)
             menu.addAction("Reset position", self._reset_position)
-            menu.exec(event.globalPos())
+            try:
+                menu.exec(event.globalPos())
+            finally:
+                try:
+                    menu.deleteLater()
+                except RuntimeError:
+                    pass
             return True
         if kind == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             self._drag_start = (event.globalPosition().toPoint(), self.pos(), watched)

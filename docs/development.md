@@ -106,10 +106,8 @@ baseline checkout and production archive before applying an optimization.
 For an isolated candidate, call `scripts.package_addon.build(output=...)`;
 the production CLI intentionally targets the normal distribution path.
 
-The current v29 inventory contains 53 surfaces in six grouped contact sheets,
-with a 23-surface representative preflight. Removed interfaces retain reserved
-IDs and are excluded from the active inventory. Build the production archive
-first, then capture representative and full profiles from that same package.
+Use the [UI surface inventory](ui-surface-inventory.md) for active capture
+profiles, sheet assignments, execution order, and handoff requirements.
 
 Capture contract and orchestration tests are deliberately small and Qt-free;
 the real exact-package Qt/WebView, shutdown, manifest, and contact-sheet
@@ -135,6 +133,10 @@ skips never establish native acceptance. CI retains JUnit results and dependency
 versions for each release shard.
 
 ### Freeze and check release readiness
+
+Current package identity, results, and pending work belong in the
+[release status](README.md#release-status). Native journeys are maintained in
+[functional acceptance](feature-evidence-matrix.md#native-functional-journeys).
 
 Keep an immutable production archive, source identity, JUnit XML, validation logs,
 native results, and open acceptance gates in one evidence directory. The release
@@ -221,8 +223,5 @@ consumption, and ordered palette binding; they do not ban literals repo-wide.
 See the [styling refactor validation record](ui/styling-foundation-refactor-20260912.md)
 for the immutable baseline, candidate, captures, and retained limitations.
 
-The runtime target is Anki 25.07 through 26.08. Release acceptance installs the exact rebuilt archive into a separately keyed, disposable Anki 26.08 base/profile with sync disabled.
-
-The full product and QA contracts are in [`feature-evidence-matrix.md`](feature-evidence-matrix.md), [`ui/data_contracts.md`](ui/data_contracts.md), and [`ui/state_scenarios.md`](ui/state_scenarios.md).
-
-The [UI review report](ui/comprehensive-ui-review-20260906.md) records the latest screenshots and verification.
+For product contracts and dated validation reports, use the
+[documentation index](README.md).

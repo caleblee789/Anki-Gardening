@@ -89,13 +89,7 @@ authorities. The audit covers all 60 species-stage assets, requires serialized
 `visual_scale_correction` plus calibrated thumbnail scale, and exercises every
 asset across all six bed positions.
 
-Capture contract v26 (contract schema 2, scenario schema 3) is the current
-visual-evidence boundary. It rejects v25 reuse and requires scenario/fixture/
-one-based-step lineage plus hard gates for asset mapping and clipping. Current
-run paths, archive and capture hashes, artifact sizes, and validation totals
-are recorded in the
-[final 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) and its
-[five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.2.0-20260831-155312/contact-sheet-set.json).
-These artifacts remain
-review evidence, not release approval: `quality_status: review-required`,
-`release_ready: false`, with manual and platform gates open.
+The [UI surface inventory](ui-surface-inventory.md) owns the active capture
+contract, lineage requirements, and handoff. The
+[earlier 2.2.0 UI audit](ui/final-ui-audit-2.2.0.md) retains the historical v26
+geometry evidence; use [release status](README.md#release-status) for current acceptance.

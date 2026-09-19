@@ -561,11 +561,9 @@ Disabling **Show rewards after syncing** changes only presentation.
 
 ## Evidence boundary
 
-The implemented source and automated evidence do not by themselves approve a
-release. Exact-package native Anki/macOS interaction, accessibility, remaining
-platform checks, and human review stay separate. Any capture report with
-`quality_status: review-required` or `release_ready: false` remains review
-evidence, not release approval.
+Current package identity and acceptance are recorded in
+[release status](README.md#release-status). This mechanics reference does not
+grant release approval.
 
 
 ### Schema 30 late-game supplies

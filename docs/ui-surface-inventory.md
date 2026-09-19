@@ -157,8 +157,8 @@ Add `--plan-only` to inspect the complete ordered plan without launching Anki,
 building packages or capturing images. Foreground fallback is bounded per
 Home/Reviewer surface; normal dialogs retain native background capture.
 
-The current package and acceptance status are recorded in the
-[pre-release hardening record](pre-release-hardening-20260912.md).
+The current package and acceptance status are recorded in
+[release status](README.md#release-status).
 
 Produce six PNGs, each 3,000 pixels wide with two columns. Explicit sheet
 boundaries replace the old five-row pagination limit: 12/9/12/10/7/3 surfaces
@@ -196,7 +196,7 @@ The September 5 handoff below recorded clipped collapsed-HUD text. That is a
 historical observation, not a waiver for the current release. Current runtime
 and visual acceptance must bind the production archive being released.
 
-## Current v29 handoff
+## Retained September 13 v29 handoff
 
 The [September 13 grouped handoff](../build/pre-release-hardening-20260913T040418Z/verified-handoff/README.md)
 contains six sheets and 53 validated native captures. Its
@@ -209,4 +209,4 @@ Collection selection is recorded in the visual review.
 The earlier September 5 record described 51 surfaces on five sheets. Its linked
 README and portable archive are absent from this checkout; surviving source
 files are preserved as historical material and are not current acceptance evidence.
-The current handoff remains `review-required` and `release_ready: false`.
+That retained handoff remains `review-required` and `release_ready: false`.

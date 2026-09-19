@@ -1,16 +1,16 @@
 # Anki Garden 2.2.0 release notes
 
-> Unpublished 2.2.0 release candidate. The release owner accepted the current
+> Anki Garden 2.2.0. The release owner accepted the current
 > progression pacing on September 9, 2026, including high-volume completion
 > within 30 days. No reward rules or balance values changed for that decision.
-> Automated checks do not replace exact-package functional and visual acceptance
-> or human release approval. Publication remains a separate action.
+> See [release status](README.md#release-status) for package identity and acceptance.
+> Automated checks do not replace exact-package acceptance or human release approval.
 
 Final progression validation keeps all balance values unchanged. The fresh,
 collection-first median at 200 answers/day is **103 days**, within the approved
 90–120-day target. The [final progression report](../build/progression-finalization-20260912-235734/report.md)
 contains simulation, test, production-engine, and exact-package evidence.
-This is progression sign-off only; overall release approval remains separate.
+The release owner has authorized publication.
 
 ## Clearer Garden and reward panels
 
