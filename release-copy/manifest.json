@@ -1,6 +1,6 @@
 {
-  "published": false,
-  "repository_visibility": "private",
+  "published": true,
+  "repository_visibility": "public",
   "license_status": "owner_approved",
   "required_placeholders": [],
   "media_sha256": {
@@ -30,7 +30,7 @@
     "use": "One shared post for each approved Reddit destination"
   },
   "launch_status": {
-    "public_release": "owner authorized; publication in progress",
+    "public_release": "published",
     "recap_export": "deferred by the separate task; excluded from active source and release package",
     "volunteer_first_use": "pending real volunteers; no observations fabricated",
     "hosted_ci": "Local release checks passed; hosted status tracked separately.",
@@ -61,7 +61,7 @@
     "assets": "passed",
     "compile": "passed",
     "media": "Native current-package footage; 34.4-second continuous-review and garden demo with a full undiscovered plant shop and three rare scenery examples, plus a separate 10-second Dahlia growth video; all videos decode without errors.",
-    "publication": "not performed"
+    "publication": "GitHub public release verified; AnkiWeb listing live and both preview images loaded; Reddit saved as draft only"
   },
   "reddit_media": {
     "thumbnail": "media/anki-garden-reddit-lead.png",
@@ -73,7 +73,7 @@
   "draft_status": {
     "copy": "approved for AnkiWeb publication; Reddit draft requested",
     "media": "Current native demo and separate Dahlia stages embedded; final lead thumbnail retained.",
-    "public_posting": "not performed; real AnkiWeb code, public media URLs and destination rendering checks remain",
+    "public_posting": "AnkiWeb published; Reddit draft saved",
     "verification": "Single universal Reddit preview checked at 390px and default desktop width with no visible horizontal overflow; current REDDIT.md emphasis and copy are reflected; media paths and hashes verified."
   },
   "ankiweb_media": {
@@ -85,5 +85,7 @@
     "growth_poster": "media/anki-garden-growth-stages-poster.png"
   },
   "ankiweb_url": "https://ankiweb.net/shared/info/1888718775",
-  "ankiweb_code": "1888718775"
+  "ankiweb_code": "1888718775",
+  "github_release_url": "https://github.com/caleblee789/Anki-Gardening/releases/tag/v2.2.0",
+  "reddit_draft_url": "https://www.reddit.com/r/Anki/submit/?draft=9da56bea-b3d5-11f1-ada2-aaad3cd2f78b"
 }
