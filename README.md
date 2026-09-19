@@ -25,9 +25,9 @@ Keep Garden as a small progress tile during reviews, or expand the reviewer pane
 
 ## Install
 
-**AnkiWeb:** [Install Anki Garden](https://ankiweb.net/shared/info/{{ANKIWEB_CODE}})
+**AnkiWeb:** [Install Anki Garden](https://ankiweb.net/shared/info/1888718775)
 
-**Add-on code:** `{{ANKIWEB_CODE}}`
+**Add-on code:** `1888718775`
 
 1. Install with the add-on code and restart Anki.
 2. Select **Choose a plant** on Anki's home screen. Your first starter is free.

@@ -8,8 +8,8 @@ Reviews completed on another device can also earn Garden rewards after you sync 
 
 <video controls playsinline preload="none" width="1440" height="1080" poster="media/anki-garden-reddit-lead.png" aria-label="Anki Garden demo" src="media/anki-garden-demo.mp4"></video>
 
-**Install:** [AnkiWeb](https://ankiweb.net/shared/info/{{ANKIWEB_CODE}})  
-**Add-on code:** `{{ANKIWEB_CODE}}`
+**Install:** [AnkiWeb](https://ankiweb.net/shared/info/1888718775)  
+**Add-on code:** `1888718775`
 
 **Progression**
 

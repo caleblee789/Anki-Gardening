@@ -2,9 +2,7 @@
   "published": false,
   "repository_visibility": "private",
   "license_status": "owner_approved",
-  "required_placeholders": [
-    "ANKIWEB_CODE"
-  ],
+  "required_placeholders": [],
   "media_sha256": {
     "anki-garden-demo.mp4": "ac80fcaa952a82f77bd16334bdd2fd00fce3b523ab8d43050d279dfc726dfc04",
     "anki-garden-expanded-hud.png": "7e0bfad952cbdc3f2bb195f0af81c85b0637f490e805315e8acec2eb990beed4",
@@ -85,5 +83,7 @@
     "animated_growth": "media/anki-garden-growth-stages.gif",
     "growth_video": "media/anki-garden-growth-stages.mp4",
     "growth_poster": "media/anki-garden-growth-stages-poster.png"
-  }
+  },
+  "ankiweb_url": "https://ankiweb.net/shared/info/1888718775",
+  "ankiweb_code": "1888718775"
 }

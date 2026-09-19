@@ -10,7 +10,7 @@ Final progression validation keeps all balance values unchanged. The fresh,
 collection-first median at 200 answers/day is **103 days**, within the approved
 90–120-day target. The [final progression report](../build/progression-finalization-20260912-235734/report.md)
 contains simulation, test, production-engine, and exact-package evidence.
-The release owner has authorized publication.
+The release owner has approved the release candidate for publication.
 
 ## Clearer Garden and reward panels
 
