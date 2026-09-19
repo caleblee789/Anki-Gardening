@@ -89,7 +89,7 @@ For troubleshooting, use **Copy support report** in Garden settings. Review it b
 
 ## Development and maintenance
 
-Developed and maintained by **Caleb Meadows** ([caleblee789](https://github.com/caleblee789)), a medical student and Anki add-on maintainer. Development is substantially AI-assisted with Codex; Caleb directs the project and is responsible for reviewing changes, validating releases, and maintaining the add-on.
+Developed and maintained by **Caleb Meadows** ([caleblee789](https://github.com/caleblee789)), a medical student and Anki add-on maintainer.
 
 See the [development guide](docs/development.md) for setup and contribution details.
 
