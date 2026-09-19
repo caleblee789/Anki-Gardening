@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from ankigarden.ui.transient_summary_coordinator import (
     TransientSummaryCoordinator,
 )
@@ -53,4 +52,3 @@ def test_summary_coordinator_releases_only_the_owner() -> None:
     assert coordinator.owns("sync") is True
     assert coordinator.release("sync", restore_focus=False) is True
     assert coordinator.active_kind == ""
-
