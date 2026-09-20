@@ -40,8 +40,7 @@ Use Garden settings to reduce animations and choose which panels and summaries a
 
 ## Compatibility and current limitations
 
-**Preview testing:** Anki 26.08.1 on macOS and Windows 11 ARM
-
+The package declares compatibility with desktop Anki 25.07–26.08. The final 2.2.0 package was tested in Anki 26.08.1 on macOS. The 25.07 boundary and Windows 11 ARM (native and x64 emulation) received bounded compatibility testing on closely related release candidates; Linux and physical Intel/AMD Windows remain unverified.
 
 Questions and bug reports are welcome in the comments on this listing. GitHub is preferred!
 

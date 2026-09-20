@@ -73,7 +73,7 @@ See the [progression and rewards guide](docs/progression-rewards-effects-referen
 
 ## Compatibility and limitations
 
-The add-on declares compatibility with desktop Anki 25.07–26.08. Anki Garden's interface does not run in AnkiMobile, AnkiDroid, or the AnkiWeb website.
+The package declares compatibility with desktop Anki 25.07–26.08. The final 2.2.0 package was tested in Anki 26.08.1 on macOS. The 25.07 boundary and Windows 11 ARM (native and x64 emulation) received bounded compatibility testing on closely related release candidates; Linux and physical Intel/AMD Windows remain unverified. Anki Garden's interface does not run in AnkiMobile, AnkiDroid, or the AnkiWeb website.
 
 Garden inventory and settings are stored locally and do not sync between computers. Reviews completed on another device can earn Garden rewards after their review history syncs to desktop Anki.
 
@@ -90,6 +90,8 @@ For troubleshooting, use **Copy support report** in Garden settings. Review it b
 ## Development and maintenance
 
 Developed and maintained by **Caleb Meadows** ([caleblee789](https://github.com/caleblee789)), a medical student and Anki add-on maintainer.
+
+Current maintenance priorities are keeping pace with Anki compatibility, expanding durable regression coverage, and resolving user-reported bugs.
 
 See the [development guide](docs/development.md) for setup and contribution details.
 
