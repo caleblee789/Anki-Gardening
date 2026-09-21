@@ -87,8 +87,8 @@ def _archive_capabilities(archive: zipfile.ZipFile) -> dict[str, object]:
 def test_distribution_manifest_is_complete() -> None:
     payload = json.loads((ADDON / "manifest.json").read_text("utf-8"))
     assert payload["package"] == "anki_garden"
-    assert payload["min_point_version"] <= payload["max_point_version"]
-    assert payload["min_point_version"] <= 260800 <= payload["max_point_version"]
+    assert payload["min_point_version"] == 260902
+    assert payload["max_point_version"] == 260902
 
 
 def test_required_runtime_files_are_in_production_source_set() -> None:
