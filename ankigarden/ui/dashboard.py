@@ -3099,8 +3099,11 @@ class _ShellBehavior:
         super().reject()
 
     def showEvent(self, event: Any) -> None:
-        for child in self.children():
-            self._observe_content_object(child)
+        # Wait until Qt finishes showing the subtree before attaching filters.
+        # Installing them while show events are being delivered can invalidate
+        # a child wrapper during traversal on Linux Qt.
+        if not self._content_observer_timer.isActive():
+            self._content_observer_timer.start()
         self._discover_scroll_regions()
         self._sync_footer_clearance()
         super().showEvent(event)
