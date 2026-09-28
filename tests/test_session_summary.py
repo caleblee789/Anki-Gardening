@@ -260,7 +260,7 @@ def test_progress_receipt_preserves_baseline_and_combines_coin_causes():
     assert plant_growth_journey("Bonsai", baseline.growth_units, summary.growth_applied_total_units) == (
         "You grew Bonsai from Seed (120 Growth) to Sprout (540/1,600 Growth)."
     )
-    assert plant_growth_journey("Bonsai", None, 10_050) == "Bonsai gained +100.5 Growth."
+    assert plant_growth_journey("Bonsai", None, 10_050) == "Bonsai gained +100 Growth."
 
 
 def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
@@ -288,7 +288,7 @@ def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
     assert summary.growth_applied_total_units == 208_000
     assert summary.stored_growth.delta_units == 1_250
     assert [(row.key, row.label, row.value) for row in projection.reward_metrics] == [
-        ("growth_applied", "Growth applied", "+2,092.5"),
+        ("growth_applied", "Growth applied", "+2,092"),
         ("garden_coins", "Coins", "+67"),
         ("standard_finds", "Garden Finds", "+3"),
     ]
@@ -1156,10 +1156,10 @@ def test_projection_omits_zero_rows_and_uses_cards_complete_hero_copy():
     assert projection.continue_reviews_available is True
 
 
-def test_growth_format_preserves_exact_units_with_separators():
+def test_growth_format_displays_whole_points_with_separators():
     assert format_growth_units(128_400, signed=True) == "+1,284"
-    assert format_growth_units(128_450, signed=True) == "+1,284.5"
-    assert format_growth_units(1_855, signed=True) == "+18.55"
+    assert format_growth_units(128_450, signed=True) == "+1,284"
+    assert format_growth_units(1_855, signed=True) == "+18"
     assert format_growth_units(-3_200) == "-32"
 
 

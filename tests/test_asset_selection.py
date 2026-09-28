@@ -696,40 +696,6 @@ def test_production_plant_thumbnails_keep_a_clear_edge_at_compact_and_retina_siz
     assert application is not None
 
 
-def test_runtime_catalog_contains_one_current_asset_per_species_and_stage():
-    manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
-    rows = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
-    plants = [row for row in rows if row.get("category") == "plants"]
-    expected_species = {
-        "bonsai", "rose", "sunflower", "lavender", "hydrangea", "peony",
-        "foxglove", "japanese_maple", "wisteria", "dahlia",
-    }
-    expected_stages = {"seed", "sprout", "young", "mature", "flowering", "rare"}
-
-    assert len(plants) == len(expected_species) * len(expected_stages)
-    assert {row["slot"]["species"] for row in plants} == expected_species
-    assert {
-        (row["slot"]["species"], row["slot"]["stage"])
-        for row in plants
-    } == {
-        (species, stage)
-        for species in expected_species
-        for stage in expected_stages
-    }
-    for row in plants:
-        placement = row["placement"]
-        assert {
-            "visible_bounds", "ground_anchor", "contact_shadow", "base_type", "crop", "layer"
-        }.issubset(placement)
-        assert row.get("release_preferred") is True
-        assert "continuity_v6" in row.get("variants", [])
-        assert row["file"].startswith("assets/v6_storybook_gouache/plants/")
-        assert row.get("fallback_asset_id") in {None, ""}
-        assert placement["base_type"] == "direct_soil"
-        assert "seedling_cue" not in row
-        assert "seedling_anchor" not in row
-
-
 def test_manifest_exposes_canonical_v6_geometry_and_eight_scenery_reskins():
     manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
     rows = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]

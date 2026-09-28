@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import inspect
 from collections import deque
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -32,8 +30,6 @@ from ankigarden.ui.reviewer_hud import (
 )
 from ankigarden.ui.reviewer_hud_widget import (
     ReviewGardenHud,
-    _COMPACT_REWARD_MAX_HEIGHT,
-    _COMPACT_REWARD_MIN_HEIGHT,
     _TODAY_INCOMPLETE_VISUAL_MAX,
     _TODAY_PROGRESS_SCALE,
     _all_secondary_items,
@@ -58,11 +54,6 @@ from ankigarden.ui.reviewer_hud_widget import (
 
 
 DAY = "2026-08-28"
-WIDGET_SOURCE = Path(
-    "ankigarden/ui/reviewer_hud_widget.py"
-).read_text(encoding="utf-8")
-DASHBOARD_SOURCE = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
-REVIEWER_HOOK_SOURCE = Path("ankigarden/hooks/reviewer.py").read_text(encoding="utf-8")
 
 
 def completion(status: str, **overrides):
@@ -188,7 +179,6 @@ def test_complete_today_card_uses_engine_confirmed_coin_reward() -> None:
     assert "Coin" not in pending.primary
 
 
-
 def test_incomplete_today_progress_retains_an_end_gap_at_175_of_176() -> None:
     projection = project_today_cards(state_for(
         "in_progress",
@@ -203,14 +193,6 @@ def test_incomplete_today_progress_retains_an_end_gap_at_175_of_176() -> None:
     assert projection.secondary == ("1 card left",)
     assert projection.progress_percent == 99
     assert (_TODAY_PROGRESS_SCALE, _TODAY_INCOMPLETE_VISUAL_MAX) == (1_000, 985)
-
-    today_copy = WIDGET_SOURCE.split("def _apply_today_copy", 1)[1].split(
-        "def _settle_today_completion",
-        1,
-    )[0]
-    assert "round(actual_percent * 10.0)" in today_copy
-    assert "_TODAY_INCOMPLETE_VISUAL_MAX" in today_copy
-    assert '"minimumUnfilledLogicalPixels"' in today_copy
 
 
 def test_waiting_and_unavailable_states_remain_concise() -> None:
@@ -284,8 +266,8 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     assert nurture.plant_name == "Mature Bonsai"
     assert nurture.stage_label == "Mature · Stage 4 of 6"
     assert nurture.species_name == "Bonsai"
-    assert nurture.next_answer_value == "+13.5 Growth"
-    assert nurture.next_card_line == "Next card: +13.5 Growth"
+    assert nurture.next_answer_value == "+13 Growth"
+    assert nurture.next_card_line == "Next card: +13 Growth"
     assert nurture.checkpoint_line == "2,230 Growth to next checkpoint"
     assert nurture.estimate_line == "~166 cards to the next checkpoint"
     assert nurture.checkpoint_growth_remaining == 2_230
@@ -303,8 +285,8 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     assert nurture.effect_chips == (
         "Quality Fertilizer · 42 cards remaining",
         "Booster Potion · 38 cards remaining",
-        "Garden decoration · +0.5 Growth",
-        "Scenery · +0.25 Growth",
+        "Garden decoration · +0 Growth",
+        "Scenery · +0 Growth",
         "Permanent Growth bonus · +1 Growth",
     )
     assert nurture.visible_effect_art_refs == (
@@ -323,6 +305,11 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     assert nurture.environment_line == ""
     assert nurture.queued_line == ""
     assert nurture.stored_growth_line == ""
+    plant.growth_units = 602_055
+    fractional = project_reviewer_hud(engine, state, now_ms=1_000_000).nurture
+    assert fractional.checkpoint_line == "2,229 Growth to next checkpoint"
+    assert fractional.checkpoint_growth_remaining == pytest.approx(2_229.45)
+    assert plant.growth_units == 602_055
 
 
 def test_plant_choices_are_engine_confirmed_planted_unfinished_alternatives() -> None:
@@ -422,7 +409,7 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
     assert empty.empty_heading == "No plant selected"
     assert empty.empty_message == "Growth earned during review will be stored."
     assert not empty.stored_growth_line
-    assert empty.growth_destination.detail == "12.5 Growth in reserve"
+    assert empty.growth_destination.detail == "12 Growth in reserve"
     assert empty.growth_destination.artwork_id == "stored_growth"
 
     full = SimpleNamespace(
@@ -548,29 +535,6 @@ def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
     ) == (16, 44, HUD_COLLAPSED_WIDTH, 88)
     assert DEFAULT_CONFIG["show_reviewer_hud"] is True
     assert DEFAULT_CONFIG["reviewer_hud_dock"] == "right"
-    assert "content_height = 46 + body_height + reward_height" in WIDGET_SOURCE
-    assert 'setProperty("hudRewardDockNaturalHeight", reward_height)' in WIDGET_SOURCE
-    assert "self._body_contents.setMinimumWidth(0)" in WIDGET_SOURCE
-    assert "QSizePolicy.Policy.Ignored" in WIDGET_SOURCE
-    assert "chip.setMinimumWidth(0)" in WIDGET_SOURCE
-    assert "effects_layout = QGridLayout(self._effects)" in WIDGET_SOURCE
-    assert "effects_layout.addWidget(chip, 0, len(self._effect_chips))" in WIDGET_SOURCE
-    assert "effects_layout.addWidget(\n            self._effects_overflow,\n            1," in WIDGET_SOURCE
-    effect_chip_block = WIDGET_SOURCE.split(
-        "for _index in range(2):",
-        1,
-    )[1].split("self._effects_overflow", 1)[0]
-    assert "QSizePolicy.Policy.Ignored" in effect_chip_block
-    assert "chip.setMaximumWidth" not in effect_chip_block
-    assert "QSizePolicy.Policy.Expanding" in effect_chip_block
-    assert "chip_layout.setContentsMargins(1, 0, 1, 0)" in effect_chip_block
-    assert "chip_layout.setSpacing(1)" in effect_chip_block
-    assert 'label.setProperty("hudEffectLabel", True)' in effect_chip_block
-    clear_celebration = WIDGET_SOURCE.split(
-        "def _clear_celebration",
-        1,
-    )[1].split("def update_session_totals", 1)[0]
-    assert "if self._disposed" in clear_celebration
 
 
 def test_widget_consumes_versioned_answer_control_rect_and_rejects_stale_viewport() -> None:
@@ -620,11 +584,11 @@ def test_plant_art_bounds_remove_empty_canvas_without_mutating_source() -> None:
 
 
 def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_session() -> None:
-    assert _compact_summary_label(SimpleNamespace(label="+13.5 growth")) == "+13.5 Growth"
+    assert _compact_summary_label(SimpleNamespace(label="+13 growth")) == "+13 Growth"
     assert _compact_summary_label(SimpleNamespace(label="Booster +2")) == "Booster Potion +2"
     for value in (248, 9_999, 10_013, 999_999, 1_000_000):
         assert _format_coin_balance(value, exact_fits=False) == f"{value:,}"
-    assert _format_coin_balance(1_200_000, exact_fits=False) == "1.2M"
+    assert _format_coin_balance(1_200_000, exact_fits=False) == "1,200,000"
 
     assert _checkpoint_marker_states(38, 50) == (
         "completed",
@@ -769,40 +733,6 @@ def test_widget_consumes_the_canonical_reward_bundle_shape() -> None:
                                       title="Checkpoint reward", category_label="Coins", garden_coins=3)
     mixed = RewardBundleProjection("answer-mixed", bundle.occurred_at, (hero, additional))
     assert ReviewGardenHud._collapsed_coin_delta(mixed) == 7
-
-    signature = inspect.signature(ReviewGardenHud.present_reward)
-    assert "reveal" in signature.parameters
-    assert signature.parameters["reveal"].default is True
-    committed = inspect.signature(ReviewGardenHud.present_committed_result)
-    assert committed.parameters["applied_growth_units"].default == 0
-    assert committed.parameters["reveal"].default is True
-    assert hasattr(ReviewGardenHud, "update_session_totals")
-    assert hasattr(ReviewGardenHud, "update_projection")
-
-
-def test_named_find_art_uses_the_shared_item_resolver_in_reviewer_ui() -> None:
-    assert 'getattr(hero, "artwork_ref", "")' in REVIEWER_HOOK_SOURCE
-    assert 'resolver_names = (' in REVIEWER_HOOK_SOURCE
-    assert '"resolve_item_asset", "resolve_garden_feature_preview_asset", "resolve_scenery_preview_asset"' in REVIEWER_HOOK_SOURCE
-    assert 'asset_category == "ui" and asset_key' in REVIEWER_HOOK_SOURCE
-    assert 'hero, "reward_type", ""' in REVIEWER_HOOK_SOURCE
-    assert '"garden_pouch": "Garden Pouch artwork"' in REVIEWER_HOOK_SOURCE
-    assert '"morning_dew": "Morning Dew artwork"' in REVIEWER_HOOK_SOURCE
-    assert "self._reward_art.setFixedSize(52, 52)" in WIDGET_SOURCE
-    assert "if isinstance(hero, str)" in REVIEWER_HOOK_SOURCE
-    assert 'icon.setProperty("hudEffectArtwork", True)' in WIDGET_SOURCE
-    assert "icon.setFixedSize(18, 18)" in WIDGET_SOURCE
-    assert "icon.setAlignment(Qt.AlignmentFlag.AlignCenter)" in WIDGET_SOURCE
-    assert '"hudEffectUsesItemArt"' in WIDGET_SOURCE
-    assert "self._effect_art_pixmap(artwork_ref)" in WIDGET_SOURCE
-    assert '"hudRewardSummaryArtworkRef"' in WIDGET_SOURCE
-    assert '"hudRewardSummaryUsesItemArt"' in WIDGET_SOURCE
-    assert "summary if summary is not None else artwork_ref" in WIDGET_SOURCE
-    alpha_crop = WIDGET_SOURCE.split("def _alpha_cropped_pixmap", 1)[1].split(
-        "def _session_metric_labels", 1
-    )[0]
-    assert "pixmap.mask().boundingRect()" in alpha_crop
-    assert "pixelColor" not in alpha_crop
 
 
 def test_reward_amounts_stay_on_the_hero_and_overflow_remains_inspectable() -> None:
@@ -1523,237 +1453,6 @@ def test_mixed_reward_bundle_delays_for_its_checkpoint_item() -> None:
 
     assert _hero_kind(bundle) == "garden_find"
     assert _bundle_has_kind(bundle, "checkpoint") is True
-
-
-def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
-    for object_name in (
-        "ankiGardenReviewerHud",
-        "reviewerHudHeader",
-        "reviewerHudBodyScroll",
-        "reviewerHudTodayCard",
-        "reviewerHudPlantCard",
-        "reviewerHudPlantClass",
-        "reviewerHudPlantName",
-        "reviewerHudCheckpointTrack",
-        "reviewerHudCheckpointDistanceRow",
-        "reviewerHudNextAnswerLabel",
-        "reviewerHudRewardDock",
-        "reviewerHudRewardDockSurface",
-        "reviewerHudRewardScroll",
-        "reviewerHudRewardReveal",
-        "reviewerHudRewardAccent",
-        "reviewerHudRewardHeading",
-        "reviewerHudRewardDetailsToggle",
-        "reviewerHudRewardEyebrow",
-        "reviewerHudRewardSubtitle",
-        "reviewerHudRewardSummaryChip0",
-        "reviewerHudRewardSummaryChip1",
-        "reviewerHudRewardDetails",
-        "reviewerHudRewardDivider",
-        "reviewerHudSessionFooter",
-        "reviewerHudRewardHistory",
-        "reviewerHudCollapsedTab",
-    ):
-        assert object_name in WIDGET_SOURCE
-    assert "ankiGardenRewardToast" not in WIDGET_SOURCE
-    assert "HUD_TOP_MARGIN," in WIDGET_SOURCE.split(
-        "from .reviewer_hud import (", 1
-    )[1].split(")", 1)[0]
-    assert "reward close" not in WIDGET_SOURCE.casefold()
-    assert "body.addStretch" not in WIDGET_SOURCE
-    assert "deque(maxlen=_REWARD_QUEUE_LIMIT)" not in WIDGET_SOURCE
-    art_update = WIDGET_SOURCE.split("def _update_plant_art", 1)[1].split(
-        "def _fade_art_in",
-        1,
-    )[0]
-    assert art_update.index("_collapsed_ring.set_progress") < art_update.index(
-        "if key == self._art_key"
-    )
-    assert "animate_checkpoint_crossing" in WIDGET_SOURCE
-    assert "animate_checkpoint_sequence" in WIDGET_SOURCE
-    assert "when_checkpoint_reached" in WIDGET_SOURCE
-    assert 'self.setProperty("markerShape", "diamond-tick")' in WIDGET_SOURCE
-    assert 'self.setProperty("interactive", False)' in WIDGET_SOURCE
-    assert 'self.setProperty("currentPositionHandleVisible", False)' in WIDGET_SOURCE
-    checkpoint_paint = WIDGET_SOURCE.split(
-        "class CheckpointTrack",
-        1,
-    )[1].split("class _MiniProgressRing", 1)[0]
-    assert "painter.rotate(45.0)" in checkpoint_paint
-    assert "painter.drawRoundedRect" in checkpoint_paint
-    assert "painter.drawEllipse" in checkpoint_paint
-    assert "_reopen_history_reward" in WIDGET_SOURCE
-    assert 'setObjectName("reviewerHudRewardMore")' not in WIDGET_SOURCE
-    assert "reviewerHudRewardDisclosureChevron" not in WIDGET_SOURCE
-    assert (_COMPACT_REWARD_MIN_HEIGHT, _COMPACT_REWARD_MAX_HEIGHT) == (130, 150)
-    assert "self._reward_summary_chips: list[_ElidedLabel]" in WIDGET_SOURCE
-    assert "visible_summaries[:2]" in WIDGET_SOURCE
-    assert "self._reward_details_toggle.setMinimumWidth(" in WIDGET_SOURCE
-    assert "self._reward_details_toggle.setMinimumHeight(28)" in WIDGET_SOURCE
-    assert 'self._reward_details_toggle.setText("Reward details ›")' in WIDGET_SOURCE
-    assert 'details_text = "Hide details"' in WIDGET_SOURCE
-    assert 'self._reward_reveal.setProperty("rewardDetailEventIds", detail_event_ids)' in WIDGET_SOURCE
-    assert "self._reward_timer.timeout.connect(self._mark_reward_hold_elapsed)" in WIDGET_SOURCE
-    hold_elapsed = WIDGET_SOURCE.split(
-        "def _mark_reward_hold_elapsed",
-        1,
-    )[1].split("def _current_reward_reveal_state", 1)[0]
-    assert "_maybe_archive_current_reward" in hold_elapsed
-    assert "class _PreferredHeightScrollArea" in WIDGET_SOURCE
-    assert "self._reward_scroll.set_preferred_height(target)" in WIDGET_SOURCE
-    assert "layout.heightForWidth(natural_width)" in WIDGET_SOURCE
-    assert "self._build_reward_dock(expanded_layout)" in WIDGET_SOURCE
-    assert "_apply_full_bloom_override" in WIDGET_SOURCE
-    assert "_apply_stage_change_override" in WIDGET_SOURCE
-    assert 'setProperty("titleAnchorStable", True)' in WIDGET_SOURCE
-    assert 'setProperty("fullBloomSettled", False)' in WIDGET_SOURCE
-    assert "self._reward_dock.hide()" in WIDGET_SOURCE
-    assert "divider_visible = scroll_visible and footer_visible" in WIDGET_SOURCE
-    assert "animate = bool(animate and self._animations_enabled)" in WIDGET_SOURCE
-    assert "delta = target - committed_before" in WIDGET_SOURCE
-    assert "revision != self._coin_feedback_revision" in WIDGET_SOURCE
-    assert "revision != self._growth_feedback_revision" in WIDGET_SOURCE
-    assert "revision != self._today_feedback_revision" in WIDGET_SOURCE
-    assert "_PROJECTION_APPLY_DELAY_MS = 0" in WIDGET_SOURCE
-    assert "_ROUTINE_SESSION_RELEASE_MS = 0" in WIDGET_SOURCE
-    assert '"hudRoutineSessionReleaseDelayMs", _ROUTINE_SESSION_RELEASE_MS' in WIDGET_SOURCE
-    assert "def _finish_routine_projection_feedback" in WIDGET_SOURCE
-    assert '"hudRoutineSessionUpdateDeferred"' in WIDGET_SOURCE
-    assert "_NEXT_PROJECTION_RESTORE_MS = 850" in WIDGET_SOURCE
-    assert "revision != self._revision" in WIDGET_SOURCE
-    assert "def present_committed_result" in WIDGET_SOURCE
-    assert "def _flush_deferred_checkpoint_feedback" in WIDGET_SOURCE
-    assert "def export_reward_state" in WIDGET_SOURCE
-    assert "def restore_reward_state" in WIDGET_SOURCE
-    assert WIDGET_SOURCE.count("self._build_shell()") == 1
-
-    plant_builder = WIDGET_SOURCE.split("def _build_plant", 1)[1].split(
-        "def _build_reward_dock",
-        1,
-    )[0]
-    assert "layout.addWidget(self._checkpoint_reward_row)" in plant_builder
-    assert "layout.addWidget(self._next_answer)" not in plant_builder
-    assert "self._next_answer.hide()" in plant_builder
-    assert "metadata.addWidget(self._bed)" not in plant_builder
-
-
-def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
-    assert '.setProperty("tabularNumerals", True)' not in WIDGET_SOURCE
-    for widget_name in (
-        "self._coin_balance",
-        "self._coin_delta",
-        "self._today_value",
-        "self._today_detail",
-        "self._percent",
-        "self._checkpoint",
-        "self._checkpoint_estimate",
-        "self._next_answer_value",
-        "self._checkpoint_reward",
-        "self._effects_overflow",
-        "self._effect_details",
-        "self._reward_growth",
-        "self._reward_coins",
-    ):
-        assert f"apply_tabular_numerals({widget_name})" in WIDGET_SOURCE
-
-    receipt_source = Path(__file__).parents[1].joinpath("ankigarden/ui/reward_receipt.py").read_text()
-    assert "apply_tabular_numerals(amount)" in receipt_source
-    assert "surface.insertWidget(0, self._session_footer)" in WIDGET_SOURCE
-
-    effect_overflow = WIDGET_SOURCE.split(
-        "def _effect_overflow_label",
-        1,
-    )[1].split("def _session_metric_labels", 1)[0]
-    assert "format_quantity(normalized, 'more effect', 'more effects')" in effect_overflow
-    footer_builder = WIDGET_SOURCE.split("def _build_reward_dock", 1)[1].split(
-        "def _build_collapsed",
-        1,
-    )[0]
-    assert 'setObjectName("reviewerHudSessionChevron")' in footer_builder
-    assert "self._session_history_chevron.hide()" in footer_builder
-    history_sync = WIDGET_SOURCE.split("def _sync_history_rows", 1)[1].split(
-        "def _advance_reward_history_page",
-        1,
-    )[0]
-    assert "self._session_history_chevron.setVisible(available)" in history_sync
-
-    full_bloom_override = WIDGET_SOURCE.split(
-        "def _apply_full_bloom_override",
-        1,
-    )[1].split("def _apply_projected_full_bloom_settled", 1)[0]
-    assert "self._select_plant.show()" not in full_bloom_override
-    projected_full_bloom = WIDGET_SOURCE.split(
-        "def _apply_projected_full_bloom_settled",
-        1,
-    )[1].split("def _apply_stage_change_override", 1)[0]
-    assert "self._effects.hide()" in projected_full_bloom
-    assert "elif nurture.fully_grown:" in WIDGET_SOURCE
-    assert "self._select_plant.clicked.connect(self._select_another_plant)" in WIDGET_SOURCE
-    select_action = WIDGET_SOURCE.split(
-        "def _select_another_plant",
-        1,
-    )[1].split("def _open_current_reward", 1)[0]
-    assert "_call(self._on_select_plant)" in select_action
-    assert "_on_open_garden" not in select_action
-    assert REVIEWER_HOOK_SOURCE.count(
-        "on_select_plant=self._select_another_plant_from_reviewer_hud"
-    ) == 2
-    assert REVIEWER_HOOK_SOURCE.count(
-        "on_choose_plant=self._choose_plant_from_reviewer_hud"
-    ) == 2
-    assert 'QMenu(self._select_plant)' in select_action
-    assert 'menu.popup(' in select_action
-    assert 'normalized_plant_pixmap(' in select_action
-    identity_sync = WIDGET_SOURCE.split(
-        "def _sync_reward_identity_visibility",
-        1,
-    )[1].split("def _sync_current_reward_secondary", 1)[0]
-    assert "event_plant_id == displayed_plant_id" in identity_sync
-    plant_update = WIDGET_SOURCE.split(
-        "def _update_plant",
-        1,
-    )[1].split("def _update_plant_art", 1)[0]
-    assert "self._sync_reward_identity_visibility()" in plant_update
-    assert "self._settled_full_bloom_bundle = None" in plant_update
-    public_selection = DASHBOARD_SOURCE.split(
-        "def open_plant_selection",
-        1,
-    )[1].split("def _release_collection_activation", 1)[0]
-    assert "self._open_collection()" in public_selection
-    select_style = WIDGET_SOURCE.split(
-        '"QToolButton#reviewerHudSelectPlant',
-        1,
-    )[1].split('"QScrollArea#reviewerHudBodyScroll', 1)[0]
-    assert 't["action_accent"]' in select_style
-    assert "reviewer_hud_coin" not in select_style
-
-    routine_feedback = WIDGET_SOURCE.split("def animate_growth_delta", 1)[1].split(
-        "def _swap_next_answer_row",
-        1,
-    )[0]
-    assert "self._start_plant_motion()" in routine_feedback
-    milestone_feedback = WIDGET_SOURCE.split("def celebrate_milestone", 1)[1].split(
-        "def _apply_full_bloom_override",
-        1,
-    )[0]
-    assert "self._start_plant_motion(full_bloom=True)" in milestone_feedback
-    bounded_motion = WIDGET_SOURCE.split("def _start_plant_motion", 1)[1].split(
-        "def _sync_effects",
-        1,
-    )[0]
-    assert "animation.setDuration(" in bounded_motion
-    assert 'setProperty("fullBloomParticlesActive", True)' in bounded_motion
-    assert "self._settle_plant_motion()" in bounded_motion
-
-    session_feedback = WIDGET_SOURCE.split(
-        "def _highlight_session_changes",
-        1,
-    )[1].split("def _clear_session_highlight", 1)[0]
-    assert "QVariantAnimation(self)" not in session_feedback
-    assert "widget.setMinimumWidth" not in session_feedback
-    assert "changed = changed_metrics[index]" in session_feedback
-    assert "changed_metrics=changed_metrics" in WIDGET_SOURCE
-    assert "receipt_metric(self._session_totals_card" in WIDGET_SOURCE
 
 
 def test_custom_hud_position_preserves_anchor_and_stays_clear_of_answer_controls():

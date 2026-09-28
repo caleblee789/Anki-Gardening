@@ -136,13 +136,10 @@ def format_integer(value: Any) -> str:
 
 
 def format_growth_fifths(value: Any) -> str:
-    """Format exact fifths of one Growth point without using floating point."""
+    """Display whole Growth from fifths without changing the stored amount."""
     try:
         numerator = max(0, int(_to_decimal(value)))
-        whole, remainder = divmod(numerator, 5)
-        if remainder == 0:
-            return f"{whole:,}"
-        return f"{whole:,}.{remainder * 2}"
+        return format_growth(numerator // 5, include_unit=False)
     except Exception as exc:
         DISPLAY_TELEMETRY.track_parsing_exception(
             route="shared.formatters",
@@ -205,15 +202,21 @@ def format_growth(
     signed: bool = False,
     include_unit: bool = True,
 ) -> str:
-    """Format one Growth value or one current/goal pair."""
+    """Display whole Growth, truncating only the text toward zero."""
 
-    number = _to_decimal(value)
-    amount = format(number, "+,f" if signed else ",f")
-    if "." in amount:
-        amount = amount.rstrip("0").rstrip(".")
+    number = int(_to_decimal(value))
+    amount = format(number, "+," if signed else ",")
     if maximum is not None:
         amount = f"{amount} / {format_growth(maximum, include_unit=False)}"
     return f"{amount} Growth" if include_unit else amount
+
+
+def format_growth_units(units: int, *, signed: bool = False) -> str:
+    """Display whole Growth from exact hundredths; retain units in callers."""
+    normalized = int(units)
+    whole = abs(normalized) // 100
+    return format_growth(-whole if normalized < 0 else whole,
+                         signed=signed, include_unit=False)
 
 
 def format_plant_name(plant: Any) -> str:

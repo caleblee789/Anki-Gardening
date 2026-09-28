@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
+from .formatters import format_growth_units
 from ..plant_beds import plant_bed_progress
 from ..feature_availability import garden_legacy_enabled, landmarks_enabled, mastery_enabled
 
@@ -80,8 +81,7 @@ def _consumable_effect_copy(item: Any) -> str:
 
 def growth_points(units: Any) -> str:
     value = max(0, int(units or 0))
-    whole, remainder = divmod(value, 100)
-    return f"{whole:,}" if not remainder else f"{whole:,}.{remainder:02d}".rstrip("0")
+    return format_growth_units(value)
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,8 @@ from ankigarden.ui.formatters import (
     format_approximate_cards,
     format_garden_coins,
     format_growth,
+    format_growth_fifths,
+    format_growth_units,
     format_integer,
     format_inventory_delta,
     format_local_date,
@@ -54,9 +56,20 @@ def test_garden_release_formatters_have_one_stable_representation() -> None:
     assert format_garden_coins(1_000_000) == "1,000,000 Coins"
     assert format_garden_coins(-2, signed=True) == "−2 Coins"
     assert format_growth(40) == "40 Growth"
-    assert format_growth(2217.5) == "2,217.5 Growth"
+    assert format_growth(2217.5) == "2,217 Growth"
     assert format_growth(40, 500) == "40 / 500 Growth"
     assert format_growth(40, signed=True) == "+40 Growth"
+    for value, expected in ((0, "0"), (0.99, "0"), (18.49, "18"),
+                            (18.5, "18"), (18.99, "18"), (-18.99, "-18"),
+                            (-0.99, "0"), (999.99, "999")):
+        assert format_growth(value, include_unit=False) == expected
+    assert format_growth(0.99, signed=True) == "+0 Growth"
+    assert format_growth(18.99, 100.99) == "18 / 100 Growth"
+    assert format_growth_units(1899, signed=True) == "+18"
+    assert format_growth_units(-99) == "0"
+    assert format_growth_fifths(94) == "18"
+    assert format_garden_coins(18.99) == "18 Coins"
+    assert format_garden_coins(1_234_567_890) == "1,234,567,890 Coins"
     assert format_inventory_delta(-1) == "-1"
     assert format_balance_delta(150, 119) == "150 → 119 Coins"
     assert format_duration(0) == "0 minutes"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .performance import RUNTIME_PERFORMANCE, timed
+
 """Transactional SQLite authority for rewards and per-answer outcomes.
 
 The Garden's ordinary state can remain a bounded JSON-shaped document, but
@@ -600,10 +602,17 @@ class RewardLedger:
             isolation_level=None,
         )
         self._connection.row_factory = sqlite3.Row
+        if RUNTIME_PERFORMANCE.enabled:
+            # Count statements, never retain SQL or user data in diagnostics.
+            self._connection.set_trace_callback(
+                lambda _statement: RUNTIME_PERFORMANCE.count("ledger.queries")
+            )
         self._closed = False
         self._economy_projections: dict[str, tuple[int, dict[str, Any]]] = {}
         self._projection_reducers: dict[str, Callable[..., None]] = {}
         self._projection_data_version = 0
+        self._projection_local_changes: dict[str, int] = {}
+        self._recent_hits_cache: tuple[tuple[Any, ...], list[Any]] | None = None
         self._checkpoint_owner = uuid.uuid4().hex
         self._generation = 0
         self._next_operation_id = 1
@@ -1250,7 +1259,11 @@ class RewardLedger:
             MAX_RECENT_HITS_QUERY,
             remaining + len(self._pending_outcomes),
         )
-        if pool is None:
+        cache_key = (self._data_version(), self._connection.total_changes, pool, query_limit)
+        cached = self._recent_hits_cache
+        if cached is not None and cached[0] == cache_key:
+            rows = cached[1]
+        elif pool is None:
             rows = self._connection.execute(
                 "SELECT answer_key, scheduler_day, pool_id, pool_version, status, "
                 "occurred_at, reward_id, hit_payload_json "
@@ -1266,6 +1279,7 @@ class RewardLedger:
                 "ORDER BY recorded_sequence DESC LIMIT ?",
                 (pool, query_limit),
             ).fetchall()
+        self._recent_hits_cache = (cache_key, rows)
         committed = []
         for row in rows:
             outcome = _outcome_from_row(row)
@@ -1682,6 +1696,7 @@ class RewardLedger:
     def reset_economy_projections(self) -> None:
         """Rebuild projections from permanent rows at an explicit audit boundary."""
         self._economy_projections.clear()
+        self._projection_local_changes.clear()
         self._projection_reducers.clear()
         self._connection.execute("DELETE FROM runtime_projection")
         self._projection_data_version = self._data_version()
@@ -1746,16 +1761,19 @@ class RewardLedger:
         event_cursor, committed = cached
         # Always check the indexed tail, including commits made by this
         # connection since the projection was last requested.
-        committed = deepcopy(committed)
-        for rowid, event in self.iter_economy_events(after_rowid=event_cursor):
-            accumulate(committed, event)
-            event_cursor = rowid
+        if self._projection_local_changes.get(key) != self._connection.total_changes:
+            committed = deepcopy(committed)
+            for rowid, event in self.iter_economy_events(after_rowid=event_cursor):
+                accumulate(committed, event)
+                event_cursor = rowid
+            self._projection_local_changes[key] = self._connection.total_changes
         self._economy_projections[key] = event_cursor, committed
         result = deepcopy(committed)
         for event in self._pending_economy_events.values():
             accumulate(result, event)
         return result
 
+    @timed("storage.commit")
     def commit_state(
         self,
         state_payload: Mapping[str, Any],
@@ -1772,6 +1790,12 @@ class RewardLedger:
         """
 
         self._ensure_open()
+        recent_hits = self._recent_hits_cache
+        preserve_recent_hits = (
+            recent_hits is not None
+            and recent_hits[0][:2] == (self._data_version(), self._connection.total_changes)
+            and not any(outcome.status == "hit" for outcome in self._pending_outcomes.values())
+        )
         normalized_schema = _positive_int(schema_version, "schema_version")
         if not isinstance(state_payload, Mapping):
             raise TypeError("state_payload must be a mapping")
@@ -1863,6 +1887,14 @@ class RewardLedger:
 
         result = StateSnapshot(normalized_schema, next_revision, payload_copy)
         self._economy_projections = next_projections
+        self._projection_local_changes = {
+            name: self._connection.total_changes for name in next_projections
+        }
+        if preserve_recent_hits:
+            key, rows = recent_hits
+            self._recent_hits_cache = ((key[0], self._connection.total_changes, *key[2:]), rows)
+        else:
+            self._recent_hits_cache = None
         self._clear_pending(increment_generation=True)
         return result
 

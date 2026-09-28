@@ -2783,6 +2783,7 @@ class GardenStorage:
             localization_key=str(payload.get("localization_key", "")),
         )
 
+    @timed("storage.find-cache")
     def _refresh_recent_find_cache(self, state: GardenState | None = None) -> None:
         target = state if state is not None else getattr(self, "state", None)
         ledger = self._reward_ledger
@@ -3225,6 +3226,7 @@ class GardenStorage:
             return self.state.lifetime_economy_aggregates.to_dict()
         return self._reward_ledger.lifetime_economy_aggregates()
 
+    @timed("storage.economy-projection")
     def refresh_lifetime_economy_aggregates(
         self,
     ) -> LifetimeEconomyAggregates:
@@ -4034,6 +4036,7 @@ class GardenStorage:
                 "Anki Garden could not read the latest review-history id."
             ) from error
 
+    @timed("review.answer-identification")
     def load_proven_local_answer(
         self,
         *,

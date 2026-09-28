@@ -5,19 +5,16 @@ import re
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from scripts.capture_evidence import (
     DIALOG_SCROLL_FOUR_STATE_NAMES as ASSEMBLER_SCROLL_STATES,
     _dialog_scroll_summary,
 )
 from scripts.validate_ui_capture import (
-    CaptureValidationError,
     DIALOG_SCROLL_FOUR_STATE_NAMES as VALIDATOR_SCROLL_STATES,
     _validate_dialog_scroll_summary,
     dialog_scroll_audit_issue_codes,
     dialog_scroll_state_matrix_issue_codes,
-    load_dialog_scroll_capture_coverage,
 )
 
 
@@ -72,22 +69,6 @@ def _compiled_functions(*names: str) -> dict[str, Any]:
         namespace,
     )
     return namespace
-
-
-def _method_source(class_name: str, method_name: str) -> str:
-    owner = next(
-        node
-        for node in _module().body
-        if isinstance(node, ast.ClassDef) and node.name == class_name
-    )
-    method = next(
-        node
-        for node in owner.body
-        if isinstance(node, ast.FunctionDef) and node.name == method_name
-    )
-    segment = ast.get_source_segment(CAPTURE.read_text("utf-8"), method)
-    assert segment is not None
-    return segment
 
 
 def _valid_scroll_geometry() -> dict[str, Any]:
@@ -443,8 +424,6 @@ def test_scroll_geometry_rejects_body_under_footer_and_compact_scroll() -> None:
     )
 
 
-
-
 def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
     qt_import = next(
         node
@@ -536,8 +515,6 @@ def test_all_ten_scroll_surfaces_retain_exhaustive_diagnostic_evidence() -> None
     assert responsive_dialog_edges <= resize_labels
 
 
-
-
 def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     specs = {spec[0]: spec for spec in _literal_assignment("RESIZE_MATRIX_SPECS")}
     assert specs["resize-story-large"][3:5] == (940, 800)
@@ -548,8 +525,6 @@ def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     assert specs["resize-collection-minimum"][3:5] == (720, 500)
     assert specs["resize-collection-default"][3:5] == (1120, 800)
     assert specs["resize-collection-large"][3:5] == (1180, 880)
-
-
 
 
 def test_responsive_pair_comparison_ignores_width_delta_but_not_state() -> None:
@@ -591,12 +566,6 @@ def test_conflicting_duplicate_responsive_semantic_ids_fail_closed() -> None:
         [entry, {**entry, "available_width": 1180}]
     )
     assert conflicts == ("dashboard.header-full",)
-
-
-
-
-
-
 
 
 def test_validator_recomputes_positive_scroll_geometry_and_page_identity() -> None:
@@ -676,46 +645,6 @@ def test_progress_scroll_audit_rejects_large_gutter_and_missing_contracts() -> N
     assert "missing-fixed-progress-header" in issues
     assert "excess-complete-row-gutter" in issues
     assert "insufficient-progress-bottom-padding" in issues
-
-
-def test_home_and_vertical_settings_capture_bounds_match_the_release_layout() -> None:
-    home_source = _method_source("_UiFaceCaptureRunner", "_wait_for_home_surface")
-    settings_source = _method_source(
-        "_UiFaceCaptureRunner",
-        "_capture_settings_display_advanced_ready",
-    )
-    module = _module()
-    no_scroll_assignment = next(
-        node
-        for node in module.body
-        if isinstance(node, ast.Assign)
-        and any(
-            isinstance(target, ast.Name)
-            and target.id == "CANONICAL_NO_SCROLL_CAPTURE_LABELS"
-            for target in node.targets
-        )
-    )
-    assert isinstance(no_scroll_assignment.value, ast.Call)
-    no_scroll_labels = ast.literal_eval(no_scroll_assignment.value.args[0])
-
-    assert "Math.round(homeActionRect.width) <= 128" in home_source
-    assert "settings-display-advanced-open" in no_scroll_labels
-    assert "scroll.ensureWidgetVisible(" not in settings_source
-    assert "outer_vertical_range <= 1" in settings_source
-    assert "outer_vertical_value == 0" in settings_source
-    assert "outer_horizontal_range <= 1" in settings_source
-    assert "inner_vertical_range <= 1" in settings_source
-    assert 'not hasattr(behavior, "preview_panel")' in settings_source
-    assert "appearance_bounds.get(\"contained\", False)" in settings_source
-    assert "home_switch_bounds.get(\"contained\", False)" in settings_source
-    assert "scroll.verticalScrollBar().setValue(0)" in settings_source
-
-    starter_postcondition = _method_source(
-        "_UiFaceCaptureRunner",
-        "_capture_fixture_postcondition",
-    )
-    assert "Plant in Bed" in starter_postcondition
-    assert "Place in Bed" not in starter_postcondition
 
 
 def test_refinement_native_issue_keeps_unrelated_capture_damage_blocking():

@@ -15,8 +15,8 @@
     "anki-garden-review-hud.mp4": "f57d437f880c19a707cadd50df2184e542a2409c8a4301d4f29c9d503b10ced2"
   },
   "word_counts": {
-    "README.md": 848,
-    "ANKIWEB.md": 415,
+    "README.md": 849,
+    "ANKIWEB.md": 416,
     "REDDIT.md": 311
   },
   "licenses": {
@@ -36,8 +36,8 @@
     "hosted_ci": "Local release checks passed; hosted status tracked separately.",
     "community_rules": "recheck before publishing each post",
     "application": "evaluate verified adoption two to four weeks after launch",
-    "native_acceptance": "Exact package passed native macOS verification.",
-    "readiness_record": "build/final-release-20260915/readiness.json"
+    "native_acceptance": "The 2.2.0 package passed native macOS verification; 2.2.1 has not had exact-package native verification.",
+    "readiness_record": "build/final-release-20260915/readiness.json (historical 2.2.0)"
   },
   "traction": {
     "observations": [],

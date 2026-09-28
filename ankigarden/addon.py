@@ -31,6 +31,7 @@ except (ImportError, AttributeError):
     # must remain safe when the binding cannot provide it.
     _QApplication = None
 
+from .shared_addon_menu import install_shared_menu_footer
 from .config import ConfigManager
 from .build_capabilities import CAPTURE_HARNESS_ENABLED
 from .display_telemetry import DISPLAY_TELEMETRY
@@ -709,14 +710,15 @@ class AnkiGardenApp:
         set_config_action = getattr(manager, "setConfigAction", None)
         if callable(set_config_action):
             set_config_action(__name__, self.open_settings)
-        if getattr(self, "_settings_action", None) is not None:
-            return
         submenu = self._shared_addons_settings_menu()
         if submenu is None:
             # The dashboard still exposes Settings. This is only a menu
             # integration enhancement and must never prevent the add-on from
             # starting on older/custom Anki shells.
             logger.debug("Anki Garden: shared add-on settings menu is unavailable")
+            return
+        install_shared_menu_footer(submenu, mw, "1888718775")
+        if getattr(self, "_settings_action", None) is not None:
             return
         for action in _menu_actions(submenu):
             if _qt_action_text(action) == GARDEN_SETTINGS_ACTION_TEXT:

@@ -11,7 +11,6 @@ from ..presentation import plant_stage_event
 
 import logging
 from dataclasses import dataclass, field, fields, is_dataclass, replace
-from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Iterable, Literal, Sequence, TypeVar
 
 from ..environment import canonical_garden_feature_id
@@ -146,15 +145,11 @@ def _due_time(seconds: int) -> str:
 
 
 def format_growth_units(units: int, *, signed: bool = False) -> str:
-    """Format exact hundredths through the shared Growth formatter."""
-    from .formatters import format_growth
+    """Display whole Growth while retaining signed session deltas."""
+    from .formatters import format_growth_units as shared_growth_units
 
     normalized = int(units)
-    return format_growth(
-        Decimal(normalized) / Decimal(100),
-        include_unit=False,
-        signed=signed and normalized > 0,
-    )
+    return shared_growth_units(normalized, signed=signed and normalized > 0)
 
 @dataclass(frozen=True)
 class ReviewContinuationTarget:

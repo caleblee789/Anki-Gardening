@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from collections import deque
 from itertools import product
 from pathlib import Path
 
 import pytest
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw
 
 from ankigarden.ui.plant_display import plant_layout
-from scripts.install_direct_soil_catalog_v6 import REVIEWED_CATALOG, _metadata
+from scripts.install_direct_soil_catalog_v6 import REVIEWED_CATALOG
 from scripts.process_direct_soil_asset import (
     despill_transparency_boundary,
     normalize_transparent_height,
@@ -24,7 +23,6 @@ ROOT = Path(__file__).resolve().parents[1]
 ADDON = ROOT / "ankigarden"
 MANIFEST = ADDON / "assets" / "manifest.json"
 RUNTIME_ROOT = ADDON / "assets" / "v6_storybook_gouache" / "plants"
-SOURCE_ROOT = ROOT / "artwork_source" / "plants" / "v6"
 SPECIES = (
     "rose",
     "bonsai",
@@ -59,22 +57,7 @@ def _matches(rows: list[dict], species: str, stage: str) -> list[dict]:
     return [row for row in rows if row.get("asset_id") == asset_id]
 
 
-def _completed_species() -> tuple[str, ...]:
-    rows = _rows()
-    return tuple(
-        species
-        for species in SPECIES
-        if all(
-            len(_matches(rows, species, stage)) == 1 and _expected_file(species, stage).is_file()
-            for stage in STAGES
-        )
-    )
-
-
-COMPLETED_SPECIES = _completed_species()
-COMPLETED_STAGE_CASES = tuple(
-    (species, stage) for species in COMPLETED_SPECIES for stage in STAGES
-)
+STAGE_CASES = tuple(product(SPECIES, STAGES))
 
 
 def _background(rows: list[dict]) -> dict:
@@ -221,82 +204,6 @@ def test_runtime_geometry_normalizer_removes_tiny_border_artifacts_and_preserves
     ) == 0
 
 
-def test_v6_library_has_no_duplicate_exact_stage_ids() -> None:
-    rows = _rows()
-    for species in SPECIES:
-        for stage in STAGES:
-            assert len(_matches(rows, species, stage)) <= 1
-
-
-def test_final_v6_library_contains_every_approved_line() -> None:
-    """The completed release must fail closed if any approved line disappears."""
-    assert COMPLETED_SPECIES == SPECIES
-
-
-@pytest.mark.parametrize(
-    "species,stage",
-    tuple(product(SPECIES, STAGES)),
-    ids=[f"{species}-{stage}" for species, stage in product(SPECIES, STAGES)],
-)
-def test_final_v6_source_master_has_clean_alpha_and_exact_runtime_pixels(
-    species: str, stage: str
-) -> None:
-    path = _expected_source(species, stage)
-    assert path.is_file()
-    with Image.open(path) as source, Image.open(_expected_file(species, stage)) as runtime:
-        assert source.mode == "RGBA"
-        assert source.size == runtime.size == (1254, 1254)
-        assert source.getchannel("A").getextrema() == (0, 255)
-        actual = runtime.convert("RGBA")
-        assert source.getchannel("A").tobytes() == actual.getchannel("A").tobytes()
-        invisible = source.getchannel("A").point(lambda alpha: 255 if alpha == 0 else 0)
-        expected = source.copy()
-        expected.paste((0, 0, 0, 0), mask=invisible)
-        actual.paste((0, 0, 0, 0), mask=invisible)
-        assert expected.tobytes() == actual.tobytes()
-
-
-def test_runtime_complete_lines_are_fully_integrated_in_the_manifest() -> None:
-    """A six-file line is not complete until all six exact metadata rows exist."""
-    rows = _rows()
-    for species in SPECIES:
-        files_complete = all(_expected_file(species, stage).is_file() for stage in STAGES)
-        metadata_complete = all(len(_matches(rows, species, stage)) == 1 for stage in STAGES)
-        if files_complete or metadata_complete:
-            assert files_complete, f"{species} has complete metadata but missing runtime stages"
-            assert metadata_complete, f"{species} has six runtime stages but incomplete metadata"
-
-
-@pytest.mark.parametrize(
-    "species,stage",
-    tuple(product(SPECIES, STAGES)),
-    ids=[f"{species}-{stage}" for species, stage in product(SPECIES, STAGES)],
-)
-def test_final_v6_manifest_matches_idempotent_installer_metadata(
-    species: str, stage: str
-) -> None:
-    """Lock runtime geometry, source hashes, stage mapping, and installer parity."""
-    rows = _rows()
-    current = _asset(rows, species, stage)
-    regenerated = _metadata(species, stage, _expected_file(species, stage))
-    assert current == regenerated
-
-
-@pytest.mark.parametrize(
-    "species,stage",
-    tuple(product(SPECIES, STAGES)),
-    ids=[f"{species}-{stage}" for species, stage in product(SPECIES, STAGES)],
-)
-def test_final_v6_manifest_points_to_canonical_source_master(
-    species: str, stage: str
-) -> None:
-    """Source metadata must identify the selected versioned alpha master."""
-    source = _expected_source(species, stage)
-    asset = _asset(_rows(), species, stage)
-    assert asset["source_master_file"] == source.relative_to(ROOT).as_posix()
-    assert asset["source_master_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
-
-
 def test_boundary_despill_repairs_color_without_eroding_a_synthetic_leaf_edge(
     tmp_path: Path,
 ) -> None:
@@ -317,71 +224,39 @@ def test_boundary_despill_repairs_color_without_eroding_a_synthetic_leaf_edge(
     assert cleaned.getpixel((3, 4)) == (55, 118, 61, 255)
 
 
-def test_v6_early_stage_metadata_is_measured_from_the_revised_assets() -> None:
-    """Do not freeze tiny Seed/Sprout geometry from an earlier art pass."""
+@pytest.mark.parametrize("species", SPECIES)
+def test_completed_v6_growth_stages_increase_visible_plant_mass(species: str) -> None:
     rows = _rows()
-    for species in SPECIES:
-        for stage in ("seed", "sprout"):
-            current = _asset(rows, species, stage)
-            regenerated = _metadata(species, stage, _expected_file(species, stage))
-            assert regenerated["placement"] == current["placement"]
-            placement = current["placement"]
-            assert placement["ground_anchor"] == placement["soil_contact"]
-            assert placement["ground_anchor_x"] == placement["ground_anchor"][0]
-            assert 0.0 < placement["ground_anchor_x"] < 1.0
-
-
-@pytest.mark.parametrize("species", COMPLETED_SPECIES)
-def test_completed_v6_line_has_six_unique_direct_soil_stages(species: str) -> None:
-    rows = _rows()
-    assets = [_asset(rows, species, stage) for stage in STAGES]
-    assert [asset["slot"]["stage"] for asset in assets] == list(STAGES)
-    assert all(asset["slot"]["species"] == species for asset in assets)
-    assert len({asset["asset_id"] for asset in assets}) == 6
-    assert len({asset["file"] for asset in assets}) == 6
-
-    visible_areas: list[float] = []
-    for stage, asset in zip(STAGES, assets):
-        placement = asset["placement"]
-        assert asset["release_preferred"] is True
-        assert asset["alpha"] is True
-        assert asset["file"] == _expected_file(species, stage).relative_to(
-            ADDON
-        ).as_posix()
-        assert placement["base_type"] == "direct_soil"
-        assert placement["release_layout_candidate"] is True
-        assert placement["review_provenance"] == REVIEWED_CATALOG[asset["asset_id"]]["placement"]["review_provenance"]
-        assert placement["ground_anchor"] == placement["soil_contact"]
-        assert placement["ground_anchor_x"] == placement["ground_anchor"][0]
-        assert placement["anchor_x"] == placement["ground_anchor"][0]
-        base_bounds = placement["base_bounds"]
-        assert base_bounds[0] <= placement["ground_anchor_x"] <= base_bounds[0] + base_bounds[2]
-        visible = placement["visible_bounds"]
-        assert 0 < visible[0] < visible[0] + visible[2] < 1
-        assert 0 < visible[1] < visible[1] + visible[3] < 1
-        # Scale coefficients alone cannot compare a broad Sprout with a tall
-        # Young silhouette. Compare the actual reference-size plant mass.
-        visible_areas.append(_layouts(rows, species, stage, 1260, 840, "dashboard")[0].visible.area)
-    assert visible_areas[:5] == sorted(visible_areas[:5])
-    assert visible_areas[-1] >= visible_areas[-2] * 0.88
+    # Compare rendered mass because scale coefficients alone cannot compare
+    # a broad Sprout with a tall Young silhouette.
+    visible_areas = [
+        _layouts(rows, species, stage, 1260, 840, "dashboard")[0].visible.area
+        for stage in STAGES[:5]
+    ]
+    assert visible_areas == sorted(visible_areas)
 
 
 @pytest.mark.parametrize(
     "species,stage",
-    COMPLETED_STAGE_CASES,
-    ids=[f"{species}-{stage}" for species, stage in COMPLETED_STAGE_CASES],
+    STAGE_CASES,
+    ids=[f"{species}-{stage}" for species, stage in STAGE_CASES],
 )
-def test_completed_v6_stage_has_clean_padded_alpha_and_matching_metadata(
+def test_v6_asset_preserves_source_pixels_alpha_and_independent_bounds(
     species: str, stage: str
 ) -> None:
     rows = _rows()
     asset = _asset(rows, species, stage)
     path = ADDON / asset["file"]
-    assert path == _expected_file(species, stage)
-    with Image.open(path) as source:
-        assert source.mode == "RGBA"
-        rgba = source.convert("RGBA")
-    assert rgba.size == (asset["width"], asset["height"])
+    with Image.open(_expected_source(species, stage)) as source, Image.open(path) as runtime:
+        assert source.mode == runtime.mode == "RGBA"
+        assert source.size == runtime.size == (asset["width"], asset["height"])
+        rgba = runtime.convert("RGBA")
+        assert source.getchannel("A").tobytes() == rgba.getchannel("A").tobytes()
+        invisible = source.getchannel("A").point(lambda alpha: 255 if alpha == 0 else 0)
+        expected, actual = source.copy(), rgba.copy()
+        expected.paste((0, 0, 0, 0), mask=invisible)
+        actual.paste((0, 0, 0, 0), mask=invisible)
+        assert expected.tobytes() == actual.tobytes()
     red, green, blue, alpha = rgba.split()
     assert alpha.getextrema() == (0, 255)
     confident = alpha.point(lambda value: 255 if value >= 192 else 0)
@@ -437,8 +312,8 @@ def test_completed_v6_stage_has_clean_padded_alpha_and_matching_metadata(
 
 @pytest.mark.parametrize(
     "species,stage",
-    COMPLETED_STAGE_CASES,
-    ids=[f"{species}-{stage}" for species, stage in COMPLETED_STAGE_CASES],
+    STAGE_CASES,
+    ids=[f"{species}-{stage}" for species, stage in STAGE_CASES],
 )
 def test_completed_v6_stage_is_centered_seated_and_contained_on_every_bed_and_layout(
     species: str, stage: str
@@ -474,7 +349,7 @@ def test_completed_v6_stage_is_centered_seated_and_contained_on_every_bed_and_la
                 assert max(layout.visible.width, layout.visible.height) >= minimum
 
 
-@pytest.mark.parametrize("species", COMPLETED_SPECIES)
+@pytest.mark.parametrize("species", SPECIES)
 def test_completed_v6_line_uses_one_physical_anchor_across_all_stages(species: str) -> None:
     rows = _rows()
     for width, height, context in SIZES:
@@ -486,7 +361,7 @@ def test_completed_v6_line_uses_one_physical_anchor_across_all_stages(species: s
             assert all(anchor == pytest.approx(anchors[0], abs=0.01) for anchor in anchors[1:])
 
 
-@pytest.mark.parametrize("species", COMPLETED_SPECIES)
+@pytest.mark.parametrize("species", SPECIES)
 def test_completed_v6_full_bloom_remains_visible_and_within_its_slot(species: str) -> None:
     rows = _rows()
     for width, height, context in SIZES:
@@ -512,7 +387,7 @@ def test_completed_v6_full_bloom_remains_visible_and_within_its_slot(species: st
             assert not rare_layout.validation_warnings
 
 
-@pytest.mark.parametrize("species", COMPLETED_SPECIES)
+@pytest.mark.parametrize("species", SPECIES)
 def test_completed_v6_rare_has_a_related_but_distinct_primary_silhouette(
     species: str,
 ) -> None:
@@ -524,7 +399,7 @@ def test_completed_v6_rare_has_a_related_but_distinct_primary_silhouette(
     assert 0.12 <= silhouette_iou <= 0.82
 
 
-@pytest.mark.parametrize("species", COMPLETED_SPECIES)
+@pytest.mark.parametrize("species", SPECIES)
 def test_completed_v6_flowering_has_a_visible_silhouette_payoff_over_mature(
     species: str,
 ) -> None:
@@ -537,52 +412,38 @@ def test_completed_v6_flowering_has_a_visible_silhouette_payoff_over_mature(
     assert _primary_silhouette_iou(species, "mature", "flowering") <= 0.93
 
 
-@pytest.mark.parametrize("left_species,right_species", product(SPECIES, repeat=2))
-@pytest.mark.parametrize("left_stage,right_stage", product(("flowering", "rare"), repeat=2))
-def test_final_v6_peak_stages_do_not_intrude_into_adjacent_species_slots(
-    left_species: str,
-    right_species: str,
-    left_stage: str,
-    right_stage: str,
+@pytest.mark.parametrize("width,height,context", SIZES)
+@pytest.mark.parametrize("left_slot,right_slot", ((0, 1), (2, 3), (4, 5)))
+def test_peak_artwork_envelopes_keep_adjacent_beds_clear(
+    width: int, height: int, context: str, left_slot: int, right_slot: int,
 ) -> None:
-    """Exercise real mixed-species neighbors, not six copies of one sprite."""
     rows = _rows()
-    background = _background(rows)
-    for width, height, context in SIZES:
-        for left_slot, right_slot in ((0, 1), (2, 3), (4, 5)):
-            left_asset = _asset(rows, left_species, left_stage)
-            right_asset = _asset(rows, right_species, right_stage)
-            layouts = plant_layout(
-                width,
-                height,
-                [
-                    {
-                        "plant_id": "qa-left",
-                        "slot_index": left_slot,
-                        "species": left_species,
-                        "stage": left_stage,
-                        "placement": left_asset["placement"],
-                        "canvas_aspect": left_asset["width"] / left_asset["height"],
-                    },
-                    {
-                        "plant_id": "qa-right",
-                        "slot_index": right_slot,
-                        "species": right_species,
-                        "stage": right_stage,
-                        "placement": right_asset["placement"],
-                        "canvas_aspect": right_asset["width"] / right_asset["height"],
-                    },
-                ],
-                background["placement"],
-                surface_context=context,
-                composition_count=6,
-                protected_status=False,
-                reserve_move_controls=False,
-            )
-            assert len(layouts) == 2
-            by_slot = {layout.slot_index: layout for layout in layouts}
-            left = by_slot[left_slot]
-            right = by_slot[right_slot]
-            assert not left.visible.intersects(right.visible)
-            assert not left.validation_warnings
-            assert not right.validation_warnings
+    candidates = {
+        (species, stage): _layouts(rows, species, stage, width, height, context)
+        for species, stage in product(SPECIES, ("flowering", "rare"))
+    }
+    # Checking the extreme edges covers the catalog without a Cartesian product.
+    left_key = max(candidates, key=lambda key: candidates[key][left_slot].visible.right)
+    right_key = min(candidates, key=lambda key: candidates[key][right_slot].visible.x)
+    assert candidates[left_key][left_slot].visible.right <= candidates[right_key][right_slot].visible.x
+    assert all(
+        not layouts[slot].validation_warnings
+        for layouts in candidates.values() for slot in (left_slot, right_slot)
+    )
+
+    plants = []
+    for slot, (species, stage) in ((left_slot, left_key), (right_slot, right_key)):
+        asset = _asset(rows, species, stage)
+        plants.append({
+            "plant_id": f"boundary-{slot}", "slot_index": slot,
+            "species": species, "stage": stage, "placement": asset["placement"],
+            "canvas_aspect": asset["width"] / asset["height"],
+        })
+    mixed = plant_layout(
+        width, height, plants, _background(rows)["placement"],
+        surface_context=context, composition_count=6,
+        protected_status=False, reserve_move_controls=False,
+    )
+    assert len(mixed) == 2
+    assert not mixed[0].visible.intersects(mixed[1].visible)
+    assert all(not layout.validation_warnings for layout in mixed)

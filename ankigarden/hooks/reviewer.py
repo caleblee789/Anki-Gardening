@@ -534,6 +534,10 @@ class ReviewerHookHandler:
         self._reviewer_hud_reward_state: dict[str, Any] | None = None
         self._reviewer_hud_narrow_forced = False
         self._reviewer_answer_controls_generation = 0
+        self._reviewer_answer_controls_epoch = 0
+        self._reviewer_answer_controls_request: tuple[Any, ...] | None = None
+        self._reviewer_answer_controls_measured: tuple[Any, ...] | None = None
+        self._reviewer_answer_controls_pending = False
         self._reviewer_growth_pulse: Any | None = None
         # Legacy engines can still produce the exact immutable session event
         # without the newer ``CommittedAnswerResult`` wrapper.  Keep that
@@ -1719,6 +1723,7 @@ class ReviewerHookHandler:
 
     def on_question(self, *_args: Any, **_kwargs: Any) -> None:
         """Show one non-modal eligibility reminder before a reviewer answer."""
+        self._reviewer_answer_controls_epoch += 1
         runtime = getattr(self.storage, "runtime_coordinator", None)
         if runtime is not None:
             runtime.request("review question")
@@ -1776,6 +1781,8 @@ class ReviewerHookHandler:
 
     def on_answer_shown(self, *_args: Any, **_kwargs: Any) -> None:
         """Refresh measured answer-button geometry after Anki reveals it."""
+
+        self._reviewer_answer_controls_epoch += 1
 
         if str(getattr(mw, "state", "") or "") != "review":
             return
@@ -2770,6 +2777,11 @@ class ReviewerHookHandler:
 
     def _hide_reviewer_hud(self) -> None:
         self._reviewer_answer_controls_generation += 1
+        self._reviewer_answer_controls_request = None
+        self._reviewer_answer_controls_measured = None
+        self._reviewer_answer_controls_pending = False
+        self._reviewer_hud_refresh_queued = False
+        RUNTIME_PERFORMANCE.gauge("review.geometry-in-flight", 0)
         panel = getattr(self, "_reviewer_hud", None)
         parent = getattr(self, "_reviewer_hud_parent", None)
         resize_filter = getattr(self, "_reviewer_hud_parent_filter", None)
@@ -2997,9 +3009,10 @@ class ReviewerHookHandler:
             # answer result. Keep its scheduled refresh behind that paint too.
             defer = getattr(panel, "defer_until_feedback_paint", None)
             if callable(defer):
-                defer(self._ensure_reviewer_hud)
+                self._queue_committed_hud_refresh()
                 return
         self._reviewer_hud_refresh_queued = False
+        RUNTIME_PERFORMANCE.count("review.hud-refreshes")
 
         if str(getattr(mw, "state", "") or "") != "review":
             self._hide_reviewer_hud()
@@ -3267,24 +3280,59 @@ class ReviewerHookHandler:
         try:
             source_width = max(1, int(source_webview.width()))
             source_height = max(1, int(source_webview.height()))
+            zoom = float(getattr(source_webview, "zoomFactor", lambda: 1.0)())
         except (AttributeError, RuntimeError, TypeError, ValueError):
             return False
 
+        key = (id(target), id(source_webview), parent_width, parent_height,
+               source_width, source_height, zoom, self._reviewer_answer_controls_epoch)
+        in_flight = self._reviewer_answer_controls_request
+        if in_flight is not None:
+            if key != in_flight:
+                self._reviewer_answer_controls_pending = True
+            RUNTIME_PERFORMANCE.count("review.geometry-coalesced")
+            return True
+        if key == self._reviewer_answer_controls_measured:
+            RUNTIME_PERFORMANCE.count("review.geometry-reused")
+            return True
+        self._reviewer_answer_controls_request = key
+        self._reviewer_answer_controls_pending = False
         self._reviewer_answer_controls_generation += 1
         generation = self._reviewer_answer_controls_generation
+        RUNTIME_PERFORMANCE.count("review.geometry-requests")
+        RUNTIME_PERFORMANCE.gauge("review.geometry-in-flight", 1)
         script = reviewer_answer_controls_measurement_script()
 
         def accept(payload: Any) -> None:
-            self._accept_reviewer_answer_controls_telemetry(
-                target,
-                source_webview,
-                generation,
-                parent_width,
-                parent_height,
-                source_width,
-                source_height,
-                payload,
-            )
+            if (generation != self._reviewer_answer_controls_generation
+                    or self._reviewer_answer_controls_request is not key):
+                return
+            pending = self._reviewer_answer_controls_pending
+            self._reviewer_answer_controls_request = None
+            self._reviewer_answer_controls_pending = False
+            RUNTIME_PERFORMANCE.gauge("review.geometry-in-flight", 0)
+            if not pending and key[-1] == self._reviewer_answer_controls_epoch:
+                # Mark before applying telemetry: repositioning may request
+                # these same bounds again. Missing DOM data stays retryable.
+                if normalize_reviewer_answer_controls_telemetry(
+                    payload, viewport_width=source_width,
+                    viewport_height=source_height, zoom_factor=zoom,
+                ) is not None:
+                    self._reviewer_answer_controls_measured = key
+                self._accept_reviewer_answer_controls_telemetry(
+                    target, source_webview, generation, parent_width,
+                    parent_height, source_width, source_height, payload,
+                )
+            if pending:
+                self._request_reviewer_answer_control_geometry()
+
+        # A destroyed WebEngine may never deliver its callback. Release the
+        # slot without retaining a growing queue of requests or timers.
+        try:
+            from aqt.qt import QTimer
+            QTimer.singleShot(500, lambda: accept(None))
+        except ImportError:
+            pass
 
         evaluate = getattr(source_webview, "evalWithCallback", None)
         if callable(evaluate):
@@ -3312,17 +3360,14 @@ class ReviewerHookHandler:
                     exc_info=True,
                 )
 
-        self._accept_reviewer_answer_controls_telemetry(
-            target,
-            source_webview,
-            generation,
-            parent_width,
-            parent_height,
-            source_width,
-            source_height,
-            None,
-        )
+        accept(None)
         return False
+
+    def _invalidate_reviewer_answer_control_geometry(self, parent: Any = None) -> bool:
+        # The settled resize probe also covers toolbar movement that leaves
+        # viewport dimensions unchanged. Do not reuse its earlier DOM bounds.
+        self._reviewer_answer_controls_epoch += 1
+        return self._request_reviewer_answer_control_geometry(parent)
 
     def _render_reviewer_hud(
         self,
@@ -3359,7 +3404,7 @@ class ReviewerHookHandler:
                     on_choose_plant=self._choose_plant_from_reviewer_hud,
                     on_toggle_collapsed=self._toggle_reviewer_hud,
                     on_request_answer_controls=(
-                        self._request_reviewer_answer_control_geometry
+                        self._invalidate_reviewer_answer_control_geometry
                     ),
                     resolve_reward_art=self._resolve_reviewer_reward_art,
                     animations_enabled=self._session_summary_animations_enabled(),
@@ -3392,7 +3437,7 @@ class ReviewerHookHandler:
                         on_choose_plant=self._choose_plant_from_reviewer_hud,
                         on_toggle_collapsed=self._toggle_reviewer_hud,
                         on_request_answer_controls=(
-                            self._request_reviewer_answer_control_geometry
+                            self._invalidate_reviewer_answer_control_geometry
                         ),
                         resolve_reward_art=self._resolve_reviewer_reward_art,
                         animations_enabled=self._session_summary_animations_enabled(),
@@ -4994,23 +5039,23 @@ class ReviewerHookHandler:
             return
         self._reviewer_hud_refresh_queued = True
 
-        def refresh() -> None:
-            if not getattr(self, "_reviewer_hud_refresh_queued", False):
-                return
-            self._reviewer_hud_refresh_queued = False
-            self._ensure_reviewer_hud()
-            if self._pending_reviewer_results:
-                self._flush_pending_reviewer_results()
-
         defer = getattr(getattr(self, "_reviewer_hud", None), "defer_until_feedback_paint", None)
         if callable(defer):
-            defer(refresh)
+            defer(self._refresh_committed_hud)
             return
         try:
             from aqt.qt import QTimer
-            QTimer.singleShot(0, refresh)
+            QTimer.singleShot(0, self._refresh_committed_hud)
         except ImportError:
-            refresh()
+            self._refresh_committed_hud()
+
+    def _refresh_committed_hud(self) -> None:
+        if not getattr(self, "_reviewer_hud_refresh_queued", False):
+            return
+        self._reviewer_hud_refresh_queued = False
+        self._ensure_reviewer_hud()
+        if self._pending_reviewer_results:
+            self._flush_pending_reviewer_results()
 
     @staticmethod
     def _show_deferred_history_notice() -> None:

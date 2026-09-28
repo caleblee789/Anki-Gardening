@@ -63,7 +63,7 @@ def test_reviewer_effect_rows_use_cards_and_permanent_growth_bonus() -> None:
         "Basic Fertilizer · 23 cards remaining",
         "fertilizer_basic",
     ) in rows
-    assert ("Permanent Growth bonus · +0.5 Growth", "") in rows
+    assert ("Permanent Growth bonus · +0 Growth", "") in rows
     assert not any(" h" in label or " min" in label for label, _asset in rows)
 
 

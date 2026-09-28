@@ -28,7 +28,9 @@ jobs:
               tests/test_package.py
               tests/test_capture_contract_v25.py
           - shard: artwork
-            test_paths: tests/test_twilight_v6_library_qa.py
+            test_paths: >-
+              tests/test_twilight_v6_library_qa.py
+              tests/test_asset_retina_audit.py
           - shard: dialogs
             qt_args: --require-qt
             test_paths: >-
@@ -41,6 +43,7 @@ jobs:
             test_paths: >-
               tests/test_garden_studio_advanced_scroll_regression.py
               tests/test_release_restart_and_render_matrix.py
+              tests/test_asset_selection.py
           - shard: tooling
             test_paths: >-
               tests/test_refinement_handoff.py

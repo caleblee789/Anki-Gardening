@@ -454,11 +454,11 @@ def test_collection_hides_dormant_landmarks_and_retains_enabled_layout(
     application.processEvents()
 
 
-def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(monkeypatch):
+def test_reviewer_amounts_remain_whole_and_fit_across_collapse_and_large_totals(monkeypatch):
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     try:
-        from aqt.qt import QApplication, QLabel, Qt, QWidget
+        from aqt.qt import QApplication, QLabel, QPoint, Qt, QWidget
         from PyQt6.QtTest import QTest
         from ankigarden.ui.reviewer_hud import NurtureProjection, ReviewerHudProjection, TodayCardsProjection
         from ankigarden.ui.reviewer_hud_widget import ReviewGardenHud
@@ -483,7 +483,7 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
         track = hud._checkpoint_track
         track_bottom = track.mapTo(hud._body_contents, track.rect().bottomLeft()).y() + 1
         assert hud._body_contents.height() - track_bottom == 8
-        for growth_units, exact, count in ((185_145, "+1,851.45", 10),
+        for growth_units, exact, count in ((185_145, "+1,851", 10),
                                            (123_456_789_000, "+1,234,567,890", 1_234_567_890),
                                            (12_600, "+126", 0)):
             hud.set_collapsed(True)
@@ -493,7 +493,7 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
             hud.set_collapsed(False)
             QTest.qWait(40)
             cells = [tile.geometry() for tile in hud._session_metric_tiles]
-            assert len({cell.y() for cell in cells}) == 1
+            assert len({cell.y() for cell in cells}) == (3 if count > 1_000_000 else 1)
             assert max(cell.height() for cell in cells) <= 80
             assert max(cell.width() for cell in cells) - min(cell.width() for cell in cells) <= 1
             for tile in hud._session_metric_tiles:
@@ -507,15 +507,37 @@ def test_reviewer_session_cells_stay_compact_across_collapse_and_large_totals(mo
                                  (hud._session_finds, f"{count:,}")):
                 assert amount.fontMetrics().horizontalAdvance(amount.text()) <= amount.contentsRect().width()
                 assert amount.accessibleName() == full
-                if amount.text() != full:
-                    assert amount.toolTip() == full
-                    assert full in amount.parentWidget().toolTip()
+                assert amount.text() == full
             assert hud.width() == 296
             growth = hud._percent
             required = growth.fontMetrics().boundingRect(
                 growth.contentsRect(), int(Qt.TextFlag.TextWordWrap), growth.text())
             assert growth.height() >= required.height()
             assert hud._body_scroll.verticalScrollBar().maximum() == 0
+        for viewport in (1200, 340):
+            owner.resize(viewport, 900)
+            for coins in (248, 1_200_000, 1_234_567_890_123, 248):
+                hud._update_coins(coins, animate=True)
+                QTest.qWait(100)
+                assert "." not in hud._coin_balance.text()
+                for control in (hud._coin_balance, hud._coin_delta):
+                    if control.isVisible():
+                        top_left = control.mapTo(hud._header, QPoint())
+                        assert hud._header.rect().contains(control.rect().translated(top_left))
+                QTest.qWait(300)
+                hud._clear_coin_delta()
+                QTest.qWait(40)
+                assert hud._coin_balance.text() == f"{coins:,}"
+                balance = hud._coin_balance
+                assert balance.fontMetrics().horizontalAdvance(balance.text()) <= balance.contentsRect().width()
+                for control in (balance, hud._header_title, hud._collapse_button):
+                    top_left = control.mapTo(hud._header, QPoint())
+                    assert hud._header.rect().contains(control.rect().translated(top_left))
+                if coins == 248:
+                    assert hud._header.height() == 44
+                elif coins > 1_000_000_000_000:
+                    assert hud._header.height() > 44
+                assert hud._body_scroll.verticalScrollBar().maximum() == 0
     finally:
         hud.dispose()
         owner.close()
@@ -784,6 +806,21 @@ def test_committed_hud_feedback_paints_before_secondary_work(monkeypatch, collap
             nurture=replace(projection.nurture, stage_points=7900)))
         hud._percent.repaint()
         assert not overlaps
+        # An occluded window may never paint. The watchdog must release each
+        # deferred operation once, while keeping the normal paint-first path.
+        hud.setUpdatesEnabled(False)
+        released = []
+        callback = lambda: released.append(True)
+        hud.defer_until_feedback_paint(callback)
+        hud.defer_until_feedback_paint(callback)
+        assert not released
+        hud._feedback_paint_timeout.timeout.emit()
+        application.processEvents()
+        assert released == [True]
+        assert not hud.feedback_paint_pending
+        hud.setUpdatesEnabled(True)
+        application.processEvents()
+        assert released == [True]
     finally:
         application.removeEventFilter(observer)
         hud.dispose()
@@ -1000,5 +1037,61 @@ def test_reviewer_mouse_targets_dragging_effects_and_feed(monkeypatch, initial_s
     finally:
         hud.dispose()
         owner.close()
+        owner.deleteLater()
+        application.processEvents()
+
+
+def test_shared_controls_keep_loading_state_and_dialog_regions_when_available(monkeypatch):
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from aqt.qt import QApplication, QVBoxLayout, QWidget
+        from ankigarden.ui.dashboard import (
+            GardenButton, GardenDialog, GardenTabs, SectionCard, ToggleSwitch,
+        )
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+
+    application = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    owner.resize(800, 600)
+    layout = QVBoxLayout(owner)
+    disabled = GardenButton("Unavailable")
+    disabled.setEnabled(False)
+    loading = GardenButton("Save")
+    loading.set_loading(True, "Loading…")
+    toggle = ToggleSwitch("Garden Decoration shown")
+    for widget in (disabled, loading, toggle):
+        layout.addWidget(widget)
+
+    dialog = GardenDialog(owner, "Dialog shell")
+    tabs = GardenTabs("Dialog shell tabs")
+    tabs.addTab(QWidget(), "First")
+    tabs.addTab(QWidget(), "Second")
+    dialog.set_tabs_widget(tabs)
+    body = SectionCard()
+    body.setMinimumHeight(96)
+    dialog.set_body_widget(body)
+    dialog.add_footer_widget(GardenButton("Done"), stretch_before=True)
+    dialog.resize(520, 320)
+    try:
+        owner.show()
+        dialog.show()
+        application.processEvents()
+        assert not disabled.isEnabled()
+        assert loading.property("busy") and not loading.isEnabled()
+        assert loading.text() == "Loading…"
+        for checked, state in ((False, "off"), (True, "on")):
+            toggle.setChecked(checked)
+            application.processEvents()
+            assert toggle.property("switchState") == state
+        assert dialog.parentWidget() is owner
+        assert not dialog.grab().isNull()
+        assert dialog.tabs_region.geometry().bottom() < dialog.body_region.geometry().bottom()
+        assert dialog.footer.geometry().top() >= dialog.body_region.geometry().top()
+    finally:
+        dialog.close()
+        owner.close()
+        dialog.deleteLater()
         owner.deleteLater()
         application.processEvents()

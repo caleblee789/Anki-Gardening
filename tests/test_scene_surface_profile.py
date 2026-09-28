@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from ankigarden.asset_manager import AssetPlacement
-from ankigarden.ui.plant_display import plant_layout, scene_render_trace, scene_surface_variant, theme_integration_profile
+from ankigarden.ui.plant_display import plant_layout, scene_render_trace, theme_integration_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -148,25 +148,6 @@ def test_soil_geometry_is_paired_and_uses_monotonic_depth_scales() -> None:
     assert [by_slot[index]["anchor"][1] for index in (0, 2, 4)] == sorted(
         by_slot[index]["anchor"][1] for index in (0, 2, 4)
     )
-
-
-@pytest.mark.parametrize(
-    ("width", "height", "context", "expected"),
-    [
-        (800, 600, "dashboard", "4:3"),
-        (1440, 900, "dashboard", "4:3"),
-        (1920, 1080, "dashboard", "16:9"),
-        (2000, 924, "dashboard", "home"),
-        (1000, 420, "home", "home"),
-    ],
-)
-@pytest.mark.skip(reason="dormant aspect-band selectors are not live Garden Decoration routes")
-def test_surface_variant_selection_uses_registered_aspect_bands(
-    width: int, height: int, context: str, expected: str
-) -> None:
-    name, variant = scene_surface_variant(_runtime_placement(), width, height, context)
-    assert name == expected
-    assert variant["width"] > 0 and variant["height"] > 0
 
 
 @pytest.mark.parametrize(

@@ -1343,7 +1343,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         if display_fully_grown:
             display_growth_current = max(0, data.active_growth_points)
             display_growth_goal = max(1, display_growth_current)
-            growth_text = f"{display_growth_current:,} total Growth"
+            growth_text = f"{format_growth(display_growth_current, include_unit=False)} total Growth"
         elif display_growth_goal > 0:
             destination = format_status_label(data.active_next_stage or "the next stage")
             growth_text = format_stage_progress(display_growth_current, display_growth_goal, destination)
@@ -1371,7 +1371,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         if display_fully_grown:
             display_growth_current = max(0, data.planted_starter_growth_points)
             display_growth_goal = max(1, display_growth_current)
-            preview_support_progress = f"{display_growth_current:,} total Growth"
+            preview_support_progress = f"{format_growth(display_growth_current, include_unit=False)} total Growth"
         else:
             preview_support_progress = format_growth(display_growth_current, display_growth_goal)
         preview_progress = preview_support_progress
@@ -1403,6 +1403,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         + (
             '<div class="ag-home__growth-track" data-testid="home-growth-progress" '
             f'role="progressbar" aria-label="{escape(preview_support, quote=True)}" '
+            f'aria-valuetext="{escape(preview_support_progress, quote=True)}" '
             f'aria-valuemin="0" aria-valuemax="{max(1, display_growth_goal)}" '
             f'aria-valuenow="{min(display_growth_current, max(1, display_growth_goal))}" '
             f'style="--ag-growth-percent:{min(100.0, max(0.0, display_growth_current / max(1, display_growth_goal) * 100)):.2f}%">'

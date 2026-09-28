@@ -67,7 +67,7 @@ def test_plant_progress_and_checkpoint_copy_use_canonical_growth_language() -> N
         "growth_after_units": 1520050,
         "stage_progress_after": 1,
         "next_stage": "rare",
-    }) == "200.5 / 20,000 Growth to Full Bloom"
+    }) == "200 / 20,000 Growth to Full Bloom"
     assert _checkpoint_display_text({
         "percent": 75,
         "stage_name": "flowering",

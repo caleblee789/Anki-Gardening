@@ -357,12 +357,12 @@ def garden_preview_from_values(
         if active_fully_grown:
             summary = (
                 f"{active_name} · {stage_label} · "
-                f"{max(0, (active_growth_points or 0)):,}"
+                f"{format_growth(max(0, (active_growth_points or 0)), include_unit=False)}"
             )
         elif int(active_stage_goal or 0) > 0:
             summary = (
                 f"{active_name} · {stage_label} · "
-                f"{max(0, (active_stage_points or 0)):,} / "
+                f"{format_growth(max(0, (active_stage_points or 0)), include_unit=False)} / "
                 f"{max(0, int(active_stage_goal or 0)):,} Growth"
             )
         else:
@@ -373,7 +373,7 @@ def garden_preview_from_values(
         starter_goal = max(0, int(active_stage_goal or 0))
         summary = (
             f"{planted_starter_name} · {planted_stage} · "
-            f"{starter_points:,} / {starter_goal:,} Growth"
+            f"{format_growth(starter_points, include_unit=False)} / {starter_goal:,} Growth"
             if starter_goal > 0
             else f"{planted_starter_name} · {planted_stage}"
         )

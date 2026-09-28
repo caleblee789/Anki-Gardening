@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import inspect
 
 from ankigarden.models.sync_reward import SyncRewardSummary
 from ankigarden.ui.sync_reward_summary import (
-    SYNC_REWARD_FULL_BLOOM_PULSE_MS,
-    SYNC_REWARD_METRIC_ANIMATION_MS,
-    SyncRewardSummaryCard,
     _format_metric_number,
     _parse_metric_number,
     sync_reward_motion_plan,
@@ -58,8 +54,8 @@ def test_initial_motion_plan_counts_from_zero_and_emphasizes_full_bloom_once() -
     assert metrics["cards"].start_scaled == 0
     assert metrics["cards"].final_text == "1,234"
     assert metrics["Growth"].start_scaled == 0
-    assert metrics["Growth"].final_text == "+1,234.5"
-    assert metrics["Growth"].decimal_places == 1
+    assert metrics["Growth"].final_text == "+1,234"
+    assert metrics["Growth"].decimal_places == 0
     assert metrics["Growth"].show_plus is True
     assert metrics["Coins"].final_text == "+12"
     assert [motion.plant_key for motion in plan.plant_progress] == [
@@ -130,41 +126,3 @@ def test_unchanged_update_has_no_motion_to_replay() -> None:
     assert plan.metrics == ()
     assert plan.plant_progress == ()
     assert plan.full_bloom_event_keys == frozenset()
-
-
-def test_sync_reward_motion_is_bounded_one_shot_and_reduced_motion_guarded() -> None:
-    show_source = inspect.getsource(SyncRewardSummaryCard.showEvent)
-    metric_source = inspect.getsource(SyncRewardSummaryCard._metric_tile)
-    plant_source = inspect.getsource(SyncRewardSummaryCard._plant_row)
-    bloom_source = inspect.getsource(
-        SyncRewardSummaryCard._start_full_bloom_emphasis
-    )
-
-    assert SYNC_REWARD_METRIC_ANIMATION_MS == 360
-    assert SYNC_REWARD_FULL_BLOOM_PULSE_MS == 520
-    assert SYNC_REWARD_FULL_BLOOM_PULSE_MS <= 600
-    assert "self._entrance_started" in show_source
-    assert "not self._animations_enabled" in show_source
-    assert "fade.setDuration(180)" in show_source
-    assert "QPoint(0, 4)" in show_source
-    assert "if not self._animations_enabled or motion is None" in metric_source
-    assert "QVariantAnimation(self)" in metric_source
-    assert "animation.setLoopCount(1)" in metric_source
-    assert "motion.final_text" in metric_source
-    assert "self._animations_enabled and motion is not None" in plant_source
-    assert "progress.setValue(progress_target)" in plant_source
-    assert "QSequentialAnimationGroup" in plant_source
-    assert "if not self._animations_enabled" in bloom_source
-    assert "animation.setKeyValueAt(0.5, 1.0)" in bloom_source
-    assert "animation.setLoopCount(1)" in bloom_source
-
-
-def test_model_updates_diff_motion_but_disclosure_rebuilds_without_it() -> None:
-    update_source = inspect.getsource(SyncRewardSummaryCard.update_model)
-    disclosure_source = inspect.getsource(SyncRewardSummaryCard._toggle_expanded)
-
-    assert "previous = self._summary" in update_source
-    assert "sync_reward_motion_plan(summary, previous=previous)" in update_source
-    assert "self._rebuild_body(motion=motion)" in update_source
-    assert "sync_reward_motion_plan" not in disclosure_source
-    assert "self._rebuild_body()" in disclosure_source

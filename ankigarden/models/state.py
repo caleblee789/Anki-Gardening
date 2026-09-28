@@ -33,6 +33,22 @@ from .welcome import WelcomeReceipt
 STATE_VERSION = 30
 DEFAULT_GARDEN_NAME = "Anki Garden"
 
+
+def _detach_payload(value: Any) -> Any:
+    """Copy the JSON-shaped state tree without deepcopy dispatch per scalar.
+
+    Snapshots still own every mutable value. Unusual extension values retain
+    deepcopy's behavior instead of being shared with the live state.
+    """
+    kind = type(value)
+    if kind in (str, int, float, bool, type(None)):
+        return value
+    if kind is dict:
+        return {key: _detach_payload(item) for key, item in value.items()}
+    if kind is list:
+        return [_detach_payload(item) for item in value]
+    return deepcopy(value)
+
 STORED_GROWTH_OPENING_SOURCES = frozenset({
     "new_profile_zero",
     "schema_27_migration_preserved_balance",
@@ -1819,7 +1835,7 @@ class GardenState:
             ),
             "scene_geometry_version": self.scene_geometry_version,
         }
-        return deepcopy(payload) if detached else payload
+        return _detach_payload(payload) if detached else payload
 
     @staticmethod
     def from_dict(data: Any) -> "GardenState":

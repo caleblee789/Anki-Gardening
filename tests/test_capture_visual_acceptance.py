@@ -707,6 +707,32 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         )
 
 
+def _effect_chip_evidence(chips, labels, **changes):
+    return {
+        "visible_effect_count": len(chips), "overflow_visible": False,
+        "effect_chip_bounds": chips, "effect_label_bounds": labels,
+        "effect_chips_contained": True, "effect_labels_contained": True,
+        "effect_labels_unclipped": True, "effect_art_passed": True,
+        "effect_chip_overlap_pairs": [], "overflow_contained": True,
+        **changes,
+    }
+
+
+def _progress_evidence(percent, markers):
+    return {
+        "stage_percent_copy": f"{percent}%",
+        "track_progress_percent": percent, "painted_progress_percent": percent,
+        "marker_states": markers, "current_position_handle": False,
+    }
+
+
+def _estimate_evidence(cards, text):
+    return {
+        "estimated_cards": cards, "rendered_text": text,
+        "contained": True, "text_fits": True, "uses_cards_copy": True,
+    }
+
+
 def _reviewer_baseline_content() -> dict[str, object]:
     rows: dict[str, object] = {
         "18-cards-left": {
@@ -799,46 +825,21 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "metric_copy": ["+18 Growth", "+2 Garden Coins"],
             "zero_categories_omitted": True,
         },
-        "two-effects": {
-            "visible_effect_count": 2,
-            "overflow_visible": False,
-            "effect_chip_bounds": [[0, 0, 130, 28], [136, 0, 130, 28]],
-            "effect_label_bounds": [[20, 0, 100, 28], [20, 0, 100, 28]],
-            "effect_chips_contained": True,
-            "effect_labels_contained": True,
-            "effect_labels_unclipped": True,
-            "effect_art_passed": True,
-            "effect_chip_overlap_pairs": [],
-            "overflow_contained": True,
-        },
-        "three-plus-effects": {
-            "visible_effect_count": 2,
-            "overflow_visible": True,
-            "overflow_text": "1 more effect ›",
-            "overflow_right_aligned": True,
-            "effect_chip_bounds": [[0, 0, 130, 28], [136, 0, 130, 28]],
-            "effect_label_bounds": [[20, 0, 100, 28], [20, 0, 100, 28]],
-            "effect_chips_contained": True,
-            "effect_labels_contained": True,
-            "effect_labels_unclipped": True,
-            "effect_art_passed": True,
-            "effect_chip_overlap_pairs": [],
-            "overflow_contained": True,
-        },
-        "long-effects-one-column": {
-            "visible_effect_count": 2,
-            "overflow_visible": False,
-            "single_column": True,
-            "vertically_stacked": True,
-            "effect_chip_bounds": [[0, 0, 266, 28], [0, 28, 266, 28]],
-            "effect_label_bounds": [[20, 0, 236, 28], [20, 0, 236, 28]],
-            "effect_chips_contained": True,
-            "effect_labels_contained": True,
-            "effect_labels_unclipped": True,
-            "effect_art_passed": True,
-            "effect_chip_overlap_pairs": [],
-            "overflow_contained": True,
-        },
+        "two-effects": _effect_chip_evidence(
+            [[0, 0, 130, 28], [136, 0, 130, 28]],
+            [[20, 0, 100, 28], [20, 0, 100, 28]],
+        ),
+        "three-plus-effects": _effect_chip_evidence(
+            [[0, 0, 130, 28], [136, 0, 130, 28]],
+            [[20, 0, 100, 28], [20, 0, 100, 28]],
+            overflow_visible=True, overflow_text="1 more effect ›",
+            overflow_right_aligned=True,
+        ),
+        "long-effects-one-column": _effect_chip_evidence(
+            [[0, 0, 266, 28], [0, 28, 266, 28]],
+            [[20, 0, 236, 28], [20, 0, 236, 28]],
+            single_column=True, vertically_stacked=True,
+        ),
         "short-plant-name": {
             "title": "Rose",
             "class_label": "Bonsai",
@@ -1017,44 +1018,10 @@ def _reviewer_baseline_content() -> dict[str, object]:
         "100": "future",
     }
     rows.update({
-        "progress-10-percent": {
-            "stage_percent_copy": "10%",
-            "track_progress_percent": 10,
-            "painted_progress_percent": 10,
-            "marker_states": {
-                "25": "next",
-                "50": "future",
-                "75": "future",
-                "100": "future",
-            },
-            "current_position_handle": False,
-        },
-        "progress-38-percent": {
-            "stage_percent_copy": "38%",
-            "track_progress_percent": 38,
-            "painted_progress_percent": 38,
-            "marker_states": progress_markers,
-            "current_position_handle": False,
-        },
-        "before-checkpoint": {
-            "stage_percent_copy": "24%",
-            "track_progress_percent": 24,
-            "painted_progress_percent": 24,
-            "marker_states": {
-                "25": "next",
-                "50": "future",
-                "75": "future",
-                "100": "future",
-            },
-            "current_position_handle": False,
-        },
-        "exact-checkpoint": {
-            "stage_percent_copy": "25%",
-            "track_progress_percent": 25,
-            "painted_progress_percent": 25,
-            "marker_states": progress_markers,
-            "current_position_handle": False,
-        },
+        "progress-10-percent": _progress_evidence(10, {"25": "next", "50": "future", "75": "future", "100": "future"}),
+        "progress-38-percent": _progress_evidence(38, progress_markers),
+        "before-checkpoint": _progress_evidence(24, {"25": "next", "50": "future", "75": "future", "100": "future"}),
+        "exact-checkpoint": _progress_evidence(25, progress_markers),
         "checkpoint-marker-semantics": {
             "semantic_id": "reviewer.hud.checkpoint-track",
             "checkpoint_percents": [25, 50, 75, 100],
@@ -1093,51 +1060,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "plant_art_height": 136,
             "distinct_from_other_stage": True,
         },
-        "zero-effects": {
-            "visible_effect_count": 0,
-            "overflow_visible": False,
-            "effect_chip_bounds": [],
-            "effect_label_bounds": [],
-            "effect_chips_contained": True,
-            "effect_labels_contained": True,
-            "effect_labels_unclipped": True,
-            "effect_art_passed": True,
-            "effect_chip_overlap_pairs": [],
-            "overflow_contained": True,
-        },
-        "one-effect": {
-            "visible_effect_count": 1,
-            "overflow_visible": False,
-            "effect_chip_bounds": [[0, 0, 266, 28]],
-            "effect_label_bounds": [[20, 0, 236, 28]],
-            "effect_chips_contained": True,
-            "effect_labels_contained": True,
-            "effect_labels_unclipped": True,
-            "effect_art_passed": True,
-            "effect_chip_overlap_pairs": [],
-            "overflow_contained": True,
-        },
-        "estimate-1-card": {
-            "estimated_cards": 1,
-            "rendered_text": "~1 card",
-            "contained": True,
-            "text_fits": True,
-            "uses_cards_copy": True,
-        },
-        "estimate-14-cards": {
-            "estimated_cards": 14,
-            "rendered_text": "~14 cards",
-            "contained": True,
-            "text_fits": True,
-            "uses_cards_copy": True,
-        },
-        "estimate-1240-cards": {
-            "estimated_cards": 1_240,
-            "rendered_text": "~1,240 cards",
-            "contained": True,
-            "text_fits": True,
-            "uses_cards_copy": True,
-        },
+        "zero-effects": _effect_chip_evidence([], []),
+        "one-effect": _effect_chip_evidence([[0, 0, 266, 28]], [[20, 0, 236, 28]]),
+        "estimate-1-card": _estimate_evidence(1, "~1 card"),
+        "estimate-14-cards": _estimate_evidence(14, "~14 cards"),
+        "estimate-1240-cards": _estimate_evidence(1_240, "~1,240 cards"),
         "coin-balance-999999": {
             "exact_value": 999_999,
             "rendered_text": "999,999",
@@ -1266,7 +1193,7 @@ def _reviewer_reward_content() -> dict[str, object]:
             "destination_visible": True,
             "destination_kind": "stored_growth",
             "destination_heading": "Stored Growth",
-            "destination_detail": "12.5 Growth in reserve",
+            "destination_detail": "12 Growth in reserve",
             "destination_stored_growth_units": 1_250,
             "next_action": "growth_destination",
             "art_scale": 1.0,

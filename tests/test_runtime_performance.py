@@ -18,11 +18,13 @@ def test_runtime_performance_recorder_is_disabled_without_overhead() -> None:
     marker = recorder.begin()
     recorder.answer_stage("action", "answer-1")
     recorder.answer_stage("feedback_painted", "answer-1")
+    recorder.gauge("pending", 2)
     recorder.finish("review.answer", marker)
 
     assert marker is None
     assert calls == []
     assert recorder.summaries() == ()
+    assert recorder.payload()["gauges"] == {}
 
 
 def test_runtime_performance_recorder_bounds_and_summarizes_samples() -> None:
@@ -49,6 +51,9 @@ def test_runtime_performance_recorder_bounds_and_summarizes_samples() -> None:
     recorder.answer_stage("feedback_painted", "commit-999")
     assert recorder.payload()["answer_events"][-1]["action_id"] == "999"
     assert len(recorder._answer_actions) <= 6
+    for value in (0, 2, 1, 0):
+        recorder.gauge("pending", value)
+    assert recorder.payload()["gauges"] == {"pending": {"current": 0, "peak": 2}}
 
 
 def test_runtime_performance_export_is_absolute_and_atomic(tmp_path) -> None:

@@ -496,8 +496,12 @@ def test_retired_streak_claims_do_not_reenter_current_state():
 
 def test_to_dict_returns_a_detached_payload():
     state = GardenState(plants=[Plant("p", "rose", "Briar", 0)])
+    state.pending_sync_reward_summary = {"rewards": [{"amounts": [1, 2]}]}
     payload = state.to_dict()
+    assert payload == deepcopy(state.to_dict(detached=False))
     payload["plants"][0]["name"] = "Changed"
     payload["daily_stats"]["plant_growth"]["p"] = 123
+    payload["pending_sync_reward_summary"]["rewards"][0]["amounts"].append(3)
     assert state.plants[0].name == "Briar"
     assert state.daily_stats.plant_growth == {}
+    assert state.pending_sync_reward_summary["rewards"][0]["amounts"] == [1, 2]

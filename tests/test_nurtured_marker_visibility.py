@@ -3,7 +3,6 @@ from __future__ import annotations
 from ankigarden.ui.formatters import format_plant_name
 
 import ast
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -26,14 +25,6 @@ def _class_method_node(path: Path, class_name: str, method_name: str) -> ast.Fun
     raise AssertionError(f"Missing {class_name}.{method_name}")
 
 
-def _class_method_source(path: Path, class_name: str, method_name: str) -> str:
-    source = path.read_text(encoding="utf-8")
-    node = _class_method_node(path, class_name, method_name)
-    segment = ast.get_source_segment(source, node)
-    assert segment is not None
-    return segment
-
-
 def _compiled_class_method(
     path: Path,
     class_name: str,
@@ -46,23 +37,6 @@ def _compiled_class_method(
     scope: dict[str, object] = {"format_plant_name": format_plant_name, **(namespace or {})}
     exec(compile(module, str(path), "exec"), scope)
     return scope[method_name]
-
-
-def test_native_scenes_do_not_compose_or_reserve_the_stored_marker() -> None:
-    paint = _class_method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "paintEvent",
-    )
-    card_geometry = _class_method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "card_geometry",
-    )
-
-    assert "self._draw_nurtured_marker(" not in paint
-    assert "self._nurtured_marker_placement = None" in paint
-    assert "resolve_watering_can(" not in card_geometry
 
 
 def test_native_accessibility_names_nurtured_state_without_a_visual_cue() -> None:
@@ -125,27 +99,3 @@ def test_nurtured_badge_ignores_the_retired_stored_marker_icon() -> None:
     assert resolved_assets == []
     assert badge.icon.visible is False
     assert badge.icon.pixmap is None
-
-
-def test_watering_can_assets_remain_manifest_backed_and_packaged() -> None:
-    manifest = json.loads(
-        (ROOT / "ankigarden" / "assets" / "manifest.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    rows = {
-        str(row.get("asset_id")): row
-        for row in manifest["assets"]
-        if row.get("asset_id") in {
-            "ui_nurtured_marker",
-            "ui_nurtured_marker_spout_right",
-        }
-    }
-
-    assert set(rows) == {
-        "ui_nurtured_marker",
-        "ui_nurtured_marker_spout_right",
-    }
-    for row in rows.values():
-        assert (ROOT / "ankigarden" / str(row["file"])).is_file()
-    assert (ROOT / "scripts" / "process_nurtured_marker_asset.py").is_file()

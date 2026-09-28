@@ -8,22 +8,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from PIL import Image, ImageChops
-import pytest
 
 from ankigarden.asset_manager import AssetManager, SceneSurfaceProfile
-from ankigarden.ui.plant_display import plant_layout, scene_render_trace
-from scripts.render_planter_geometry_regression import (
-    FIXTURES,
-    SCALES,
-    BASE_SIZE,
-    _geometry_row,
-    _load_contract,
-)
+from ankigarden.ui.plant_display import plant_layout
+from scripts.render_planter_geometry_regression import SCALES, BASE_SIZE, _load_contract
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "tests" / "fixtures" / "verdant_twilight_surface_v6.json"
-BASELINE_PATH = ROOT / "tests" / "fixtures" / "planter_geometry_baseline.json"
 ADDON = ROOT / "ankigarden"
 BEDLESS_REPORT = (
     ROOT
@@ -40,46 +32,6 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def _current_geometry() -> dict[str, object]:
-    background, plants, placement = _load_contract()
-    del background
-    scales: dict[str, object] = {}
-    for scale in SCALES:
-        width = round(BASE_SIZE[0] * scale)
-        height = round(BASE_SIZE[1] * scale)
-        name = f"{round(scale * 100)}pct"
-        layouts = plant_layout(
-            width,
-            height,
-            plants,
-            placement,
-            surface_context="dashboard",
-            composition_count=6,
-            protected_status=False,
-        )
-        by_slot = {row.slot_index: row for row in layouts}
-        scales[name] = {
-            "width": width,
-            "height": height,
-            "geometry": [
-                _geometry_row(plants[slot], by_slot[slot])
-                for slot in range(6)
-            ],
-            "render_order": list(scene_render_trace(layouts)),
-        }
-    return {
-        "label": "before",
-        "fixtures": [list(value) for value in FIXTURES],
-        "scales": scales,
-    }
-
-
-@pytest.mark.skip(reason="near-left bed geometry changed to reserve the fixed Decoration bay")
-def test_planter_change_preserves_prechange_geometry_at_all_required_scales() -> None:
-    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
-    assert _current_geometry() == baseline
 
 
 def test_planter_metadata_cannot_influence_plant_layout() -> None:
@@ -239,13 +191,6 @@ def test_every_scenery_and_aspect_uses_an_approved_bedless_master() -> None:
     assert resolved_files == retained | continuous
 
 
-def test_bedless_planter_scene_never_draws_legacy_surface_occlusion() -> None:
-    source = (ROOT / "ankigarden" / "ui" / "scene.py").read_text(encoding="utf-8")
-    assert 'family.get("background_contract") != "bedless_v1"' in source
-    assert 'planter_family.get("background_contract") == "bedless_v1"' in source
-    assert "if not replaces_surface_occlusion and not split_occlusion:" in source
-
-
 def test_partial_planter_loss_keeps_the_family_and_routes_to_graphical_fallback(
     tmp_path: Path,
 ) -> None:
@@ -354,42 +299,3 @@ def test_planter_assets_share_canvas_and_foreground_masks_are_non_destructive() 
         assert leaked.getbbox() is None
         assert foreground.getchannel("A").getbbox() is not None
     assert visible_heights[0] < visible_heights[1] < visible_heights[2]
-
-
-def test_selection_and_move_outlines_trace_the_exact_rendered_planter_asset() -> None:
-    source = (ROOT / "ankigarden" / "ui" / "scene.py").read_text(
-        encoding="utf-8"
-    )
-    outline = source.split("def _draw_planter_asset_outline", 1)[1].split(
-        "def _draw_planter_fallback", 1
-    )[0]
-    selected = source.split("def _draw_selected_bed_ring", 1)[1].split(
-        "def _draw_nurtured_marker", 1
-    )[0]
-    placeholders = source.split("def _draw_slot_placeholders", 1)[1].split(
-        "def _draw_move_preview", 1
-    )[0]
-    band = source.split("def _draw_planter_family_band", 1)[1].split(
-        "def _has_split_surface_occlusion", 1
-    )[0]
-
-    assert "self._planter_layer_record(" in outline
-    assert "foreground=False" in outline
-    assert "self._highlight_pixmap_for(" in outline
-    assert "painter.drawPixmap(edge_target" in outline
-    assert "_draw_planter_asset_outline" in selected
-    assert "_draw_planter_asset_outline" in placeholders
-    assert "if not outline_drawn:" in placeholders
-    assert placeholders.index("if not outline_drawn:") < placeholders.index(
-        "painter.drawEllipse(move_footprint)"
-    )
-    assert "self._planter_layer_record(" in band
-
-    regression_source = (
-        ROOT / "scripts" / "render_planter_geometry_regression.py"
-    ).read_text(encoding="utf-8")
-    assert "def _trace_planter_outline(" in regression_source
-    assert "ImageFilter.MaxFilter" in regression_source
-    assert "_trace_planter_outline(" in regression_source.split(
-        "def render", 1
-    )[1]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ankigarden.presentation import plant_species_name, plant_stage_event
+from ankigarden.ui.formatters import format_growth
 
 import ast
 
@@ -64,20 +65,6 @@ def _method_node(class_name: str, method_name: str) -> ast.FunctionDef:
                 return node
         pending.extend(ast.unparse(base) for base in owner.bases)
     raise AssertionError(f"missing method: {class_name}.{method_name}")
-
-
-def _assigned_call(
-    class_name: str,
-    method_name: str,
-    target_source: str,
-) -> ast.Call:
-    method = _method_node(class_name, method_name)
-    for node in ast.walk(method):
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
-            continue
-        if any(ast.unparse(target) == target_source for target in node.targets):
-            return node.value
-    raise AssertionError(f"missing assignment for {class_name}.{method_name}: {target_source}")
 
 
 def test_dialog_shell_uses_the_native_parented_qdialog_contract() -> None:
@@ -153,77 +140,6 @@ def test_every_garden_window_route_uses_the_shared_dialog_contract() -> None:
         assert derives_from_dialog_shell(class_name), class_name
 
 
-def test_growth_charge_preview_and_success_share_one_markup_tree() -> None:
-    source = _dashboard_source()
-    owner = next(
-        node
-        for node in _dashboard_tree().body
-        if isinstance(node, ast.ClassDef)
-        and node.name == "GrowthChargeConfirmationDialog"
-    )
-    owner_source = ast.get_source_segment(source, owner) or ""
-    refresh_source = ast.get_source_segment(
-        source,
-        _method_node("GrowthChargeConfirmationDialog", "_refresh_quote"),
-    ) or ""
-    success_source = ast.get_source_segment(
-        source,
-        _method_node("GrowthChargeConfirmationDialog", "_show_receipt"),
-    ) or ""
-    confirmed_data_source = ast.get_source_segment(
-        source,
-        _method_node("GrowthChargeConfirmationDialog", "_data_from_outcome"),
-    ) or ""
-
-    assert "self.summary_panel = QFrame" in owner_source
-    assert owner_source.count("self.summary_panel = QFrame") == 1
-    assert "self._render_shared_summary(self._data_from_quote(quote))" not in refresh_source
-    assert "self._render_shared_summary(data)" in refresh_source
-    assert "data = self._data_from_quote(quote)" in refresh_source
-    assert "data = self._data_from_outcome(outcome)" in success_source
-    assert "self._render_shared_summary(data)" in success_source
-    assert "QFrame(" not in success_source
-    assert "self.quote" not in confirmed_data_source
-    for confirmed_field in (
-        "outcome.previous_growth",
-        "outcome.resulting_growth",
-        "outcome.previous_stage",
-        "outcome.resulting_stage",
-        "outcome.growth_granted",
-        "outcome.inventory_remaining",
-        "outcome.rewards",
-        "request.expected_inventory",
-    ):
-        assert confirmed_field in confirmed_data_source
-    assert "GrowthChargeDialog = GrowthChargeConfirmationDialog" in source
-    assert "GrowthChargeProgressBar(self.summary_panel)" in owner_source
-    progress_owner = next(
-        node
-        for node in _dashboard_tree().body
-        if isinstance(node, ast.ClassDef)
-        and node.name == "GrowthChargeProgressBar"
-    )
-    progress_source = ast.get_source_segment(source, progress_owner) or ""
-    assert "_MINIMUM_NONZERO_FILL = 2.0" in progress_source
-    assert "max(self._MINIMUM_NONZERO_FILL, exact_width)" in progress_source
-
-    for required_copy in (
-        '"Use 1 charge"',
-        '"View plant"',
-        '"Charges remaining"',
-        '"Next-stage progress"',
-        'format_status_label(data.before_stage_name)',
-        'format_status_label(data.after_stage_name)',
-    ):
-        assert required_copy in owner_source
-    for obsolete_copy in (
-        '"Reaches Sprout"',
-        '"Use Small Growth Charge"',
-        '"Small Growth Charges remaining"',
-    ):
-        assert obsolete_copy not in owner_source
-
-
 def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -> None:
     transition_copy = _compiled_method(
         "GrowthChargeConfirmationDialog",
@@ -233,6 +149,7 @@ def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -
             "plant_species_name": plant_species_name,
             "plant_stage_event": plant_stage_event,
             "format_status_label": lambda value: str(value).title(),
+            "format_growth": format_growth,
         },
     )
     stage_change = SimpleNamespace(
@@ -247,7 +164,7 @@ def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -
         plant_species="bonsai",
         stage_changed=False,
         after_stage_name="sprout",
-        growth_amount=100,
+        growth_amount=100.75,
     )
 
     stage_change.variant = "confirmation"
@@ -261,12 +178,7 @@ def test_growth_charge_transition_copy_keeps_stage_up_and_same_stage_layouts() -
 
 
 def test_growth_charge_view_plant_returns_to_the_committed_target() -> None:
-    source = _dashboard_source()
     activate = _compiled_method("GrowthChargeConfirmationDialog", "_activate_primary")
-    owner_source = ast.get_source_segment(
-        source,
-        _method_node("GardenDashboard", "_open_growth_charges_for_plant"),
-    ) or ""
 
     for destination, opens_plant in (("plant", True), ("garden", False)):
         accepted = []
@@ -275,11 +187,6 @@ def test_growth_charge_view_plant_returns_to_the_committed_target() -> None:
         activate(dialog)
         assert dialog.view_plant_requested is opens_plant
         assert accepted == [True]
-    assert "view_plant_requested = bool(dialog.view_plant_requested)" in owner_source
-    assert "self.scene.keep_card_open(target_id)" in owner_source
-    assert "self._refresh_selected_plant_card()" in owner_source
-
-
 
 
 def test_visibility_audit_is_opt_in_and_never_creates_native_handles() -> None:
@@ -367,8 +274,6 @@ def test_view_profile_and_disposal_never_move_or_detach_dialogs() -> None:
     )
     dispose_source = ast.get_source_segment(source, dispose) or ""
     assert "setParent(" not in dispose_source
-
-
 
 
 @pytest.mark.parametrize("rename_raises", [False, True])

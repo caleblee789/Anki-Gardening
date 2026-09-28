@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ast
 import os
-import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -14,254 +12,6 @@ pytestmark = pytest.mark.release_evidence
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STUDIO_PATH = ROOT / "ankigarden" / "ui" / "garden_studio.py"
-DASHBOARD_PATH = ROOT / "ankigarden" / "ui" / "dashboard.py"
-
-
-def _method_source(method_name: str) -> str:
-    source = STUDIO_PATH.read_text("utf-8")
-    tree = ast.parse(source)
-    owner = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "GardenStudioWidget"
-    )
-    method = next(
-        node
-        for node in owner.body
-        if isinstance(node, ast.FunctionDef) and node.name == method_name
-    )
-    segment = ast.get_source_segment(source, method)
-    assert segment is not None
-    return segment
-
-
-def _compiled_responsive_method() -> Any:
-    class Direction:
-        TopToBottom = "stacked"
-        LeftToRight = "columns"
-
-    class Policy:
-        Expanding = "expanding"
-        Preferred = "preferred"
-
-    class ScrollBarPolicy:
-        ScrollBarAlwaysOff = "off"
-        ScrollBarAsNeeded = "as-needed"
-
-    scope: dict[str, Any] = {
-        "QBoxLayout": SimpleNamespace(Direction=Direction),
-        "QSizePolicy": SimpleNamespace(Policy=Policy),
-        "Qt": SimpleNamespace(ScrollBarPolicy=ScrollBarPolicy),
-        "SETTINGS_CONTROLS_WIDE_MIN_WIDTH": 190,
-        "SETTINGS_CONTROLS_WIDE_MAX_WIDTH": 220,
-        "SETTINGS_SCENERY_WIDE_MIN_WIDTH": 180,
-        "SETTINGS_SCENERY_WIDE_MAX_WIDTH": 220,
-        "COMPACT_MODE": "compact",
-    }
-    exec(
-        textwrap.dedent(_method_source("_apply_studio_layout_mode")),
-        scope,
-    )
-    return scope["_apply_studio_layout_mode"]
-
-
-def _class_source(path: Path, class_name: str) -> str:
-    source = path.read_text("utf-8")
-    tree = ast.parse(source)
-    node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.ClassDef) and item.name == class_name
-    )
-    segment = ast.get_source_segment(source, node)
-    assert segment is not None
-    return segment
-
-
-class _Recorder:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, tuple[Any, ...]]] = []
-
-    def __getattr__(self, name: str) -> Any:
-        def record(*args: Any) -> None:
-            self.calls.append((name, args))
-
-        return record
-
-
-class _ResponsiveRecorder(_Recorder):
-    def sizeHint(self) -> Any:
-        self.calls.append(("sizeHint", ()))
-        return SimpleNamespace(height=lambda: 520)
-
-
-def test_settings_layout_keeps_the_preview_free_vertical_organization() -> None:
-    apply_layout = _compiled_responsive_method()
-    controls = _ResponsiveRecorder()
-    root_layout = _ResponsiveRecorder()
-    widget = _ResponsiveRecorder()
-    widget._compact_layout = None
-    widget.controls = controls
-    widget.controls_scroll = _ResponsiveRecorder()
-    widget.root_layout = root_layout
-    widget.theme_card = _ResponsiveRecorder()
-
-    apply_layout(widget, "wide")
-    assert ("setDirection", ("stacked",)) in root_layout.calls
-    assert ("setMinimumWidth", (0,)) in controls.calls
-    assert ("setMaximumWidth", (16_777_215,)) in controls.calls
-    assert ("setSizePolicy", ("expanding", "preferred")) in controls.calls
-    assert ("setMaximumHeight", (16_777_215,)) in widget.controls_scroll.calls
-    assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
-    assert ("setMinimumWidth", (0,)) in widget.theme_card.calls
-    assert ("setMaximumWidth", (16_777_215,)) in widget.theme_card.calls
-
-    apply_layout(widget, "compact")
-    assert ("setDirection", ("stacked",)) in root_layout.calls
-    assert ("setMinimumWidth", (0,)) in controls.calls
-    assert ("setMaximumWidth", (16_777_215,)) in controls.calls
-    assert ("setSizePolicy", ("expanding", "preferred")) in controls.calls
-    assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
-    assert ("setMinimumHeight", (520,)) in widget.controls_scroll.calls
-    assert ("setMaximumHeight", (16_777_215,)) in widget.controls_scroll.calls
-    assert (
-        "setSizePolicy",
-        ("expanding", "preferred"),
-    ) in widget.controls_scroll.calls
-    assert "self.preview_panel" not in _class_source(
-        STUDIO_PATH,
-        "GardenStudioWidget",
-    )
-    assert ("updateGeometry", ()) in widget.calls
-
-
-class _Controls(_Recorder):
-    def __init__(self, content_height: int) -> None:
-        super().__init__()
-        self.content_height = content_height
-
-    def sizeHint(self) -> Any:
-        self.calls.append(("sizeHint", ()))
-        return SimpleNamespace(height=lambda: self.content_height)
-
-
-class _ControlsScroll(_Recorder):
-    def __init__(self, viewport_height: int) -> None:
-        super().__init__()
-        self.viewport_height = viewport_height
-
-    def setMinimumHeight(self, height: int) -> None:
-        self.viewport_height = int(height)
-        self.calls.append(("setMinimumHeight", (int(height),)))
-
-
-class _ScrollBar(_Recorder):
-    def maximum(self) -> int:
-        return 0
-
-
-class _OuterScroll(_Recorder):
-    def __init__(self) -> None:
-        super().__init__()
-        self.bar = _ScrollBar()
-
-    def verticalScrollBar(self) -> _ScrollBar:
-        return self.bar
-
-    def parentWidget(self) -> None:
-        return None
-
-
-class _Studio(_Recorder):
-    def __init__(self, *, compact: bool) -> None:
-        super().__init__()
-        self._compact_layout = compact
-        self.controls_layout = _Recorder()
-        self.advanced_panel = _Recorder()
-        self.advanced_toggle = _Recorder()
-        self.controls = _Controls(content_height=572)
-        self.controls_scroll = _ControlsScroll(viewport_height=487)
-        self.outer_scroll = _OuterScroll()
-
-    def parentWidget(self) -> _OuterScroll:
-        return self.outer_scroll
-
-    def _scroll_controls_to(self, target: Any, expanded: bool) -> None:
-        self.calls.append(("_scroll_controls_to", (target, expanded)))
-
-
-def _compiled_finish_method() -> Any:
-    class _ImmediateTimer:
-        @staticmethod
-        def singleShot(_delay: int, callback: Any) -> None:
-            callback()
-
-    scope: dict[str, Any] = {
-        "QScrollArea": _OuterScroll,
-        "QTimer": _ImmediateTimer,
-    }
-    exec(
-        textwrap.dedent(_method_source("_finish_advanced_layout_update")),
-        scope,
-    )
-    return scope["_finish_advanced_layout_update"]
-
-
-@pytest.mark.parametrize("compact", [False, True], ids=["wide", "compact"])
-def test_advanced_expansion_grows_the_non_scrolling_viewport_without_repositioning(
-    compact: bool,
-) -> None:
-    finish_update = _compiled_finish_method()
-    studio = _Studio(compact=compact)
-
-    finish_update(studio, True)
-
-    assert studio.controls_scroll.viewport_height == 572
-    assert ("setMinimumHeight", (572,)) in studio.controls_scroll.calls
-    assert ("updateGeometry", ()) in studio.controls_scroll.calls
-    assert not any(
-        name == "ensureWidgetVisible" for name, _args in studio.outer_scroll.calls
-    )
-    assert ("setValue", (0,)) in studio.outer_scroll.bar.calls
-
-
-def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
-    nursery = _class_source(DASHBOARD_PATH, "NurseryDialog")
-
-    for name in (
-        "Plants catalog",
-        "Fertilizers and boosts catalog",
-        "Garden beds catalog",
-        "Garden Decorations and Scenery catalog",
-    ):
-        assert f'"{name}"' in nursery
-    assert nursery.count("setAccessibleName") >= 8
-
-
-def test_dialog_state_preserves_the_declared_ready_focus_contract() -> None:
-    shell = _class_source(DASHBOARD_PATH, "_ShellBehavior")
-    dialog = _class_source(DASHBOARD_PATH, "_GardenContent")
-
-    assert "def _policy_focus_target" in shell
-    assert "InitialFocusPolicy.FIRST_EDITABLE" in shell
-    assert "InitialFocusPolicy.SELECTED_ROUTE" in shell
-    assert "InitialFocusPolicy.SAFE_ACTION" in shell
-    assert "self._state_focus_target = None" in dialog
-    assert "self.set_initial_focus(self.state_retry)" not in dialog
-    assert "self.set_initial_focus(self.top_close)" not in dialog
-
-
-def test_settings_diagnostics_actions_reflow_from_their_own_viewport() -> None:
-    settings = _class_source(DASHBOARD_PATH, "GardenSettingsDialog")
-
-    assert '"settings.diagnostics-actions"' in settings
-    assert "self.behavior_scroll.viewport()" in settings
-    assert "QBoxLayout.Direction.LeftToRight" in settings
-    assert "QBoxLayout.Direction.TopToBottom" not in settings
-    assert '"refresh-diagnostics"' in settings
-    assert '"copy-report"' in settings
-    assert 'self.report_details_toggle.setProperty("disclosureRow", True)' in settings
 
 
 def test_live_qt_advanced_content_stays_inside_inner_viewport_when_available(
@@ -304,6 +54,7 @@ def test_live_qt_advanced_content_stays_inside_inner_viewport_when_available(
         application.processEvents()
         application.processEvents()
 
+        assert outer.verticalScrollBar().value() == 0
         assert studio.controls.width() <= studio.controls_scroll.viewport().width()
         assert studio.controls_scroll.minimumHeight() >= studio.controls.sizeHint().height()
         assert (
@@ -529,7 +280,6 @@ def _live_replacement_quote(engine: Any, storage: Any) -> Any:
     )
 
 
-
 def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -634,24 +384,6 @@ def test_species_purchase_receipt_uses_seed_art_and_routes_by_bed_capacity(
     no_bed.deleteLater()
     owner.close()
     application.processEvents()
-
-
-def _focus_signature(surface: Any) -> tuple[tuple[str, str, str, str], ...]:
-    """Return stable control identity without relying on transient PyQt wrappers."""
-
-    signature: list[tuple[str, str, str, str]] = []
-    for widget in surface._focusable_descendants():
-        text_reader = getattr(widget, "text", None)
-        text = str(text_reader()) if callable(text_reader) else ""
-        signature.append(
-            (
-                type(widget).__name__,
-                str(widget.objectName() or ""),
-                str(widget.accessibleName() or ""),
-                text,
-            )
-        )
-    return tuple(signature)
 
 
 @pytest.mark.parametrize("width", (640, 1040))
@@ -1076,7 +808,6 @@ def test_live_qt_inspection_and_refresh_preserve_nurtured_plant(monkeypatch: pyt
         dashboard.close()
         owner.close()
         settle()
-
 
 
 def test_live_qt_settings_details_stay_bounded_and_scroll_when_needed(

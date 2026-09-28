@@ -6140,7 +6140,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
                 f"{format_status_label(data.after_stage_name).lower()}"
             )
         verb = "will gain" if data.variant == "confirmation" else "gained"
-        return f"{data.plant_name} {verb} {data.growth_amount:,} Growth"
+        return f"{data.plant_name} {verb} {format_growth(data.growth_amount, include_unit=False)} Growth"
 
     @staticmethod
     def _compact_preview_copy(value: Any) -> str:
@@ -6225,7 +6225,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         before = self.request.expected_inventory if committed else value.inventory_before
         after = value.inventory_remaining if committed else value.inventory_after
         stored_only = value.stored_growth_units > 0 and not value.project_allocations
-        self.garden_growth_heading.setText(f"+{amount:,} {'Stored Growth' if stored_only else 'Growth'}")
+        self.garden_growth_heading.setText(f"+{format_growth(amount, include_unit=False)} {'Stored Growth' if stored_only else 'Growth'}")
         self.garden_growth_icon.setPixmap(garden_icon("stored_growth" if stored_only else "growth").pixmap(QSize(24, 24)))
         destination = self.engine.growth_destination_text(value.stored_growth_units, value.project_allocations)
         self.garden_growth_destination.setText(destination)
@@ -6290,7 +6290,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.transition_statement.setText(data.plant_name)
             self.before_stage_label.setText(format_status_label(data.before_stage_name))
         self.impact_name.setText("Growth applied" if committed else data.charge_name)
-        self.impact_value.setText(f"+{data.growth_amount:,} Growth")
+        self.impact_value.setText(f"+{format_growth(data.growth_amount, include_unit=False)} Growth")
         self._set_item_artwork(
             self.impact_artwork,
             self._resolved_asset(self.engine, "resolve_item_asset", "growth_resource") if committed else data.charge_artwork,
@@ -6365,7 +6365,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.summary_panel.setAccessibleDescription(
             ". ".join(filter(None, (
                 transition_copy,
-                f"{data.charge_name}: +{data.growth_amount:,} Growth",
+                f"{data.charge_name}: +{format_growth(data.growth_amount, include_unit=False)} Growth",
                 compatibility_copy.replace("\n", ". "),
                 (
                     f"Stage reward: {self.reward_value.text()}"
@@ -14285,7 +14285,7 @@ class _PlantStoryContent:
             self.up_next_text.setText("")
             self.up_next_text.hide()
             self.up_next_text.setAccessibleDescription(
-                f"Full Bloom with {plant.growth_points:,} total Growth."
+                f"Full Bloom with {format_growth(plant.growth_points, include_unit=False)} total Growth."
             )
             self.choose_another.show()
             self.stage_progress.hide()
@@ -14320,7 +14320,7 @@ class _PlantStoryContent:
                 f"Next: {next_stage}",
                 progress.stage_points,
                 max(1, progress.stage_goal),
-                value_text=f"{progress.stage_points:,} / {progress.stage_goal:,} Growth",
+                value_text=format_growth(progress.stage_points, progress.stage_goal),
             )
             self.stage_progress.label.show()
             self.stage_progress.value_label.show()
@@ -18259,7 +18259,7 @@ class PlantInfoCard(QFrame):
         self.mastery_destination.setText(str(plant.get("overflow_destination_summary") or ""))
         if fully_grown:
             self.growth_summary.setAccessibleDescription(
-                f"Full Bloom with {growth_points:,} total Growth."
+                f"Full Bloom with {format_growth(growth_points, include_unit=False)} total Growth."
             )
         else:
             stage_points = max(0, plant.get("stage_points", 0) or 0)
@@ -20506,7 +20506,7 @@ class GardenDetailsDialog(GardenPage):
         today_row.addWidget(self._label("Growth earned today", "detailSection"))
         today_row.addStretch(1)
         total_value = self._label(
-            "0 Growth" if total_today <= 0 else f"+{total_today:,} Growth",
+            "0 Growth" if total_today <= 0 else f"+{format_growth(total_today, include_unit=False)} Growth",
             "detailMetric",
         )
         apply_tabular_numerals(total_value)
@@ -20525,12 +20525,12 @@ class GardenDetailsDialog(GardenPage):
                 snapshot.scenery_growth_today,
             ))
             breakdown_rows = [
-                ("Base Growth", f"{snapshot.base_growth_today:,}"),
-                ("Permanent Growth bonus", f"{snapshot.streak_growth_today:,}"),
-                ("Fertilizer", f"{snapshot.fertilizer_growth_today:,}"),
+                ("Base Growth", format_growth(snapshot.base_growth_today, include_unit=False)),
+                ("Permanent Growth bonus", format_growth(snapshot.streak_growth_today, include_unit=False)),
+                ("Fertilizer", format_growth(snapshot.fertilizer_growth_today, include_unit=False)),
             ]
             if snapshot.trophy_growth_today:
-                breakdown_rows.append(("Gardening Trophies", f"{snapshot.trophy_growth_today:,}"))
+                breakdown_rows.append(("Gardening Trophies", format_growth(snapshot.trophy_growth_today, include_unit=False)))
             if other_bonus:
                 breakdown_rows.append(("Other bonuses", f"{other_bonus:,}"))
             if direct_total:
@@ -23603,7 +23603,7 @@ class GardenDashboard(DialogShell):
             active_growth = (
                 "Full Bloom"
                 if progress.fully_grown else
-                f"{progress.stage_points:,} / {progress.stage_goal:,}"
+                format_growth(progress.stage_points, progress.stage_goal, include_unit=False)
             )
             growth_now = 1 if progress.fully_grown else progress.stage_points
             growth_max = 1 if progress.fully_grown else max(1, progress.stage_goal)
@@ -25207,7 +25207,7 @@ class GardenDashboard(DialogShell):
         self.same_day_catchup_note.show()
         self.same_day_catchup_note.setText(
             f"Garden caught up with {_card_answer_count(review_count)}: "
-            f"+{growth_gain:,} Growth."
+            f"+{format_growth(growth_gain, include_unit=False)} Growth."
         )
         self.same_day_catchup_note.setAccessibleDescription(self.same_day_catchup_note.text())
         self._sync_feedback_panel_visibility()

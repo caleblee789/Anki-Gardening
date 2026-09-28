@@ -5969,7 +5969,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("destination_visible") is True
                 and row.get("destination_kind") == "stored_growth"
                 and row.get("destination_heading") == "Stored Growth"
-                and row.get("destination_detail") == "12.5 Growth in reserve"
+                and row.get("destination_detail") == "12 Growth in reserve"
                 and row.get("destination_stored_growth_units") == 1_250
                 and row.get("next_action") == "growth_destination"
                 and row.get("art_scale") == 1.0

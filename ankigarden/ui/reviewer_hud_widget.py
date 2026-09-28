@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..performance import RUNTIME_PERFORMANCE, timed
+
 from .copy import STORED_GROWTH_TOOLTIP
 
 from ..presentation import plant_stage_title
@@ -30,7 +32,7 @@ from .reviewer_hud import (
     reviewer_hud_width,
 )
 from .reward_rarity import apply_reward_treatment, reward_treatment, rarity_badge_style, rarity_art_style, RewardTreatment
-from .reward_receipt import receipt_metric, reward_discovery_count
+from .reward_receipt import receipt_metric, receipt_metrics_layout, reward_discovery_count
 from .theme import GARDEN_THEME, apply_tabular_numerals
 
 logger = logging.getLogger(__name__)
@@ -401,18 +403,9 @@ def _full_bloom_plant_id(bundle: Any) -> str:
 
 
 def _format_coin_balance(value: Any, *, exact_fits: bool = True) -> str:
-    """Keep release-boundary balances exact and compact only on collision."""
+    """Display the full balance; layout owns fitting rather than abbreviating."""
 
-    target = _integer(value)
-    exact = f"{target:,}"
-    if target <= 1_000_000 or exact_fits:
-        return exact
-    for divisor, suffix in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
-        if target >= divisor:
-            amount = target / divisor
-            rendered = f"{amount:.1f}".rstrip("0").rstrip(".")
-            return f"{rendered}{suffix}"
-    return exact
+    return format_garden_coins(_integer(value), include_unit=False)
 
 
 def _checkpoint_marker_states(
@@ -1669,6 +1662,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._after_feedback_paint: dict[Callable[[], None], None] = {}
         self._feedback_paint_target = None
         self._feedback_paint_flush_queued = False
+        self._feedback_paint_timeout = QTimer(self)
+        self._feedback_paint_timeout.setSingleShot(True)
+        self._feedback_paint_timeout.setInterval(250)
+        self._feedback_paint_timeout.timeout.connect(self._feedback_paint_stalled)
         for target in (self._collapsed_feedback.amount, self._collapsed_feedback.idle,
                        self._session_growth):
             target.installEventFilter(self)
@@ -2053,7 +2050,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._header.setObjectName("reviewerHudHeader")
         self._header.setProperty("semanticId", "reviewer.hud.header")
         self._header.setFixedHeight(44)
-        header_layout = QHBoxLayout(self._header)
+        header_layout = QGridLayout(self._header)
         header_layout.setContentsMargins(
             HUD_HEADER_LEFT_INSET,
             0,
@@ -2061,6 +2058,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             0,
         )
         header_layout.setSpacing(0)
+        header_layout.setRowMinimumHeight(0, 44)
+        header_layout.setColumnStretch(0, 1)
         self._title_group = QFrame(self._header)
         self._title_group.setObjectName("reviewerHudTitleGroup")
         _set_decoration(self._title_group)
@@ -2073,8 +2072,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._header_title.setMinimumWidth(0)
         _set_decoration(self._header_title)
         title_layout.addWidget(self._header_title)
-        header_layout.addWidget(self._title_group)
-        header_layout.addStretch(1)
+        header_layout.addWidget(self._title_group, 0, 0, Qt.AlignmentFlag.AlignLeft)
         self._header_actions = QFrame(self._header)
         self._header_actions.setObjectName("reviewerHudHeaderActions")
         title_width = max(0, int(self._title_group.sizeHint().width()))
@@ -2097,7 +2095,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "hudHeaderBalanceReservedWidth",
             header_actions_width,
         )
-        coin_layout = QHBoxLayout(self._coin_cluster)
+        coin_layout = QGridLayout(self._coin_cluster)
         coin_layout.setContentsMargins(0, 0, 0, 0)
         coin_layout.setSpacing(5)
         self._coin_icon = QLabel(self._coin_cluster)
@@ -2105,21 +2103,20 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._coin_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._coin_icon.setPixmap(self._icon_pixmap("coin", 16, GARDEN_THEME["reviewer_hud_coin"]))
         _set_decoration(self._coin_icon)
-        coin_layout.addWidget(self._coin_icon)
+        coin_layout.addWidget(self._coin_icon, 0, 0)
         self._coin_balance = QLabel("0", self._coin_cluster)
         self._coin_balance.setProperty("hudCoin", True)
         apply_tabular_numerals(self._coin_balance)
         self._coin_balance.setMinimumWidth(28)
-        self._coin_balance.setMaximumWidth(74)
         self._coin_balance.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         _set_decoration(self._coin_balance)
-        coin_layout.addWidget(self._coin_balance)
+        coin_layout.addWidget(self._coin_balance, 0, 1)
         self._coin_delta = QLabel("", self._coin_cluster)
         self._coin_delta.setProperty("hudCoinDelta", True)
         apply_tabular_numerals(self._coin_delta)
         self._coin_delta.hide()
         _set_decoration(self._coin_delta)
-        coin_layout.addWidget(self._coin_delta)
+        coin_layout.addWidget(self._coin_delta, 0, 2)
         actions_layout.addWidget(self._coin_cluster)
         self._collapse_button = QToolButton(self._header_actions)
         self._collapse_button.setObjectName("reviewerHudCollapseButton")
@@ -2130,7 +2127,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._collapse_button.setIcon(self._icon("chevron-up", 18, GARDEN_THEME["text_primary"]))
         self._collapse_button.clicked.connect(self._toggle_from_control)
         actions_layout.addWidget(self._collapse_button)
-        header_layout.addWidget(self._header_actions)
+        header_layout.addWidget(self._header_actions, 0, 1)
         expanded_layout.addWidget(self._header)
 
         self._body_scroll = QScrollArea(self._expanded)
@@ -2871,9 +2868,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         history_heading.addWidget(self._session_history_chevron)
         totals_layout.addLayout(heading_row)
         from .session_summary_card import session_summary_palette
-        # The fixed-width HUD always keeps its three compact cells in one row.
-        # Receipt layouts may stack; HUD amounts shorten within their own cell.
-        metrics = QHBoxLayout()
+        # Preserve full amounts by stacking only when the totals need room.
+        metrics = receipt_metrics_layout()
         metrics.setSpacing(6)
         self._session_metrics_layout = metrics
         self._session_metric_tiles = []
@@ -3259,6 +3255,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         if changed and notify:
             _call(self._on_toggle_collapsed, self._collapsed)
 
+    @timed("review.hud-update")
     def update_projection(
         self,
         projection: ReviewerHudProjection,
@@ -3328,18 +3325,21 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         def apply_changed_values() -> None:
             if self._disposed or revision != self._revision:
                 return
-            self._update_today(
-                projection.today,
-                animate=animate,
-                previous=previous.today if previous is not None else None,
-            )
-            self._update_coins(projection.coins, animate=animate)
-            self._update_plant(
-                projection.nurture,
-                animate=animate,
-                previous=previous_nurture,
-                checkpoint_prepared=checkpoint_prepared,
-            )
+            if previous is None or previous.today != projection.today:
+                self._update_today(
+                    projection.today,
+                    animate=animate,
+                    previous=previous.today if previous is not None else None,
+                )
+            if previous is None or previous.coins != projection.coins:
+                self._update_coins(projection.coins, animate=animate)
+            if previous_nurture != projection.nurture:
+                self._update_plant(
+                    projection.nurture,
+                    animate=animate,
+                    previous=previous_nurture,
+                    checkpoint_prepared=checkpoint_prepared,
+                )
             self.reposition()
             if self._routine_projection_feedback_active:
                 QTimer.singleShot(
@@ -3351,7 +3351,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
         if previous is None or self._collapsed != projection.collapsed:
             self.set_collapsed(projection.collapsed)
-        self._update_consumables(projection.active_consumables)
+        if previous is None or previous.active_consumables != projection.active_consumables:
+            self._update_consumables(projection.active_consumables)
         self.show()
         self.raise_()
         # Committed numbers do not wait for a celebration entrance. Motion
@@ -3424,8 +3425,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._coin_icon.setProperty("coinPulse", True)
         _repolish(self._coin_icon)
         animation = QVariantAnimation(self)
-        animation.setStartValue(current)
-        animation.setEndValue(target)
+        # Qt's integer interpolation is limited to 32 bits. Animate doubles,
+        # then explicitly paint the exact committed integer at completion.
+        animation.setStartValue(float(current))
+        animation.setEndValue(float(target))
         animation.setDuration(360)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         animation.valueChanged.connect(
@@ -3435,13 +3438,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 else None
             )
         )
-        animation.finished.connect(
-            lambda: (
-                setattr(self, "_coin_animation", None)
-                if self._coin_animation is animation
-                else None
-            )
-        )
+        def finish_coin_animation() -> None:
+            if self._coin_animation is animation:
+                self._coin_animation = None
+                self._set_coin_balance_text(target)
+
+        animation.finished.connect(finish_coin_animation)
         self._coin_animation = animation
         animation.start()
         QTimer.singleShot(
@@ -3491,31 +3493,66 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def _set_coin_balance_text(self, coins: int) -> None:
         target = max(0, int(coins or 0))
-        exact = f"{target:,}"
-        try:
-            exact_fits = (
-                self._coin_balance.fontMetrics().horizontalAdvance(exact)
-                <= self._coin_balance.maximumWidth()
-            )
-        except Exception:
-            exact_fits = target <= 1_000_000
-        rendered = _format_coin_balance(target, exact_fits=exact_fits)
+        exact = _format_coin_balance(target)
         self._displayed_coin_balance = target
-        self._coin_balance.setText(rendered)
+        self._coin_balance.setText(exact)
         self._coin_balance.setAccessibleName(format_garden_coins(target))
-        self._coin_balance.setToolTip(exact if rendered != exact else "")
+        self._coin_balance.setToolTip("")
         self._coin_balance.setProperty("exactCoinBalance", exact)
-        self._coin_balance.setProperty(
-            "compactCoinBalance",
-            rendered if rendered != exact else "",
-        )
+        self._coin_balance.setProperty("compactCoinBalance", "")
         self.setProperty("hudCoinBalanceExact", exact)
-        self.setProperty("hudCoinBalanceCompacted", rendered != exact)
+        self.setProperty("hudCoinBalanceCompacted", False)
+        if self._layout_coin_balance():
+            self.reposition()
+
+    def _layout_coin_balance(self, header_width: int | None = None) -> bool:
+        """Move a wide balance to its own row, keeping the full number readable."""
+        width = self.width() - 2 if header_width is None else header_width
+        available = max(1, width - HUD_HEADER_LEFT_INSET - HUD_HEADER_RIGHT_INSET)
+        title_width = self._title_group.sizeHint().width()
+        reserved = min(reviewer_hud_header_actions_width(title_width),
+                       max(32, available - title_width))
+        self._header_actions.setFixedWidth(reserved)
+        self.setProperty("hudHeaderBalanceReservedWidth", reserved)
+        balance_width = max(28, self._coin_balance.fontMetrics().horizontalAdvance(
+            self._coin_balance.text()) + 2)
+        self._coin_balance.setFixedWidth(balance_width)
+        cluster_width = 17 + 5 + balance_width
+        delta_width = 0
+        if not self._coin_delta.isHidden():
+            delta_width = self._coin_delta.sizeHint().width()
+        delta_wrapped = bool(delta_width and cluster_width + 5 + delta_width > available)
+        if delta_wrapped != bool(self.property("hudCoinDeltaWrapped")):
+            coin_layout = self._coin_cluster.layout()
+            coin_layout.removeWidget(self._coin_delta)
+            coin_layout.addWidget(self._coin_delta, 1 if delta_wrapped else 0,
+                                  1 if delta_wrapped else 2, Qt.AlignmentFlag.AlignRight)
+            self.setProperty("hudCoinDeltaWrapped", delta_wrapped)
+        cluster_width = (max(cluster_width, delta_width) if delta_wrapped else
+                         cluster_width + (5 + delta_width if delta_width else 0))
+        wrapped = cluster_width + 8 + 32 > reserved
+        changed = wrapped != bool(self.property("hudCoinBalanceWrapped"))
+        if changed:
+            if wrapped:
+                self._header_actions.layout().removeWidget(self._coin_cluster)
+                self._header.layout().addWidget(
+                    self._coin_cluster, 1, 0, 1, 2, Qt.AlignmentFlag.AlignRight)
+            else:
+                self._header.layout().removeWidget(self._coin_cluster)
+                self._header_actions.layout().insertWidget(1, self._coin_cluster)
+            self._coin_cluster.show()
+            self.setProperty("hudCoinBalanceWrapped", wrapped)
+        header_height = 44 + self._coin_cluster.sizeHint().height() + 6 if wrapped else 44
+        height_changed = header_height != self._header.height()
+        self._header.setFixedHeight(header_height)
+        return changed or height_changed
 
     def _clear_coin_delta(self, revision: int | None = None) -> None:
         if self._disposed or (revision is not None and revision != self._coin_feedback_revision):
             return
         self._coin_delta.hide()
+        if self._layout_coin_balance():
+            self.reposition()
 
     def _clear_coin_icon_pulse(self, revision: int | None = None) -> None:
         if self._disposed or (revision is not None and revision != self._coin_feedback_revision):
@@ -5115,7 +5152,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
 
     def _sync_session_metric_wrap(self) -> None:
-        """Keep three aligned boxes; large values compact within their own box."""
+        """Refresh totals; the receipt layout stacks full amounts when needed."""
         if not hasattr(self, "_session_metric_tiles"):
             return
         expanded = bool(self._session_footer.property("historyExpanded"))
@@ -5125,8 +5162,6 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._set_session_history_chevron(expanded)
         for widget in self._session_metric_widgets():
             widget.show()
-        self._session_footer.setProperty("metricsWrapped", False)
-        self._session_footer.setProperty("metricRowCount", 1)
         # Hidden/collapsed metrics may still have their temporary stacked size.
         # Let Qt follow the settled size hint instead of freezing that height.
         self._session_footer.updateGeometry()
@@ -5402,6 +5437,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
     def defer_until_feedback_paint(self, callback: Callable[[], None]) -> None:
         """Coalesce work behind a natural paint, never a reward reading hold."""
         self._after_feedback_paint[callback] = None
+        RUNTIME_PERFORMANCE.gauge("review.pending-paint-callbacks", len(self._after_feedback_paint))
         self._request_feedback_paint()
 
     def _request_feedback_paint(self) -> None:
@@ -5410,6 +5446,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         if self._disposed or not self.isVisible():
             self._queue_after_feedback_paint()
             return
+        # Visible Qt widgets can stop painting while their window is
+        # occluded. One watchdog releases refresh/acknowledgement work without
+        # restarting on each answer or changing normal reward reading times.
+        if not self._feedback_paint_timeout.isActive():
+            self._feedback_paint_timeout.start()
         if self._collapsed:
             feedback = self._collapsed_feedback
             target = feedback.amount if feedback._current is not None else feedback.idle
@@ -5423,6 +5464,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             # durable acknowledgements or controller callbacks indefinitely.
             self._queue_after_feedback_paint()
 
+    def _feedback_paint_stalled(self) -> None:
+        RUNTIME_PERFORMANCE.count("review.feedback-paint-timeouts")
+        self._queue_after_feedback_paint()
+
     def _queue_after_feedback_paint(self) -> None:
         if self._feedback_paint_flush_queued or not self.feedback_paint_pending:
             return
@@ -5430,9 +5475,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         QTimer.singleShot(0, self._flush_after_feedback_paint)
 
     def _flush_after_feedback_paint(self) -> None:
+        self._feedback_paint_timeout.stop()
         self._feedback_paint_flush_queued = False
         callbacks = tuple(self._after_feedback_paint)
         self._after_feedback_paint.clear()
+        RUNTIME_PERFORMANCE.gauge("review.pending-paint-callbacks", 0)
         self._feedback_paint_target = None
         for callback in callbacks:
             try:
@@ -6419,6 +6466,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         )
         return top, source
 
+    @timed("review.hud-layout")
     def reposition(
         self,
         viewport_width: int | None = None,
@@ -6457,6 +6505,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 body_layout = self._body_contents.layout()
                 reward_layout = self._reward_dock.layout()
                 natural_width = max(1, reviewer_hud_width(width) - 2)
+                self._layout_coin_balance(natural_width)
+                header_height = self._header.height() + 2
 
                 def natural_height(widget: Any, layout: Any) -> int:
                     if widget is self._reward_dock:
@@ -6496,7 +6546,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 )
                 counter_reserve = max(0, maximum_counters + body_layout.spacing() - visible_counters)
                 if hasattr(self, "_reward_feed"):
-                    room = reviewer_hud_safe_bottom(height, detected_top) - HUD_TOP_MARGIN - 46 - body_height - counter_reserve - self._session_footer.sizeHint().height() - 20
+                    room = reviewer_hud_safe_bottom(height, detected_top) - HUD_TOP_MARGIN - header_height - body_height - counter_reserve - self._session_footer.sizeHint().height() - 20
                     self._reward_feed.set_available_height(min(216, max(72, room)))
                 reward_height = (
                     natural_height(self._reward_dock, reward_layout)
@@ -6514,7 +6564,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                     or self._plant_card.property("fullBloomSettled")
                 )
                 if full_bloom:
-                    if 46 + body_height + reward_height > 680:
+                    if header_height + body_height + reward_height > 680:
                         # Keep milestone art and copy intact; tightening only
                         # the outer body gutters removes the canonical 10px
                         # scroll range before any optional content scrolls.
@@ -6525,14 +6575,14 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                         )
                 else:
                     for compact_level in (1, 2):
-                        if 46 + body_height + counter_reserve + reward_height <= min(420 + reward_height, available_height):
+                        if header_height + body_height + counter_reserve + reward_height <= min(420 + reward_height, available_height):
                             break
                         self._apply_body_compact_level(compact_level)
                         body_height = natural_height(
                             self._body_contents,
                             body_layout,
                         )
-                    overflow = max(0, 46 + body_height + counter_reserve + reward_height - available_height)
+                    overflow = max(0, header_height + body_height + counter_reserve + reward_height - available_height)
                     if overflow:
                         # The pinned totals/feed must not push the Growth line
                         # below the plant viewport. Spend the remaining space
@@ -6540,7 +6590,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                         art_height = max(32, self._art_region.height() - overflow)
                         self._resize_normal_plant_art(art_height, max(28, art_height - 4))
                         body_height = natural_height(self._body_contents, body_layout)
-                    remaining_overflow = max(0, 46 + body_height + counter_reserve + reward_height - available_height)
+                    remaining_overflow = max(0, header_height + body_height + counter_reserve + reward_height - available_height)
                     if remaining_overflow and self._reward_feed.isVisible():
                         # Once artwork reaches its minimum, scroll the reward
                         # list in the remaining room rather than cover counters.
@@ -6548,9 +6598,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                         reward_height = natural_height(self._reward_dock, reward_layout)
                 # The styled shell contributes a one-pixel border on both
                 # vertical edges. Include both the independently anchored
-                # reward dock and the 44px header so the dock never steals
+                # reward dock and the measured header so the dock never steals
                 # height from the daily/plant body at its natural size.
-                content_height = 46 + body_height + reward_height
+                content_height = header_height + body_height + reward_height
                 self.setProperty("hudBodyNaturalHeight", body_height)
                 self.setProperty(
                     "hudBodyUncompactedHeight", uncompacted_body_height
@@ -6707,6 +6757,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def dispose(self) -> None:
         self._disposed = True
+        self._feedback_paint_timeout.stop()
         self._queue_after_feedback_paint()
         if hasattr(self, "_reward_feed"):
             self._reward_feed._stop_motion()

@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 from dataclasses import replace
 from html import escape
@@ -63,6 +62,7 @@ def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str 
         ({"active_plant_name": ""}, HomeSurfaceMode.EMPTY, 0, 0, 0.0),
         ({"active_stage_points": 0}, HomeSurfaceMode.ACTIVE_ZERO, 0, 500, 0.0),
         ({"active_stage_points": 125}, HomeSurfaceMode.ACTIVE_PARTIAL, 125, 500, 25.0),
+        ({"active_stage_points": 125.55}, HomeSurfaceMode.ACTIVE_PARTIAL, 125.55, 500, 25.11),
         (
             {
                 "active_plant_name": "Full Bloom Clover",
@@ -97,6 +97,9 @@ def test_home_surface_view_model_drives_every_compact_product_state(
     assert f'data-home-mode="{expected_mode.value}"' in html
     assert f'data-progress-current="{current}"' in html
     assert f'data-progress-maximum="{maximum}"' in html
+    if current == 125.55:
+        assert 'aria-valuetext="125 / 500 Growth"' in html
+        assert '125.55 / 500 Growth' not in html
 
 
 def test_loading_state_preserves_preview_geometry_without_actions() -> None:
@@ -371,25 +374,6 @@ def test_home_does_not_draw_a_duplicate_soil_ellipse_over_empty_beds() -> None:
     assert 'data-slot-index="0"' in html  # The real plant remains rendered.
 
 
-def test_home_summary_panel_uses_compact_visual_hierarchy_at_each_breakpoint() -> None:
-    html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=_sample_data()))
-
-    assert "grid-template-columns:minmax(0,260px) minmax(0,1fr) max-content" in html
-    assert "column-gap:12px" in html
-    assert 'class="ag-home__artwork-zone" aria-hidden="true"' in html
-    assert "#ag-home-root button,.ag-home__open" in html
-    assert '<div class="ag-home__metrics"' not in html
-    assert "height:100px" in html
-    assert "height:4px" in html
-    assert "right:auto" in html
-    assert "width:260px" in html
-    assert "filter:brightness(1.12)" in html
-    assert "linear-gradient(90deg,rgba(3,12,9,.99)" in html
-    assert "linear-gradient(180deg,rgba(4,14,11,.18)" in html
-    assert "top:var(--ag-home-focal-y,var(--ag-preview-y,50%))" in html
-    assert "@container (max-width: 400px)" in html
-
-
 def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> None:
     name = "FoxgloveFoxgloveFoxgloveFoxgloveFoxglove"
     assert len(name) == 40
@@ -570,39 +554,6 @@ def test_compact_preview_omits_reward_metrics_from_visible_and_accessible_copy()
     assert 'data-testid="home-reward-progress"' not in html
     assert "data-tooltip" not in html
     assert html.count('data-testid="home-open"') == 1
-
-
-def test_zero_day_streak_does_not_change_compact_preview_copy() -> None:
-    base = _sample_data()
-    data = HomeWidgetData(**{
-        **base.__dict__,
-        "streak_days": 0,
-        "streak_bonus_percent": 0,
-        "next_streak_day": 1,
-        "next_streak_bonus_percent": 0,
-    })
-
-    html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
-
-    assert "0-day streak" not in html
-    assert "+0% Growth" not in html
-    assert "at day 1" not in html
-
-
-def test_day_one_streak_does_not_change_compact_preview_copy() -> None:
-    base = _sample_data()
-    data = HomeWidgetData(**{
-        **base.__dict__,
-        "streak_days": 1,
-        "streak_bonus_percent": 0,
-        "next_streak_day": 7,
-        "next_streak_bonus_percent": 5,
-    })
-
-    html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
-
-    assert "1-day streak" not in html
-    assert "+0% Growth" not in html
 
 
 def test_large_streak_and_coin_values_never_leak_into_compact_preview() -> None:

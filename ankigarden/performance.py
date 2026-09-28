@@ -67,6 +67,7 @@ class RuntimePerformanceRecorder:
         )
         self._lock = RLock()
         self._counters: dict[str, int] = defaultdict(int)
+        self._gauges: dict[str, dict[str, int]] = {}
         self._lifetime: dict[str, dict[str, float | int]] = {}
         self._answer_events: Deque[dict[str, object]] = deque(maxlen=self.max_samples * 24)
         self._active_answer = ""
@@ -135,6 +136,14 @@ class RuntimePerformanceRecorder:
             with self._lock:
                 self._counters[str(name)] += int(amount)
 
+    def gauge(self, name: str, value: int) -> None:
+        """Track current and peak pending work without retaining each sample."""
+        if self.enabled:
+            with self._lock:
+                sample = self._gauges.setdefault(str(name), {"current": 0, "peak": 0})
+                sample["current"] = max(0, int(value))
+                sample["peak"] = max(sample["peak"], sample["current"])
+
     @staticmethod
     def _percentile(sorted_values: Iterable[float], fraction: float) -> float:
         values = tuple(sorted_values)
@@ -176,6 +185,7 @@ class RuntimePerformanceRecorder:
                 "sample_limit_per_operation": self.max_samples,
                 "operations": [asdict(summary) for summary in self.summaries()],
                 "counters": dict(self._counters),
+                "gauges": {name: dict(values) for name, values in self._gauges.items()},
                 "lifetime": {name: dict(values) for name, values in self._lifetime.items()},
                 "answer_events": list(self._answer_events),
             }
@@ -202,6 +212,8 @@ def timed(name: str):
     def decorate(function):
         @wraps(function)
         def measured(*args, **kwargs):
+            if not RUNTIME_PERFORMANCE.enabled:
+                return function(*args, **kwargs)
             started = RUNTIME_PERFORMANCE.begin()
             try:
                 return function(*args, **kwargs)

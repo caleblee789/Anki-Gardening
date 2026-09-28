@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from ankigarden.ui.plant_display import (
-    GARDEN_CANVAS_ASPECT,
     SCENE_COMPACT_ASPECT,
     SCENE_STANDARD_ASPECT,
     SCENE_WIDE_ASPECT,
@@ -15,7 +14,6 @@ from ankigarden.ui.plant_display import (
     plant_layout,
     scene_height_for_width,
     scene_preferred_aspect,
-    scene_surface_variant,
     status_overlay_rect,
 )
 
@@ -71,28 +69,6 @@ def test_scene_aspect_policy_blends_between_clamped_targets() -> None:
     assert sampled == sorted(sampled)
     assert scene_height_for_width(100) == 250
     assert scene_height_for_width(4000) == 800
-
-
-@pytest.mark.parametrize(
-    ("width", "height", "expected"),
-    (
-        (1240, 840, (0.0, 0.0, 1240.0, 840.0)),
-        (1600, 840, (180.0, 0.0, 1240.0, 840.0)),
-        (1000, 1000, (0.0, pytest.approx(161.2903), 1000.0, pytest.approx(677.4194))),
-    ),
-)
-@pytest.mark.skip(reason="replaced by fixed 3:2 cover-crop Garden contract")
-def test_release_canvas_is_centered_and_never_cropped(
-    width: int,
-    height: int,
-    expected: tuple[object, object, object, object],
-) -> None:
-    canvas = contained_canvas_rect(width, height)
-
-    assert (canvas.x, canvas.y, canvas.width, canvas.height) == expected
-    assert canvas.width / canvas.height == pytest.approx(GARDEN_CANVAS_ASPECT)
-    assert canvas.x >= 0 and canvas.y >= 0
-    assert canvas.right <= width and canvas.bottom <= height
 
 
 def test_source_coordinates_use_the_same_contain_transform_as_artwork() -> None:
@@ -154,28 +130,6 @@ def test_status_overlay_has_one_reachable_geometry_above_its_hide_gate() -> None
     assert status_overlay_rect(900, surface_context="home") is None
 
 
-def test_scene_widget_and_layout_share_the_pure_geometry_helpers() -> None:
-    scene_source = (ROOT / "ankigarden" / "ui" / "scene.py").read_text(
-        encoding="utf-8"
-    )
-    display_source = (
-        ROOT / "ankigarden" / "ui" / "plant_display.py"
-    ).read_text(encoding="utf-8")
-
-    height_method = scene_source.split("def heightForWidth", 1)[1].split(
-        "def set_motion_enabled", 1
-    )[0]
-    status_method = scene_source.split("def _draw_status_overlay", 1)[1].split(
-        "def _draw_stats_help", 1
-    )[0]
-    layout_method = display_source.split("def plant_layout", 1)[1]
-    assert "scene_height_for_width(width)" in height_method
-    assert "status_overlay_rect(" in status_method
-    assert "rect.width() < 440" not in status_method
-    assert layout_method.count("status_overlay_rect(") == 2
-    assert "width < 440" not in layout_method
-
-
 def test_move_completion_uses_the_shared_live_announcement_channel() -> None:
     scene_source = (ROOT / "ankigarden" / "ui" / "scene.py").read_text(
         encoding="utf-8"
@@ -186,68 +140,6 @@ def test_move_completion_uses_the_shared_live_announcement_channel() -> None:
     assert "AccessibilityAnnouncer(self)" in scene_source
     assert "self.accessibility_announcer.announce(" in finish_method
     assert "AnnouncementPriority.ASSERTIVE" in finish_method
-
-
-@pytest.mark.parametrize(
-    ("boundary", "expected_variant"),
-    [(620, "4:3"), (1400, "home")],
-)
-@pytest.mark.skip(reason="replaced by the single 3:2 Garden presentation")
-def test_artwork_and_slot_semantics_stay_stable_around_former_cliffs(
-    boundary: int,
-    expected_variant: str,
-) -> None:
-    placement = _runtime_placement()
-    signatures: list[tuple[tuple[object, ...], ...]] = []
-    normalized_anchors: list[tuple[tuple[float, float], ...]] = []
-    variants: list[str] = []
-
-    for width in range(boundary - 2, boundary + 3):
-        height = scene_height_for_width(width)
-        variant, _record = scene_surface_variant(
-            placement,
-            width,
-            height,
-            "dashboard",
-        )
-        variants.append(variant)
-        rows = plant_layout(
-            width,
-            height,
-            [_plant(slot) for slot in range(6)],
-            placement,
-            composition_count=6,
-        )
-        ordered = sorted(rows, key=lambda row: row.slot_index)
-        signatures.append(
-            tuple(
-                (
-                    row.slot_index,
-                    row.surface_id,
-                    row.depth_band,
-                    row.allowed_base_types,
-                )
-                for row in ordered
-            )
-        )
-        normalized_anchors.append(
-            tuple(
-                (
-                    row.ground_anchor[0] / width,
-                    row.ground_anchor[1] / height,
-                )
-                for row in ordered
-            )
-        )
-
-    assert variants == [expected_variant] * 5
-    assert signatures == [signatures[0]] * 5
-    for earlier, later in zip(normalized_anchors, normalized_anchors[1:]):
-        assert all(
-            abs(left_x - right_x) <= 0.002
-            and abs(left_y - right_y) <= 0.002
-            for (left_x, left_y), (right_x, right_y) in zip(earlier, later)
-        )
 
 
 @pytest.mark.parametrize("boundary", [420, 480, 720, 900])

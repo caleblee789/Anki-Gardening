@@ -194,6 +194,7 @@ def test_real_garden_game_engine_matches_one_answer_kernel_trace(ease):
     assert_engine_trace_parity(kernel_rows, production.rows)
 
 
+@pytest.mark.annual_simulation
 def test_complete_release_manifest_matches_the_real_engine():
     evidence = run_release_parity()
     assert evidence["status"] == "pass"

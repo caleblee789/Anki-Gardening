@@ -722,6 +722,7 @@ class GardenGameEngine:
         if self.state.to_dict() != snapshot:
             self._persist_or_restore(snapshot)
 
+    @timed("review.rollback-snapshot")
     def _state_snapshot(self) -> _StateSnapshot:
         checkpoint_resolver = getattr(
             self.storage, "reward_ledger_checkpoint", None
@@ -3032,6 +3033,7 @@ class GardenGameEngine:
             self._restore_state(snapshot)
             raise
 
+    @timed("review.rewards")
     def _register_review_in_memory(self, payload: Any) -> ReviewAward:
         source = payload if isinstance(payload, dict) else {}
         historical_sync = bool(source.get("historical_sync", False))
@@ -3250,9 +3252,7 @@ class GardenGameEngine:
                     or decoration.direct_growth_awarded_units
                 )
                 amount_text = (
-                    f"+{awarded_units // GROWTH_UNITS_PER_POINT} Growth"
-                    if awarded_units % GROWTH_UNITS_PER_POINT == 0 else
-                    f"+{awarded_units / GROWTH_UNITS_PER_POINT:g} Growth"
+                    f"+{awarded_units // GROWTH_UNITS_PER_POINT:,} Growth"
                 )
                 self._queue_feedback(
                     f"{correlation_id}:garden-decoration",
@@ -6327,18 +6327,18 @@ class GardenGameEngine:
                 ),
             )
             if prism_units and emit_feedback:
-                prism_value = prism_units / GROWTH_UNITS_PER_POINT
+                prism_value = prism_units // GROWTH_UNITS_PER_POINT
                 self._queue_feedback(
                     f"prism-harvest:{stats.day}",
                     "garden_feature",
                     (
-                        f"No unfinished plant was available. +{prism_value:g} Stored Growth"
+                        f"No unfinished plant was available. +{prism_value:,} Stored Growth"
                         if prism_destination == "stored_growth" else
-                        f"Today’s Cards completed. +{prism_value:g} Growth toward your active project"
+                        f"Today’s Cards completed. +{prism_value:,} Growth toward your active project"
                         if prism_destination == "growth_project" else
-                        f"Today’s Cards completed. +{prism_value:g} Growth split between your active project and Stored Growth"
+                        f"Today’s Cards completed. +{prism_value:,} Growth split between your active project and Stored Growth"
                         if prism_destination == "mixed" else
-                        f"Today’s Cards completed. +{prism_value:g} direct Growth"
+                        f"Today’s Cards completed. +{prism_value:,} direct Growth"
                     ),
                     self.state.active_plant_id,
                     title="PRISM HARVEST",
@@ -6438,6 +6438,7 @@ class GardenGameEngine:
             str(receipt.plant_id),
         )
 
+    @timed("review.result-baseline")
     def _committed_answer_baseline(self) -> dict[str, Any]:
         mastery_funded = sum(
             max(0, int(units))
@@ -6521,6 +6522,7 @@ class GardenGameEngine:
             or f"answer:{cls._answer_consumption_id(payload)}"
         )
 
+    @timed("review.result")
     def _committed_answer_result(
         self,
         *,
@@ -8681,10 +8683,10 @@ class GardenGameEngine:
 
     @staticmethod
     def growth_destination_text(stored_units: int, allocations: tuple) -> str:
-        parts = [f"{item.units / GROWTH_UNITS_PER_POINT:,.0f} Growth to {item.target_id.replace('_', ' ').title()} Mastery"
+        parts = [f"{item.units // GROWTH_UNITS_PER_POINT:,} Growth to {item.target_id.replace('_', ' ').title()} Mastery"
                  for item in allocations]
         if stored_units:
-            parts.append(f"{stored_units / GROWTH_UNITS_PER_POINT:,.0f} Stored Growth")
+            parts.append(f"{stored_units // GROWTH_UNITS_PER_POINT:,} Stored Growth")
         return "; ".join(parts) + "."
 
     @staticmethod

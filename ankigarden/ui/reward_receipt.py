@@ -218,57 +218,15 @@ def receipt_growth_breakdown(parent: Any, *, total_units: int, plant_units: int,
 
 def receipt_metric(parent: Any, label: str, value: str, icon_name: str,
                    palette: dict[str, str], *, compact: bool = False) -> Any:
-    from decimal import Decimal, InvalidOperation
     from aqt.qt import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, Qt
 
     class AmountLabel(QLabel):
-        """Fit compact HUD totals while preserving their exact accessible value."""
+        """Keep amounts exact; the containing metrics layout handles fitting."""
         def setText(self, text: str) -> None:
-            self._full_text = str(text)
-            self.setAccessibleName(self._full_text)
-            self._fit_text()
-
-        def _fit_text(self) -> None:
-            full = getattr(self, "_full_text", "")
-            fitted = full
-            available = max(1, self.contentsRect().width())
-            if compact and self.fontMetrics().horizontalAdvance(full) > available:
-                try:
-                    number = Decimal(full.replace(",", ""))
-                    sign = "+" if full.startswith("+") else "-" if number < 0 else ""
-                    for scale, suffix in ((10**12, "T"), (10**9, "B"), (10**6, "M"), (10**3, "K")):
-                        if abs(number) < scale:
-                            continue
-                        for places in (2, 1, 0):
-                            digits = f"{abs(number) / scale:.{places}f}"
-                            if places:
-                                digits = digits.rstrip("0").rstrip(".")
-                            candidate = sign + digits + suffix
-                            if self.fontMetrics().horizontalAdvance(candidate) <= available:
-                                fitted = candidate
-                                break
-                        break
-                except InvalidOperation:
-                    pass
-                fitted = self.fontMetrics().elidedText(fitted, Qt.TextElideMode.ElideRight, available)
-            super().setText(fitted)
-            self.setToolTip(full if fitted != full else "")
-            if compact:
-                # HUD labels pass mouse events through to their tile, so the
-                # exact amount must also be available on that hover target.
-                tile.setAccessibleName(f"{label}: {full}")
-                tooltip = f"{label}: {full}" if fitted != full else ""
-                if label == "Items & finds":
-                    tooltip = "\n".join(filter(None, (tooltip, "Find events and item or unlock awards")))
-                tile.setToolTip(tooltip)
-
-        def resizeEvent(self, event: Any) -> None:
-            super().resizeEvent(event)
-            self._fit_text()
-
-        def changeEvent(self, event: Any) -> None:
-            super().changeEvent(event)
-            self._fit_text()
+            full = str(text)
+            super().setText(full)
+            self.setAccessibleName(full)
+            tile.setAccessibleName(f"{label}: {full}")
 
     color = (palette["coin_accent"] if icon_name == "coin" else
              palette["growth_accent"] if icon_name == "growth" else
@@ -328,7 +286,7 @@ def receipt_metrics_layout(parent: Any = None) -> Any:
     from aqt.qt import QBoxLayout, QHBoxLayout, QLabel
 
     class MetricsLayout(QHBoxLayout):
-        def setGeometry(self, rect: Any) -> None:
+        def _fit_direction(self, width: int) -> None:
             minimum_widths = []
             for index in range(self.count()):
                 tile = self.itemAt(index).widget()
@@ -340,25 +298,38 @@ def receipt_metrics_layout(parent: Any = None) -> Any:
                 if caption is None or amount is None:
                     continue
                 margins = tile.layout().contentsMargins()
-                caption_parts = (caption.text().split() if tile.property("receiptMetricCompact")
-                                 else [caption.text()])
+                caption_parts = [caption.text()]
                 caption_width = max((caption.fontMetrics().horizontalAdvance(part)
                                      for part in caption_parts), default=0)
                 number_row = tile.layout().itemAt(1).layout()
                 icon = number_row.itemAt(0).widget()
-                # Compact captions can wrap; exact amounts determine when the
-                # three-column group needs to stack.
+                # Both the caption and full amount must fit before using columns.
                 amount_width = (amount.fontMetrics().horizontalAdvance(amount.text())
-                                + icon.width() + number_row.spacing())
+                                + icon.width() + number_row.spacing()
+                                + number_row.contentsMargins().left()
+                                + number_row.contentsMargins().right())
                 minimum_widths.append(max(caption_width, amount_width) + margins.left() + margins.right())
             margins = self.contentsMargins()
             needed = (max(minimum_widths, default=0) * len(minimum_widths)
                       + max(0, len(minimum_widths) - 1) * self.spacing()
                       + margins.left() + margins.right())
-            direction = (QBoxLayout.Direction.TopToBottom if needed > rect.width()
+            direction = (QBoxLayout.Direction.TopToBottom if needed > width
                          else QBoxLayout.Direction.LeftToRight)
             if self.direction() != direction:
                 self.setDirection(direction)
+
+        def hasHeightForWidth(self) -> bool:
+            return True
+
+        def heightForWidth(self, width: int) -> int:
+            self._fit_direction(width)
+            height = super().heightForWidth(width)
+            # A just-shown compact row can retain Qt's hidden zero-height
+            # cache. Never shrink below its labels' natural single-line size.
+            return max(height, self.sizeHint().height())
+
+        def setGeometry(self, rect: Any) -> None:
+            self._fit_direction(rect.width())
             super().setGeometry(rect)
 
     return MetricsLayout(parent) if parent is not None else MetricsLayout()

@@ -13077,7 +13077,7 @@ class _UiFaceCaptureRunner:
                 "garden_coins",
                 "standard_finds",
             }
-            and "+2,217.5" in metric_values.get("growth_applied", "")
+            and "+2,217" in metric_values.get("growth_applied", "")
             and " ".join(
                 metric_values.get("garden_coins", "").split()
             ) == "Garden Coins +97"
@@ -13108,9 +13108,9 @@ class _UiFaceCaptureRunner:
             "shared growth distributed",
             "+594",
             "total applied",
-            "+2,217.5",
+            "+2,217",
             "stored growth added",
-            "+12.5",
+            "+12",
             "garden landmark",
             "+125",
             "garden cycle complete",
@@ -16403,7 +16403,7 @@ class _UiFaceCaptureRunner:
                     empty_heading="No plant selected",
                     empty_message="Growth earned during review will be stored.",
                     stored_growth_line=(
-                        "12.5 Stored Growth in reserve"
+                        "12 Stored Growth in reserve"
                     ),
                     next_checkpoint_percent=0,
                     next_checkpoint_reward_coins=0,
@@ -16431,7 +16431,7 @@ class _UiFaceCaptureRunner:
                     no_target_projection,
                     lambda _candidate, copy: {
                         "passed": bool(
-                            "12.5 stored growth in reserve" in copy.casefold()
+                            "12 stored growth in reserve" in copy.casefold()
                             and "choose a plant" in copy.casefold()
                         ),
                     },
@@ -18969,9 +18969,9 @@ class _UiFaceCaptureRunner:
                 "shared growth distributed",
                 "+594",
                 "total applied",
-                "+2,217.5",
+                "+2,217",
                 "stored growth added",
-                "+12.5",
+                "+12",
                 "garden landmark",
                 "+125",
                 "garden cycle complete",

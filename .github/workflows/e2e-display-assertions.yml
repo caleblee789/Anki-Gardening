@@ -25,7 +25,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest pillow
 
-      - name: Run default suite including annual engine parity
+      - name: Run default suite
         run: timeout --foreground --signal=TERM 3600s pytest -q --junitxml=build/release-evidence/default-tests.xml
 
       - name: Audit local artwork

@@ -1326,6 +1326,8 @@ def test_settings_action_joins_shared_caleb_addons_menu(monkeypatch):
             self._actions.append(_MenuAction(submenu))
             return submenu
 
+    footer_calls = []
+    monkeypatch.setattr(addon, "install_shared_menu_footer", lambda *args: footer_calls.append(args))
     menubar = _MenuBar()
     aqt_mod.mw.form.menubar = menubar
     app = _new_app(addon)
@@ -1337,6 +1339,7 @@ def test_settings_action_joins_shared_caleb_addons_menu(monkeypatch):
     assert len(menus) == 1
     assert menus[0].title() == "Caleb M. Add-ons Settings"
     assert [action.text() for action in menus[0].actions()] == ["Anki Garden settings"]
+    assert footer_calls == [(menus[0], aqt_mod.mw, "1888718775")] * 2
 
 
 def test_home_html_contains_root_id(monkeypatch):
@@ -3249,3 +3252,66 @@ def test_runtime_timing_finishes_for_early_reviewer_and_maintenance_failures(mon
         ("maintenance.other", "marker"),
         ("review.answer", "marker"),
     ]
+
+
+def test_reviewer_geometry_coalesces_requests_and_rejects_superseded_views(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer = importlib.reload(importlib.import_module('ankigarden.hooks.reviewer'))
+    callbacks = []
+    timeouts = []
+    monkeypatch.setattr(sys.modules['aqt.qt'], 'QTimer', SimpleNamespace(
+        singleShot=lambda _delay, callback: timeouts.append(callback)), raising=False)
+    web = SimpleNamespace(width=lambda: 800, height=lambda: 600,
+                          zoomFactor=lambda: 1.0,
+                          evalWithCallback=lambda _script, callback: callbacks.append(callback))
+    aqt_mod.mw.state = 'review'
+    aqt_mod.mw.reviewer = SimpleNamespace(web=web)
+    handler = reviewer.ReviewerHookHandler(SimpleNamespace(), SimpleNamespace())
+    accepted = []
+    handler._accept_reviewer_answer_controls_telemetry = lambda *args: accepted.append(args[-1])
+    payload = dict(schema_version=1, source='webengine-dom', measured=True,
+                   viewport=dict(width=800, height=600),
+                   rect=dict(x=0, y=550, width=800, height=50), matched_nodes=1)
+    for _ in range(10):
+        assert handler._request_reviewer_answer_control_geometry()
+    assert len(callbacks) == 1
+    # A later answer/viewport supersedes the pending question measurement.
+    handler._reviewer_answer_controls_epoch += 1
+    handler._request_reviewer_answer_control_geometry()
+    callbacks[0](payload)
+    assert not accepted
+    assert len(callbacks) == 2
+    callbacks[1](payload)
+    assert accepted == [payload]
+    handler._request_reviewer_answer_control_geometry()
+    assert len(callbacks) == 2
+    # Zoom triggers a new measurement even with unchanged native dimensions.
+    web.zoomFactor = lambda: 1.5
+    handler._request_reviewer_answer_control_geometry()
+    assert len(callbacks) == 3
+    handler._hide_reviewer_hud()
+    callbacks[2](payload)
+    for expire in timeouts:
+        expire()
+    assert accepted == [payload]
+    assert handler._reviewer_answer_controls_request is None
+
+
+def test_reviewer_question_and_commit_share_one_pending_refresh(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer = importlib.reload(importlib.import_module('ankigarden.hooks.reviewer'))
+    handler = reviewer.ReviewerHookHandler(SimpleNamespace(), SimpleNamespace())
+    pending = {}
+    handler._reviewer_hud = SimpleNamespace(feedback_paint_pending=True,
+        defer_until_feedback_paint=lambda callback: pending.setdefault(callback, None))
+    aqt_mod.mw.state = 'review'
+    handler._queue_committed_hud_refresh()
+    for _ in range(10):
+        handler._ensure_reviewer_hud()
+    assert len(pending) == 1
+    refreshes = []
+    handler._ensure_reviewer_hud = lambda: refreshes.append(True)
+    callback = next(iter(pending))
+    callback()
+    callback()
+    assert refreshes == [True]

@@ -34,8 +34,11 @@ Capture builds cannot overwrite the production artifact.
 # Package, capture, artwork, and required Qt release evidence (Qt environment):
 python -m pytest -q -o addopts='' -m release_evidence --require-qt
 
-# Explicit union of both lanes:
-./.venv/bin/pytest -q -o addopts=''
+# Explicit union of the default and release lanes:
+./.venv/bin/pytest -q -o addopts='' -m 'not annual_simulation'
+
+# Long-running annual economy parity (opt-in):
+./.venv/bin/pytest -q -o addopts='' -m annual_simulation
 
 # Non-mutating v29 capture diagnostics and registry inspection:
 ./.venv/bin/python scripts/capture_sequence.py --doctor
@@ -112,16 +115,12 @@ profiles, sheet assignments, execution order, and handoff requirements.
 Capture contract and orchestration tests are deliberately small and Qt-free;
 the real exact-package Qt/WebView, shutdown, manifest, and contact-sheet
 proof is produced by the repository capture command instead of simulated by a
-large pytest matrix. The explicit union is the complete local check. The default suite currently
-includes the annual 66-scenario economy replay. For a UI-only pass, the recorded
-scoped command excludes that unrelated simulation:
+large pytest matrix. The default suite excludes the annual 66-scenario economy
+replay; run it explicitly when its full parity evidence is needed. The explicit
+union above covers the default and release lanes without that annual run.
 
-```bash
-./.venv/bin/pytest -q -k 'not test_complete_release_manifest_matches_the_real_engine'
-```
-
-CI gives the fast lane a
-120-second outer timeout and each independently scheduled release-evidence
+CI gives the default lane a
+3,600-second outer timeout and each independently scheduled release-evidence
 shard a 60-second timeout.
 
 The Qt release command requires a Python environment with real Anki/PyQt6

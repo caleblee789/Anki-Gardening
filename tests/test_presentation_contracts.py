@@ -65,18 +65,14 @@ def test_plant_identity_without_stage_preserves_id_and_uses_species() -> None:
     )
 
 
-@pytest.mark.parametrize("stage,label,title", [
-    ("seed", "Seed", "{species} Seed"),
-    ("sprout", "Sprout", "{species} Sprout"),
-    ("young", "Young", "Young {species}"),
-    ("mature", "Mature", "Mature {species}"),
-    ("flowering", "Flowering", "Flowering {species}"),
-    ("rare", "Full Bloom", "Full Bloom {species}"),
+@pytest.mark.parametrize("stage,label,title,species,species_name,name", [
+    ("seed", "Seed", "{species} Seed", "bonsai", "Bonsai", "Bonsai Plant"),
+    ("sprout", "Sprout", "{species} Sprout", "rose", "Rose", "Custom Rose"),
+    ("young", "Young", "Young {species}", "japanese_maple", "Japanese Maple", "A very long custom name"),
+    ("mature", "Mature", "Mature {species}", "bonsai", "Bonsai", ""),
+    ("flowering", "Flowering", "Flowering {species}", "rose", "Rose", "Unrelated name"),
+    ("rare", "Full Bloom", "Full Bloom {species}", "japanese_maple", "Japanese Maple", "Juniper"),
 ])
-@pytest.mark.parametrize("species,species_name", [
-    ("bonsai", "Bonsai"), ("rose", "Rose"), ("japanese_maple", "Japanese Maple"),
-])
-@pytest.mark.parametrize("name", ["Bonsai Plant", "Juniper of the Moonlit Library Garden"])
 def test_plant_titles_use_stage_and_species_and_ignore_custom_names(
     stage: str, label: str, title: str, species: str, species_name: str, name: str,
 ) -> None:

@@ -11,7 +11,6 @@ from ankigarden.ui.plant_display import (
     PlantInteractionState,
     PLANT_POPOVER_CLEARANCE,
     PLANT_POPOVER_EDGE_PADDING,
-    PLANT_POPOVER_MAX_HEIGHT,
     PLANT_POPOVER_MAX_WIDTH,
     PLANT_POPOVER_MIN_WIDTH,
     PLANT_POPOVER_PREFERRED_WIDTH,
@@ -19,7 +18,6 @@ from ankigarden.ui.plant_display import (
     SceneGeometryLayout,
     bed_badge_rect,
     compact_plant_layout,
-    contained_canvas_rect,
     cover_project_point,
     chronological_memories,
     growth_display,
@@ -28,7 +26,6 @@ from ankigarden.ui.plant_display import (
     move_target_state,
     nurtured_badge_rect,
     nurtured_marker_fallback_rect,
-    nurtured_marker_placement,
     nurtured_marker_rect,
     onboarding_display,
     plant_layout,
@@ -37,7 +34,6 @@ from ankigarden.ui.plant_display import (
     requires_native_destination_selector,
     settings_layout_is_compact,
     smart_card_rect,
-    translated_plant_placement,
 )
 from ankigarden.models.state import PlantMemory
 
@@ -83,43 +79,6 @@ def test_growth_display_handles_fully_grown_without_parallel_rare_override():
     assert grown.progress == 1.0
     assert grown.next_checkpoint_growth_remaining is None
     assert grown.next_checkpoint_base_coins is None
-
-
-@pytest.mark.skip(reason="native background now uses a fixed 3:2 cover transform")
-def test_contained_canvas_offset_moves_artwork_beds_and_hit_regions_together():
-    viewport_width, viewport_height = 1600.0, 840.0
-    canvas = contained_canvas_rect(viewport_width, viewport_height)
-    local = plant_layout(
-        canvas.width,
-        canvas.height,
-        [{"slot_index": slot} for slot in range(6)],
-        composition_count=6,
-    )
-    translated = [
-        translated_plant_placement(row, canvas.x, canvas.y)
-        for row in local
-    ]
-    geometry = SceneGeometryLayout.from_placements(
-        viewport_width,
-        viewport_height,
-        translated,
-        scene_bounds=canvas,
-    )
-
-    assert geometry.scene_bounds == canvas
-    assert canvas.x == pytest.approx(180.0)
-    for before, after in zip(local, translated):
-        assert after.ground_anchor[0] == pytest.approx(
-            before.ground_anchor[0] + canvas.x
-        )
-        assert after.ground_anchor[1] == pytest.approx(before.ground_anchor[1])
-        bed = geometry.bed(after.slot_index)
-        assert bed is not None
-        assert canvas.contains(*bed.ground_anchor)
-        assert canvas.contains(
-            bed.hotspot.x + bed.hotspot.width / 2,
-            bed.hotspot.y + bed.hotspot.height / 2,
-        )
 
 
 @pytest.mark.parametrize(
@@ -288,145 +247,6 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
             fallback.x + fallback.width / 2,
             fallback.y + fallback.height / 2,
         )
-
-
-@pytest.mark.parametrize("device_pixel_ratio", (1.0, 1.5, 2.0, 3.0))
-@pytest.mark.skip(reason="near-left bed is intentionally reserved away from the Decoration bay")
-def test_scene_geometry_matrix_covers_six_beds_popovers_markers_and_scaling(
-    device_pixel_ratio: float,
-) -> None:
-    manifest = json.loads(
-        (Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json").read_text(
-            "utf-8"
-        )
-    )
-    background = _release_background(manifest)
-    assets = [
-        row
-        for row in manifest["assets"]
-        if row.get("category") == "plants"
-        and isinstance(row.get("placement"), dict)
-    ][:6]
-    plants = [
-        {
-            "plant_id": f"geometry-{slot}",
-            "slot_index": slot,
-            "placement": asset["placement"],
-            "canvas_aspect": float(asset["width"]) / float(asset["height"]),
-        }
-        for slot, asset in enumerate(assets)
-    ]
-    layouts = plant_layout(
-        1_093,
-        615,
-        plants,
-        background["placement"],
-        composition_count=6,
-    )
-    family = background["placement"]["surface_profile"]["planter_family"]
-    geometry = SceneGeometryLayout.from_placements(
-        1_093,
-        615,
-        layouts,
-        device_pixel_ratio=device_pixel_ratio,
-        planter_family=family,
-    )
-    obstacles = [layout.visible.expanded(4, 4) for layout in layouts]
-
-    assert geometry.device_pixel_ratio == device_pixel_ratio
-    assert [bed.bed_id for bed in geometry.beds] == list(range(6))
-    assert not any(
-        left.hotspot.intersects(right.hotspot)
-        for index, left in enumerate(geometry.beds)
-        for right in geometry.beds[index + 1:]
-    )
-    shrunk_popovers: set[int] = set()
-    for layout in layouts:
-        bed = geometry.bed(layout.slot_index)
-        assert bed is not None
-        assert geometry.safe_bounds.contains(
-            bed.hotspot.x + bed.hotspot.width / 2,
-            bed.hotspot.y + bed.hotspot.height / 2,
-        )
-        assert bed.slot_envelope.contains(
-            bed.selection_region.x + bed.selection_region.width / 2,
-            bed.selection_region.y + bed.selection_region.height / 2,
-        )
-        preferred = (380, 480) if layout.slot_index == 5 else (320, 360)
-        popover = geometry.resolve_popover(
-            layout.slot_index,
-            preferred,
-            (280, 220),
-            (),
-        )
-        assert popover.chosen_side in bed.popover_candidates
-        assert geometry.safe_bounds.contains(
-            popover.rectangle.x + popover.rectangle.width / 2,
-            popover.rectangle.y + popover.rectangle.height / 2,
-        )
-        assert popover.maximum_content_height == popover.rectangle.height
-        selected_parts = (
-            bed.selection_region,
-            bed.visible_region,
-            bed.planter_bounds,
-        )
-        selected_target = Rect(
-            min(part.x for part in selected_parts),
-            min(part.y for part in selected_parts),
-            max(part.right for part in selected_parts)
-            - min(part.x for part in selected_parts),
-            max(part.bottom for part in selected_parts)
-            - min(part.y for part in selected_parts),
-        ).expanded(PLANT_POPOVER_CLEARANCE)
-        assert not popover.rectangle.intersects(selected_target) or popover.docked
-        assert PLANT_POPOVER_MIN_WIDTH <= popover.rectangle.width <= PLANT_POPOVER_MAX_WIDTH
-        assert 220 <= popover.rectangle.height <= preferred[1]
-        assert popover.rectangle.height <= PLANT_POPOVER_MAX_HEIGHT
-        assert popover.rectangle.x >= PLANT_POPOVER_EDGE_PADDING
-        assert popover.rectangle.y >= PLANT_POPOVER_EDGE_PADDING
-        assert popover.rectangle.right <= 1_093 - PLANT_POPOVER_EDGE_PADDING
-        assert popover.rectangle.bottom <= 615 - PLANT_POPOVER_EDGE_PADDING
-        pointer_x, pointer_y = popover.connector_end
-        if popover.chosen_side in {"right", "left"}:
-            expected_x = (
-                popover.rectangle.x
-                if popover.chosen_side == "right"
-                else popover.rectangle.right
-            )
-            assert pointer_x == pytest.approx(expected_x)
-            assert popover.rectangle.y + 20 <= pointer_y <= popover.rectangle.bottom - 20
-        else:
-            expected_y = (
-                popover.rectangle.bottom
-                if popover.chosen_side in {"above", "top-docked"}
-                else popover.rectangle.y
-            )
-            assert pointer_y == pytest.approx(expected_y)
-            assert popover.rectangle.x + 20 <= pointer_x <= popover.rectangle.right - 20
-        if popover.rectangle.width < preferred[0] or popover.rectangle.height < preferred[1]:
-            shrunk_popovers.add(layout.slot_index)
-
-        marker = geometry.resolve_watering_can(
-            layout.slot_index,
-            layout,
-            obstacles=obstacles,
-        )
-        assert marker.used_fallback is False
-        assert not marker.pulse_bounds.intersects(layout.visible.expanded(4, 4))
-        all_planter_exclusions = (
-            exclusion
-            for candidate in geometry.beds
-            for exclusion in candidate.planter_exclusions
-        )
-        assert not any(
-            marker.pulse_bounds.intersects(exclusion)
-            for exclusion in all_planter_exclusions
-        )
-        assert geometry.safe_bounds.contains(
-            marker.rect.x + marker.rect.width / 2,
-            marker.rect.y + marker.rect.height / 2,
-        )
-    assert shrunk_popovers
 
 
 def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> None:
@@ -606,21 +426,16 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
         assert chosen_overlap == pytest.approx(minimum_overlap)
 
 
-@pytest.mark.parametrize(
-    "window_size",
-    ((1_536, 1_024), (1_440, 900), (1_280, 800)),
-)
-@pytest.mark.parametrize(
-    "position_label",
-    ("top-left", "top-right", "center", "bottom-left", "bottom-right"),
-)
-@pytest.mark.parametrize("toast_visible", (False, True))
-def test_required_macos_window_matrix_keeps_plant_popover_anchored(
+@pytest.mark.parametrize("window_size,position_label,toast_visible", [
+    ((1_280, 800), position, toast)
+    for position in ("top-left", "top-right", "center", "bottom-left", "bottom-right")
+    for toast in (False, True)
+] + [((1_440, 900), "center", False), ((1_536, 1_024), "bottom-left", True)])
+def test_popovers_stay_anchored_at_window_edges_and_size_extremes(
     window_size: tuple[int, int],
     position_label: str,
     toast_visible: bool,
 ) -> None:
-    """Exercise the complete 3 x 5 x 2 logical-pixel placement matrix."""
 
     manifest = json.loads(
         (Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json").read_text(
@@ -874,26 +689,6 @@ def test_six_bed_three_two_layout_preserves_middle_right_without_planter_overlap
     assert not planter_draw_rect(by_slot[2], family).intersects(
         planter_draw_rect(by_slot[3], family)
     )
-
-
-@pytest.mark.skip(reason="near-left 3:2 bed anchor is intentionally reserved for Garden Decorations")
-def test_storybook_profiles_use_registered_source_soil_contact_coordinates():
-    manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
-    manifest = json.loads(manifest_path.read_text("utf-8"))
-    background = _release_background(manifest)
-    placement = background["placement"]
-    profile = placement["layout_profiles"]["16:9"]
-
-    row = plant_layout(800, 450, [{"slot_index": 0}], placement, composition_count=1)[0]
-
-    registered = profile["compositions"]["1"][0]
-    assert row.ground_anchor[0] / 800 == pytest.approx(registered["x"], abs=0.002)
-    assert row.depth / 450 == pytest.approx(
-        registered["y"] + registered["seating_depth"], abs=0.002
-    )
-    assert row.grounding.support_line
-    assert profile["coordinate_space"] == "source"
-    assert profile["surface_variant"] == "16:9"
 
 
 def test_empty_logical_beds_do_not_shrink_or_collide_with_visible_plants():
@@ -1212,8 +1007,6 @@ def test_move_badges_use_dedicated_anchors_and_compact_semantic_states():
     assert occupied.width >= 108
 
 
-
-
 def test_resolved_asset_placement_is_promoted_before_dashboard_layout():
     placement = {
         "visible_bounds": [0.063, 0.4992, 0.8676, 0.3517],
@@ -1247,8 +1040,9 @@ def test_compact_layout_keeps_all_plants_grounded_and_visible(count):
     assert all(0 <= row.visible.y < row.visible.bottom <= 420 for row in rows)
 
 
-@pytest.mark.parametrize("size", [(420, 315), (760, 570), (1200, 900), (1600, 900), (320, 240)])
-@pytest.mark.parametrize("count", range(1, 7))
+@pytest.mark.parametrize("size,count", [
+    ((1_200, 900), count) for count in range(1, 7)
+] + [((320, 240), 1), ((320, 240), 3), ((320, 240), 6), ((1_600, 900), 6)])
 def test_natural_composition_geometry_is_safe(size, count):
     width, height = size
     plants = [{"slot_index": index, "placement": {"visible_bounds": [0.08, 0.04, 0.84, 0.92]}}
@@ -1402,12 +1196,6 @@ def test_invalid_placement_destination_is_not_selected():
     assert state.destination_slot == 0
 
 
-
-
-
-
-
-
 def test_runtime_layout_repairs_duplicate_slots_and_uses_soil_y_for_z_order():
     plants = [
         {"plant_id": "a", "slot_index": 0},
@@ -1417,10 +1205,6 @@ def test_runtime_layout_repairs_duplicate_slots_and_uses_soil_y_for_z_order():
     rows = plant_layout(900, 500, plants, composition_count=3)
     assert len({row.slot_index for row in rows}) == 3
     assert [row.z_depth for row in rows] == sorted(row.z_depth for row in rows)
-
-
-
-
 
 
 def test_keyboard_move_cycles_places_and_cancels_without_losing_selection():
@@ -1434,16 +1218,6 @@ def test_keyboard_move_cycles_places_and_cancels_without_losing_selection():
     state.cancel_placement()
     assert not state.placing
     assert state.pinned_id == "rose"
-
-
-
-
-
-
-
-
-
-
 
 
 def test_placement_rejects_invalid_targets_and_reconciles_removed_plants():

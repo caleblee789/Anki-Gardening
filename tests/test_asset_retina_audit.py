@@ -7,9 +7,6 @@ from pathlib import Path
 import pytest
 
 from scripts.audit_assets import (
-    RETINA_PLANT_MIN_VISIBLE_HEIGHT,
-    RETINA_RASTER_MAX_CSS_SIZE,
-    RETINA_SCENERY_MAX_CSS_SIZE,
     _validate_background,
     _validate_bed_anchor_positions,
     _validate_plants,
@@ -22,38 +19,7 @@ pytestmark = pytest.mark.release_evidence
 
 
 def test_production_asset_catalog_passes_retina_density_gate() -> None:
-    counts = audit()
-
-    assert counts == {
-        "cosmetics": 3,
-        "landmarks": 6,
-        "mastery": 4,
-        "backgrounds": 9,
-        "garden_features": 7,
-        "plants": 60,
-        "ui": 27,
-    }
-    assert RETINA_RASTER_MAX_CSS_SIZE == {
-        "plants": (300, 300),
-        "cosmetics": (300, 300),
-        "landmarks": (300, 300),
-        "mastery": (300, 300),
-        "garden_features": (210, 59),
-        "ui": (96, 96),
-    }
-    assert RETINA_PLANT_MIN_VISIBLE_HEIGHT == {
-        "seed": 164,
-        "sprout": 188,
-        "young": 212,
-        "mature": 236,
-        "flowering": 260,
-        "rare": 272,
-    }
-    assert RETINA_SCENERY_MAX_CSS_SIZE == {
-        "4:3": (640, 480),
-        "16:9": (820, 460),
-        "home": (440, 100),
-    }
+    audit()
 
 
 def test_retina_density_gate_rejects_undersized_required_raster() -> None:

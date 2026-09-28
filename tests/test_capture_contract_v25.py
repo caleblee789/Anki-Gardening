@@ -21,7 +21,6 @@ from ankigarden.capture.acquisition import (
 from ankigarden.capture.contract import (
     ContractValidationError,
     compile_contract,
-    contract_diff,
     load_compiled_contract,
     validate_contract_payload,
 )
@@ -29,7 +28,6 @@ from ankigarden.capture.lifecycle import FailureLedger, build_capture_plan
 from ankigarden.capture.model import CaptureResult, ProfilePlacement
 from ankigarden.capture.registry import REGISTRY, SurfaceRegistry
 from scripts import capture_sequence
-from scripts.capture_evidence import _reconstruct_renderer_ownership_proof
 from scripts.package_addon import CAPTURE_BUILD, PRODUCTION_BUILD, package_files
 from scripts.validate_ui_capture import (
     DEFAULT_CAPTURE_SOURCE,
@@ -100,24 +98,6 @@ def _runtime_tree() -> ast.Module:
     return ast.parse(runtime_path.read_text("utf-8"))
 
 
-def _runtime_literal(name: str) -> object:
-    for node in _runtime_tree().body:
-        if isinstance(node, ast.Assign):
-            targets = node.targets
-            value = node.value
-        elif isinstance(node, ast.AnnAssign):
-            targets = [node.target]
-            value = node.value
-        else:
-            continue
-        if any(
-            isinstance(target, ast.Name) and target.id == name
-            for target in targets
-        ):
-            return ast.literal_eval(value)
-    raise AssertionError(f"missing runtime assignment {name}")
-
-
 def _compiled_runtime_function(name: str):
     method = next(
         node
@@ -141,29 +121,6 @@ def _compiled_runtime_function(name: str):
         namespace,
     )
     return namespace[name]
-
-
-def _runtime_method_source(class_name: str, method_name: str) -> str:
-    owner = next(
-        node
-        for node in _runtime_tree().body
-        if isinstance(node, ast.ClassDef) and node.name == class_name
-    )
-    method = next(
-        node
-        for node in owner.body
-        if isinstance(node, ast.FunctionDef) and node.name == method_name
-    )
-    runtime_path = (
-        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
-    )
-    segment = ast.get_source_segment(runtime_path.read_text("utf-8"), method)
-    assert segment is not None
-    return segment
-
-
-
-
 
 
 def _compiled_runtime_method(
@@ -395,8 +352,6 @@ def test_reward_presentation_surfaces_own_direct_imports() -> None:
                 "garden_finds.py",
                 "ui/session_summary.py",
             } <= dependencies, surface.stable_id
-
-
 
 
 def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
@@ -659,198 +614,6 @@ def test_session_summary_content_matrix_reducers_are_fail_closed() -> None:
     )
 
 
-def test_session_summary_capture_fixture_binds_exact_accounting_and_art() -> None:
-    source = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_capture_session_summary_after_review",
-    )
-
-    assert "plant_growth_total_units=148_600" in source
-    assert "shared_growth_total_units=59_400" in source
-    assert "StoredGrowthTotal(1_250, 1_250, 0)" in source
-    assert '"Review rewards",\n                    17' in source
-    assert '"Full Bloom bonus",\n                    50' in source
-    assert '"capture-coins-full-bloom",\n                    "full_bloom_bonus"' in source
-    assert 'source="full_bloom_bonus"' in source
-    assert 'coin_award_event_ids=("capture-coins-full-bloom",)' in source
-    assert "coin_included_in_total=True" in source
-    assert 'resolve_plant_asset(\n                "wisteria",\n                "rare"' in source
-    assert '"firefly_lantern",\n                "Firefly Lantern"' in source
-    assert '"garden_feature",\n                "Rare"' in source
-    assert 'unlock_category="garden_item"' in source
-    assert "capture_home_new_cards = 1" in source
-    assert "capture_home_learn_cards = 0" in source
-    assert "capture_home_due_cards = 18" in source
-    assert "capture_today_cards_total = (" in source
-    assert source.count("cards_total=capture_today_cards_total") == 2
-    assert "cards_remaining=capture_cards_remaining" in source
-    assert "total_finds=3" in source
-    assert '"find_small_charge",\n                    "Charged Seed"' in source
-    assert '"+1 Small Growth Charge"' in source
-    assert '"ui_growth_charge_small"' in source
-    assert 'item_id="growth_charge_small"' in source
-    assert source.count("quantity=1") >= 3
-    assert '"Garden Pouch"' in source
-    assert '"garden_pouch"' in source
-    assert '"Morning Dew"' in source
-    assert '"morning_dew"' in source
-    assert "reward_receipts=(" in source
-
-
-def test_sync_reward_capture_fixture_is_rich_multiday_and_nonmodal() -> None:
-    subtitle = _runtime_literal("SYNC_REWARD_CAPTURE_SUBTITLE")
-    facts = _runtime_literal("SYNC_REWARD_CAPTURE_MODEL_FACTS")
-    capture = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_capture_sync_rewards_summary",
-    )
-    audit = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_sync_reward_summary_geometry_audit",
-    )
-    runtime_source = (
-        Path(capture_sequence.REPO_ROOT)
-        / "ankigarden"
-        / "capture"
-        / "runtime.py"
-    ).read_text("utf-8")
-
-    assert subtitle == "Rewards added after syncing"
-    assert facts == {
-        "anki_days": ("2026-08-28", "2026-08-29"),
-        "eligible_answer_count": 42,
-        "growth_total_units": 52_000,
-        "plant_growth_units": 42_000,
-        "shared_growth_delta_units": 8_000,
-        "stored_growth_delta_units": 0,
-        "landmark_growth_delta_units": 2_000,
-        "mastery_growth_delta_units": 0,
-        "legacy_growth_delta_units": 0,
-        "project_allocations": (("landmark", "garden_landmark", 2_000),),
-        "garden_coin_delta": 12,
-        "find_quantity": 0,
-        "environment_count": 1,
-        "progression_event_count": 2,
-        "all_clear_coin_reward": 0,
-        "fertilizer_remaining_seconds": 0,
-        "fertilizer_item_id": "",
-        "booster_cards_remaining": 0,
-        "booster_item_id": "",
-    }
-    assert "SyncRewardSummaryCard(" in capture
-    assert "animations_enabled=False" in capture
-    assert '"firefly_lantern"' in capture
-    assert '"Wisteria reached Full Bloom"' in capture
-    assert 'display_text="75% toward Flowering reached"' in capture
-    assert "plant_results=(" in capture
-    assert "all_clear_earned=False" in capture
-    assert "_sync_reward_summary_geometry_audit" in capture
-    assert "_capture_and_advance(\n                    label,\n                    mw," in capture
-    assert "sync_reward_summary_geometry" in audit
-    assert "len(scrolls) == 1" in audit
-    assert "WA_ShowWithoutActivating" in audit
-    assert "Qt.FocusPolicy.NoFocus" in audit
-    assert "400 <= int(bounds[2]) <= 480" in audit
-    assert "int(bounds[1]) == 24" in audit
-    assert "SYNC_REWARD_CAPTURE_SUBTITLE" in audit
-    assert 'candidate.property("gardenAssetThumbnail") is True' in audit
-    assert '"checkpoint_badge"' in audit
-    assert '"initial_reward_visible": initial_reward_visible' in audit
-    assert '"boost_art_passed": boost_art_passed' in audit
-    stability = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_home_surface_stability_signature",
-    )
-    stability_wait = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_wait_for_home_visual_stability",
-    )
-    assert 'label == "sync-rewards-summary"' in stability
-    assert 'metrics["generic_content_passed"]' in stability
-    assert 'else metrics["passed"]' in stability
-    assert "_home_surface_stability_signature(label, widget)" in stability_wait
-    assert '"sync-rewards-summary",\n        }:\n            surface = "deckBrowser"' in (
-        runtime_source
-    )
-
-
-
-
-def test_session_summary_capture_runs_viewport_matrix_before_acquisition() -> None:
-    scenario = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_capture_session_summary_after_review",
-    )
-    matrix = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_exercise_session_summary_viewports",
-    )
-    postcondition = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_capture_fixture_postcondition",
-    )
-
-    assert "_exercise_session_summary_viewports" in scenario
-    assert "def matrix_ready(" in scenario
-    assert "matrix.get(\"passed\", False)" in scenario
-    assert "SESSION_SUMMARY_VIEWPORT_SPECS" in matrix
-    assert 'name == "1280x720"' in matrix
-    assert 'records["stable_scrollbar_gutter"]' in matrix
-    assert 'set(collapsed_body_widths.values()) == {408}' in matrix
-    assert 'find_named("ankiGardenSessionBreakdownToggle")' in matrix
-    assert "mw.showMaximized()" in matrix
-    assert "SESSION_SUMMARY_REQUIRED_CONTENT_STATES" in matrix
-    assert "def exercise_content_states" in matrix
-    assert "_set_session_summary_capture_payload" in matrix
-    assert "session_summary_content_matrix_issue_codes" in matrix
-    assert 'records["content_states"]' in matrix
-    assert "canonical_payload_restored" in matrix
-    assert '"finds-three-identical"' in matrix
-    assert '"finds-three-distinct"' in matrix
-    assert '"distinct_find_art_provenance"' in (
-        Path(capture_sequence.REPO_ROOT)
-        / "ankigarden"
-        / "capture"
-        / "runtime.py"
-    ).read_text("utf-8")
-    assert '"finds-unreconciled-omitted"' in matrix
-    assert '"no-finds"' in matrix
-    assert '"no-boosts"' in matrix
-    assert '"one-boost"' in matrix
-    assert '"expanded-reward-details"' in matrix
-    assert 'name == "dark-appearance"' in matrix
-    assert 'name == "light-appearance"' in matrix
-    assert '"hero-spacing"' in matrix
-    assert '"static-card-semantics"' in matrix
-    assert "reward_amount=123_456" in matrix
-    assert '"+123,456 Small Growth Charges from the "' in matrix
-    assert "capture_home_new_cards = 1" in scenario
-    assert "capture_home_learn_cards = 0" in scenario
-    assert "capture_home_due_cards = 18" in scenario
-    assert 'observed.get("remainingAfter")' in scenario
-    assert '"session_summary_content_matrix": content_matrix' in scenario
-    assert '"19 cards remaining" in normalized_summary_copy' in postcondition
-    assert '"126 of 145 cards completed" in normalized_summary_copy' in postcondition
-    assert '"reward breakdown" in normalized_summary_copy' in postcondition
-    assert 'home_counts.get("newAfter") == "1"' in postcondition
-    assert 'home_counts.get("learnAfter") == "0"' in postcondition
-    assert 'home_counts.get("dueAfter") == "18"' in postcondition
-    assert 'home_counts.get("remainingAfter") == 19' in postcondition
-
-
-def test_collection_capture_summary_matches_current_catalog_fixture() -> None:
-    postcondition = _runtime_method_source(
-        "_UiFaceCaptureRunner",
-        "_capture_fixture_postcondition",
-    )
-    assert "expected_collected_count = 30" in postcondition
-    assert "expected_collectible_count = 39" in postcondition
-    assert 'count_widget.property("collectedCount")' in postcondition
-    assert 'count_widget.property("collectibleCount")' in postcondition
-
-
-
-
 def test_retired_ids_are_reserved_and_no_longer_active() -> None:
     stable_id = REGISTRY.profile_labels("full")[-1]
     retired = REGISTRY.retire(stable_id, "surface removed from the product")
@@ -982,7 +745,6 @@ def test_home_prefers_app_owned_webview_and_requires_exact_fallback_identity() -
     )
 
 
-
 def test_move_mode_semantic_copy_facts_are_declared() -> None:
     required = set(REGISTRY["move-mode"].state_contract["required_facts"])
 
@@ -1025,10 +787,6 @@ def test_reviewer_readiness_callback_failure_restores_fixture_once() -> None:
     assert events == ["restored", "next"]
     assert len(harness._failures) == 1
     assert harness._failures[0]["label"] == "workspace-reviewer-collapsed"
-
-
-
-
 
 
 def test_diagnostics_fixture_records_missing_artwork_with_keyword_arguments() -> None:

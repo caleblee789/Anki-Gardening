@@ -531,3 +531,29 @@ def test_activity_pagination_retains_more_than_500_transactions(tmp_path):
             seen.extend(entry.group_id for entry in entries)
             cursor = (entries[-1].sort_ms, entries[-1].group_id)
         assert len(seen) == len(set(seen)) == 525
+
+
+def test_recent_finds_stay_current_through_commit_rollback_and_external_edits(tmp_path):
+    database = tmp_path / 'find-cache.sqlite3'
+    with RewardLedger(database) as ledger:
+        assert ledger.recent_hit_outcomes() == ()
+        _stage_answer(ledger, answer_key='a', lineage_key=f'v1|{DAY}|41|1',
+                      revlog_id=1_787_325_400_001, card_id=41, serial=1)
+        checkpoint = ledger.checkpoint()
+        hit = FindOutcomeRecord('a', DAY, 'standard', 'v1', 'hit',
+                                OCCURRED_AT, 'coins', {'amount': 2})
+        ledger.stage_find_outcome(hit)
+        assert ledger.recent_hit_outcomes() == (hit,)
+        ledger.rollback(checkpoint)
+        assert ledger.recent_hit_outcomes() == ()
+        ledger.stage_find_outcome(hit)
+        ledger.commit_state({'version': 30}, schema_version=30, expected_revision=0)
+        assert ledger.recent_hit_outcomes() == (hit,)
+        ledger.commit_state({'version': 30}, schema_version=30, expected_revision=1)
+        assert ledger.recent_hit_outcomes() == (hit,)
+        with sqlite3.connect(database) as external:
+            external.execute("UPDATE find_outcome SET reward_id='updated' WHERE answer_key='a'")
+        assert ledger.recent_hit_outcomes()[0].reward_id == 'updated'
+        assert ledger.recent_hit_outcomes(pool_id='environment') == ()
+    with RewardLedger(database) as reopened:
+        assert reopened.recent_hit_outcomes()[0].reward_id == 'updated'

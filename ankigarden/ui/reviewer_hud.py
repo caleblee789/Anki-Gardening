@@ -7,9 +7,11 @@ while these immutable projections are replaced.
 """
 
 from __future__ import annotations
+
+from ..performance import timed
 from ..feature_availability import growth_target_enabled, landmarks_enabled
 
-from .formatters import format_plant_name
+from .formatters import format_plant_name, format_growth, format_growth_units as _format_growth_units
 
 import math
 import time
@@ -221,18 +223,13 @@ class ReviewerHudProjection:
 
 
 def format_growth_units(units: Any, *, signed: bool = False) -> str:
-    """Format hundredth Growth units without unnecessary zeroes."""
+    """Display whole Growth while preserving the reviewer input policy."""
 
     try:
         normalized = max(0, int(units))
     except (TypeError, ValueError):
         normalized = 0
-    whole, remainder = divmod(normalized, GROWTH_UNITS_PER_POINT)
-    if remainder == 0:
-        value = f"{whole:,}"
-    else:
-        value = f"{whole:,}.{remainder:02d}".rstrip("0")
-    return f"+{value}" if signed else value
+    return _format_growth_units(normalized, signed=signed)
 
 
 def plural_cards(count: Any, *, suffix: str = "") -> str:
@@ -888,7 +885,7 @@ def project_nurture(
             if estimated_cards else
             ""
         )
-        checkpoint_line = f"{growth_remaining:,} Growth to next checkpoint"
+        checkpoint_line = f"{format_growth(growth_remaining)} to next checkpoint"
         checkpoint_reward = _checkpoint_reward(engine, next_stage, checkpoint_percent)
 
     canonical_stage = stage_presentation(stage_key)
@@ -971,6 +968,7 @@ def project_nurture(
     )
 
 
+@timed("review.hud-projection")
 def project_reviewer_hud(
     engine: Any,
     state: Any,
