@@ -24969,21 +24969,23 @@ class GardenDashboard(DialogShell):
         return False
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
+        event_type = event.type()
+        if event_type not in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress):
+            return super().eventFilter(watched, event)
         belongs_to_dashboard = (
             isinstance(watched, QWidget)
-            and (watched is self or self.isAncestorOf(watched))
+            and watched.window() is self
         )
         # Owned dialogs and the More menu handle their own clicks and Escape.
         # Their QObject ancestry must not make them outside-click dismissals.
         if belongs_to_dashboard and (
-            watched.window() is not self
-            or QApplication.activePopupWidget() is not None
+            QApplication.activePopupWidget() is not None
             or QApplication.activeModalWidget() not in (None, self)
         ):
             return super().eventFilter(watched, event)
         if (
             hasattr(self, "scene")
-            and event.type() == QEvent.Type.KeyPress
+            and event_type == QEvent.Type.KeyPress
             and event.key() == Qt.Key.Key_Escape
             and belongs_to_dashboard
         ):
@@ -25002,7 +25004,7 @@ class GardenDashboard(DialogShell):
             hasattr(self, "scene")
             and self.scene.selected_plant_id()
             and not self.scene._interaction.placing
-            and event.type() == QEvent.Type.MouseButtonPress
+            and event_type == QEvent.Type.MouseButtonPress
             and belongs_to_dashboard
             and not self._is_widget_descendant(watched, self.plant_card)
             and watched is not self.scene

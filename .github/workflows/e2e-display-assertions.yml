@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,7 +37,7 @@ jobs:
         run: PYTHONPYCACHEPREFIX=/tmp/anki-garden-pycache python -m compileall -q ankigarden scripts tests
 
       - name: Check patch whitespace
-        run: git show --check --oneline --format= HEAD
+        run: git diff --check HEAD^ HEAD
 
       - name: Build and verify package
         run: |

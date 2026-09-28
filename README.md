@@ -4,9 +4,9 @@
 
 Anki Garden is a free, open-source gamification add-on for desktop Anki. As you answer cards, grow plants, earn Garden Coins, receive random drops, and unlock more of your garden.
 
-**Version 2.2.1** | [Watch the demo](docs/images/anki-garden-demo.mp4) | [Install](#install) | [How it works](#how-it-works) | [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
+**Version 2.2.2** | [Watch the demo](docs/images/anki-garden-demo.mp4) | [Install](#install) | [How it works](#how-it-works) | [Report an issue](https://github.com/caleblee789/Anki-Gardening/issues)
 
-[See what changed in 2.2.1](docs/release-notes-2.2.1.md).
+[See what changed in 2.2.2](docs/release-notes-2.2.2.md).
 
 ![Anki Garden with six planted beds and the reviewer panel](docs/images/anki-garden-reddit-lead.png)
 
@@ -73,7 +73,7 @@ See the [progression and rewards guide](docs/progression-rewards-effects-referen
 
 ## Compatibility and limitations
 
-The package declares compatibility with desktop Anki 26.09.2 and newer. The 2.2.0 release was last natively tested in Anki 26.08.1 on macOS; native verification of 2.2.1 on 26.09.2+ remains pending. Linux and physical Intel/AMD Windows remain unverified. Anki Garden's interface does not run in AnkiMobile, AnkiDroid, or the AnkiWeb website.
+The package declares compatibility with desktop Anki 26.09.2 and newer. The 2.2.0 release was last natively tested in Anki 26.08.1 on macOS; native verification of 2.2.2 on 26.09.2+ remains pending. Linux and physical Intel/AMD Windows remain unverified. Anki Garden's interface does not run in AnkiMobile, AnkiDroid, or the AnkiWeb website.
 
 Garden inventory and settings are stored locally and do not sync between computers. Reviews completed on another device can earn Garden rewards after their review history syncs to desktop Anki.
 

@@ -36,7 +36,7 @@
     "hosted_ci": "Local release checks passed; hosted status tracked separately.",
     "community_rules": "recheck before publishing each post",
     "application": "evaluate verified adoption two to four weeks after launch",
-    "native_acceptance": "The 2.2.0 package passed native macOS verification; 2.2.1 has not had exact-package native verification.",
+    "native_acceptance": "The 2.2.0 package passed native macOS verification; 2.2.2 has not had exact-package native verification.",
     "readiness_record": "build/final-release-20260915/readiness.json (historical 2.2.0)"
   },
   "traction": {

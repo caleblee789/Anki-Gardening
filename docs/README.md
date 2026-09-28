@@ -1,14 +1,14 @@
 # Documentation index
 
-Use the references below for the state-schema-30 Anki Garden 2.2.1 candidate.
+Use the references below for the state-schema-30 Anki Garden 2.2.2 candidate.
 Runtime source and persisted-state behavior remain authoritative when prose and
 implementation disagree. Dated audit reports describe their own frozen candidates.
 
 ## Release status
 
-The current [2.2.1 archive](../dist/anki_garden.ankiaddon) has 273 entries,
-96,644,761 bytes and SHA-256
-`bf2d981172bf9766e2aff9d6958eb65be0dd018bff0c47645ee2de130b156854`.
+The current [2.2.2 archive](../dist/anki_garden.ankiaddon) has 273 entries,
+96,644,777 bytes and SHA-256
+`de7b439e5b30035c9c1d1d7e7c2b4f0de59c27df43436a2167ce04f6b6dd9977`.
 The full release-evidence lane passed 265 cases with real Qt bindings and no
 skips. Asset, compile, ZIP-integrity, and production-package checks passed.
 Exact-package native Anki testing was not run for this patch release. Its
@@ -53,7 +53,7 @@ for gate commands and evidence requirements, and the
 
 - [Development guide](development.md): source installation, packaging, and local checks.
 - [Functional acceptance](feature-evidence-matrix.md): feature coverage and exact-package native journeys.
-- [Release notes](release-notes-2.2.1.md): the current patch, with 2.2.0 feature and migration notes linked there.
+- [Release notes](release-notes-2.2.2.md): the current patch, with earlier changes linked there.
 - [Progression, rewards, and effects](progression-rewards-effects-reference.md): current Growth, Coins,
   consumable, purchase, Study rewards, achievement, Collection, Landmark,
   Mastery, Legacy, persistence, and replay authority.
