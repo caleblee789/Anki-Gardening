@@ -66,7 +66,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libopengl0 libxkbcommon0
-          python -m pip install 'aqt[qt]==26.8.1'
+          python -m pip install 'aqt[qt]==26.9.2'
 
       - name: Run release-evidence tests
         run: >-
