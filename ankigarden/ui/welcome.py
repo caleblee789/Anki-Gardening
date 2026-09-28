@@ -203,6 +203,7 @@ class WelcomeCard(QFrame):
         inner_width = max(0, width - margins.left() - margins.right() - 2 * self.frameWidth())
         content_width = max(1, inner_width - max(12, self.details.verticalScrollBar().sizeHint().width()))
         columns = getattr(self, "_reward_columns_layout", None)
+        reward_rows = []
         if columns is not None:
             stacked = width < 500
             columns.setDirection(QBoxLayout.Direction.TopToBottom if stacked else QBoxLayout.Direction.LeftToRight)
@@ -241,9 +242,25 @@ class WelcomeCard(QFrame):
                     label.setMinimumHeight(max(0, label.heightForWidth(text_width)))
                     row.setMinimumHeight(max(24, label.minimumHeight()) + row_margins.top() + row_margins.bottom())
                     row.layout().invalidate()
+                    reward_rows.append((row, label))
                 panel.layout().invalidate()
             columns.invalidate()
         self.layout().activate()
+        # Qt can assign a label a few pixels less than the projected width,
+        # changing a single-line reward into two lines at enlarged text sizes.
+        for row, label in reward_rows:
+            row.layout().activate()
+            if label.width() <= 0:
+                continue
+            required = label.heightForWidth(label.width())
+            if required > label.minimumHeight():
+                label.setMinimumHeight(required)
+                row_margins = row.layout().contentsMargins()
+                row.setMinimumHeight(max(24, required) + row_margins.top() + row_margins.bottom())
+                row.layout().invalidate()
+        if reward_rows:
+            columns.invalidate()
+            self.layout().activate()
         content = self.details.widget()
         content_height = 0
         if content is not None:
