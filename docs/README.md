@@ -7,8 +7,8 @@ implementation disagree. Dated audit reports describe their own frozen candidate
 ## Release status
 
 The current [2.2.3 archive](../dist/anki_garden.ankiaddon) has 273 entries,
-96,644,005 bytes and SHA-256
-`0dd136fb2870dd0acfb1048e9c8859c722f2c8b3fff5d880c376fc8a55f4a2df`.
+96,644,112 bytes and SHA-256
+`8359ef0397dbc9f9358346d9514b951a72160ed4e9dde7d0e9baf46ff0905686`.
 The default suite passed 1,677 cases and the release-evidence lane passed 266
 cases with real Qt bindings and no skips. Asset, compile, ZIP-integrity, and
 production-package checks passed. The annual engine simulation remains opt-in.
