@@ -1159,10 +1159,16 @@ def test_hover_pin_transfer_and_dismissal():
     state.hover("rose")
     assert state.active_id == "rose"
     state.toggle_pin("rose")
+    assert state.hovered_id == "rose"
     state.hover("fern")
     assert state.active_id == "rose"
     state.toggle_pin("fern")
     assert state.active_id == "fern"
+    assert state.hovered_id == "fern"
+    state.hover(None)
+    state.toggle_pin("rose")
+    assert state.active_id == "rose"
+    assert state.hovered_id is None
     state.dismiss()
     assert state.active_id is None
 
@@ -1172,6 +1178,7 @@ def test_keyboard_focus_cycles_and_reconciles_removed_plants():
     ids = ["rose", "fern", "bonsai"]
     assert state.cycle_focus(ids, 1) == "rose"
     assert state.cycle_focus(ids, -1) == "bonsai"
+    assert state.hovered_id is None
     state.toggle_pin("bonsai")
     state.reconcile(["rose"])
     assert state.pinned_id is None

@@ -32,6 +32,8 @@ GARDEN_ICON_PATHS: dict[str, str] = {
     # Keep the close mark as two independent strokes. QtSvg has historically
     # dropped the second sub-path of a compound, open path at some DPRs.
     "close": '<path d="M6 6L18 18"/><path d="M18 6L6 18"/>',
+    "plus": '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    "minus": '<path d="M5 12h14"/>',
     "check": '<path d="m5 12.5 4.2 4.2L19 7"/>',
     "check-circle": '<circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 9"/>',
     "chevron": '<path d="m9 5 7 7-7 7"/>',

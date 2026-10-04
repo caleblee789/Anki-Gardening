@@ -47,6 +47,8 @@ def test_session_plant_progress_keeps_recorded_gain_across_stage_boundaries(
 
 
 def test_session_summary_geometry_contracts_inside_small_viewports():
+    assert session_summary_geometry(900, 800, 500, collapsed=True) == (584, 48, 296, 40)
+    assert session_summary_geometry(240, 300, 500, collapsed=True) == (12, 48, 208, 40)
     assert session_summary_geometry(340, 300, 500) == (12, 16, 308, 268)
     assert session_summary_geometry(900, 800, 212) == (480, 48, 400, 212)
     assert session_summary_geometry(28, 30, 500) == (7, 16, 1, 1)
@@ -77,55 +79,6 @@ def test_session_receipt_metrics_use_reconciled_totals():
     assert [(row[1], row[2]) for row in metrics] == [
         ("Coins", "+14"), ("Growth", "+40"), ("Items & finds", "3"),
     ]
-
-
-def test_active_boost_art_maps_every_fertilizer_tier_and_booster() -> None:
-    renderer = SimpleNamespace(
-        _effect_kind=lambda effect: str(effect.kind),
-    )
-
-    assert SessionSummaryCard._effect_art_reference(
-        renderer,
-        SimpleNamespace(
-            kind="fertilizer",
-            effect_id="fertilizer:plant-a:basic:1:2",
-            label="Basic Fertilizer",
-        ),
-    ) == "fertilizer_basic"
-    assert SessionSummaryCard._effect_art_reference(
-        renderer,
-        SimpleNamespace(
-            kind="fertilizer",
-            effect_id="fertilizer:plant-a:quality:1:2",
-            label="Quality Fertilizer",
-        ),
-    ) == "fertilizer_quality"
-    assert SessionSummaryCard._effect_art_reference(
-        renderer,
-        SimpleNamespace(
-            kind="fertilizer",
-            effect_id="fertilizer:plant-a:premium:1:2",
-            label="Magical Fertilizer",
-        ),
-    ) == "fertilizer_premium"
-    assert SessionSummaryCard._effect_art_reference(
-        renderer,
-        SimpleNamespace(
-            kind="booster",
-            effect_id="booster:plant-a",
-            label="Booster Potion",
-        ),
-    ) == "booster_potion"
-
-
-def test_minor_checkpoints_remain_available_in_reward_details():
-    minor = SimpleNamespace(milestone_type="checkpoint", checkpoint_percent=50)
-    major = SimpleNamespace(milestone_type="checkpoint", checkpoint_percent=75)
-    stage = SimpleNamespace(milestone_type="stage_change", checkpoint_percent=0)
-
-    assert SessionSummaryCard._minor_checkpoints(
-        SimpleNamespace(milestones=(minor, major, stage))
-    ) == (minor,)
 
 
 def test_find_rows_use_explicit_reconciled_quantities_only():

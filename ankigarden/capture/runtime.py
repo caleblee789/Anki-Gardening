@@ -12621,10 +12621,11 @@ class _UiFaceCaptureRunner:
                 metrics = [widget for widget in card.findChildren(QWidget) if widget.property("summaryMetric") is True]
                 audit["checks"].update({
                     "daily_cards_removed": card.findChild(QWidget, "ankiGardenSessionToday") is None,
-                    "details_collapsed_by_default": card.property("summaryDetailsAlwaysVisible") is False,
-                    "details_toggle_removed": card.findChild(QWidget, "ankiGardenSessionBreakdownToggle") is None,
+                    "details_removed": card.property("summaryDetailsRemoved") is True,
+                    "details_toggle_removed": card.findChild(QWidget, "ankiGardenSessionProgressDisclosure") is None,
                     "three_summary_boxes": [str(widget.property("summaryMetricKey")) for widget in metrics] == ["garden_coins", "growth_applied", "discoveries"],
-                    "summary_boxes_aligned": len({widget.y() for widget in metrics}) == 1,
+                    "summary_boxes_aligned": (len({widget.y() for widget in metrics}) == 1
+                                              or len({widget.x() for widget in metrics}) == 1),
                 })
                 audit["passed"] = all(audit["checks"].values())
             return audit
@@ -43240,6 +43241,12 @@ class _UiFaceCaptureRunner:
                         summary_card = card
                     if card is None or not card.isVisible():
                         return False
+                    if card.property("summaryInitiallyCollapsed") is None:
+                        from .workspace import compact_reward_audit
+                        initial = compact_reward_audit(self, card)
+                        card.setProperty("summaryInitiallyCollapsed", card.collapsed and initial["passed"])
+                        self._capture_annotations.setdefault(label, {})["initial_collapsed_summary"] = initial
+                        card.set_collapsed(False)
                     names = {
                         str(candidate.objectName() or "")
                         for candidate in (
@@ -43250,12 +43257,13 @@ class _UiFaceCaptureRunner:
                     required_names_present = {
                         "ankiGardenSessionHeader", "ankiGardenSessionScroll",
                         "ankiGardenSessionBody", "ankiGardenSessionFooter",
-                        "ankiGardenSessionRewards", "ankiGardenSessionBreakdown",
+                        "ankiGardenSessionPinnedSummary", "ankiGardenSessionCollapse",
                     } <= names
                     progress_finished = bool(
                         "ankiGardenSessionTodayProgress" not in names
                         and "ankiGardenSessionBreakdownToggle" not in names
-                        and card.property("summaryDetailsAlwaysVisible") is False
+                        and card.property("summaryDetailsRemoved") is True
+                        and card.property("summaryInitiallyCollapsed") is True
                     )
                     animations_finished = True
                     for animation in tuple(

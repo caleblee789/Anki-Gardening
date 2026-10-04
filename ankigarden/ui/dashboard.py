@@ -17817,6 +17817,7 @@ class PlantInfoCard(QFrame):
     dismissRequested = pyqtSignal()
     chooseAnother = pyqtSignal()
     contentGeometryChanged = pyqtSignal()
+    pointerEntered = pyqtSignal()
 
     PREFERRED_WIDTH = 304
     MINIMUM_WIDTH = 280
@@ -18461,6 +18462,10 @@ class PlantInfoCard(QFrame):
 
     def mouseMoveEvent(self, event: Any) -> None:
         event.accept()
+
+    def enterEvent(self, event: Any) -> None:
+        self.pointerEntered.emit()
+        super().enterEvent(event)
 
 
     def _build_popover(self) -> None:
@@ -23165,6 +23170,7 @@ class GardenDashboard(DialogShell):
         self.scene.cardGeometryChanged.connect(self._position_plant_card)
         self.scene.setMinimumHeight(260)
         self.plant_card = AnchoredPlantPopover(self.scene)
+        self.plant_card.pointerEntered.connect(self.scene._clear_hover_immediately)
         self.nurtured_plant_bar = NurturedPlantBar()
         self.overlay_manager = GardenOverlayManager(
             self.onboarding_panel,

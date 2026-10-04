@@ -40,7 +40,7 @@ Use Garden settings to reduce animations and choose which panels and summaries a
 
 ## Compatibility and current limitations
 
-The package declares compatibility with desktop Anki 26.09.2 and newer. The 2.2.0 release was last natively tested in Anki 26.08.1 on macOS; native verification of 2.2.2 on 26.09.2+ remains pending. Linux and physical Intel/AMD Windows remain unverified.
+The package declares compatibility with desktop Anki 26.09.2 and newer. The 2.2.0 release was last natively tested in Anki 26.08.1 on macOS; native verification of 2.2.3 on 26.09.2+ remains pending. Linux and physical Intel/AMD Windows remain unverified.
 
 Questions and bug reports are welcome in the comments on this listing. GitHub is preferred!
 

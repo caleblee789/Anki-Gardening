@@ -220,6 +220,7 @@ class GardenSceneWidget(QWidget):
         self._inline_message = ""
         self._move_transition: dict[str, Any] | None = None
         self._hover_opacity: dict[str, float] = {}
+        self._keyboard_focus_visible = False
         self._keyboard_hint_timer = QTimer(self)
         self._keyboard_hint_timer.setSingleShot(True)
         self._keyboard_hint_timer.setInterval(5000)
@@ -324,10 +325,7 @@ class GardenSceneWidget(QWidget):
         return QRectF(canvas.x, canvas.y, canvas.width, canvas.height)
 
     def _hover_fade_active(self) -> bool:
-        target = self._interaction.hovered_id or (
-            self._interaction.focused_id(self._plant_ids())
-            if self.hasFocus() else None
-        )
+        target = self._interaction.hovered_id
         candidates = set(self._hover_opacity)
         if target:
             candidates.add(target)
@@ -364,10 +362,7 @@ class GardenSceneWidget(QWidget):
 
     def _sync_animation_timer(self) -> None:
         if not bool(self.scene.get("motion_enabled", True)):
-            target = self._interaction.hovered_id or (
-                self._interaction.focused_id(self._plant_ids())
-                if self.hasFocus() else None
-            )
+            target = self._interaction.hovered_id
             self._hover_opacity = {target: 1.0} if target else {}
         should_run = self._animation_tick_required()
         if should_run:
@@ -423,6 +418,10 @@ class GardenSceneWidget(QWidget):
 
     def hideEvent(self, event: Any) -> None:
         self.timer.stop()
+        self._hover_close_timer.stop()
+        self._interaction.hover(None)
+        self._hover_opacity.clear()
+        self._keyboard_focus_visible = False
         self._clear_landmark_highlight()
         super().hideEvent(event)
 
@@ -538,6 +537,9 @@ class GardenSceneWidget(QWidget):
             self._interaction.cancel_placement()
             self._invalidate_placement_session()
             self._interaction.dismiss()
+            self._hover_close_timer.stop()
+            self._hover_opacity.clear()
+            self._keyboard_focus_visible = False
             self._clear_hit_targets()
             self._stats_help_visible = False
         self._update_scene_accessible_description()
@@ -736,9 +738,9 @@ class GardenSceneWidget(QWidget):
         self._hovered_move_slot = None
         started = self._begin_move(plant_id, keyboard=True)
         if started:
+            self._clear_hover_immediately()
             self._activate_placement_session()
             self._interaction.pinned_id = None
-            self._interaction.hovered_id = None
             self.selectionChanged.emit("")
             self.placementStateChanged.emit(True)
             self._sync_landmark_hotspot()
@@ -757,6 +759,7 @@ class GardenSceneWidget(QWidget):
         started = self._interaction.begin_unplaced("__starter__", valid)
         if not started:
             return False
+        self._clear_hover_immediately()
         self._activate_placement_session()
         self._starter_placement = True
         self._inline_message = "Choose a bed."
@@ -787,6 +790,7 @@ class GardenSceneWidget(QWidget):
         started = self._interaction.begin_unplaced(str(plant_id), valid)
         if not started:
             return False
+        self._clear_hover_immediately()
         self._activate_placement_session()
         self._starter_placement = False
         self._inline_message = "Choose a bed."
@@ -929,9 +933,7 @@ class GardenSceneWidget(QWidget):
         elapsed = max(0.0, now - self._hover_updated_at)
         self._hover_updated_at = now
         step = elapsed / self.HOVER_FADE_SECONDS
-        target = self._interaction.hovered_id or (
-            self._interaction.focused_id(self._plant_ids()) if self.hasFocus() else None
-        )
+        target = self._interaction.hovered_id
         changed: set[str] = set()
         for plant_id in set(self._hover_opacity) | ({target} if target else set()):
             previous = self._hover_opacity.get(plant_id, 0.0)
@@ -949,14 +951,24 @@ class GardenSceneWidget(QWidget):
         region = QRegion()
         for plant_id in plant_ids:
             plant = self._plant_for_id(plant_id)
-            layout = self._slot_placements.get(int(plant.get("slot_index", -1))) if plant else None
+            slot = int(plant.get("slot_index", -1)) if plant else -1
+            layout = self._slot_placements.get(slot)
             if layout is None:
                 self.update()
                 return
-            # Include the padded artwork contour, with room for scaled outlines.
             box = self._plant_draw_box(layout, plant)
-            margin = max(12.0, box.width() * 0.03, box.height() * 0.03)
-            region |= QRegion(box.adjusted(-margin, -margin, margin, margin).toAlignedRect())
+            geometry = self._scene_geometry_layout
+            bed = geometry.bed(slot) if geometry is not None else None
+            if bed is not None:
+                planter = bed.planter_bounds
+                bed_box = QRectF(planter.x, planter.y, planter.width, planter.height)
+            else:
+                footprint = layout.bed_footprint
+                bed_box = QRectF(footprint.x, footprint.y, footprint.width, footprint.height)
+            # Both alpha contours must be inside the dirty region on every fade frame.
+            bounds = box.united(bed_box)
+            margin = max(12.0, bounds.width() * 0.03, bounds.height() * 0.03)
+            region |= QRegion(bounds.adjusted(-margin, -margin, margin, margin).toAlignedRect())
         if not region.isEmpty():
             self.update(region)
 
@@ -1604,7 +1616,6 @@ class GardenSceneWidget(QWidget):
         if plant_id in plant_ids:
             self._interaction.pinned_id = plant_id
             self._interaction.focused_index = plant_ids.index(plant_id)
-            self._interaction.hover(plant_id)
             self.set_keyboard_hint_suppressed(True)
         self._inline_message = message
         if changed and self._interaction.pinned_id == plant_id:
@@ -1825,7 +1836,10 @@ class GardenSceneWidget(QWidget):
 
             self._nurtured_marker_placement = None
             self._draw_physical_beds(painter)
-            focused_id = self._interaction.focused_id(self._plant_ids()) if self.hasFocus() else None
+            focused_id = (
+                self._interaction.focused_id(self._plant_ids())
+                if self.hasFocus() and self._keyboard_focus_visible else None
+            )
             dragged_rows = [row for row in plant_rows if str(row[0].get("plant_id", "")) == self._interaction.dragged_id and self._drag_started]
             plant_rows = [row for row in plant_rows if row not in dragged_rows] + dragged_rows
             physical_rows = partition_scene_rows(plant_rows)
@@ -1908,15 +1922,9 @@ class GardenSceneWidget(QWidget):
                     target_x, target_y = translated_target(plant, layout)
                     plant_id = str(plant.get("plant_id", ""))
                     selected = not self._interaction.placing and plant_id == self._interaction.pinned_id
-                    hover_target = plant_id == (self._interaction.hovered_id or focused_id)
-                    keyboard_focused = bool(
-                        self.hasFocus()
-                        and not self._interaction.pinned_id
-                        and plant_id == focused_id
-                    )
-                    hovered = 0.0 if (self._interaction.placing or self._interaction.pinned_id) else self._hover_opacity.get(
+                    hovered = 0.0 if self._interaction.placing else self._hover_opacity.get(
                         plant_id,
-                        1.0 if hover_target and not self.timer.isActive() else 0.0,
+                        1.0 if plant_id == self._interaction.hovered_id and not self.timer.isActive() else 0.0,
                     )
                     transition = self._transition_for_plant(plant)
                     painter.save()
@@ -1966,7 +1974,7 @@ class GardenSceneWidget(QWidget):
             # otherwise the middle bed incorrectly cuts off tall hooks/posts.
             self._draw_garden_feature(painter, r)
 
-            # Selected and keyboard-focus contours are a final UI layer so the
+            # Bed and keyboard-focus contours are a final UI layer so the
             # visible lower vessel edge remains outlined at the surface seam.
             # They trace artwork alpha; no detached ground ellipse is drawn.
             for plant, layout in plant_rows:
@@ -1975,12 +1983,15 @@ class GardenSceneWidget(QWidget):
                 plant_id = str(plant.get("plant_id", ""))
                 selected = not self._interaction.placing and plant_id == self._interaction.pinned_id
                 keyboard_focused = bool(
-                    self.hasFocus()
-                    and not self._interaction.placing
+                    not self._interaction.placing
                     and not self._interaction.pinned_id
                     and plant_id == focused_id
                 )
-                if not selected and not keyboard_focused:
+                hovered = 0.0 if self._interaction.placing else self._hover_opacity.get(
+                    plant_id,
+                    1.0 if plant_id == self._interaction.hovered_id and not self.timer.isActive() else 0.0,
+                )
+                if not selected and not keyboard_focused and hovered <= 0.0:
                     continue
                 target_x, target_y = translated_target(plant, layout)
                 painter.save()
@@ -1990,6 +2001,13 @@ class GardenSceneWidget(QWidget):
                         painter,
                         layout,
                         nurtured=bool(plant.get("is_active")),
+                    )
+                elif hovered > 0.0:
+                    self._draw_selected_bed_ring(
+                        painter,
+                        layout,
+                        nurtured=False,
+                        hovered=hovered,
                     )
                 self._draw_plant_artwork_highlight(
                     painter,
@@ -2388,19 +2406,28 @@ class GardenSceneWidget(QWidget):
         layout: PlantPlacement,
         *,
         nurtured: bool,
+        hovered: float = 0.0,
     ) -> None:
+        """Trace a selected bed in green or a pointer preview in pale mint."""
         del nurtured
         pulse = 0.0
-        if self._nurture_pulse_started_at is not None:
+        if hovered <= 0.0 and self._nurture_pulse_started_at is not None:
             elapsed = max(0.0, time.monotonic() - self._nurture_pulse_started_at)
             pulse = math.sin(min(1.0, elapsed / 0.22) * math.pi)
+        hover_outline = hovered > 0.0
+        color_name = "#d7edcf" if hover_outline else GARDEN_THEME["focus_ring"]
+        width = PLANT_HOVER_OUTLINE_WIDTH if hover_outline else 2.0
+        opacity = (
+            PLANT_HOVER_OUTLINE_OPACITY * hovered
+            if hover_outline else 0.78 + pulse * 0.14
+        )
         draw_asset_outline = getattr(self, "_draw_planter_asset_outline", None)
         if callable(draw_asset_outline) and draw_asset_outline(
             painter,
             layout,
-            color=GARDEN_THEME["focus_ring"],
-            width=2.0,
-            opacity=0.78 + pulse * 0.14,
+            color=color_name,
+            width=width,
+            opacity=opacity,
         ):
             return
 
@@ -2415,11 +2442,11 @@ class GardenSceneWidget(QWidget):
         horizontal = max(4.0, bed.width() * 0.05)
         vertical = max(2.0, bed.height() * 0.08)
         ring = bed.adjusted(-horizontal, -vertical, horizontal, vertical)
-        color = QColor(GARDEN_THEME["focus_ring"])
-        color.setAlpha(round(199 + pulse * 35))
+        color = QColor(color_name)
+        color.setAlpha(round(opacity * 255))
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(color, 2.0))
+        painter.setPen(QPen(color, width))
         painter.drawEllipse(ring)
         painter.restore()
 
@@ -3309,9 +3336,25 @@ class GardenSceneWidget(QWidget):
             return
         changed = self._advance_hover(time.monotonic())
         previous = self._interaction.hovered_id
+        if plant_id is not None:
+            # A direct switch has one hover preview. Do not fade the old plant
+            # alongside the new one or leave its planter rim lit.
+            changed.update(self._hover_opacity)
+            self._hover_opacity.clear()
         self._interaction.hover(plant_id)
         self._sync_animation_timer()
         self._update_hover_region(changed | {value for value in (previous, plant_id) if value})
+
+    def _clear_hover_immediately(self) -> None:
+        affected = set(self._hover_opacity)
+        if self._interaction.hovered_id:
+            affected.add(self._interaction.hovered_id)
+        self._hover_close_timer.stop()
+        self._interaction.hover(None)
+        self._hover_opacity.clear()
+        self._sync_animation_timer()
+        if affected:
+            self._update_hover_region(affected)
 
     def _schedule_hover_clear(self) -> None:
         if self._interaction.hovered_id is not None and not self._hover_close_timer.isActive():
@@ -3345,7 +3388,7 @@ class GardenSceneWidget(QWidget):
                 )
             self.update()
         if locked_bed is not None and not self._interaction.placing:
-            self._schedule_hover_clear()
+            self._clear_hover_immediately()
             self.setCursor(Qt.CursorShape.PointingHandCursor)
             super().mouseMoveEvent(event)
             return
@@ -3420,19 +3463,6 @@ class GardenSceneWidget(QWidget):
             super().mouseMoveEvent(event)
             return
         plant_id = self._plant_at(position)
-        if self._interaction.pinned_id is not None:
-            # A pinned selection owns the highlight channel. Other plants stay
-            # clickable without flashing hover outlines behind the popover.
-            if self._interaction.hovered_id != self._interaction.pinned_id:
-                self._interaction.hover(self._interaction.pinned_id)
-                self._hover_opacity.clear()
-                self.update()
-            if plant_id:
-                self.setCursor(Qt.CursorShape.PointingHandCursor)
-            else:
-                self.unsetCursor()
-            super().mouseMoveEvent(event)
-            return
         if plant_id:
             self._hover_close_timer.stop()
             self._set_hover_target(plant_id)
@@ -3462,9 +3492,11 @@ class GardenSceneWidget(QWidget):
         if not self.interactive or event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
+        self._keyboard_focus_visible = False
         position = self._event_position(event)
         slot = self._locked_bed_at(position) if not self._drag_started else None
         if slot is not None:
+            self._clear_hover_immediately()
             self._press_position = None
             self._press_plant_id = None
             self.lockedBedActivated.emit(int(slot))
@@ -3551,10 +3583,12 @@ class GardenSceneWidget(QWidget):
             return
         plant_id = self._plant_at(position)
         if plant_id:
+            self._hover_close_timer.stop()
+            self._set_hover_target(plant_id)
             self._press_position = position
             self._press_plant_id = plant_id
             self._drag_started = False
-            self.setFocus()
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
         else:
             self._press_position = None
             self._press_plant_id = None
@@ -3617,6 +3651,11 @@ class GardenSceneWidget(QWidget):
         if not self.interactive:
             super().keyPressEvent(event)
             return
+        if event.key() in (
+            Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
+            Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space, Qt.Key.Key_Escape,
+        ):
+            self._keyboard_focus_visible = True
         plant_ids = self._plant_ids()
         if event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
             super().keyPressEvent(event)
@@ -3698,6 +3737,7 @@ class GardenSceneWidget(QWidget):
             Qt.FocusReason.BacktabFocusReason,
             Qt.FocusReason.ShortcutFocusReason,
         }
+        self._keyboard_focus_visible = reason in keyboard_reasons
         if reason in keyboard_reasons:
             self._show_keyboard_hint()
         self._announce_focused_plant()
@@ -3706,7 +3746,7 @@ class GardenSceneWidget(QWidget):
         super().focusInEvent(event)
 
     def focusOutEvent(self, event: Any) -> None:
-        self._interaction.hover(None)
+        self._keyboard_focus_visible = False
         self._hide_keyboard_hint()
         super().focusOutEvent(event)
         self._sync_animation_timer()

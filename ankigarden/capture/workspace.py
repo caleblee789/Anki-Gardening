@@ -59,14 +59,12 @@ def expand_contact_sheet_details(runner, label, widget):
         raise RuntimeError(f"Expected one visible {class_name}, found {len(cards)}")
     card = cards[0]
     if label == "session-summary-after-review":
-        toggle = card.findChild(QToolButton, "ankiGardenSessionProgressDisclosure")
-        if toggle is not None and not card._progress_details_expanded:
-            toggle.click()
+        card.set_collapsed(False)
         _settle()
-        panel = card.findChild(QFrame, "ankiGardenSessionBreakdown")
-        checks["session_details_expanded"] = (
-            card._progress_details_expanded and panel is not None
-            and panel.isVisibleTo(card))
+        checks["session_receipt_expanded"] = not card.collapsed
+        checks["session_details_removed"] = (
+            card.findChild(QToolButton, "ankiGardenSessionProgressDisclosure") is None
+            and card.findChild(QFrame, "ankiGardenSessionBreakdown") is None)
     else:
         toggle = card._disclosure
         if toggle is not None and not card.expanded:
@@ -999,17 +997,19 @@ def compact_reward_audit(runner, card):
     scrolls = [child for child in card.findChildren(QScrollArea) if visible(child)]
     ranges = [{"horizontal": scroll.horizontalScrollBar().maximum(),
                "vertical": scroll.verticalScrollBar().maximum()} for scroll in scrolls]
-    expanded = bool(getattr(card, "_details_expanded", False) or getattr(card, "_expanded", False))
+    is_session = type(card).__name__ == "SessionSummaryCard"
+    collapsed = is_session and card.collapsed
+    expanded = not collapsed if is_session else bool(getattr(card, "_details_expanded", False) or getattr(card, "_expanded", False))
     is_hud = type(card).__name__ == "ReviewGardenHud"
-    expected_width = 296 if is_hud else 400
+    expected_width = 296 if is_hud or collapsed else 400
     checks = {
         "visible": card.isVisible() and bool(text.strip()),
         "contained": geometry.get("contained") is True,
-        "compact_width": card.width() == min(expected_width, max(1, parent.width() - 48)),
-        "bounded_height": 100 <= card.height() <= (parent.height() if is_hud else 520),
+        "compact_width": card.width() == min(expected_width, max(1, parent.width() - (32 if is_session else 48))),
+        "bounded_height": card.height() == 40 if collapsed else 100 <= card.height() <= (parent.height() if is_hud else 520),
         "single_scroll_owner": sum(row["vertical"] > 0 for row in ranges) <= 1,
         "no_horizontal_overflow": all(row["horizontal"] == 0 for row in ranges),
-        "scrollable_rewards": is_hud or (len(scrolls) == 1
+        "scrollable_rewards": (not scrolls) if collapsed else is_hud or (len(scrolls) == 1
             and scrolls[0].verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded),
         "nonmodal": not card.isWindow() and card.focusPolicy() == Qt.FocusPolicy.NoFocus,
     }
@@ -1048,7 +1048,23 @@ def compact_reward_audit(runner, card):
 
 
 def compact_reward_disclosure_audit(runner, card):
-    """Exercise the one Details control and restore the captured default view."""
+    """Exercise the receipt's disclosure and restore the captured view."""
+    if type(card).__name__ == "SessionSummaryCard":
+        original = card.collapsed
+        card.set_collapsed(True)
+        _settle()
+        first = compact_reward_audit(runner, card)
+        card._collapse_button.click()
+        _settle()
+        expanded = compact_reward_audit(runner, card)
+        card._collapse_button.click()
+        _settle()
+        final = compact_reward_audit(runner, card)
+        card.set_collapsed(original)
+        _settle()
+        return {"scope": "Session summary expand and collapse", "collapsed": first,
+                "expanded": expanded, "restored": final,
+                "passed": first["passed"] and expanded["passed"] and final["passed"]}
     first = compact_reward_audit(runner, card)
     toggle = getattr(card, "_toggle_details", None) or getattr(card, "_toggle_expanded", None)
     if not callable(toggle):

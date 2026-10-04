@@ -249,26 +249,19 @@ def capture_correction_details(runner, handler):
         card = SessionSummaryCard(mw.web, payload, engine=runner.app.engine, animations_enabled=False)
         card.show()
         QTest.qWait(50)
-        checks["progress_visible_initially"] = any("Bonsai Sprout" in visible(row) and "Reached Sprout" in visible(row) for row in progress_cards(card))
+        checks["session_starts_collapsed"] = card.collapsed and card.size().width() == 296 and card.height() == 40
+        card.grab().save(str(output / "session-default.png"))
+        card._collapse_button.click()
+        QTest.qWait(40)
+        checks["progress_visible_when_expanded"] = any("Bonsai Sprout" in visible(row) and "Reached Sprout" in visible(row) for row in progress_cards(card))
         checks["cumulative_find_amount"] = cumulative_growth_find(card)
         checks["summary_theme_is_green"] = (lambda c: c.green() > c.red())(card.grab().toImage().pixelColor(5, 100))
-        card.grab().save(str(output / "session-default.png"))
-        disclosure = card.findChild(QToolButton, "ankiGardenSessionProgressDisclosure")
-        details = card.findChild(QFrame, "ankiGardenSessionBreakdown")
-        checks["no_empty_session_disclosure"] = disclosure is not None and details is not None and any(
-            frame.property("growthBreakdownEarnedUnits") == 82000
-            and frame.property("growthBreakdownAllocatedUnits") == 82000
-            for frame in details.findChildren(QFrame))
-        checks["session_details_start_collapsed"] = details is not None and not details.isVisibleTo(card)
-        if disclosure is not None:
-            disclosure.click()
-        QTest.qWait(40)
+        checks["session_details_removed"] = card.findChild(QToolButton, "ankiGardenSessionProgressDisclosure") is None and card.findChild(QFrame, "ankiGardenSessionBreakdown") is None
         copy = visible(card)
         checks["single_progress_journey"] = len(progress_cards(card)) == 1 and copy.count("Reached Sprout") == 1
         checks["one_progress_coin_total"] = [w.property("receiptProgressCoins") for w in card.findChildren(QFrame) if w.property("receiptProgressCoins")] == [6]
         checks["no_duplicate_progress_coin_row"] = "Bonsai progression" not in copy
         checks["journey_has_recorded_stage_progress"] = all(text in copy for text in ("Bonsai Sprout", "+820 Growth", "540 / 1,600 Growth to Young", "Reached Sprout"))
-        checks["session_details_show_shared_growth"] = all(text in copy for text in ("Growth breakdown", "To plants", "Includes 100 Shared Growth"))
         checks["totals_stay_pinned"] = all(text in visible(card._summary_fixed) for text in ("Coins", "Growth", "Items & finds")) and not card._scroll.isAncestorOf(card._summary_fixed)
         card.grab().save(str(output / "session-expanded.png"))
         card.close()
@@ -311,10 +304,8 @@ def capture_correction_details(runner, handler):
         card = SessionSummaryCard(mw.web, replace(payload, segments=(segment,)),
                                   engine=runner.app.engine, animations_enabled=False)
         card.show()
-        details = card.findChild(QFrame, "ankiGardenSessionBreakdown")
-        checks["find_coins_not_repeated_in_details"] = details is not None and not any(
-            str(frame.property("summaryBreakdownRowKey") or "").startswith("coin_source:")
-            for frame in details.findChildren(QFrame))
+        card.set_collapsed(False)
+        checks["find_coins_not_repeated_in_details"] = card.findChild(QFrame, "ankiGardenSessionBreakdown") is None
         total_growth = 72000 + growth_units
         after = stage_progress((12000 + total_growth) // 100)
         sync = SyncRewardSummaryCard(mw.web, replace(model,
@@ -377,6 +368,7 @@ def capture_correction_details(runner, handler):
             plant_growth=({**model.plant_growth[0], "stage_before":"flowering", "stage_after":"rare",
                            "growth_after_units":bloom_after, "stage_progress_after":100, "full_bloom":True},)),
             engine=runner.app.engine, animations_enabled=False)
+        card.set_collapsed(False)
         for name, receipt in (("session", card), ("sync", sync)):
             receipt.show()
             QTest.qWait(40)

@@ -105,6 +105,78 @@ def test_toast_replacement_expiry_and_disposal_when_qt_is_available(monkeypatch)
 pytestmark = pytest.mark.release_evidence
 
 
+def test_session_summary_collapses_without_losing_receipt_or_focus(monkeypatch):
+    from dataclasses import replace
+    from aqt.qt import QApplication, QLabel, QLineEdit, Qt, QWidget
+    from PyQt6.QtTest import QTest
+    from ankigarden.ui.session_summary import PlantGrowthDelta
+    from ankigarden.ui.session_summary_card import SessionSummaryCard
+    from test_session_summary import _accumulator, _event, _finish
+
+    application = QApplication.instance() or QApplication([])
+    accumulator = _accumulator()
+    accumulator.accept_committed(_event("receipt", cards=24, plant_growth=tuple(
+        PlantGrowthDelta(f"plant-{i}", "Bonsai", 100, "bonsai") for i in range(20))))
+    payload = _finish(accumulator)
+    payload = replace(payload, segments=(*payload.segments, replace(payload.segments[0], anki_day_id="2026-08-29")))
+    owner = QWidget()
+    owner.resize(900, 800)
+    field = QLineEdit(owner)
+    owner.show()
+    field.setFocus()
+    application.processEvents()
+    dismissed = []
+    card = SessionSummaryCard(owner, payload, on_dismiss=lambda: dismissed.append(True), animations_enabled=False)
+    try:
+        card.show()
+        application.processEvents()
+        assert card.collapsed and (card.width(), card.height()) == (296, 40)
+        assert field.hasFocus()
+        assert not card._scroll.isVisibleTo(card)
+        assert card.findChild(QWidget, "ankiGardenSessionProgressDisclosure") is None
+        assert card.findChild(QWidget, "ankiGardenSessionBreakdown") is None
+        for width in (900, 340):
+            owner.resize(width, 800)
+            application.processEvents()
+            QTest.mouseClick(card._title_button, Qt.MouseButton.LeftButton)
+            application.processEvents()
+            assert not card.collapsed and owner.rect().contains(card.geometry())
+            assert card._scroll.isVisibleTo(card) and card._footer.isVisibleTo(card)
+            for tile in card.findChildren(QWidget):
+                if tile.property("summaryMetric"):
+                    assert all(label.fontMetrics().horizontalAdvance(label.text())
+                               <= label.contentsRect().width() + 1
+                               for label in tile.findChildren(QLabel) if label.text())
+            card._set_page(1)
+            application.processEvents()
+            body = card._body
+            bar = card._scroll.verticalScrollBar()
+            assert bar.maximum() > 0
+            bar.setValue(bar.maximum() // 2)
+            position = bar.value()
+            for _ in range(3):
+                card._collapse_button.click()
+                application.processEvents()
+                assert card.collapsed and card.height() == 40
+                title_center = card._title_button.mapTo(card, card._title_button.rect().center())
+                assert abs(title_center.x() - card.rect().center().x()) <= 1
+                assert owner.rect().contains(card.geometry())
+                card._collapse_button.setFocus(Qt.FocusReason.TabFocusReason)
+                QTest.keyClick(card._collapse_button, Qt.Key.Key_Space)
+                application.processEvents()
+                assert not card.collapsed and card.page_index == 1
+                assert card._body is body and bar.value() == position
+                assert not dismissed and card.payload is payload
+            card.set_collapsed(True)
+        card._close_button.click()
+        assert dismissed == [True]
+    finally:
+        if not dismissed:
+            card.close()
+        owner.close()
+        owner.deleteLater()
+
+
 def test_windows_starter_notice_fits_wrapped_text_and_reviewer(monkeypatch):
     from types import SimpleNamespace
     from aqt.qt import QApplication, QLabel, QWidget
