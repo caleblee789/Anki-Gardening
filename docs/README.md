@@ -1,16 +1,17 @@
 # Documentation index
 
-Use the references below for the state-schema-30 Anki Garden 2.2.2 candidate.
+Use the references below for the state-schema-30 Anki Garden 2.2.3 candidate.
 Runtime source and persisted-state behavior remain authoritative when prose and
 implementation disagree. Dated audit reports describe their own frozen candidates.
 
 ## Release status
 
-The current [2.2.2 archive](../dist/anki_garden.ankiaddon) has 273 entries,
-96,644,950 bytes and SHA-256
-`14f539a40cfa685a9bca926ee2fa17755c74868c2a32aaae6b02835b795fb5ea`.
-The full release-evidence lane passed 265 cases with real Qt bindings and no
-skips. Asset, compile, ZIP-integrity, and production-package checks passed.
+The current [2.2.3 archive](../dist/anki_garden.ankiaddon) has 273 entries,
+96,644,112 bytes and SHA-256
+`8359ef0397dbc9f9358346d9514b951a72160ed4e9dde7d0e9baf46ff0905686`.
+The default suite passed 1,677 cases and the release-evidence lane passed 266
+cases with real Qt bindings and no skips. Asset, compile, ZIP-integrity, and
+production-package checks passed. The annual engine simulation remains opt-in.
 Exact-package native Anki testing was not run for this patch release. Its
 declared compatibility range is desktop Anki 26.09.2 and newer.
 
@@ -53,7 +54,7 @@ for gate commands and evidence requirements, and the
 
 - [Development guide](development.md): source installation, packaging, and local checks.
 - [Functional acceptance](feature-evidence-matrix.md): feature coverage and exact-package native journeys.
-- [Release notes](release-notes-2.2.2.md): the current patch, with earlier changes linked there.
+- [Release notes](release-notes-2.2.3.md): the current patch, with earlier changes linked there.
 - [Progression, rewards, and effects](progression-rewards-effects-reference.md): current Growth, Coins,
   consumable, purchase, Study rewards, achievement, Collection, Landmark,
   Mastery, Legacy, persistence, and replay authority.

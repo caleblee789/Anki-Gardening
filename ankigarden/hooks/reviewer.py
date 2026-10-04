@@ -2256,7 +2256,7 @@ class ReviewerHookHandler:
         class _SessionSummaryExclusionFilter(QObject):
             def eventFilter(self, watched: Any, event: Any) -> bool:
                 if (
-                    watched is parent
+                    watched in (parent, card)
                     and event.type() in {
                         QEvent.Type.Resize,
                         QEvent.Type.Show,
@@ -2276,6 +2276,7 @@ class ReviewerHookHandler:
         geometry_filter = _SessionSummaryExclusionFilter(card)
         try:
             parent.installEventFilter(geometry_filter)
+            card.installEventFilter(geometry_filter)
         except (AttributeError, RuntimeError, TypeError):
             geometry_filter.deleteLater()
             return

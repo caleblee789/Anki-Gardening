@@ -3028,7 +3028,6 @@ class PlantInteractionState:
     def hover(self, plant_id: str | None) -> None: self.hovered_id = plant_id
     def toggle_pin(self, plant_id: str | None) -> None:
         self.pinned_id = None if plant_id is None or self.pinned_id == plant_id else plant_id
-        if plant_id is not None: self.hovered_id = plant_id
     def dismiss(self) -> None: self.pinned_id = self.hovered_id = None
     @property
     def placing(self) -> bool:
@@ -3077,7 +3076,7 @@ class PlantInteractionState:
     def cycle_focus(self, plant_ids: list[str], direction: int) -> str | None:
         if not plant_ids: self.focused_index = -1; return None
         self.focused_index = (0 if direction >= 0 else len(plant_ids)-1) if self.focused_index < 0 else (self.focused_index + direction) % len(plant_ids)
-        self.hovered_id = plant_ids[self.focused_index]; return self.hovered_id
+        return plant_ids[self.focused_index]
     def focused_id(self, plant_ids: list[str]) -> str | None:
         return plant_ids[self.focused_index] if 0 <= self.focused_index < len(plant_ids) else None
 

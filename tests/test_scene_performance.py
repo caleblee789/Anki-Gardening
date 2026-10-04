@@ -444,21 +444,32 @@ def test_hover_exit_deadline_does_not_restart_during_empty_space_motion() -> Non
     assert timer.starts == [80]
 
 
-def test_hover_fades_use_elapsed_time_and_reverse_without_opacity_jumps() -> None:
+def test_hover_fades_in_without_lighting_the_previous_plant_on_switch() -> None:
     advance = _compiled_scene_method("_advance_hover")
+    now = [0.0]
+    set_target = _compiled_scene_method(
+        "_set_hover_target",
+        {"time": SimpleNamespace(monotonic=lambda: now[0])},
+    )
+    repainted: list[set[str]] = []
     scene = SimpleNamespace(
         _hover_updated_at=0.0, HOVER_FADE_SECONDS=0.1,
-        _hover_opacity={}, _interaction=SimpleNamespace(hovered_id="rose"),
-        hasFocus=lambda: False,
+        _hover_opacity={}, _interaction=SimpleNamespace(hovered_id=None),
+        _sync_animation_timer=lambda: None,
+        _update_hover_region=lambda ids: repainted.append(ids),
     )
+    scene._interaction.hover = lambda plant_id: setattr(scene._interaction, "hovered_id", plant_id)
+    scene._advance_hover = lambda timestamp: advance(scene, timestamp)
+    set_target(scene, "rose")
     advance(scene, 0.04)
     assert abs(scene._hover_opacity["rose"] - 0.4) < 1e-9
-    scene._interaction.hovered_id = "bonsai"
+    now[0] = 0.04
+    set_target(scene, "bonsai")
+    assert "rose" not in scene._hover_opacity
+    assert repainted[-1] == {"rose", "bonsai"}
     advance(scene, 0.06)
-    assert abs(scene._hover_opacity["rose"] - 0.2) < 1e-9
     assert abs(scene._hover_opacity["bonsai"] - 0.2) < 1e-9
-    scene._interaction.hovered_id = "rose"
+    now[0] = 0.06
+    set_target(scene, None)
     advance(scene, 0.08)
-    assert abs(scene._hover_opacity["rose"] - 0.4) < 1e-9
-    advance(scene, 0.2)
-    assert scene._hover_opacity == {"rose": 1.0}
+    assert scene._hover_opacity == {}

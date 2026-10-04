@@ -2219,13 +2219,22 @@ class _ShellBehavior:
     def _observe_content_object(self, candidate: QObject) -> None:
         """Install the coalescing observer on a newly created content subtree."""
 
-        try:
-            if candidate not in (self._content_fit_timer, self._content_observer_timer):
-                candidate.installEventFilter(self)
-            for child in candidate.children():
-                self._observe_content_object(child)
-        except RuntimeError:
-            return
+        pending = [candidate]
+        seen: set[int] = set()
+        while pending:
+            current = pending.pop()
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            try:
+                # Construction can add children while filters are installed.
+                # Observe a snapshot; ChildAdded schedules the next pass.
+                children = tuple(current.children())
+                if current not in (self._content_fit_timer, self._content_observer_timer):
+                    current.installEventFilter(self)
+            except RuntimeError:
+                continue
+            pending.extend(children)
 
     def apply_size_policy(
         self,
@@ -17817,6 +17826,7 @@ class PlantInfoCard(QFrame):
     dismissRequested = pyqtSignal()
     chooseAnother = pyqtSignal()
     contentGeometryChanged = pyqtSignal()
+    pointerEntered = pyqtSignal()
 
     PREFERRED_WIDTH = 304
     MINIMUM_WIDTH = 280
@@ -18461,6 +18471,10 @@ class PlantInfoCard(QFrame):
 
     def mouseMoveEvent(self, event: Any) -> None:
         event.accept()
+
+    def enterEvent(self, event: Any) -> None:
+        self.pointerEntered.emit()
+        super().enterEvent(event)
 
 
     def _build_popover(self) -> None:
@@ -23165,6 +23179,7 @@ class GardenDashboard(DialogShell):
         self.scene.cardGeometryChanged.connect(self._position_plant_card)
         self.scene.setMinimumHeight(260)
         self.plant_card = AnchoredPlantPopover(self.scene)
+        self.plant_card.pointerEntered.connect(self.scene._clear_hover_immediately)
         self.nurtured_plant_bar = NurturedPlantBar()
         self.overlay_manager = GardenOverlayManager(
             self.onboarding_panel,

@@ -664,6 +664,7 @@ def test_current_origin_is_inert_and_escape_cancels_move() -> None:
     mouse_scene._event_position = lambda event: event.position()
     mouse_scene._slot_at = lambda _position: 0
     mouse_scene._locked_bed_at = lambda _position: None
+    mouse_scene._clear_hover_immediately = lambda: None
     mouse_event = SimpleNamespace(button=lambda: "left", position=lambda: object())
     mouse_press(mouse_scene, mouse_event)
 
